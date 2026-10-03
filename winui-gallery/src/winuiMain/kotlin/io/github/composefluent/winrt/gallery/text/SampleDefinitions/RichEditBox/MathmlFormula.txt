@@ -1,0 +1,14 @@
+<mml:math xmlns:mml="http://www.w3.org/1998/Math/MathML" display="block">
+  <mml:mi mathcolor="#000000">x</mml:mi>
+  <mml:mo mathcolor="#000000">∈</mml:mo>
+  <mml:mi mathcolor="#000000">P</mml:mi>
+  <mml:mfenced>
+    <mml:mrow>
+      <mml:mi mathcolor="#000000">A</mml:mi>
+    </mml:mrow>
+  </mml:mfenced>
+  <mml:mo mathcolor="#000000">↔</mml:mo>
+  <mml:mi mathcolor="#000000">x</mml:mi>
+  <mml:mo mathcolor="#000000">⊆</mml:mo>
+  <mml:mi mathcolor="#000000">A</mml:mi>
+</mml:math>

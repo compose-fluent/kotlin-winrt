@@ -1,0 +1,27 @@
+--- header
+Adding tasks to the jump list
+--- Kotlin
+private fun AddTasksButton_Click(sender: Any?, args: RoutedEventArgs) {
+    if (!JumpList.isSupported()) return
+    tasks.launch {
+        val list = JumpList.loadCurrentAsync().await()
+        list.items.add(JumpListItem.createWithArguments("/compose", "New Message").apply {
+            description = "Compose a new message"
+            logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
+        })
+        list.items.add(JumpListItem.createWithArguments("/search", "Search").apply {
+            description = "Search for items"
+            logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
+        })
+        list.saveAsync().await()
+    }
+}
+
+private fun ClearTasksButton_Click(sender: Any?, args: RoutedEventArgs) {
+    if (!JumpList.isSupported()) return
+    tasks.launch {
+        val list = JumpList.loadCurrentAsync().await()
+        list.items.clear()
+        list.saveAsync().await()
+    }
+}

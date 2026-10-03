@@ -1,0 +1,18 @@
+--- header
+ExpressionAnimation on an Ellipse element
+--- xaml
+<StackPanel Height="200">
+    <Grid VerticalAlignment="Top">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Rectangle x:Name="rectangle" Width="50" Height="50" Fill="{ThemeResource SystemAccentColor}" PointerEntered="element_PointerEntered" PointerExited="element_PointerExited" />
+        <Ellipse x:Name="ellipse" Grid.Column="1" Width="50" Height="50" Margin="55,0" Fill="{ThemeResource SystemAccentColor}"/>
+    </Grid>
+</StackPanel>
+--- kotlin
+private fun ExpressionSample_Loaded(sender: Any?, args: RoutedEventArgs) {
+        val animation = compositor.createExpressionAnimation("Vector3(1/scaleElement.Scale.X, 1/scaleElement.Scale.Y, 1)").apply { target = "Scale"; setExpressionReferenceParameter("scaleElement", rectangle) }
+        ellipse.startAnimation(animation)
+    }

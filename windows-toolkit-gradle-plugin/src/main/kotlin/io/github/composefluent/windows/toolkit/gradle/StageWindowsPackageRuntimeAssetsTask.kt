@@ -895,9 +895,10 @@ internal fun writeDependencyRuntimeAssetRecords(
             output
         }
 
-internal fun readDependencyAuthoredMetadataRecords(identityFile: java.io.File): List<AuthoredMetadataRecord> {
+internal fun readDependencyAuthoredMetadataRecords(identityFile: java.io.File,
+    field: String = "authoredMetadataRecords"): List<AuthoredMetadataRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
-    val arrayContent = readIdentityJsonArrayContent(content, "authoredMetadataRecords") ?: return emptyList()
+    val arrayContent = readIdentityJsonArrayContent(content, field) ?: return emptyList()
     return readIdentityJsonObjectArray(arrayContent)
         .mapNotNull(::readDependencyAuthoredMetadataRecord)
 }

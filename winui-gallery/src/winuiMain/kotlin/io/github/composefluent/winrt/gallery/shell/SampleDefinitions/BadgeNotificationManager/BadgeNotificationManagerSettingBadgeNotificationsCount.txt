@@ -1,0 +1,6 @@
+--- header
+Setting badge notifications with count
+--- kotlin
+private fun SetBadgeCountButton_Click(sender: Any?, args: RoutedEventArgs) { if (GalleryPreferences.packaged) { microsoft.windows.badgenotifications.BadgeNotificationManager.current.setBadgeAsCount(BadgeCountBox.value.toUInt()); isBadgeSetted = true } }
+
+private fun ClearBadgeButton_Click(sender: Any?, args: RoutedEventArgs) { if (GalleryPreferences.packaged) microsoft.windows.badgenotifications.BadgeNotificationManager.current.clearBadge() }

@@ -1,0 +1,19 @@
+--- header
+Show a non-targeted TeachingTip with buttons.
+--- xaml
+<Button
+    Click="TestButton2Click"
+    Content="Show TeachingTip" />
+<TeachingTip
+    x:Name="TestButton2TeachingTip"
+    Title="This is the title"
+    ActionButtonContent="Action button"
+    CloseButtonContent="Close button"
+    IsLightDismissEnabled="True"
+    PlacementMargin="20"
+    PreferredPlacement="Auto"
+    Subtitle="And this is the subtitle" />
+--- Kotlin
+private fun TestButton2Click(sender: Any?, args: RoutedEventArgs) {
+    TestButton2TeachingTip.isOpen = true
+}

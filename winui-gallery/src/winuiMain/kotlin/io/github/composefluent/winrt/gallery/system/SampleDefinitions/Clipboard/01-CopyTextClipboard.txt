@@ -1,0 +1,17 @@
+--- header
+Copy text to the Clipboard
+--- xaml
+<Button Content="Copy Text to the Clipboard" Click="CopyText_Click"/>
+--- Kotlin
+private fun CopyText_Click(sender: Any?, args: RoutedEventArgs) {
+    val text = WinRTOut<String>()
+    checkNotNull(richEditBox.document).getText(TextGetOptions.None, text)
+    Clipboard.setContent(DataPackage().apply { setText(text.value) })
+    announce(checkNotNull(sender).asWinRT<UIElement>(), "Text copied to clipboard", "TextCopiedSuccessNotificationId")
+    VisualStateManager.goToState(this, "ConfirmationClipboardVisible", false)
+    confirmationJob?.cancel()
+    confirmationJob = tasks.launch {
+        delay(2000)
+        VisualStateManager.goToState(this@ClipboardPage, "ConfirmationClipboardCollapsed", false)
+    }
+}

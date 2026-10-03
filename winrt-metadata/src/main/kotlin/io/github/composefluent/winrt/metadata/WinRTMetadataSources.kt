@@ -613,7 +613,8 @@ object WinRTNuGetPackageResolver {
         }
     }
 
-    private fun packageIdentity(packageRoot: Path): WinRTNuGetPackageIdentity {
+    /** Reads the package's declared identity, including nonstandard local cache layouts. */
+    fun packageIdentity(packageRoot: Path): WinRTNuGetPackageIdentity {
         val document = readNuspec(packageRoot) ?: return packageIdentityFromInstallDirectory(packageRoot)
         val metadataNodes = document.getElementsByTagNameNS("*", "metadata")
             .takeIf { it.length > 0 }

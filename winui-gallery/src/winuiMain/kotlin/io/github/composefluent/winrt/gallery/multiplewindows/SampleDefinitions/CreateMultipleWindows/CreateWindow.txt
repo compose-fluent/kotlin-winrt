@@ -1,0 +1,10 @@
+--- header
+Create single threaded Multiple Top level Windows(MTW).
+--- xaml
+<controls:ControlExample SampleDefinition="CreateMultipleWindows/CreateWindow.txt"><Button Content="Create new Window" Click="CreateWindow_Click" /></controls:ControlExample>
+--- kotlin
+private fun CreateWindow_Click(sender: Any?, args: RoutedEventArgs) {
+        val window = MultipleWindowsSampleWindow()
+        checkNotNull(window.content).asWinRT<Page>().requestedTheme = actualTheme
+        GalleryWindows.track(window); window.activate()
+    }

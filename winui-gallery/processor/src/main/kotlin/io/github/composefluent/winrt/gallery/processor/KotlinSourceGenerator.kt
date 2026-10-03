@@ -8,7 +8,9 @@ internal fun kotlinLiteral(value: String): String = buildString {
     append('"')
     value.forEach { append(when (it) {
         '\\' -> "\\\\"; '"' -> "\\\""; '$' -> "\\$"; '\n' -> "\\n"; '\r' -> "\\r"; '\t' -> "\\t"
-        else -> if (it.code < 32) "\\u" + it.code.toString(16).padStart(4, '0') else it.toString()
+        // Constants are chunked by UTF-16 length. Escape surrogate code units so
+        // a pair split between chunks survives UTF-8 file output unchanged.
+        else -> if (it.code < 32 || it.code in 0xD800..0xDFFF) "\\u" + it.code.toString(16).padStart(4, '0') else it.toString()
     }) }
     append('"')
 }
@@ -20,7 +22,7 @@ internal fun generateCodeDocuments(
     documents: List<Pair<String, KotlinCodeDocument>>,
     origins: Map<String, KotlinCodeOriginData> = emptyMap(),
 ): String = buildString {
-    appendLine("// Generated from the sample's Kotlin source. Do not edit.")
+    appendLine("// Generated from the sample's source files. Do not edit.")
     appendLine("package $galleryPackage")
     appendLine("import $galleryPackage.code.*")
     documents.forEach { (name, document) -> appendCodeDocument(name, document, origins[name]) }

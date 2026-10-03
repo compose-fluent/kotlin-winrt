@@ -29,7 +29,10 @@ internal fun generate(entries: List<Entry>, descriptions: JsonObject): String {
     require(routes.none { it in setOf("All", "Settings") }) { "Reserved navigation route" }
     val groupRoutes = groups.map { it.route }.toSet()
     require(pages.all { it.value("group") in groupRoutes }) { "Page references an unknown navigation group" }
-    val details = descriptions.getValue("Groups").jsonArray.flatMap { it.jsonObject.getValue("Items").jsonArray }
+    val catalogGroups = descriptions.getValue("Groups").jsonArray.map { it.jsonObject }
+    val specialGroups = catalogGroups.filter { it["IsSpecialSection"]?.jsonPrimitive?.booleanOrNull == true }
+        .map { it.getValue("UniqueId").jsonPrimitive.content }.toSet()
+    val details = catalogGroups.flatMap { it.getValue("Items").jsonArray }
         .associate { it.jsonObject.getValue("UniqueId").jsonPrimitive.content to it.jsonObject }
     require(pages.all { it.route in details }) { "Navigation page has no descriptive catalog entry" }
     fun quote(value: String) = buildString {
@@ -55,7 +58,7 @@ internal fun generate(entries: List<Entry>, descriptions: JsonObject): String {
                 }
                 appendLine("    GalleryPageInfo(${quote(page.route)}, ${quote(page.value("title"))}, ${quote(field("Subtitle"))}, ${quote(field("Description"))}, ${quote(field("ImagePath"))}, ${quote(group.route)}, ${field("IsNew") == "true"}, ${field("IsUpdated") == "true"}, ${strings(detail["Tags"])}, $docs, ${strings(detail["RelatedControls"])}, ${quote(page.args["glyph"].orEmpty())}, ${quote(field("ApiNamespace"))}, ${strings(detail["BaseClasses"])}, ${quote(field("SourcePath"))}, ${field("IsExperimental") == "true"}, ${quote(page.repositoryPath)}),")
             }
-            appendLine("  ))")
+            appendLine("  ), isSpecialSection = ${group.route in specialGroups})")
         }
         appendLine("}")
         appendLine("internal actual object GalleryPageFactories {")

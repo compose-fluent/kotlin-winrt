@@ -1,0 +1,20 @@
+--- header
+Pick folder
+--- xaml
+<StackPanel Spacing="8">
+    <Button x:Name="PickFolderButton" Content="Pick a folder" Click="PickFolderButton_Click" />
+    <TextBlock x:Name="PickedFolderTextBlock" Text="No folder picked" />
+</StackPanel>
+--- kotlin
+private fun PickFolderButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val picker = microsoft.windows.storage.pickers.FolderPicker(WindowId()).apply {
+                commitButtonText = CommitButtonTextTextBox4.text
+                suggestedStartLocation = PickerLocationComboBox4.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+                viewMode = PickerViewModeComboBox3.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
+            }
+            PickedFolderTextBlock.text = picker.pickSingleFolderAsync().await()?.let { "Picked: ${it.path}" } ?: "No folder selected."
+            announce(button, PickedFolderTextBlock.text, "FolderPickedNotificationId")
+        } finally { button.isEnabled = true } }
+    }

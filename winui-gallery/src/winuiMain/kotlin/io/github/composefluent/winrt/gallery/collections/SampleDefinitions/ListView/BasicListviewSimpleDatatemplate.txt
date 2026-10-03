@@ -1,0 +1,89 @@
+--- header
+Basic ListView with Simple DataTemplate
+--- xaml
+<!-- XAML Code -->
+
+<ListView
+    x:Name="BaseExample"
+    ItemTemplate="{StaticResource ContactListViewTemplate}"
+    BorderThickness="1"
+    BorderBrush="{ThemeResource SystemControlForegroundBaseMediumLowBrush}"
+    Width="350" 
+    Height="400"
+    HorizontalAlignment="Left"/>
+                
+<!-- In this example, the ListView's ItemTemplate property is bound to a data template (shown below)
+called ContactListViewTemplate, defined in a Page.Resources section. -->
+    
+<DataTemplate x:Key="ContactListViewTemplate" x:DataType="local:Contact">
+     <TextBlock Text="{x:Bind Name}" x:Phase="1" Margin="0,5,0,5"/>
+</DataTemplate>
+--- kotlin
+private var ready = false
+    private var initialized = false
+    private val tasks = GalleryPageTasks(this)
+    private val contacts1: MutableList<Contact> = WinRTObservableList()
+    private val contacts2: MutableList<Contact> = WinRTObservableList(listOf(Contact("John", "Doe", "ABC Printers"), Contact("Jane", "Doe", "XYZ Refrigerators"), Contact("Santa", "Claus", "North Pole Toy Factory Inc.")))
+    private val contacts3: MutableList<Contact> = WinRTObservableList()
+    private val contacts3Filtered: MutableList<Contact> = WinRTObservableList()
+    private val contacts4ContextMenu: MutableList<Contact> = WinRTObservableList()
+    val contacts5: MutableList<String> = WinRTObservableList()
+    val contacts6: MutableList<String> = WinRTObservableList()
+    private var persistedPosition = ""
+    private var stackPanelObj: ItemsStackPanel? = null
+    private var messageNumber = 0
+    override fun initializeComponent() {
+        super.initializeComponent(); ready = true; AddItemToEnd()
+        Items = io.github.composefluent.winrt.gallery.models.ControlInfoDataSource.Groups.take(3).flatMap { it.Items }
+        BaseExample.loaded.add { _, _ -> BaseExample.focus(FocusState.Programmatic) }
+        loaded.add { _, _ -> if (!initialized) { initialized = true; tasks.launch {
+            val contacts = Contact.GetContactsAsync()
+            BaseExample.itemsSource = WinRTObservableList(contacts); Control2.itemsSource = WinRTObservableList(contacts)
+            contacts1.addAll(contacts); DragDropListView.itemsSource = contacts1; DragDropListView2.itemsSource = contacts2
+            Control4.itemsSource = CustomDataObject.GetDataObjects()
+            ContactsCVS.source = contacts.groupBy { it.LastName.take(1).uppercase() }.toSortedMap().map { (key, items) -> GroupInfoList(key, items) }
+            contacts3.addAll(contacts); contacts3Filtered.addAll(contacts); FilteredListView.itemsSource = contacts3Filtered
+            contacts4ContextMenu.addAll(contacts); ContextMenuList.itemsSource = contacts4ContextMenu
+            contacts5.addAll(contacts.mapIndexed { index, contact -> "${index + 1}. ${contact.Name}" })
+            repeat(10) { contacts6.addAll(contacts.map { "${contacts6.size + contacts.indexOf(it) + 1}. ${it.Name}" }) }
+            RestoreScrollListView.itemsSource = contacts5; ScrollIntoViewListView.itemsSource = contacts6
+        } } }
+    }
+    private fun SelectionModeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) Control2.selectionMode = when (args.addedItems.firstOrNull()?.toString()) { "None" -> ListViewSelectionMode.None; "Multiple" -> ListViewSelectionMode.Multiple; "Extended" -> ListViewSelectionMode.Extended; else -> ListViewSelectionMode.Single } }
+    private fun ListView_DragItemsStarting(sender: Any?, args: DragItemsStartingEventArgs) { args.data.properties["contacts"] = args.items.filterIsInstance<Contact>(); args.data.requestedOperation = windows.applicationmodel.datatransfer.DataPackageOperation.Move }
+    private fun Target_DragOver(sender: Any?, args: DragEventArgs) { args.acceptedOperation = windows.applicationmodel.datatransfer.DataPackageOperation.Move }
+    private fun Source_DragOver(sender: Any?, args: DragEventArgs) { args.acceptedOperation = windows.applicationmodel.datatransfer.DataPackageOperation.Move }
+    private fun ListView_Drop(sender: Any?, args: DragEventArgs) {
+        val target = checkNotNull(sender).asWinRT<ListView>()
+        val moved = (args.dataView.properties["contacts"] as? List<*>)?.filterIsInstance<Contact>() ?: return
+        val deferral = args.getDeferral()
+        try { moved.forEach { contact ->
+            var index = 0
+            if (target.items.isNotEmpty()) {
+                val first = checkNotNull(target.containerFromIndex(0)).asWinRT<ListViewItem>(); val height = first.actualHeight + first.margin.top + first.margin.bottom
+                index = (args.getPosition(target.itemsPanelRoot).y / height).toInt().coerceIn(0, target.items.lastIndex)
+                val item = checkNotNull(target.containerFromIndex(index)).asWinRT<ListViewItem>()
+                if (args.getPosition(item).y > height / 2) index++
+            }
+            val destination = if (target.name == "DragDropListView") contacts1 else contacts2
+            val source = if (destination === contacts1) contacts2 else contacts1
+            destination.add(index.coerceIn(0, destination.size), contact); source.removeAll { it.FirstName == contact.FirstName && it.LastName == contact.LastName && it.Company == contact.Company }
+        }; args.acceptedOperation = windows.applicationmodel.datatransfer.DataPackageOperation.Move } finally { deferral.complete() }
+    }
+    private fun Target_DragEnter(sender: Any?, args: DragEventArgs) { args.dragUIOverride.isGlyphVisible = false }
+    private fun ToggleSwitch_Toggled(sender: Any?, args: RoutedEventArgs) { if (ready) stackPanelObj?.areStickyGroupHeadersEnabled = StickySwitch.isOn }
+    private fun StackPanel_loaded(sender: Any?, args: RoutedEventArgs) { stackPanelObj = checkNotNull(sender).asWinRT<ItemsStackPanel>() }
+    private fun OnFilterChanged(sender: Any?, args: TextChangedEventArgs) {
+        if (!ready) return
+        val filtered = contacts3.filter { it.FirstName.contains(FilterByFirstName.text, true) && it.LastName.contains(FilterByLastName.text, true) && it.Company.contains(FilterByCompany.text, true) }
+        for (index in contacts3Filtered.lastIndex downTo 0) if (contacts3Filtered[index] !in filtered) contacts3Filtered.removeAt(index)
+        filtered.filterNot(contacts3Filtered::contains).forEach(contacts3Filtered::add)
+        announce(FilteredListView, "Found ${filtered.size} contacts", "ContactListViewFilteredActivityId")
+    }
+    private fun AddItemToEnd() { if (ready) InvertedListView.items.add(Message("Message ${++messageNumber}", kotlin.time.Clock.System.now(), HorizontalAlignment.Right)) }
+    private fun MessageReceived(sender: Any?, args: RoutedEventArgs) { InvertedListView.items.add(Message("Message ${++messageNumber}", kotlin.time.Clock.System.now(), HorizontalAlignment.Left)) }
+    private fun TextBlock_IsTextTrimmedChanged(sender: TextBlock, args: IsTextTrimmedChangedEventArgs) { ToolTipService.setToolTip(sender, if (sender.isTextTrimmed) sender.text else "") }
+    private fun ContactDeleteMenuItem_Click(sender: Any?, args: RoutedEventArgs) { (checkNotNull(sender).asWinRT<FrameworkElement>().dataContext as? Contact)?.let(contacts4ContextMenu::remove) }
+    private fun SavePositionButton_Click(sender: Any?, args: RoutedEventArgs) { persistedPosition = ListViewPersistenceHelper.getRelativeScrollPosition(RestoreScrollListView) { it as? String ?: "" }; RestorePositionButton.isEnabled = true }
+    private fun RestorePositionButton_Click(sender: Any?, args: RoutedEventArgs) { if (persistedPosition.isNotEmpty()) tasks.launch { ListViewPersistenceHelper.setRelativeScrollPositionAsync(RestoreScrollListView, persistedPosition) { key -> AsyncInfo.fromInspectableResult(contacts5.firstOrNull { it == key }) }.await() } }
+    private fun ScrollIntoViewButton_Click(sender: Any?, args: RoutedEventArgs) { val index = ScrollIndexNumberBox.value.toInt(); if (index in ScrollIntoViewListView.items.indices) ScrollIntoViewListView.scrollIntoView(ScrollIntoViewListView.items[index], if (ScrollAlignmentComboBox.selectedIndex == 1) ScrollIntoViewAlignment.Leading else ScrollIntoViewAlignment.Default) }

@@ -1,0 +1,11 @@
+--- Header
+A HyperlinkButton that navigates to a URI.
+
+--- Xaml
+<HyperlinkButton x:Name="Control1" Content="Microsoft home page"
+                 NavigateUri="https://www.microsoft.com" />
+
+--- Kotlin
+private fun DisableControl1_Click(sender: Any?, args: RoutedEventArgs) {
+    Control1.isEnabled = DisableControl1.isChecked != true
+}

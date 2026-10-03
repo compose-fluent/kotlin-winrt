@@ -1,0 +1,27 @@
+--- header
+Using a converter in Binding
+--- xaml
+<Page...
+    xmlns:c="using:YourNamespace">
+
+    <Page.Resources>
+        <!-- Declare the converter -->
+        <c:EmptyStringToVisibilityConverter x:Key="EmptyStringToVisibilityConverter" />
+    </Page.Resources>
+
+    <StackPanel Spacing="8">
+        <!-- Input TextBox -->
+        <TextBox x:Name="InputTextBox" Header="Enter Text:" Width="300" />
+
+        <!-- TextBlock Visibility Depends on Input Text -->
+        <TextBlock Text="The input is not empty."
+                    Visibility="{Binding Text, ElementName=InputTextBox, Converter={StaticResource EmptyStringToVisibilityConverter}}" />
+    </StackPanel>
+</Page>
+--- kotlin
+internal class EmptyStringToVisibilityConverter : IValueConverter {
+    override fun convert(value: Any?, targetType: KClass<*>?, parameter: Any?, language: String): Any? =
+        if ((value as? String).isNullOrEmpty()) Visibility.Collapsed else Visibility.Visible
+    override fun convertBack(value: Any?, targetType: KClass<*>?, parameter: Any?, language: String): Any? =
+        throw UnsupportedOperationException("Visibility conversion is one way")
+}

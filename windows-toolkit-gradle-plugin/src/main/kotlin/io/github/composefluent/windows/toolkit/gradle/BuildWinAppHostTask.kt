@@ -433,6 +433,7 @@ internal fun applicationHostSource(
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
     #include <jni.h>
+    #include <process.h>
     #include <stdint.h>
 
     typedef jint (JNICALL *kotlin_winrt_create_java_vm_fn)(JavaVM **, void **, void *);
@@ -616,7 +617,11 @@ internal fun applicationHostSource(
         args.nOptions = option_count;
         args.options = options;
         args.ignoreUnrecognized = JNI_TRUE;
-        return create_vm(&kotlin_winrt_vm, (void **)env, &args) == JNI_OK ? 0 : 1;
+        if (create_vm(&kotlin_winrt_vm, (void **)env, &args) != JNI_OK) {
+            kotlin_winrt_vm = NULL;
+            return 1;
+        }
+        return 0;
     }
 
     static int kotlin_winrt_handle_pending_exception(JNIEnv *env) {
@@ -699,7 +704,7 @@ internal fun applicationHostSource(
         return failed;
     }
 
-    int wmain(int argc, wchar_t **wargv) {
+    static int kotlin_winrt_run_application(int argc, wchar_t **wargv) {
         JNIEnv *env = NULL;
         jobject application_host = NULL;
         jclass main_class;
@@ -778,6 +783,41 @@ internal fun applicationHostSource(
             exit_code = 1;
         }
         return exit_code;
+    }
+
+    typedef struct {
+        int argc;
+        wchar_t **argv;
+    } kotlin_winrt_application_args;
+
+    static unsigned __stdcall kotlin_winrt_application_thread(void *context) {
+        kotlin_winrt_application_args *args = (kotlin_winrt_application_args *)context;
+        int exit_code = kotlin_winrt_run_application(args->argc, args->argv);
+        if (kotlin_winrt_vm != NULL && (*kotlin_winrt_vm)->DetachCurrentThread(kotlin_winrt_vm) != JNI_OK) {
+            exit_code = 1;
+        }
+        return (unsigned)exit_code;
+    }
+
+    int wmain(int argc, wchar_t **wargv) {
+        kotlin_winrt_application_args args = { argc, wargv };
+        DWORD exit_code = 1;
+        // JNI recommends creating the VM on a fresh thread rather than the primordial
+        // process thread. Commit enough native stack for nested WinUI/FFM callbacks;
+        // Java -Xss does not set the stack of an existing JNI invocation thread.
+        // https://docs.oracle.com/en/java/javase/25/docs/specs/jni/invocation.html
+        HANDLE thread = (HANDLE)_beginthreadex(
+            NULL, 4 * 1024 * 1024, kotlin_winrt_application_thread, &args,
+            0, NULL);
+        if (thread == NULL) {
+            return 1;
+        }
+        if (WaitForSingleObject(thread, INFINITE) != WAIT_OBJECT_0 ||
+            !GetExitCodeThread(thread, &exit_code)) {
+            exit_code = 1;
+        }
+        CloseHandle(thread);
+        return (int)exit_code;
     }
     """.trimIndent()
 }

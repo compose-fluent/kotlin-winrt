@@ -1,0 +1,51 @@
+--- header
+Backdrop types
+--- xaml
+<!-- Mica -->
+<Window.SystemBackdrop>
+    <MicaBackdrop/>
+</Window.SystemBackdrop>
+                    
+<!-- Mica Alt -->
+<Window.SystemBackdrop>
+    <MicaBackdrop Kind="BaseAlt"/>
+</Window.SystemBackdrop>
+
+<!-- Acrylic -->
+<Window.SystemBackdrop>
+    <DesktopAcrylicBackdrop/>
+<Window.SystemBackdrop>
+--- kotlin
+internal class SampleBuiltInSystemBackdropsWindow : Window() {
+    private var ready = false
+    private var currentBackdrop = GalleryBackdropType.None
+    private fun root(): Grid = checkNotNull(content).asWinRT<Grid>()
+    private fun SetNoneBackdropBackground() { root().background = SolidColorBrush(if (currentBackdrop == GalleryBackdropType.None && themeComboBox.selectedIndex != 0) { if (themeComboBox.selectedIndex == 1) rgb(0xFFFFFFu) else rgb(0u) } else Color(0u,0u,0u,0u)) }
+    private fun ThemeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        if (!ready) return
+        root().requestedTheme = listOf(ElementTheme.Default,ElementTheme.Light,ElementTheme.Dark)[themeComboBox.selectedIndex.coerceIn(0,2)]
+        TitleBarHelper.ApplySystemThemeToCaptionButtons(this,root().actualTheme); SetNoneBackdropBackground()
+    }
+
+    override fun initializeComponent() {
+        super.initializeComponent(); GalleryWindows.track(this); ready = true; appWindow?.setIcon("Assets/Tiles/GalleryIcon.ico"); extendsContentIntoTitleBar = true; setTitleBar(titleBar)
+        root().requestedTheme = when (GalleryPreferences.text("Theme")) { "Light" -> ElementTheme.Light; "Dark" -> ElementTheme.Dark; else -> ElementTheme.Default }
+        backdropComboBox.selectedIndex = 0; themeComboBox.selectedIndex = 0
+    }
+    fun SetBackdrop(requested: GalleryBackdropType) {
+        currentBackdrop = GalleryBackdropType.None; systemBackdrop = null; tbChangeStatus.text = ""
+        var type = requested
+        if (type == GalleryBackdropType.Mica || type == GalleryBackdropType.MicaAlt) {
+            if (microsoft.ui.composition.systembackdrops.MicaController.isSupported()) {
+                systemBackdrop = MicaBackdrop().apply { kind = if (type == GalleryBackdropType.MicaAlt) microsoft.ui.composition.systembackdrops.MicaKind.BaseAlt else microsoft.ui.composition.systembackdrops.MicaKind.Base }; currentBackdrop = type
+            } else { tbChangeStatus.text += "  $type isn't supported. Trying Acrylic."; type = GalleryBackdropType.Acrylic }
+        }
+        if (type == GalleryBackdropType.Acrylic) {
+            if (microsoft.ui.composition.systembackdrops.DesktopAcrylicController.isSupported()) { systemBackdrop = DesktopAcrylicBackdrop(); currentBackdrop = type }
+            else tbChangeStatus.text += "  Acrylic isn't supported. Switching to default color."
+        }
+        SetNoneBackdropBackground(); announce(backdropComboBox,"Background changed to $currentBackdrop","BackgroundChangedNotificationActivityId")
+    }
+    private fun BackdropComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) SetBackdrop(listOf(GalleryBackdropType.Mica,GalleryBackdropType.MicaAlt,GalleryBackdropType.Acrylic,GalleryBackdropType.None)[backdropComboBox.selectedIndex.coerceIn(0,3)]) }
+
+}

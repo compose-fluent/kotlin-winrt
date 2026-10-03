@@ -2,8 +2,8 @@ package io.github.composefluent.winrt.runtime
 
 internal class WinRTDelegateComObject(
     private val descriptor: WinRTDelegateDescriptor,
-    private val callback: (List<Any?>) -> Any?,
-    private val managedTarget: Any = callback,
+    callback: (List<Any?>) -> Any?,
+    managedTarget: Any = callback,
     private val abiEntryPoint: RawAddress? = null,
     private val rawWordCallback: ComRawWordCallback? = null,
     private val definitionTemplate: WinRTCcwDefinition? = null,
@@ -12,28 +12,30 @@ internal class WinRTDelegateComObject(
     // common path as a nullable callback instead of allocating a synchronized SnapshotList for
     // every delegate instance. If another owner ever needs a second hook, compose it here without
     // changing the host/lifetime contract.
-    private var cleanupAction: (() -> Unit)? = null
-    private val host = createHost()
+    private val callbackReference = PlatformManagedWeakReference(callback)
+    private val targetReference = PlatformManagedWeakReference(managedTarget)
+    private val cleanupState = CleanupState()
+    private val host = createHost(managedTarget, callback)
 
     fun createReference(): WinRTDelegateReference =
         tryCreateReference()
             ?: throw WinRTObjectDisposedException("Delegate COM host is already closed.")
 
-    fun tryCreateReference(): WinRTDelegateReference? =
-        host.tryCreateReference(descriptor.interfaceId)?.let { reference ->
+    fun tryCreateReference(knownManagedValue: Any? = null): WinRTDelegateReference? =
+        host.tryCreateReference(descriptor.interfaceId, knownManagedValue ?: targetReference.get())?.let { reference ->
             WinRTDelegateReference(reference.comPtr, descriptor)
         }
 
-    internal fun tryAcquireMarshalingReference(): RawAddress? =
-        host.tryAcquireReference(descriptor.interfaceId, managedTarget)
+    internal fun tryAcquireMarshalingReference(knownManagedValue: Any? = null): RawAddress? =
+        (knownManagedValue ?: targetReference.get())?.let { host.tryAcquireReference(descriptor.interfaceId, it) }
 
     fun releaseManagedReference() {
-        host.releaseManagedReference()
+        if (host.state.borrowReady) host.releaseInitialReference() else host.releaseManagedReference()
     }
 
     fun addCleanupAction(action: () -> Unit) {
-        val previous = cleanupAction
-        cleanupAction = if (previous == null) {
+        val previous = cleanupState.action
+        cleanupState.action = if (previous == null) {
             action
         } else {
             {
@@ -44,9 +46,13 @@ internal class WinRTDelegateComObject(
     }
 
     private fun invoke(rawArguments: List<Any?>): Int =
-        WinRTDelegateInvocationSupport.invoke(descriptor, callback, rawArguments)
+        WinRTDelegateInvocationSupport.invoke(
+            descriptor,
+            callbackReference.get() ?: throw WinRTObjectDisposedException("Delegate target was collected."),
+            rawArguments,
+        )
 
-    private fun createHost(): WinRTInspectableComObject {
+    private fun createHost(managedTarget: Any, callback: (List<Any?>) -> Any?): WinRTInspectableComObject {
         val delegateReferenceInterfaceId = descriptor.referenceInterfaceId
         val definition = definitionTemplate ?: InteropRuntimeHooks.augmentInspectableDefinition(
             definition = WinRTCcwDefinition(
@@ -102,11 +108,22 @@ internal class WinRTDelegateComObject(
             defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = descriptor.runtimeClassName ?: definition.runtimeClassName,
             managedValue = managedTarget,
-            cleanupAction = {
-                cleanupAction?.invoke()
-            },
+            weakManagedValue = definition.supportsWeakManagedValue,
+            cleanupAction = cleanupState::run,
             shapeCacheKey = definition,
         )
+    }
+
+    // The ABI host must not capture the delegate handle or its managed callback in its cleanup.
+    // COM/tracker roots in ManagedComInboundBinding are the only native-owned strong roots.
+    private class CleanupState {
+        var action: (() -> Unit)? = null
+
+        fun run() {
+            val cleanup = action
+            action = null
+            cleanup?.invoke()
+        }
     }
 }
 

@@ -1,0 +1,21 @@
+--- header
+Popup with Offset Positioning
+--- xaml
+<Grid x:Name="Output" HorizontalAlignment="Left" VerticalAlignment="Top" >
+    <Button Content="Show Popup (using Offset)" Click="ShowPopupOffsetClicked" />
+    <Popup x:Name="StandardPopup" VerticalOffset="$(VerticalOffset)" HorizontalOffset="$(HorizontalOffset)" IsLightDismissEnabled="$(IsLightDismissEnabled)">
+        <Border Padding="20" CornerRadius="{StaticResource OverlayCornerRadius}" Width="200" Height="160" BorderThickness="1" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                <TextBlock Text="Simple Popup" FontSize="16" HorizontalAlignment="Center" />
+                <Button Content="Close" Click="ClosePopupClicked" />
+            </StackPanel>
+        </Border>
+    </Popup>
+</Grid>
+--- kotlin
+private var ready = false
+    override fun initializeComponent() { super.initializeComponent(); ready = true }
+    private fun ShowPopupOffsetClicked(sender: Any?, args: RoutedEventArgs) { StandardPopup.isOpen = true; IsLightDismissEnabledToggleSwitch.isEnabled = false }
+    private fun ClosePopupClicked(sender: Any?, args: RoutedEventArgs) { StandardPopup.isOpen = false; IsLightDismissEnabledToggleSwitch.isEnabled = true }
+    private fun PopupClosed(sender: Any?, args: Any?) { if (ready) IsLightDismissEnabledToggleSwitch.isEnabled = true }

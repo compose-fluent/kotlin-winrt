@@ -10,6 +10,26 @@ import windows.foundation.EventRegistrationToken
 @WindowsRuntimeType("struct(Windows.Foundation.TimeSpan;i8)")
 internal object TimeSpanProjection {
     private const val NANOS_PER_TICK: Long = 100L
+    private val xamlClock = Regex("^([+-])?(?:(\\d+)\\.)?(\\d+):(\\d{1,2}):(\\d{1,2})(?:\\.(\\d{1,7}))?$")
+
+    // CLR System.ComponentModel.TimeSpanConverter delegates to TimeSpan.Parse.
+    // Kotlin has no CLR type converter, and XamlBindingHelper does not parse
+    // this mapped struct. Keep the invariant XAML clock format at its owner.
+    fun parseXamlLiteral(text: String): Duration {
+        val match = requireNotNull(xamlClock.matchEntire(text.trim())) { "Invalid XAML TimeSpan: $text" }
+        val sign = if (match.groupValues[1] == "-") -1L else 1L
+        val days = match.groupValues[2].ifEmpty { "0" }.toLong()
+        val hours = match.groupValues[3].toLong()
+        val minutes = match.groupValues[4].toLong()
+        val seconds = match.groupValues[5].toLong()
+        require(hours <= 23 && minutes <= 59 && seconds <= 59) { "Invalid XAML TimeSpan: $text" }
+        val totalSeconds = exactAdd(exactMultiply(exactAdd(exactMultiply(days, 24), hours), 3600),
+            exactAdd(exactMultiply(minutes, 60), seconds))
+        val fractionTicks = match.groupValues[6].padEnd(7, '0').toLong()
+        val ticks = exactAdd(exactMultiply(sign * totalSeconds, 10_000_000), sign * fractionTicks)
+        return (ticks / 10_000_000).toDuration(DurationUnit.SECONDS) +
+            (ticks % 10_000_000 * NANOS_PER_TICK).toDuration(DurationUnit.NANOSECONDS)
+    }
 
     fun fromAbi(value: Long): Duration =
         exactMultiply(value, NANOS_PER_TICK).toDuration(DurationUnit.NANOSECONDS)
@@ -111,6 +131,14 @@ object WinRTSystemProjectionMarshalers {
 
     fun typeNameFromAbi(source: RawAddress): KClass<*>? =
         TypeProjection.fromAbi(source)
+
+    /**
+     * Borrows Type.Pinnable-style input storage for one generated synchronous ABI call.
+     * Close on the acquiring thread in finally; the ABI address and HSTRING must not escape.
+     * Owned outputs and array elements continue to use [copyTypeNameTo].
+     */
+    fun createTypeNameInputMarshaler(value: KClass<*>?): WinRTProjectionMarshaler =
+        TypeProjection.createInputMarshaler(value)
 
     fun copyTypeNameTo(
         value: KClass<*>?,

@@ -26,12 +26,13 @@ class WinRTBindableCustomProperty(
     private val getIndexedValueCallback: ((Any?, Any?) -> Any?)? = null,
     private val setIndexedValueCallback: ((Any?, Any?, Any?) -> Unit)? = null,
 ) : ICustomProperty {
-    override fun getValue(target: Any?): Any? =
-        getValueCallback?.invoke(target)
-            ?: throw WinRTUnsupportedOperationException(
+    override fun getValue(target: Any?): Any? {
+        val callback = getValueCallback ?: throw WinRTUnsupportedOperationException(
                 "Custom property '$name' does not support GetValue.",
                 KnownHResults.E_NOTIMPL,
             )
+        return callback(target)
+    }
 
     override fun setValue(
         target: Any?,
@@ -48,12 +49,13 @@ class WinRTBindableCustomProperty(
     override fun getIndexedValue(
         target: Any?,
         index: Any?,
-    ): Any? =
-        getIndexedValueCallback?.invoke(target, index)
-            ?: throw WinRTUnsupportedOperationException(
+    ): Any? {
+        val callback = getIndexedValueCallback ?: throw WinRTUnsupportedOperationException(
                 "Custom property '$name' does not support GetIndexedValue.",
                 KnownHResults.E_NOTIMPL,
             )
+        return callback(target, index)
+    }
 
     override fun setIndexedValue(
         target: Any?,

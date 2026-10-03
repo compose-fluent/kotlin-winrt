@@ -1,0 +1,9 @@
+<DataTemplate x:Key="HorizontalBarTemplate" x:DataType="local:Bar">
+            <Border Width="{x:Bind MaxLength}" Background="{ThemeResource SystemChromeLowColor}">
+                <Rectangle
+                    Width="{x:Bind Length}"
+                    Height="24"
+                    HorizontalAlignment="Left"
+                    Fill="{ThemeResource SystemAccentColor}" />
+            </Border>
+        </DataTemplate>

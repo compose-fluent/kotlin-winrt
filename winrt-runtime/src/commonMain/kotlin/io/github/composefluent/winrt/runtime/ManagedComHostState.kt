@@ -12,6 +12,10 @@ internal interface ManagedComRootReference {
     fun tryPin(knownManagedValue: Any?): Boolean
 
     fun unpin()
+
+    fun tryPinTracker(): Boolean = tryPin(null)
+
+    fun unpinTracker() = unpin()
 }
 
 private object PermanentlyPinnedManagedComRootReference : ManagedComRootReference {
@@ -49,6 +53,7 @@ internal class ManagedComHostState(
         initialStorageOffsetBytes = referenceCounterStorageOffsetBytes,
     )
     private val trackerReferenceCount = AtomicInt(0)
+    private var trackerPegged = false
 
     fun addReference(knownManagedValue: Any? = null): Int =
         tryAddReference(knownManagedValue) ?: 0
@@ -157,9 +162,8 @@ internal class ManagedComHostState(
                         try {
                             rootReference.unpin()
                         } finally {
-                            referenceCount.store(0L)
+                            finishBaselineRelease()
                         }
-                        cleanupOnce()
                         return 0
                     }
                     try {
@@ -170,10 +174,11 @@ internal class ManagedComHostState(
                     return 1
                 }
                 current.managedComReferenceCount() == 1 -> {
-                    if (!referenceCount.compareAndSet(current, 0L)) {
+                    if (!referenceCount.compareAndSet(current, managedComRootTransitionCount)) {
                         continue
                     }
-                    cleanupOnce()
+                    baselineReleased.store(1)
+                    finishBaselineRelease()
                     return 0
                 }
             }
@@ -234,8 +239,7 @@ internal class ManagedComHostState(
                         continue
                     }
                     if (count == 1) {
-                        referenceCount.store(0L)
-                        cleanupOnce()
+                        finishBaselineRelease()
                         return
                     }
                     val pinned = try {
@@ -268,10 +272,10 @@ internal class ManagedComHostState(
             val count = current.managedComReferenceCount()
             check(count > 0) { "Managed COM baseline reference count is invalid: $count." }
             if (count == 1) {
-                if (!referenceCount.compareAndSet(current, 0L)) {
+                if (!referenceCount.compareAndSet(current, managedComRootTransitionCount)) {
                     continue
                 }
-                cleanupOnce()
+                finishBaselineRelease()
                 return 0
             }
             return visibleReferenceCount(current)
@@ -280,32 +284,93 @@ internal class ManagedComHostState(
 
     fun addTrackerReference(): Int {
         while (true) {
-            val current = trackerReferenceCount.load()
-            if (current == Int.MAX_VALUE) {
-                return current
+            val current = referenceCount.load()
+            if (current == 0L) return 0
+            if (current == managedComRootTransitionCount ||
+                !referenceCount.compareAndSet(current, managedComRootTransitionCount)
+            ) continue
+            try {
+                val count = trackerReferenceCount.load()
+                if (count == Int.MAX_VALUE) return count
+                if (count == 0) {
+                    if (!rootReference.tryPinTracker()) return 0
+                    ReferenceTrackerManager.registerTarget(this)
+                }
+                trackerReferenceCount.store(count + 1)
+                return count + 1
+            } finally {
+                referenceCount.store(current)
             }
-
-            // Pin the live host before publishing tracker ownership so a final Release
-            // cannot clean up the CCW between the two reference-count updates.
-            tryAddReference() ?: return 0
-            val next = current + 1
-            if (trackerReferenceCount.compareAndSet(current, next)) {
-                return next
-            }
-            releaseReference()
         }
     }
 
     fun releaseTrackerReference(): Int {
         while (true) {
-            val current = trackerReferenceCount.load()
-            val next = if (current <= 0) 0 else current - 1
-            if (trackerReferenceCount.compareAndSet(current, next)) {
-                if (next != current) {
-                    releaseReference()
+            val current = referenceCount.load()
+            if (current == 0L) return 0
+            if (current == managedComRootTransitionCount ||
+                !referenceCount.compareAndSet(current, managedComRootTransitionCount)
+            ) continue
+            val next = (trackerReferenceCount.load() - 1).coerceAtLeast(0)
+            trackerReferenceCount.store(next)
+            if (next == 0) {
+                rootReference.unpinTracker()
+                ReferenceTrackerManager.unregisterTarget(this)
+                if (current.managedComReferenceCount() == 1 && baselineReleased.load() != 0) {
+                    finishBaselineRelease()
+                    return 0
                 }
-                return next
             }
+            referenceCount.store(current)
+            return next
+        }
+    }
+
+    // ComWrappers keeps COM and tracker counts separate. A tracker count owns the native
+    // wrapper storage, but roots the managed object only while pegged (or globally pegged).
+    fun setTrackerPeg(pegged: Boolean) {
+        updateTrackerRoot(pegged)
+    }
+
+    internal fun updateTrackerRoot(pegged: Boolean? = null) {
+        while (true) {
+            val current = referenceCount.load()
+            if (current == 0L) return
+            if (current == managedComRootTransitionCount ||
+                !referenceCount.compareAndSet(current, managedComRootTransitionCount)
+            ) continue
+            var publishedState = current
+            try {
+                // A native AddRef may escape a borrowed call while a tracker pin still keeps
+                // the target alive. Publish its independent COM root before removing that pin.
+                if (current.isBorrowReadyReferenceCount() && current.managedComReferenceCount() > 1 &&
+                    rootReference.tryPin(null)
+                ) {
+                    publishedState = current.managedComReferenceCount().toLong()
+                }
+                if (pegged != null) trackerPegged = pegged
+                if (trackerReferenceCount.load() > 0 &&
+                    (trackerPegged || ReferenceTrackerManager.isGlobalPeggingEnabled)
+                ) {
+                    rootReference.tryPinTracker()
+                } else {
+                    rootReference.unpinTracker()
+                }
+            } finally {
+                referenceCount.store(publishedState)
+            }
+            return
+        }
+    }
+
+    /** Called with the normal count in transition and the managed baseline already released. */
+    private fun finishBaselineRelease() {
+        if (trackerReferenceCount.load() > 0) {
+            // Keep an invisible baseline until the final tracker releases the ABI allocation.
+            referenceCount.store(unpinnedBaselineCount)
+        } else {
+            referenceCount.store(0L)
+            cleanupOnce()
         }
     }
 
@@ -330,12 +395,22 @@ internal class ManagedComHostState(
         }
     }
 
+    internal fun currentTrackerReferenceCount(): Int = trackerReferenceCount.load()
+
     fun attachReferenceCounter(
         objectMemory: RawAddress,
         objectMemoryView: NativeMemoryView? = null,
         objectMemoryOffsetBytes: Long = 0L,
     ) {
         referenceCount.attach(objectMemory, objectMemoryView, objectMemoryOffsetBytes)
+    }
+
+    internal fun attachReferenceCounterToInterfaces(
+        objectMemoryView: NativeMemoryView,
+        interfaceObjectCount: Int,
+        interfaceObjectStrideBytes: Long,
+    ) {
+        referenceCount.attachInterfaces(objectMemoryView, interfaceObjectCount, interfaceObjectStrideBytes)
     }
 
     fun detachReferenceCounter(

@@ -1,0 +1,13 @@
+--- Header
+A Button with image content.
+
+--- Xaml
+<Button x:Name="imageButton" Width="50" Height="50" AutomationProperties.Name="Pie" Click="onImageClick">
+    <Image AutomationProperties.Name="Slice" Source="/Assets/SampleMedia/Slices.png" />
+</Button>
+
+
+--- Kotlin
+private fun onImageClick(sender: Any?, args: RoutedEventArgs) {
+    imageOutput.text = "You clicked: Image button"
+}

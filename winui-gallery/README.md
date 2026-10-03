@@ -1,82 +1,123 @@
 # Kotlin WinUI Gallery
 
-This application is being ported from WinUI Gallery using Kotlin/WinRT projected
-classes. UI construction and event handlers are Kotlin code. It does not load
-XAML, embed XAML strings, or introduce a markup interpreter.
+The Gallery uses adjacent XAML and Kotlin code-behind files. It preserves the
+122 existing routes, including Home, and ports the static layouts, resources,
+styles and templates from official WinUI Gallery `v2.9.3`, commit
+`14a4a1a2b8ddc527dc4a7d5f7e743d7c2bc97db7`.
+Windows App SDK remains **2.5.1**.
 
-The application module is `:winui-gallery`, with its JVM build-time navigation
-processor under `:winui-gallery:processor`. Application code is shared by the
-`winuiJvm` and `mingwX64` targets in `src/winuiMain/kotlin`.
-The manifest and image assets live in `src/winuiMain/appxResources` and are
-discovered by the Windows toolkit's source-set resource pipeline.
+Application code is shared by `winuiJvm` and `mingwX64` under
+`src/winuiMain/kotlin`. Runtime, metadata, projection and authoring behavior
+belongs to the corresponding Kotlin/WinRT modules and follows `.cswinrt/src`.
+The Gallery contains application behavior and XAML controls, without its own
+ABI bridge or markup interpreter.
 
-## Navigation and page registration
+## XAML compilation
 
-`GalleryNavigation.kt` owns navigation through `@GalleryGroupEntry` and
-`@GalleryPageEntry`. Their `glyph`, title, route, and order are authoritative.
-The catalog JSON supplies descriptions, documentation links, tags, and images;
-its historical navigation titles, glyphs, and ordering do not override the
-annotations. `@GallerySample` binds an existing route to a top-level Kotlin
-function returning projected UI content.
+The Windows toolkit discovers `.xaml` beside `.kt`, verifies `x:Class`, and
+passes the projected SDK names and application symbols to the custom compiler.
+There is no `@XamlPage`, generated superclass, Kotlin compiler fork, or runtime
+search for handlers. FIR adds members and interfaces; IR supplies their bodies.
+`x:Name` becomes a typed property and events can call private Kotlin methods.
+The connector uses the existing page's authored COM identity.
 
-The processor uses KSP2, registered separately for `kspWinuiJvm` and
-`kspMingwX64`. WinRT authoring and projection generation scan the handwritten
-sources first; KSP then processes navigation annotations alongside those
-projections. It emits deterministic navigation lists, the flat search index,
-and direct calls to the annotated sample functions. It never runs in the app
-and has no dependency on Kotlin compiler internals or K1 APIs.
-`GalleryCatalog.kt` declares the shared `expect` contract; KSP emits its `actual`
-objects in each target so shared UI code can use the generated catalog.
-This follows the responsibility split of compose-fluent-ui's
-`gallery-processor` without copying its Compose-specific icon or content model.
+The build graph is declaration analysis → isolated semantic compilation →
+XamlCompiler/XBF generation → final Kotlin compilation → PRI/package staging.
+The semantic JAR or KLIB is not an application dependency. JVM and Native final
+outputs have separate directories.
 
-## Reference ownership
+The toolkit pins the CI Release
+[`kotlin-xamlc-v0.1.0-preview.5`](https://github.com/compose-fluent/microsoft-ui-xaml/releases/tag/kotlin-xamlc-v0.1.0-preview.5),
+protocol 2, from fork commit `d601a4c4dcf8c7ec3a0897f45bbb9570febe92b1`.
+Its archive SHA-256 is
+`6f0d4e9738ed435edeb16519c15dc6472f9c83dcbc1cea0c3127c4986a3d69da`.
+Download and package checks run in Gradle, not the Kotlin compiler. GenXbf comes
+from the selected Windows App SDK package. Building the application does not
+require the XamlCompiler checkout or a local tool override.
 
-- Runtime and authoring remain in the existing upstream modules. Startup follows
-  `.cswinrt/src/Samples/WinUIDesktopSample/App.xaml.cs` through `Application.start`,
-  `onLaunched`, native controls resources, and a retained `Window`.
-- Navigation, home, page headers, and examples are app-owned ports of
-  WinUI Gallery's `MainWindow`, `HomePage`, `PageHeader`, and `ControlExample`.
-- WinRT declarations are produced by the existing metadata/projection pipeline.
-- Application icons are from the supplied `kt-winrt-Gallery-Assets.zip`.
-  See `THIRD-PARTY-NOTICES.md` for the upstream catalog and illustration license.
+The compiler supports named elements, ordinary and compiled-binding events,
+compiled bindings, template scopes, collection notifications, converters,
+phased bindings, deferred elements, application resources and custom Kotlin
+XAML types. Unsupported forms produce build errors.
 
-## Implementation and validation status
+The `models` library supplies the plain Kotlin Recipe model and its inferred XAML
+schema. The `resources` library supplies the shared grid and text dictionaries
+as XBF through AppX resource variants. Neither library generates SDK projections
+or requires its model classes to be Windows Runtime components. Existing
+dictionary `ms-appx:///` paths remain unchanged.
 
-The 123-page catalog now has projected-control sample implementations covering
-the control, layout, collection, text, media, design, animation, windowing, and
-Windows integration families. KSP rejects navigation entries without a sample
-factory and generates Symbol lookup from the projected companion properties.
-The shell includes persistent settings, favorites and recents, search, native
-Frame navigation, fixed page headers, example theme switching, adaptive layouts,
-JumpList updates, packaged deep links, and notification activation handling.
+## Initialization and navigation
 
-Source-code expanders show the sample's complete Kotlin source file. KSP2 reads
-the annotated factories' source files and uses Kotlin 2.x's lexer and K2 LightTree syntax
-parser to generate text and contiguous UTF-16 highlight ranges. No K1 analysis
-API or compiler is loaded by the app. The shared document/palette model feeds
-a native selectable TextBlock with Run inlines, created on first expansion.
-IDEA Light/Dark editor colors follow the actual app theme; high contrast uses
-system foreground/background colors. Copy code preserves the source text.
-This is syntax highlighting, not IDE semantic resolution or code execution.
-Markup-specific samples demonstrate their behavior using Kotlin-constructed
-visual trees, element factories, bindings, and projected dependency properties.
-They do not execute markup. ContentIsland uses original procedural geometry in
-place of the upstream model excluded for licensing reasons.
+The plugin calls `initializeComponent()` after complete construction. A page can
+override it, call `super.initializeComponent()`, then use generated controls:
 
-The expanded Gallery has passed JVM compilation, KSP2 navigation generation,
-Native compilation, and AppX packaging with all 123 page factories. A Windows
-host launch reaches window activation and remains running with the projected
-navigation shell and theme resources loaded. It selects the reference's
-Windows App SDK 2.4.1-experimental, including its experimental controls.
+```kotlin
+@GalleryPage(route = "Button", title = "Button", group = "BasicInput", order = 0)
+internal class ButtonPage : Page() {
+    override fun initializeComponent() {
+        super.initializeComponent()
+    }
 
-Source-level parity is covered by the catalog, projected control construction,
-navigation, settings, activation, and resource paths. Visual and interaction
-parity still needs a complete desktop UI pass across all samples.
-The generator/runtime fixes preserve declared ABI interfaces, retain collection
-references before transferring ownership, query sealed classes' default
-interfaces, and expose bindable enumeration for collections passed as `Any`.
-Those contracts belong to the shared projection/runtime pipeline, not this app.
+    private fun onStandardClick(sender: Any?, args: RoutedEventArgs) {
+        textOutput.text = "You clicked: Standard XAML button"
+    }
+}
+```
 
-The root `PLAN.md` is unchanged; this task's newly requested scope and gaps are
-recorded here instead of rewriting the approved repository plan.
+`@GalleryPage` registers a zero-argument `UIElement` subclass directly. KSP emits
+typed constructor calls, navigation metadata and source documents. The existing
+function registration remains compatible. The annotation does not associate
+XAML with a Kotlin class. Other XAML classes can have constructor arguments;
+only types activated by markup must have an accessible default constructor.
+
+`GalleryApplication`, `MainWindow`, Home, Settings, `ItemPage`, `PageHeader` and
+`ControlExample` have their own adjacent XAML. Navigation, preferences, search,
+favorites, recents, window retention, deep links and notifications stay in
+Kotlin. See [XAML_MIGRATION.md](XAML_MIGRATION.md) for the route inventory and
+actual acceptance state.
+
+Launch arguments and protocol activation use the same route resolver as
+in-app navigation. It accepts generated page and group IDs or titles, plus
+the shell routes `Home`, `All`, `Settings` and `Search:<query>`.
+
+## Independent example sources
+
+The 355 independent example documents live in `SampleDefinitions/<Route>/*.txt`.
+Each example resolves its own document.
+`ControlExample` shows the relevant XAML and Kotlin tabs, applies live code
+substitutions, and copies the displayed source. Pure markup examples have one
+XAML tab. A complete page file is not repeated for every example.
+KSP and the existing compiler highlighting extension produce source text and
+highlight ranges; `SampleCodePresenter` renders selectable native text with
+light, dark and high contrast palettes.
+
+## Windows build and run
+
+Use JDK 25 and the Windows SDK/build tools already required by the repository.
+The normal Gradle entry points resolve and compile XAML automatically:
+
+```powershell
+.\gradlew.bat :winui-gallery:runWinAppPackageWinuiJvmMain --args=Home
+.\gradlew.bat :winui-gallery:runWinAppPackageWinuiJvmMain --args=Button
+.\gradlew.bat :winui-gallery:runWinAppPackageMingwX64MainDebugExecutable --args=Home
+.\gradlew.bat :winui-gallery:stageWinAppDevelopmentPackageMingwX64MainDebugExecutable
+.\gradlew.bat :winui-gallery:signWinAppPackageWinuiJvmMain
+.\gradlew.bat :winui-gallery:signWinAppPackageMingwX64MainReleaseExecutable
+```
+
+Use `--offline` once dependencies and the verified compiler package are cached.
+The existing snapshot workflow builds JVM and Native packages without cloning
+the XamlCompiler fork. Signing uses the existing certificate configuration.
+For the full Gallery Release, run JVM and Native packaging in separate Gradle
+invocations with `--no-daemon`. The snapshot workflow gives each invocation an
+8 GB heap with `-Dorg.gradle.jvmargs="-Xmx8g -XX:+UseSerialGC"`. Compiling the JVM
+application concurrently with Native whole-program optimization can exhaust
+that shared heap; use `--max-workers=1` for a local build of both targets.
+Gradle compilation does not provide IDE completion or a XAML designer. The
+repository does not yet ship an IDE plugin, designer or hot reload integration.
+Completion and navigation have not been verified in an IDE. Community compiler
+plugins are not loaded by default there, and IDE compiler versions require a
+separate compatibility check; see the [Kotlin IDE integration documentation](https://kotlinlang.org/docs/custom-compiler-plugins.html#ide-integration).
+
+Upstream licenses and asset attribution remain in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

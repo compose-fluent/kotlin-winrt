@@ -1,0 +1,18 @@
+--- header
+Implicitly animate when the Grid's theme changes
+--- xaml
+<Grid x:Name="ThemeExampleGrid" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" >
+    <Grid.BackgroundTransition>
+        <BrushTransition />
+    </Grid.BackgroundTransition>
+    <StackPanel Margin="12" Spacing="6">
+        <TextBlock Text="Lorem Ipsum" Style="{ThemeResource SubtitleTextBlockStyle}" />
+        <TextBlock Text="The background of this grid animates when the theme changes." TextWrapping="WrapWholeWords" />
+        <Button Content="Action" />
+        <CheckBox Content="Option" />
+    </StackPanel>
+</Grid>
+--- kotlin
+ThemeExampleGrid.backgroundTransition = BrushTransition()
+
+private fun ThemeButton_Click(sender: Any?, args: RoutedEventArgs) { ThemeExampleGrid.requestedTheme = if (ThemeExampleGrid.requestedTheme == ElementTheme.Dark) ElementTheme.Light else ElementTheme.Dark; announce(ChangeThemeBtn, "UI local theme changed", "RectangleChangedNotificationActivityId") }

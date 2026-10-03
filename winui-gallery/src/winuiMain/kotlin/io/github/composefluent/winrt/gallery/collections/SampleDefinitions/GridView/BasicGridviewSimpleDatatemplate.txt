@@ -1,0 +1,56 @@
+--- header
+Basic GridView with Simple DataTemplate
+--- xaml
+<!-- XAML Code -->
+
+<GridView
+    x:Name="BasicGridView"
+    ItemTemplate="{StaticResource ImageTemplate}"
+    IsItemClickEnabled="True"
+    ItemClick="BasicGridView_ItemClick"
+    SelectionMode="Single"/>
+                    
+<DataTemplate x:Key="ImageTemplate" x:DataType="local:CustomDataObject">
+     <Image Stretch="UniformToFill" Source="{x:Bind ImageLocation}" Width="190" Height="130"/>
+</DataTemplate>
+                    
+<!-- In this example, the GridView's ItemTemplate property is bound to a data template (shown above)
+called ImageTemplate, defined in the Page.Resources section of the XAML file. 
+                    
+The data template is defined to display an object of type CustomDataObject, which is created from a class
+that's defined in the code-behind (see code below).
+                    
+The ItemsSource for the GridView is an ObservableCollection<CustomDataObject> called Items and
+is defined in the C# code-behind. It is bound to the GridView's ItemsSource property in the code-behind.
+                    
+The IsItemClickEnabled property allows items to be clicked, and a function called BasicGridView_ItemClick 
+is called when an item is clicked. This function is defined in the C# code-behind and simply outputs 
+the title of the selected item into a TextBlock below the GridView. -->
+--- kotlin
+private var ready = false
+    private var StyledGridIWG: ItemsWrapGrid? = null
+    override fun initializeComponent() {
+        super.initializeComponent(); ready = true; dataContext = this
+        val items = WinRTObservableList(CustomDataObject.GetDataObjects())
+        BasicGridView.itemsSource = WinRTObservableList(items); ContentGridView.itemsSource = items; StyledGrid.itemsSource = items
+        DisplayDT.Value = GalleryCodeCatalog.sourceDocument("GridView/ImageTemplate.txt")?.source ?: ""
+    }
+    private fun ItemTemplate_Checked(sender: Any?, args: RoutedEventArgs) {
+        if (!ready) return
+        val key = checkNotNull(sender).asWinRT<FrameworkElement>().tag?.toString() ?: return
+        ContentGridView.itemTemplate = checkNotNull(resources[key]).asWinRT<DataTemplate>(); itemTemplate.Value = key
+        DisplayDT.Value = GalleryCodeCatalog.sourceDocument("GridView/$key.txt")?.source ?: ""
+    }
+    private fun ContentGridView_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) SelectionOutput.text = "You have selected ${ContentGridView.selectedItems.size} item(s)." }
+    private fun ContentGridView_ItemClick(sender: Any?, args: ItemClickEventArgs) { (args.clickedItem as? CustomDataObject)?.let { ClickOutput.text = "You clicked ${it.Title}." } }
+    private fun BasicGridView_ItemClick(sender: Any?, args: ItemClickEventArgs) { (args.clickedItem as? CustomDataObject)?.let { ClickOutput0.text = "You clicked ${it.Title}." } }
+    private fun ItemClickCheckBox_Click(sender: Any?, args: RoutedEventArgs) { if (ready) ClickOutput.text = "" }
+    private fun FlowDirectionCheckBox_Click(sender: Any?, args: RoutedEventArgs) { if (ready) ContentGridView.flowDirection = if (ContentGridView.flowDirection == FlowDirection.LeftToRight) FlowDirection.RightToLeft else FlowDirection.LeftToRight }
+    private fun SelectionModeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) ContentGridView.selectionMode = ListViewSelectionMode.fromAbi(checkNotNull(sender).asWinRT<ComboBox>().selectedIndex) }
+    private fun StyledGrid_InitWrapGrid(sender: Any?, args: RoutedEventArgs) { StyledGridIWG = checkNotNull(sender).asWinRT<ItemsWrapGrid>().apply { maximumRowsOrColumns = 3 } }
+    private fun NumberBox_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) {
+        if (!ready) return
+        val panel = StyledGridIWG ?: return
+        if (sender == WrapItemCount) { panel.maximumRowsOrColumns = WrapItemCount.value.toInt(); return }
+        for (index in StyledGrid.items.indices) StyledGrid.containerFromIndex(index)?.asWinRT<GridViewItem>()?.let { it.margin = Thickness(ColumnSpace.value, RowSpace.value, ColumnSpace.value, RowSpace.value) }
+    }

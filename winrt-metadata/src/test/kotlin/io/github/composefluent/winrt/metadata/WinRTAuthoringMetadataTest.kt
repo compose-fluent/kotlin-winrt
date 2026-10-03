@@ -8,6 +8,36 @@ import kotlin.io.path.readText
 
 class WinRTAuthoringMetadataTest {
     @Test
+    fun declaring_assembly_is_read_from_metadata_not_filename() {
+        // CsWinRT WinRTTypeWriter.GetTypeReference uses the actual declaring assembly.
+        val output = Files.createTempFile("different-file-name-", ".winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Actual.Assembly",
+            interfaces = listOf(WinRTPortableExecutableInterfaceDescriptor(
+                "Unrelated.Namespace.IWidget", "11111111-2222-3333-4444-555555555555",
+            )),
+            outputFile = output,
+        )
+        assertEquals(mapOf("Unrelated.Namespace.IWidget" to "Actual.Assembly"),
+            WinRTMetadataLoader.loadTypeAssemblyNames(listOf(output)))
+    }
+
+    @Test
+    fun explicit_assembly_context_rejects_unresolved_external_types() {
+        val output = Files.createTempFile("missing-assembly-", ".winmd")
+        val error = runCatching {
+            WinRTPortableExecutableMetadataWriter.writeAuthoredWinmd(
+                "Sample", listOf(WinRTAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Sample.Page", baseRuntimeClassName = "Missing.Page",
+                    interfaceNames = listOf("Missing.IPage"), isActivatable = false,
+                )), output, externalTypeAssemblies = emptyMap(),
+            )
+        }.exceptionOrNull()
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error!!.message!!.contains("Missing.Page"))
+    }
+
+    @Test
     fun authored_runtime_classes_merge_into_metadata_model_before_projection_generation() {
         val model = WinRTAuthoringMetadata.mergeAuthoredRuntimeClasses(
             model = WinRTMetadataModel(

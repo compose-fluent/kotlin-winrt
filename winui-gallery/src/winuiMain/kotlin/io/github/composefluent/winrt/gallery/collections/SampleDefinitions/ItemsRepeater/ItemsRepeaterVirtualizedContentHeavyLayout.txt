@@ -1,0 +1,71 @@
+--- header
+Virtualized, Content-Heavy Layout with Filtering and Sorting
+--- xaml
+<!-- XAML Code: -->
+<ItemsRepeaterScrollHost>
+    <ScrollViewer>
+        <ItemsRepeater x:Name="VariedImageSizeRepeater" 
+			    ItemTemplate="{StaticResource RecipeTemplate}">
+	    
+           <!-- IMPORTANT: This ItemsRepeater uses a custom-created layout 
+		called VariedImageSize Layout (referenced below).You can find 
+  		the full source code for this layout in the file 
+		VariedImageSizeLayout.cs in the WinUI Gallery repo. -->
+
+            <ItemsRepeater.Layout>
+                <common:VariedImageSizeLayout Width="200" />
+            </ItemsRepeater.Layout>
+        </ItemsRepeater>
+    </ScrollViewer>
+</ItemsRepeaterScrollHost>
+
+<!-- DataTemplate used: -->
+<!-- This repeater holds Recipe objects, which is a custom class defined in 
+     the code-behind, and shown below. -->
+<DataTemplate x:DataType="l:Recipe" x:Key="RecipeTemplate">
+    <StackPanel BorderThickness="1" Background="LightGray" Margin="5">
+        <StackPanel Background="{x:Bind Color}" Margin="8" Height="75" Opacity=".8">
+            <TextBlock Text="{x:Bind Num.ToString()}" FontSize="35" TextAlignment="Center" 
+                        Padding="12"  Foreground="{ThemeResource SystemControlForegroundAltHighBrush}"/>
+        </StackPanel>
+        <TextBlock 
+            x:Name="recipeName" 
+            Text="{x:Bind Name}"
+            TextWrapping="Wrap"
+            Margin="15,0,10,0" 
+            Style="{StaticResource TitleTextBlockStyle}"/>
+        <TextBlock Text="{x:Bind Ingredients}" Style="{StaticResource BodyTextBlockStyle}" Margin="15,0,15,15"/>
+    </StackPanel>
+</DataTemplate>
+--- kotlin
+internal class Recipe(val Num: Int, val Name: String, val Color: String, val IngList: List<String>) {
+    val Ingredients: String = IngList.joinToString("\n", "\n")
+    val NumIngredients: Int get() = IngList.size
+}
+
+internal class MyItemsSource(items: List<Recipe>) : AbstractMutableList<Recipe>(), IKeyIndexMapping, INotifyCollectionChanged {
+    private val inner: WinRTObservableList<Recipe> = WinRTObservableList(items)
+    override val size: Int get() = inner.size
+    override fun get(index: Int): Recipe = inner[index]
+    override fun set(index: Int, element: Recipe): Recipe = inner.set(index, element)
+    override fun add(index: Int, element: Recipe) { inner.add(index, element) }
+    override fun removeAt(index: Int): Recipe = inner.removeAt(index)
+    override fun keyFromIndex(index: Int): String = inner[index].Num.toString()
+    override fun indexFromKey(key: String): Int = inner.indexOfFirst { it.Num.toString() == key }
+    override fun addCollectionChanged(handler: NotifyCollectionChangedEventHandler) { inner.addCollectionChanged(handler) }
+    override fun removeCollectionChanged(handler: NotifyCollectionChangedEventHandler) { inner.removeCollectionChanged(handler) }
+    fun InitializeCollection(items: List<Recipe>) { inner.clear(); inner.addAll(items) }
+}
+
+private fun FilterRecipes_FilterChanged(sender: Any?, args: RoutedEventArgs) { UpdateSortAndFilter() }
+
+private fun OnSortAscClick(sender: Any?, args: RoutedEventArgs) { if (IsSortDescending) { IsSortDescending = false; UpdateSortAndFilter() } }
+
+private fun OnSortDesClick(sender: Any?, args: RoutedEventArgs) { if (!IsSortDescending) { IsSortDescending = true; UpdateSortAndFilter() } }
+
+private fun UpdateSortAndFilter() {
+        if (!ready) return
+        val filtered = staticRecipeData.filter { it.Ingredients.contains(FilterRecipes.text, true) }
+        filteredRecipeData.InitializeCollection(if (IsSortDescending) filtered.sortedByDescending { it.NumIngredients } else filtered.sortedBy { it.NumIngredients })
+        announce(VariedImageSizeRepeater, "Filtered recipes, ${filtered.size} results.", "RecipesFilteredNotificationActivityId")
+    }

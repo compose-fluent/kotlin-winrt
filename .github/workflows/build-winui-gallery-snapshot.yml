@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - xaml-support
       - codex/ci-snapshot-publish-test
     paths-ignore:
       - '**/*.md'
@@ -148,7 +149,9 @@ jobs:
           $mingwArtifactDirectory = Join-Path $artifactRoot 'mingw'
           New-Item -ItemType Directory -Path $jvmArtifactDirectory, $mingwArtifactDirectory -Force | Out-Null
 
-          & .\gradlew.bat :winui-gallery:signWinAppPackageWinuiJvmMain
+          $galleryGradleOptions = @('--no-daemon', '--no-configuration-cache', '--max-workers=2',
+            '-Dorg.gradle.jvmargs=-Xmx8g -XX:+UseSerialGC -Dfile.encoding=UTF-8')
+          & .\gradlew.bat :winui-gallery:signWinAppPackageWinuiJvmMain @galleryGradleOptions
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -158,7 +161,7 @@ jobs:
           }
           $jvmPackage = $signedPackages[0]
 
-          & .\gradlew.bat :winui-gallery:signWinAppPackageMingwX64MainReleaseExecutable
+          & .\gradlew.bat :winui-gallery:signWinAppPackageMingwX64MainReleaseExecutable @galleryGradleOptions
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

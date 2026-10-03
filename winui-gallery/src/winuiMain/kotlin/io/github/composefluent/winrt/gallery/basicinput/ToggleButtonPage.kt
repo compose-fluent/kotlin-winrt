@@ -1,23 +1,20 @@
 package io.github.composefluent.winrt.gallery.basicinput
 
 import io.github.composefluent.winrt.gallery.*
-import microsoft.ui.xaml.*
-import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.controls.primitives.*
-import microsoft.ui.xaml.media.SolidColorBrush
-import microsoft.ui.xaml.shapes.Rectangle
-import microsoft.ui.text.MarkerType
-import windows.foundation.Uri
+import microsoft.ui.xaml.RoutedEventArgs
+import microsoft.ui.xaml.controls.Page
 
 @GalleryPage(route = "ToggleButton", title = "ToggleButton", group = "BasicInput", order = 4)
-internal fun toggleButtonPage() = ExamplePage {
-    val output = label("Off")
-    val toggle = toggleButtonSimpleSample(output)
-    example("A simple ToggleButton.", toggle, option("Disable ToggleButton") { toggle.isEnabled = !it }, output)
-}
+internal class ToggleButtonPage : Page() {
+    override fun initializeComponent() {
+        super.initializeComponent()
+    }
 
-@GallerySample(route = "ToggleButton", title = "A simple ToggleButton.")
-internal fun toggleButtonSimpleSample(output: TextBlock) = ToggleButton().apply {
-    content = "ToggleButton"
-    click.add { _, _ -> output.text = if (isChecked == true) "On" else "Off" }
+    private fun onToggleClick(sender: Any?, args: RoutedEventArgs) {
+        output.text = if (toggleButton.isChecked == true) "On" else "Off"
+    }
+
+    private fun onDisableClick(sender: Any?, args: RoutedEventArgs) {
+        toggleButton.isEnabled = disableToggle.isChecked != true
+    }
 }

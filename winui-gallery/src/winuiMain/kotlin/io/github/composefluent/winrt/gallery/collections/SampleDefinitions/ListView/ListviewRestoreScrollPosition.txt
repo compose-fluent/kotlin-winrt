@@ -1,0 +1,17 @@
+--- header
+Save and restore the scroll position using ListViewPersistenceHelper.
+--- xaml
+<ListView x:Name="RestoreScrollListView"
+          Height="220" Width="400" HorizontalAlignment="Left"
+          BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+          ItemsSource="{x:Bind contacts5}">
+    <ListView.ItemTemplate>
+        <DataTemplate x:DataType="x:String">
+            <TextBlock Text="{x:Bind}" Margin="0,8,0,8"/>
+        </DataTemplate>
+    </ListView.ItemTemplate>
+</ListView>
+--- kotlin
+private fun SavePositionButton_Click(sender: Any?, args: RoutedEventArgs) { persistedPosition = ListViewPersistenceHelper.getRelativeScrollPosition(RestoreScrollListView) { it as? String ?: "" }; RestorePositionButton.isEnabled = true }
+
+private fun RestorePositionButton_Click(sender: Any?, args: RoutedEventArgs) { if (persistedPosition.isNotEmpty()) tasks.launch { ListViewPersistenceHelper.setRelativeScrollPositionAsync(RestoreScrollListView, persistedPosition) { key -> AsyncInfo.fromInspectableResult(contacts5.firstOrNull { it == key }) }.await() } }

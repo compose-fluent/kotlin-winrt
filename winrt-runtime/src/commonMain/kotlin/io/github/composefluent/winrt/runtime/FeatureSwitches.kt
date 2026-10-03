@@ -29,6 +29,10 @@ internal object FeatureSwitches {
     private val testOverrides = ConcurrentCacheMap<String, Int>()
     @OptIn(ExperimentalAtomicApi::class)
     private val traceCcwState = AtomicInt(0)
+    @OptIn(ExperimentalAtomicApi::class)
+    private val defaultCustomTypeMappingsState = AtomicInt(0)
+    @OptIn(ExperimentalAtomicApi::class)
+    private val customPropertyProviderSupportState = AtomicInt(0)
 
     val enableDynamicObjectsSupport: Boolean
         get() = getConfigurationValue(EnableDynamicObjectsSupportPropertyName, defaultValue = true)
@@ -36,11 +40,21 @@ internal object FeatureSwitches {
     val useExceptionResourceKeys: Boolean
         get() = getConfigurationValue(UseExceptionResourceKeysPropertyName, defaultValue = false)
 
+    @OptIn(ExperimentalAtomicApi::class)
     val enableDefaultCustomTypeMappings: Boolean
-        get() = getConfigurationValue(EnableDefaultCustomTypeMappingsPropertyName, defaultValue = true)
+        get() = getCachedConfigurationValue(
+            EnableDefaultCustomTypeMappingsPropertyName,
+            defaultCustomTypeMappingsState,
+            defaultValue = true,
+        )
 
+    @OptIn(ExperimentalAtomicApi::class)
     val enableICustomPropertyProviderSupport: Boolean
-        get() = getConfigurationValue(EnableICustomPropertyProviderSupportPropertyName, defaultValue = true)
+        get() = getCachedConfigurationValue(
+            EnableICustomPropertyProviderSupportPropertyName,
+            customPropertyProviderSupportState,
+            defaultValue = true,
+        )
 
     val enableIReferenceSupport: Boolean
         get() = getConfigurationValue(EnableIReferenceSupportPropertyName, defaultValue = true)
@@ -88,6 +102,12 @@ internal object FeatureSwitches {
         if (propertyName == TraceCcwPropertyName) {
             traceCcwState.store(0)
         }
+        if (propertyName == EnableDefaultCustomTypeMappingsPropertyName) {
+            defaultCustomTypeMappingsState.store(0)
+        }
+        if (propertyName == EnableICustomPropertyProviderSupportPropertyName) {
+            customPropertyProviderSupportState.store(0)
+        }
     }
 
     @OptIn(ExperimentalAtomicApi::class)
@@ -95,6 +115,26 @@ internal object FeatureSwitches {
         cachedResults.clear()
         testOverrides.clear()
         traceCcwState.store(0)
+        defaultCustomTypeMappingsState.store(0)
+        customPropertyProviderSupportState.store(0)
+    }
+
+    // CsWinRT FeatureSwitches caches each switch as 0/+1/-1. Use the same publication and
+    // reset behavior as traceCcw so warm CCW configuration reads avoid map/lambda work.
+    @OptIn(ExperimentalAtomicApi::class)
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun getCachedConfigurationValue(
+        propertyName: String,
+        cachedState: AtomicInt,
+        defaultValue: Boolean,
+    ): Boolean {
+        val state = cachedState.load()
+        if (state != 0) {
+            return stateToBoolean(state)
+        }
+        val resolvedState = booleanState(getConfigurationValue(propertyName, defaultValue))
+        cachedState.compareAndSet(expectedValue = 0, newValue = resolvedState)
+        return stateToBoolean(resolvedState)
     }
 
     private fun getConfigurationValue(

@@ -132,6 +132,37 @@ class RuntimeConfigurationTest {
         }
     }
 
+    @Test
+    fun augmentation_feature_switches_reset_after_warm_reads_and_overrides() {
+        // CsWinRT Configuration/FeatureSwitches.cs owns a tri-state per switch;
+        // Kotlin test overrides must also invalidate an already warmed reader.
+        val switches = listOf(
+            FeatureSwitches.EnableICustomPropertyProviderSupportPropertyName to
+                { FeatureSwitches.enableICustomPropertyProviderSupport },
+            FeatureSwitches.EnableDefaultCustomTypeMappingsPropertyName to
+                { FeatureSwitches.enableDefaultCustomTypeMappings },
+        )
+        FeatureSwitches.clearForTests()
+        try {
+            for ((propertyName, readSwitch) in switches) {
+                val platformValue = readSwitch()
+                assertEquals(platformValue, readSwitch())
+                for (overrideValue in listOf(false, true)) {
+                    FeatureSwitches.overrideForTests(propertyName, overrideValue)
+                    repeat(2) { assertEquals(overrideValue, readSwitch()) }
+                }
+                FeatureSwitches.overrideForTests(propertyName, null)
+                repeat(2) { assertEquals(platformValue, readSwitch()) }
+                FeatureSwitches.overrideForTests(propertyName, !platformValue)
+                assertEquals(!platformValue, readSwitch())
+                FeatureSwitches.clearForTests()
+                repeat(2) { assertEquals(platformValue, readSwitch()) }
+            }
+        } finally {
+            FeatureSwitches.clearForTests()
+        }
+    }
+
     private fun withFeatureSwitch(
         propertyName: String,
         value: Boolean,

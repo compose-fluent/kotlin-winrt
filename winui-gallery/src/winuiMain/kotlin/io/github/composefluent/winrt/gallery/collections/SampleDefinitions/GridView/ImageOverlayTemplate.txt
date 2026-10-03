@@ -1,0 +1,24 @@
+<DataTemplate x:Key="ImageOverlayTemplate" x:DataType="local:CustomDataObject">
+            <Grid Width="100" AutomationProperties.Name="{x:Bind Title}">
+                <Image Source="{x:Bind ImageLocation}" Stretch="UniformToFill" />
+                <StackPanel
+                    Height="40"
+                    Padding="5,1,5,1"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource SystemControlBackgroundBaseMediumBrush}"
+                    Opacity=".75"
+                    Orientation="Vertical">
+                    <TextBlock Foreground="{ThemeResource SystemControlForegroundAltHighBrush}" Text="{x:Bind Title}" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock
+                            Foreground="{ThemeResource SystemControlForegroundAltHighBrush}"
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Likes}" />
+                        <TextBlock
+                            Foreground="{ThemeResource SystemControlForegroundAltHighBrush}"
+                            Style="{ThemeResource CaptionTextBlockStyle}"
+                            Text=" Likes" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>

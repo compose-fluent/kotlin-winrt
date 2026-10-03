@@ -1,0 +1,8 @@
+--- header
+Binding with TargetNullValue
+--- xaml
+<!--TargetNullValue property help handle scenarios where the binding source is null-->
+<TextBlock Text="{x:Bind ViewModel.NullString, Mode=OneWay, TargetNullValue='Anonymous User'}" />
+--- kotlin
+var NullString: String? = ""
+    set(value) { if (field != value) { field = value; changed("NullString") } }

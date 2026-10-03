@@ -1,0 +1,46 @@
+<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:controls="using:io.github.composefluent.winrt.gallery.controls"
+      x:Class="io.github.composefluent.winrt.gallery.basicinput.CheckBoxPage">
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../GalleryExampleResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
+    <StackPanel>
+        <controls:ControlExample x:Name="twoStateExample" SampleDefinition="CheckBox\CheckBoxTwoState.txt">
+            <controls:ControlExample.Example>
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox x:Name="twoStateCheckBox" AutomationProperties.Name="Two-state"
+                              Content="Two-state CheckBox" Click="onTwoStateClick" />
+                </StackPanel>
+            </controls:ControlExample.Example>
+            <controls:ControlExample.Output>
+                <TextBlock x:Name="twoStateOutput" AutomationProperties.AutomationId="Control1Output" />
+            </controls:ControlExample.Output>
+        </controls:ControlExample>
+        <controls:ControlExample x:Name="threeStateExample" SampleDefinition="CheckBox\CheckBoxThreeState.txt">
+            <controls:ControlExample.Example>
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox x:Name="threeStateCheckBox" AutomationProperties.Name="Three-state"
+                              Content="Three-state CheckBox" IsThreeState="True" Click="onThreeStateClick" />
+                </StackPanel>
+            </controls:ControlExample.Example>
+            <controls:ControlExample.Output>
+                <TextBlock x:Name="threeStateOutput" AutomationProperties.AutomationId="Control2Output" />
+            </controls:ControlExample.Output>
+        </controls:ControlExample>
+        <controls:ControlExample x:Name="selectAllExample" SampleDefinition="CheckBox\CheckBoxSelectAll.txt">
+            <controls:ControlExample.Example>
+                <StackPanel>
+                    <CheckBox x:Name="allOptions" Content="Select all" IsThreeState="True" IsChecked="{x:Null}" Click="onSelectAllClick" />
+                    <CheckBox x:Name="option1" Content="Option 1" Margin="24,0,0,0" Click="onOptionClick" />
+                    <CheckBox x:Name="option2" Content="Option 2" Margin="24,0,0,0" IsChecked="True" Click="onOptionClick" />
+                    <CheckBox x:Name="option3" Content="Option 3" Margin="24,0,0,0" Click="onOptionClick" />
+                </StackPanel>
+            </controls:ControlExample.Example>
+        </controls:ControlExample>
+    </StackPanel>
+</Page>

@@ -1,0 +1,9 @@
+<DataTemplate x:Key="VerticalBarTemplate" x:DataType="local:Bar">
+            <Border Height="{x:Bind MaxHeight}" Background="{ThemeResource SystemChromeLowColor}">
+                <Rectangle
+                    Width="48"
+                    Height="{x:Bind Height}"
+                    VerticalAlignment="Top"
+                    Fill="{ThemeResource SystemAccentColor}" />
+            </Border>
+        </DataTemplate>

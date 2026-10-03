@@ -1,0 +1,21 @@
+--- header
+Pick multiple files
+--- xaml
+<StackPanel Spacing="8">
+    <Button x:Name="PickMultipleFilesButton" Content="Pick multiple files" Click="PickMultipleFilesButton_Click"/>
+    <TextBlock x:Name="PickedMultipleFilesTextBlock" Text="No files picked"/>
+</StackPanel>
+--- kotlin
+private fun PickMultipleFilesButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val picker = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply {
+                AddFilters(this, FileTypeComboBox2); commitButtonText = CommitButtonTextTextBox2.text
+                suggestedStartLocation = PickerLocationComboBox2.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+                viewMode = PickerViewModeComboBox2.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
+            }
+            val files = picker.pickMultipleFilesAsync().await()
+            PickedMultipleFilesTextBlock.text = if (files.isEmpty()) "No files selected." else files.joinToString("\n") { "- Picked: ${it.path}" }
+            announce(button, PickedMultipleFilesTextBlock.text, "FilesPickedNotificationId")
+        } finally { button.isEnabled = true } }
+    }

@@ -1,0 +1,12 @@
+--- header
+Use ClockIdentifier to override the regional clock format.
+--- xaml
+<StackPanel Spacing="8">
+    <TimePicker x:Name="TwelveHourPicker" ClockIdentifier="12HourClock" Header="12-hour clock" />
+    <TimePicker x:Name="TwentyFourHourPicker" ClockIdentifier="24HourClock" Header="24-hour clock" />
+</StackPanel>
+--- Kotlin
+val now = Calendar().apply { changeClock("24HourClock"); setToNow() }
+val time = now.hour.hours + now.minute.minutes + now.second.seconds
+TwelveHourPicker.selectedTime = time
+TwentyFourHourPicker.selectedTime = time

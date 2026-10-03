@@ -1,0 +1,4 @@
+<Window x:Class="io.github.composefluent.winrt.gallery.multiplewindows.MultipleWindowsSampleWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Page><TextBlock Text="New child window!" HorizontalAlignment="Center" VerticalAlignment="Center" /></Page>
+</Window>

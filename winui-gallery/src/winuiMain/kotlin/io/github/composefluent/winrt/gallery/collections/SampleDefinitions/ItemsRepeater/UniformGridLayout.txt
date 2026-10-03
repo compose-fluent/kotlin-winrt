@@ -1,0 +1,4 @@
+<UniformGridLayout
+            x:Name="UniformGridLayout"
+            MinColumnSpacing="8"
+            MinRowSpacing="8" />

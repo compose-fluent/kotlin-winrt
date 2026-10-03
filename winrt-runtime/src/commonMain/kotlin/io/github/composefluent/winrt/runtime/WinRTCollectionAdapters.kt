@@ -17,6 +17,13 @@ class WinRTVectorViewListAdapter<T>(
         return projectOwned(vectorView.getAtAbiOrNull(index.toUInt()), elementAdapter)
     }
 
+    override fun indexOf(element: T): Int = elementAdapter.withInputAbi(element) { value ->
+        val (found, index) = vectorView.indexOf(value)
+        if (found) index.toIntChecked("IVectorView.IndexOf") else -1
+    }
+
+    override fun contains(element: T): Boolean = indexOf(element) >= 0
+
     override fun close() {
         vectorView.close()
     }
@@ -33,6 +40,22 @@ class WinRTVectorListAdapter<T>(
     override fun get(index: Int): T {
         require(index >= 0) { "index must be non-negative." }
         return projectOwned(vector.getAtAbiOrNull(index.toUInt()), elementAdapter)
+    }
+
+    // CsWinRT IListMethods<T> delegates membership to IVector.IndexOf. Comparing
+    // projected wrappers instead would make the result depend on RCW caching.
+    override fun indexOf(element: T): Int = elementMarshaller(element).use { marshaled ->
+        val (found, index) = vector.indexOf(marshaled.abi)
+        if (found) index.toIntChecked("IVector.IndexOf") else -1
+    }
+
+    override fun contains(element: T): Boolean = indexOf(element) >= 0
+
+    override fun remove(element: T): Boolean {
+        val index = indexOf(element)
+        if (index < 0) return false
+        vector.removeAt(index.toUInt())
+        return true
     }
 
     override fun set(index: Int, element: T): T {

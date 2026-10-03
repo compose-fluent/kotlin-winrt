@@ -1,268 +1,87 @@
+// Ported from WinUI Gallery v2.9.3 (MIT).
 package io.github.composefluent.winrt.gallery.navigation
 
 import io.github.composefluent.winrt.gallery.*
-import io.github.composefluent.winrt.runtime.asWinRT
+import io.github.composefluent.winrt.gallery.models.*
+import io.github.composefluent.winrt.gallery.samplepages.*
+import io.github.composefluent.winrt.runtime.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.media.animation.SlideNavigationTransitionInfo
-import microsoft.ui.xaml.media.animation.SlideNavigationTransitionEffect
+import microsoft.ui.xaml.controls.primitives.*
+import microsoft.ui.xaml.input.*
+import microsoft.ui.xaml.media.*
+import kotlin.reflect.KClass
+import windows.system.VirtualKey
 
 @GalleryPage(route = "NavigationView", title = "NavigationView", group = "Navigation", order = 1)
-internal fun navigationViewPage() = ExamplePage {
-    example("A NavigationView with the default PaneDisplayMode.", navigationViewNavigationViewWithTheDefaultPaneDisplayModeSample())
-    example("A NavigationView with PaneDisplayMode Top.", navigationViewNavigationViewWithPaneDisplayModeTopSample1())
-    val adaptive = navigationViewNavigationViewThatSwitchesPaneOrientationSample2()
-    example("A NavigationView that switches pane orientation.", adaptive)
-    example("Tying selection and focus together for tabs.", navigationViewTyingSelectionAndFocusTogetherForTabsSample3())
-    val bound = navigationViewNavigationViewWithABoundCollectionSample4()
-    example("A NavigationView with a bound collection.", bound)
-    val footer = navigationViewNavigationViewWithFooterMenuItemsSample5()
-    example("A NavigationView with footer menu items.", footer, choices("Pane position:", listOf("Left mode", "Top mode")) {
-        footer.paneDisplayMode = if (it == 0) NavigationViewPaneDisplayMode.Left else NavigationViewPaneDisplayMode.Top
-    })
-    val hierarchy = navigationViewHierarchicalNavigationViewSample6()
-    example("A hierarchical NavigationView.", hierarchy, choices("Pane position:", listOf("Left", "LeftCompact", "Top")) {
-        hierarchy.paneDisplayMode = listOf(NavigationViewPaneDisplayMode.Left, NavigationViewPaneDisplayMode.LeftCompact, NavigationViewPaneDisplayMode.Top)[it]
-    })
-    val paneLink = HyperlinkButton().apply {
-        content = "Pane custom content"
-        navigateUri = windows.foundation.Uri("https://learn.microsoft.com/windows/apps/design/controls/navigationview")
+internal class NavigationViewPage : Page() {
+    private var ready = false
+    private var CameFromGridChange = false
+    val Categories: MutableList<CategoryBase> = WinRTObservableList(listOf(
+        Category("Category 1", "This is category 1", Symbol.Home),
+        Category("Category 2", "This is category 2", Symbol.Keyboard),
+        Category("Category 3", "This is category 3", Symbol.Library),
+        Category("Category 4", "This is category 4", Symbol.Mail)))
+    override fun initializeComponent() {
+        super.initializeComponent(); ready = true
+        listOf(nvSample2, nvSample5, nvSample6, nvSample7, nvSample8, nvSample9).forEach { it.selectedItem = it.menuItems.firstOrNull() }
+        nvSample4.selectedItem = Categories.first()
+        setASBSubstitutionString()
+        nvSample2.updateLayout()
     }
-    val paneFooterContent = stack(4.0) { children.add(label("Pane footer")); children.add(label("Footer content", 12.0)) }
-    val options = navigationViewNavigationViewWithCustomizablePropertiesSample7(paneLink, paneFooterContent)
-    example("A NavigationView with customizable properties.", options, stack {
-        children.add(option("AlwaysShowHeader", true) { options.alwaysShowHeader = it })
-        children.add(option("IsSettingsVisible", true) { options.isSettingsVisible = it })
-        children.add(option("IsBackButtonVisible", true) { options.isBackButtonVisible = if (it) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed })
-        children.add(option("IsBackEnabled") { options.isBackEnabled = it })
-        children.add(option("AutoSuggestBox") { options.autoSuggestBox = if (it) AutoSuggestBox().apply { queryIcon = SymbolIcon(Symbol.Find) } else null })
-        children.add(option("SelectionFollowsFocus") { options.selectionFollowsFocus = if (it) NavigationViewSelectionFollowsFocus.Enabled else NavigationViewSelectionFollowsFocus.Disabled })
-        children.add(option("Suppress selection of Item2") { checkNotNull(options.menuItems[1]).asWinRT<NavigationViewItem>().selectsOnInvoked = !it })
-        children.add(option("PaneCustomContent visible", true) { paneLink.visibility = if (it) Visibility.Visible else Visibility.Collapsed })
-        children.add(option("PaneFooter visible", true) { paneFooterContent.visibility = if (it) Visibility.Visible else Visibility.Collapsed })
-        children.add(TextBox().apply {
-            header = "Header text"; text = "This is Header Text"
-            textChanged.add { _, _ -> options.header = text }
-        })
-        children.add(TextBox().apply {
-            header = "Pane title"
-            textChanged.add { _, _ -> options.paneTitle = text }
-        })
-        children.add(choices("Pane position", listOf("Left", "Top")) {
-            options.paneDisplayMode = if (it == 0) NavigationViewPaneDisplayMode.Left else NavigationViewPaneDisplayMode.Top
-            paneFooterContent.orientation = if (it == 0) Orientation.Vertical else Orientation.Horizontal
-        })
-    })
-}
+    fun ChoosePanePosition(toggleOn: Boolean): NavigationViewPaneDisplayMode = if (toggleOn) NavigationViewPaneDisplayMode.Left else NavigationViewPaneDisplayMode.Top
+    private fun navigate(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs, frame: Frame, header: Boolean = false, transition: Boolean = false) {
+        if (!ready) return
+        if (args.isSettingsSelected) { frame.navigate(SampleSettingsPage::class); return }
+        val tag = args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString() ?: return
+        val page = when (tag) { "SamplePage1" -> SamplePage1::class; "SamplePage2" -> SamplePage2::class; "SamplePage3" -> SamplePage3::class; else -> return }
+        if (header) sender.header = "Sample Page ${tag.last()}"
+        if (transition) frame.navigate(page, null, args.recommendedNavigationTransitionInfo) else frame.navigate(page)
+    }
+    private fun NavigationView_SelectionChanged(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame,true) }
+    private fun NavigationView_SelectionChanged2(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) {
+        if (ready && !CameFromGridChange) navigate(sender,args,contentFrame2)
+        CameFromGridChange = false
+    }
+    private fun NavigationView_SelectionChanged4(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) {
+        if (!ready) return
+        if (args.isSettingsSelected) contentFrame4.navigate(SampleSettingsPage::class) else {
+            val category = args.selectedItem as? Category ?: return
+            sender.header = "Sample Page ${category.Name.last()}"; contentFrame4.navigate(SamplePage1::class)
+        }
+    }
+    private fun NavigationView_SelectionChanged5(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame5,true) }
+    private fun NavigationView_SelectionChanged6(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame6) }
+    private fun NavigationView_SelectionChanged7(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame7,transition=true) }
+    private fun NavigationView_SelectionChanged8(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame8,true) }
+    private fun NavigationView_SelectionChanged9(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame9,transition=true) }
+    private fun checked(sender: Any?): Boolean = checkNotNull(sender).asWinRT<CheckBox>().isChecked == true
+    private fun headerCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.alwaysShowHeader = checked(sender) }
+    private fun settingsCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.isSettingsVisible = checked(sender) }
+    private fun visibleCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.isBackButtonVisible = if (checked(sender)) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed }
+    private fun enableCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.isBackEnabled = checked(sender) }
+    private fun autoSuggestCheck_Click(sender: Any?, args: RoutedEventArgs) {
+        if (!ready) return
+        if (checked(sender)) {
+            nvSample.autoSuggestBox = AutoSuggestBox().apply { queryIcon = SymbolIcon(Symbol.Find); microsoft.ui.xaml.automation.AutomationProperties.setName(this,"Search") }
+            setASBSubstitutionString()
+        } else { nvSample.autoSuggestBox = null; navViewASB.Value = null }
+    }
+    private fun setASBSubstitutionString() { navViewASB.Value = "\n    <NavigationView.AutoSuggestBox>\n        <AutoSuggestBox QueryIcon=\"Find\" AutomationProperties.Name=\"Search\" />\n    </NavigationView.AutoSuggestBox>\n" }
+    private fun panemc_Check_Click(sender: Any?, args: RoutedEventArgs) { if (ready) PaneHyperlink.visibility = if (checked(sender)) Visibility.Visible else Visibility.Collapsed }
+    private fun paneFooterCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) FooterStackPanel.visibility = if (checked(sender)) Visibility.Visible else Visibility.Collapsed }
+    private fun setPanePosition(sender: Any?, mode: NavigationViewPaneDisplayMode) {
+        if (!ready) return
+        val radio = checkNotNull(sender).asWinRT<RadioButton>()
+        if (radio.isChecked != true) return
+        val view = when { radio.name.startsWith("nvSample8") -> nvSample8; radio.name.startsWith("nvSample9") -> nvSample9; else -> nvSample }
+        view.paneDisplayMode = mode; view.isPaneOpen = mode == NavigationViewPaneDisplayMode.Left
+        if (view == nvSample) FooterStackPanel.orientation = if (mode == NavigationViewPaneDisplayMode.Top) Orientation.Horizontal else Orientation.Vertical
+    }
+    private fun panePositionLeft_Checked(sender: Any?, args: RoutedEventArgs) = setPanePosition(sender,NavigationViewPaneDisplayMode.Left)
+    private fun panePositionTop_Checked(sender: Any?, args: RoutedEventArgs) = setPanePosition(sender,NavigationViewPaneDisplayMode.Top)
+    private fun panePositionLeftCompact_Checked(sender: Any?, args: RoutedEventArgs) = setPanePosition(sender,NavigationViewPaneDisplayMode.LeftCompact)
+    private fun sffCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.selectionFollowsFocus = if (checked(sender)) NavigationViewSelectionFollowsFocus.Enabled else NavigationViewSelectionFollowsFocus.Disabled }
+    private fun suppressselectionCheck_Checked_Click(sender: Any?, args: RoutedEventArgs) { if (ready) SamplePage2Item.selectsOnInvoked = !checked(sender) }
 
-@GallerySample(route = "NavigationView", title = "A NavigationView with the default PaneDisplayMode.")
-internal fun navigationViewNavigationViewWithTheDefaultPaneDisplayModeSample() = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Auto
-    isTabStop = false
-    val frame = sampleFrame()
-    content = frame
-    val symbols = listOf(Symbol.Play, Symbol.Save, Symbol.Refresh, Symbol.Download)
-    repeat(4) { index -> menuItems.add(NavigationViewItem().apply { tag = index + 1; content = "Menu Item${index + 1}"; icon = SymbolIcon(symbols[index]) }) }
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = menuItems[0]
-}
-
-@GallerySample(route = "NavigationView", title = "A NavigationView with PaneDisplayMode Top.")
-internal fun navigationViewNavigationViewWithPaneDisplayModeTopSample1() = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Top
-    isTabStop = false
-    val frame = sampleFrame()
-    content = frame
-    repeat(4) { index -> menuItems.add(NavigationViewItem().apply { tag = index + 1; content = "Menu Item${index + 1}" }) }
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = menuItems[0]
-}
-
-@GallerySample(route = "NavigationView", title = "Tying selection and focus together for tabs.")
-internal fun navigationViewTyingSelectionAndFocusTogetherForTabsSample3() = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Top
-    isTabStop = false
-    isBackButtonVisible = NavigationViewBackButtonVisible.Collapsed
-    selectionFollowsFocus = NavigationViewSelectionFollowsFocus.Enabled
-    val frame = sampleFrame().apply { isNavigationStackEnabled = false }
-    content = frame
-    repeat(4) { index -> menuItems.add(NavigationViewItem().apply { tag = index + 1; content = "Menu Item${index + 1}" }) }
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = menuItems[0]
-}
-
-@GallerySample(route = "NavigationView", title = "A NavigationView that switches pane orientation.")
-internal fun navigationViewNavigationViewThatSwitchesPaneOrientationSample2() = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Top
-    isTabStop = false
-    sizeChanged.add { _, _ -> paneDisplayMode = if (actualWidth < 640.0) NavigationViewPaneDisplayMode.LeftMinimal else NavigationViewPaneDisplayMode.Top }
-    val frame = sampleFrame()
-    content = frame
-    repeat(4) { index -> menuItems.add(NavigationViewItem().apply { tag = index + 1; content = "Menu Item${index + 1}" }) }
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = menuItems[0]
-}
-
-@GallerySample(route = "NavigationView", title = "A NavigationView with a bound collection.")
-internal fun navigationViewNavigationViewWithABoundCollectionSample4() = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Auto
-    isTabStop = false
-    val frame = sampleFrame()
-    content = frame
-    val categories = listOf(Symbol.Home, Symbol.Keyboard, Symbol.Library, Symbol.Mail).mapIndexed { index, symbol ->
-        NavigationViewItem().apply {
-            tag = index + 1
-            content = "Category ${index + 1}"
-            icon = SymbolIcon(symbol)
-            ToolTipService.setToolTip(this, "This is category ${index + 1}")
-        }
-    }
-    menuItemsSource = categories
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = categories.first()
-}
-
-@GallerySample(route = "NavigationView", title = "A NavigationView with footer menu items.")
-internal fun navigationViewNavigationViewWithFooterMenuItemsSample5() = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Left
-    isTabStop = false
-    isSettingsVisible = false
-    val frame = sampleFrame()
-    content = frame
-    listOf("Browse" to Symbol.Library, "Track an Order" to Symbol.Map, "Order History" to Symbol.Tag).forEachIndexed { index, (title, symbol) ->
-        menuItems.add(NavigationViewItem().apply { tag = index + 1; content = title; icon = SymbolIcon(symbol) })
-    }
-    footerMenuItems.add(NavigationViewItem().apply { tag = 4; content = "Account"; icon = SymbolIcon(Symbol.Contact) })
-    footerMenuItems.add(NavigationViewItem().apply { tag = 5; content = "Your Cart"; icon = SymbolIcon(Symbol.Shop) })
-    footerMenuItems.add(NavigationViewItem().apply { tag = 6; content = "Help"; icon = SymbolIcon(Symbol.Help) })
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = menuItems[0]
-}
-
-@GallerySample(route = "NavigationView", title = "A hierarchical NavigationView.")
-internal fun navigationViewHierarchicalNavigationViewSample6() = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Left
-    isTabStop = false
-    val frame = sampleFrame()
-    content = frame
-    fun item(title: String, symbol: Symbol, page: Int) = NavigationViewItem().apply {
-        tag = page
-        content = title
-        icon = SymbolIcon(symbol)
-        ToolTipService.setToolTip(this, title)
-    }
-    menuItems.add(item("Home", Symbol.Home, 1))
-    menuItems.add(item("Account", Symbol.Contact, 2).apply {
-        menuItems.add(item("Mail", Symbol.Mail, 3))
-        menuItems.add(item("Calendar", Symbol.Calendar, 4))
-    })
-    menuItems.add(item("Document options", Symbol.Page2, 0).apply {
-        selectsOnInvoked = false
-        menuItems.add(item("Create new", Symbol.NewFolder, 5))
-        menuItems.add(item("Upload file", Symbol.OpenLocal, 6))
-    })
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = menuItems[0]
-}
-
-@GallerySample(route = "NavigationView", title = "A NavigationView with customizable properties.")
-internal fun navigationViewNavigationViewWithCustomizablePropertiesSample7(paneLink: HyperlinkButton, paneFooterContent: StackPanel) = NavigationView().apply {
-    height = 460.0
-    header = "This is Header Text"
-    paneDisplayMode = NavigationViewPaneDisplayMode.Left
-    isTabStop = false
-    val frame = sampleFrame()
-    content = frame
-    paneCustomContent = paneLink
-    paneFooter = paneFooterContent
-    val symbols = listOf(Symbol.Play, Symbol.Save, Symbol.Refresh, Symbol.Download)
-    repeat(4) { index -> menuItems.add(NavigationViewItem().apply { tag = index + 1; content = "Menu Item${index + 1}"; icon = SymbolIcon(symbols[index]) }) }
-    selectionChanged.add { _, args ->
-        if (args.isSettingsSelected) frame.navigate(Page::class, 0)
-        else args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString()?.toIntOrNull()?.let { page ->
-            header = "Sample Page $page"
-            val transition = args.recommendedNavigationTransitionInfo
-            if (transition == null) frame.navigate(Page::class, page) else frame.navigate(Page::class, page, transition)
-        }
-    }
-    backRequested.add { _, _ -> if (frame.canGoBack) frame.goBack() }
-    frame.navigated.add { _, _ -> isBackEnabled = frame.canGoBack }
-    selectedItem = menuItems[0]
 }

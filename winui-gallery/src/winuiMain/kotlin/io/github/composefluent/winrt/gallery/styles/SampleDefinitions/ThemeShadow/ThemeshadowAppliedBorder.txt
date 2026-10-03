@@ -1,0 +1,18 @@
+--- header
+ThemeShadow applied to a Border
+--- xaml
+<Grid>
+    <Grid x:Name="ShadowCastGrid"/>
+    <Border x:Name="ShadowRect" Translation="0,0,$(TranslationSlider)" Loaded="ShadowRect_Loaded" Width="200" Height="200" CornerRadius="{ThemeResource OverlayCornerRadius}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+        <Border.Shadow>
+            <ThemeShadow x:Name="shadow"/>
+        </Border.Shadow>
+    </Border>                
+</Grid>
+--- kotlin
+private var ready = false
+    override fun initializeComponent() { super.initializeComponent(); ready = true }
+    private fun TranslationSliderInApp_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs) {
+        if (ready) ShadowRect.translation = windows.foundation.numerics.Vector3(0f, 0f, args.newValue.toFloat())
+    }
+    private fun ShadowRect_Loaded(sender: Any?, args: RoutedEventArgs) { shadow.receivers.add(ShadowCastGrid) }

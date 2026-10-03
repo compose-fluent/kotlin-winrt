@@ -1,0 +1,22 @@
+--- header
+Exposing a command in multiple controls using StandardUICommand
+--- xaml
+<SwipeItem x:Name="DeleteSwipeItem" Background="Red" Command="{x:Bind Command}" CommandParameter="{x:Bind Text}" />
+
+<AppBarButton x:Name="HoverButton" IsTabStop="False" HorizontalAlignment="Right" Visibility="Collapsed" 
+ Command="{x:Bind Command}" CommandParameter="{x:Bind Text}" />
+--- kotlin
+private fun ControlExample_Loaded(sender: Any?, args: RoutedEventArgs) {
+        val command = if (windows.foundation.metadata.ApiInformation.isApiContractPresent("Windows.Foundation.UniversalApiContract", 7u)) microsoft.ui.xaml.input.StandardUICommand(microsoft.ui.xaml.input.StandardUICommandKind.Delete).also { it.executeRequested.add(::DeleteCommand_ExecuteRequested) } else null
+        DeleteFlyoutItem.command = command
+        collection.clear(); (0 until 15).forEach { collection.add(ListItemData("List item $it", command)) }
+    }
+
+private fun ListViewRight_ContainerContentChanging(sender: ListViewBase, args: ContainerContentChangingEventArgs) {
+        val data = args.item as? ListItemData ?: return
+        val flyout = MenuFlyout().apply {
+            items.add(MenuFlyoutItem().apply { command = data.Command })
+            opened.add { _, _ -> target?.asWinRT<ListViewItem>()?.isSelected = true }
+        }
+        args.itemContainer.contextFlyout = flyout
+    }

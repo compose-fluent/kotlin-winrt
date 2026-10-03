@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.gallery
 
 internal data class GalleryLink(val title: String, val uri: String)
-internal data class GalleryGroup(val id: String, val title: String, val glyph: String, val pages: List<GalleryPageInfo>)
+internal data class GalleryGroup(val id: String, val title: String, val glyph: String, val pages: List<GalleryPageInfo>, val isSpecialSection: Boolean = false)
 internal data class GalleryPageInfo(
     val id: String,
     val title: String,

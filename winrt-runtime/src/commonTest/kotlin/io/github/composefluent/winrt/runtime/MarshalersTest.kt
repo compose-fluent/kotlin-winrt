@@ -437,10 +437,17 @@ class MarshalersTest {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRTTypeHandle("test.IFoo", Guid("66666666-6666-6666-6666-666666666666"))
         val marshaler = Marshaler.interfaceType(typeHandle, TestProjectedWrapper::class) { it as TestProjectedWrapper }
-        val host = WinRTInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
+        // CsWinRT MarshalInterface unwraps the native identity and queries the requested IID.
+        // The native fixture must therefore implement the interface advertised by the wrapper.
+        val host = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(WinRTInspectableInterfaceDefinition(typeHandle.interfaceId, emptyList())),
+            defaultInterfaceId = typeHandle.interfaceId,
+            runtimeClassName = "test.RuntimeClass",
+            managedValue = "payload",
+        )
         val projected = TestProjectedWrapper(
             primaryTypeHandle = typeHandle,
-            inspectable = IInspectableReference(host.detachReference(IID.IInspectable).asRawComPtr(), IID.IInspectable),
+            inspectable = IInspectableReference(host.detachReference(typeHandle.interfaceId).asRawComPtr(), typeHandle.interfaceId),
         )
 
         val reference = marshaler.createMarshaler(projected) as ComObjectReference

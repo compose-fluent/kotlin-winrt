@@ -2813,6 +2813,8 @@ class WindowsToolkitPluginTest {
         assertEquals(listOf("Microsoft.UI.Xaml.Application"), merged.map { it.qualifiedName })
         assertEquals("RuntimeClass", merged.single().kind)
         assertEquals(listOf("Microsoft.UI.Xaml.IApplicationOverrides"), merged.single().overridableInterfaces)
+        // SDK metadata remains available to the compiler without claiming an RCW in this library.
+        assertEquals(emptySet<String>(), dependencyProjectedTypeNames(WinRTMetadataModel(emptyList()), listOf(dependencyIdentity.toFile())))
     }
 
     @Test

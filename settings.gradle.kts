@@ -45,4 +45,6 @@ include(
     ":winui-gallery",
     ":winui-gallery:processor",
     ":winui-gallery:code-document",
+    ":winui-gallery:models",
+    ":winui-gallery:resources",
 )

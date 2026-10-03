@@ -1,0 +1,10 @@
+--- header
+Toggling Spatial Audio
+--- Kotlin
+private fun spatialAudioBox_Checked(sender: Any?, args: RoutedEventArgs) {
+    if (soundToggle.isOn) ElementSoundPlayer.spatialAudioMode = ElementSpatialAudioMode.On
+}
+
+private fun spatialAudioBox_Unchecked(sender: Any?, args: RoutedEventArgs) {
+    if (soundToggle.isOn) ElementSoundPlayer.spatialAudioMode = ElementSpatialAudioMode.Off
+}

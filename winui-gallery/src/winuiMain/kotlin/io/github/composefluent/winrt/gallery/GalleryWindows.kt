@@ -24,6 +24,11 @@ internal object GalleryWindows {
         nativeWindows.add(window)
         window.destroying.add { _, _ -> nativeWindows.remove(window) }
     }
+    // WinUI Gallery WindowHelper.GetWindowForElement locates the containing XamlRoot.
+    fun forElement(element: UIElement): Window? = windows.firstOrNull { window ->
+        val content = window.content as? FrameworkElement
+        content?.xamlRoot != null && content.xamlRoot == (element as? FrameworkElement)?.xamlRoot
+    }
     fun closeAll() {
         nativeWindows.toList().forEach { it.destroy() }
         windows.toList().forEach { it.close() }

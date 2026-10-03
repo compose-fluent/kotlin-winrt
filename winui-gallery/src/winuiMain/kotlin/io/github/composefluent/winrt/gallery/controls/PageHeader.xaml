@@ -1,0 +1,279 @@
+<!--  Copyright (c) Microsoft Corporation and Contributors.  -->
+<!--  Licensed under the MIT License.  -->
+
+<UserControl
+    x:Class="io.github.composefluent.winrt.gallery.controls.PageHeader"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:io.github.composefluent.winrt.gallery.converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:io.github.composefluent.winrt.gallery.controls"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:io.github.composefluent.winrt.gallery.models"
+    Loaded="UserControl_Loaded"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <converters:CollectionVisibilityConverter
+            x:Name="collectionConverter"
+            EmptyValue="Collapsed"
+            NotEmptyValue="Visible" />
+        <Style
+            x:Key="CustomFlyoutPresenterStyle"
+            BasedOn="{StaticResource DefaultFlyoutPresenterStyle}"
+            TargetType="FlyoutPresenter">
+            <Setter Property="MinWidth" Value="420" />
+            <Setter Property="MaxWidth" Value="800" />
+        </Style>
+    </UserControl.Resources>
+    <Grid x:Name="headerGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock
+                AutomationProperties.AutomationId="PageHeader"
+                AutomationProperties.HeadingLevel="Level1"
+                Style="{StaticResource TitleTextBlockStyle}"
+                Text="{x:Bind Item.Title}"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="NoWrap" />
+            <Button
+                x:Name="APIDetailsBtn"
+                Margin="0,0,0,3"
+                Padding="4"
+                VerticalAlignment="Bottom"
+                AutomationProperties.Name="API details"
+                Style="{StaticResource SubtleButtonStyle}"
+                ToolTipService.ToolTip="API namespace and inheritance">
+                <FontIcon
+                    FontSize="14"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                    Glyph="&#xE946;" />
+                <Button.Flyout>
+                    <Flyout FlyoutPresenterStyle="{StaticResource CustomFlyoutPresenterStyle}" Placement="Bottom">
+                        <StackPanel x:Name="APIPanel" Spacing="16">
+                            <StackPanel
+                                x:Name="APISourcePanel"
+                                Spacing="8"
+                                Visibility="{x:Bind Item.ApiNamespace, Converter={StaticResource emptyStringToVisibilityConverter}}">
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="Namespace" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontFamily="Consolas"
+                                    IsTextSelectionEnabled="True"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind Item.ApiNamespace}" />
+                            </StackPanel>
+                            <MenuFlyoutSeparator Margin="-12" />
+                            <StackPanel x:Name="InheritanceSourcePanel" Visibility="{x:Bind Item.BaseClasses, Converter={StaticResource collectionConverter}}">
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="Inheritance" />
+                                <BreadcrumbBar IsHitTestVisible="False" ItemsSource="{x:Bind Item.BaseClasses}">
+                                    <BreadcrumbBar.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <TextBlock
+                                                FontFamily="Consolas"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind}" />
+                                        </DataTemplate>
+                                    </BreadcrumbBar.ItemTemplate>
+                                </BreadcrumbBar>
+                            </StackPanel>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </StackPanel>
+        <Grid Grid.Row="1" Margin="0,12,0,12">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <DropDownButton
+                    AutomationProperties.Name="Documentation"
+                    ToolTipService.ToolTip="Documentation"
+                    Visibility="{x:Bind Item.Docs, Converter={StaticResource collectionConverter}}">
+                    <DropDownButton.Content>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="16" Glyph="&#xE8A5;" />
+                            <TextBlock Text="Documentation" />
+                        </StackPanel>
+                    </DropDownButton.Content>
+                    <DropDownButton.Flyout>
+                        <Flyout Placement="Bottom">
+                            <ItemsControl
+                                x:Name="DocsList"
+                                Margin="-12"
+                                IsTabStop="False"
+                                ItemsSource="{x:Bind Item.Docs}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Vertical" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ControlInfoDocLink">
+                                        <HyperlinkButton
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            NavigateUri="{x:Bind Uri}"
+                                            ToolTipService.ToolTip="{x:Bind Uri}">
+                                            <TextBlock Text="{x:Bind Title}" />
+                                        </HyperlinkButton>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Flyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+                <DropDownButton AutomationProperties.Name="Source code" ToolTipService.ToolTip="Source code of this sample page">
+                    <DropDownButton.Content>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Viewbox Height="18">
+                                <PathIcon Data="{StaticResource GitHubIconPath}" />
+                            </Viewbox>
+                            <TextBlock Text="Source" />
+                        </StackPanel>
+                    </DropDownButton.Content>
+                    <DropDownButton.Flyout>
+                        <Flyout Placement="Bottom">
+                            <StackPanel x:Name="SourcePanel" Margin="0,-8,0,-12">
+                                <StackPanel x:Name="ControlSourcePanel" Margin="0,0,0,4">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="Control source code" />
+                                        <Button
+                                            Padding="6,5,6,6"
+                                            AutomationProperties.HelpText="{x:Bind GetControlSourceInfoText(), Mode=OneWay}"
+                                            AutomationProperties.Name="Info"
+                                            Style="{ThemeResource SubtleButtonStyle}"
+                                            ToolTipService.ToolTip="{x:Bind GetControlSourceInfoText(), Mode=OneWay}">
+                                            <FontIcon
+                                                VerticalAlignment="Center"
+                                                FontSize="14"
+                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                Glyph="&#xE946;" />
+                                        </Button>
+                                    </StackPanel>
+                                    <HyperlinkButton
+                                        x:Name="ControlSourceLink"
+                                        Margin="-12,4,-12,0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        ToolTipService.ToolTip="{x:Bind ControlSourceLink.NavigateUri, Mode=OneWay}">
+                                        <TextBlock Text="{x:Bind Item.Title}" />
+                                    </HyperlinkButton>
+                                </StackPanel>
+
+                                <MenuFlyoutSeparator x:Name="ControlSourceSeparator" Margin="-12" />
+
+                                <StackPanel
+                                    Margin="0,8,0,0"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="Sample page source code" />
+                                    <Button
+                                        Padding="6,5,6,6"
+                                        AutomationProperties.HelpText="{x:Bind GetSamplePageSourceInfoText(), Mode=OneWay}"
+                                        AutomationProperties.Name="Info"
+                                        Style="{ThemeResource SubtleButtonStyle}"
+                                        ToolTipService.ToolTip="{x:Bind GetSamplePageSourceInfoText(), Mode=OneWay}">
+                                        <FontIcon
+                                            VerticalAlignment="Center"
+                                            FontSize="14"
+                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                            Glyph="&#xE946;" />
+                                    </Button>
+
+                                </StackPanel>
+                                <HyperlinkButton
+                                    x:Name="PageMarkupGitHubLink"
+                                    Margin="-12,4,-12,0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    ToolTipService.ToolTip="{x:Bind PageMarkupGitHubLink.NavigateUri, Mode=OneWay}">
+                                    <TextBlock Text="XAML" />
+                                </HyperlinkButton>
+                                <HyperlinkButton
+                                    x:Name="PageCodeGitHubLink"
+                                    Margin="-12,4,-12,0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    ToolTipService.ToolTip="{x:Bind PageCodeGitHubLink.NavigateUri, Mode=OneWay}">
+                                    <TextBlock Text="Kotlin" />
+                                </HyperlinkButton>
+                            </StackPanel>
+                        </Flyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+            </StackPanel>
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button
+                    x:Name="ThemeButton"
+                    Height="32"
+                    Margin="0,0,4,0"
+                    AutomationProperties.Name="Toggle theme"
+                    Click="OnThemeButtonClick"
+                    ToolTipService.ToolTip="Toggle theme"
+                    Visibility="{x:Bind ThemeButtonVisibility, Mode=OneWay}">
+                    <Button.Content>
+                        <FontIcon FontSize="16" Glyph="&#xE793;" />
+                    </Button.Content>
+                </Button>
+                <AppBarSeparator Visibility="{x:Bind ThemeButtonVisibility, Mode=OneWay}" />
+                <local:CopyButton
+                    x:Name="CopyLinkButton"
+                    Height="32"
+                    Margin="4,0,4,0"
+                    Padding="11,2,11,0"
+                    AutomationProperties.Name="Copy link"
+                    Click="OnCopyLinkButtonClick"
+                    Content="&#xE71B;"
+                    ToolTipService.ToolTip="Copy link">
+                    <local:CopyButton.Resources>
+                        <TeachingTip
+                            x:Name="CopyLinkButtonTeachingTip"
+                            Title="Quickly reference this sample!"
+                            ActionButtonClick="OnCopyDontShowAgainButtonClick"
+                            ActionButtonContent="Don't show again"
+                            CloseButtonContent="Got it!"
+                            FontFamily="{StaticResource ContentControlThemeFontFamily}"
+                            PreferredPlacement="Bottom"
+                            Subtitle="Share with others or paste this link into the Run dialog to open the app to this page directly."
+                            Target="{x:Bind CopyLinkButton}">
+                            <TeachingTip.HeroContent>
+                                <Image AutomationProperties.Name="Image of copied text in Run Dialog." Source="/Assets/CopyLinkTeachingTip.png" />
+                            </TeachingTip.HeroContent>
+                        </TeachingTip>
+                    </local:CopyButton.Resources>
+                </local:CopyButton>
+                <ToggleButton
+                    x:Name="FavoriteButton"
+                    Height="32"
+                    Margin="4,0,0,0"
+                    AutomationProperties.Name="Favorite sample"
+                    Click="FavoriteButton_Click">
+                    <ToggleButton.Content>
+                        <FontIcon FontSize="16" Glyph="{x:Bind GetFavoriteGlyph(FavoriteButton.IsChecked), Mode=OneWay}" />
+                    </ToggleButton.Content>
+                    <ToolTipService.ToolTip>
+                        <ToolTip Content="{x:Bind GetFavoriteToolTip(FavoriteButton.IsChecked), Mode=OneWay}" />
+                    </ToolTipService.ToolTip>
+                </ToggleButton>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

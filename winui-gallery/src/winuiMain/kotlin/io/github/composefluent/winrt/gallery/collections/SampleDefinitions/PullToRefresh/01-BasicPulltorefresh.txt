@@ -1,0 +1,19 @@
+--- header
+Basic PullToRefresh
+--- xaml
+<RefreshContainer x:Name="rc" RefreshRequested="rc_RefreshRequested">
+    <ListView x:Name="lv" Width="300" Height="300" BorderThickness="1" BorderBrush="Black"/>
+</RefreshContainer>
+--- Kotlin
+private fun rc_RefreshRequested(sender: RefreshContainer, args: RefreshRequestedEventArgs) {
+    val deferral = args.getDeferral()
+    tasks.launch {
+        try {
+            delay(500)
+            lv.items.add(0, "NewControl ${controlCount++}")
+        } finally {
+            deferral.complete()
+            deferral.close()
+        }
+    }
+}

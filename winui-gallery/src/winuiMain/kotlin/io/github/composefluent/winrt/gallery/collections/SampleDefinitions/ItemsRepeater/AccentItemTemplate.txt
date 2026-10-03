@@ -1,0 +1,9 @@
+<DataTemplate x:Key="AccentItemTemplate" x:DataType="x:Int32">
+            <Border Background="{ThemeResource SystemControlBackgroundAccentBrush}">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource SystemControlForegroundChromeWhiteBrush}"
+                    Text="{x:Bind}" />
+            </Border>
+        </DataTemplate>

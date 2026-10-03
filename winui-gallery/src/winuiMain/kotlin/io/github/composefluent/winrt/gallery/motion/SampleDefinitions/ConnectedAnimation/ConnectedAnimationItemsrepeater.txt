@@ -1,0 +1,76 @@
+--- header
+Connected animation with ItemsRepeater
+--- xaml
+<!-- Unlike ListView/GridView, ItemsRepeater does not have built-in
+     ConnectedAnimation methods. Use ConnectedAnimationService directly. -->
+
+<!-- TabFocusNavigation="Once" makes the repeater a single tab stop, so Tab enters the group
+     once instead of stepping through every item. Arrow keys move between items via the
+     ItemsRepeater's XYFocusKeyboardNavigation="Enabled". -->
+<ScrollViewer
+    x:Name="scrollViewer"
+    TabFocusNavigation="Once">
+    <ItemsRepeater
+        x:Name="repeater"
+        ItemsSource="{x:Bind Items}"
+        XYFocusKeyboardNavigation="Enabled">
+        <ItemsRepeater.Layout>
+            <UniformGridLayout
+                MinColumnSpacing="8"
+                MinItemHeight="120"
+                MinItemWidth="150"
+                MinRowSpacing="8" />
+        </ItemsRepeater.Layout>
+        <ItemsRepeater.ItemTemplate>
+            <DataTemplate x:DataType="local:CustomDataObject">
+                <Grid AutomationProperties.Name="{x:Bind Title}"
+                      CornerRadius="4"
+                      IsTabStop="True"
+                      UseSystemFocusVisuals="True">
+                    <!-- The element named "connectedElement" will be animated -->
+                    <Image x:Name="connectedElement"
+                           Source="{x:Bind ImageLocation}"
+                           Stretch="UniformToFill" />
+                    <Border VerticalAlignment="Bottom"
+                            Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+                            Padding="8,4">
+                        <TextBlock Text="{x:Bind Title}"
+                                   Style="{ThemeResource CaptionTextBlockStyle}" />
+                    </Border>
+                </Grid>
+            </DataTemplate>
+        </ItemsRepeater.ItemTemplate>
+    </ItemsRepeater>
+</ScrollViewer>
+--- kotlin
+fun PrepareConnectedAnimation(config: ConnectedAnimationConfiguration?) { ConnectedAnimationService.getForCurrentView().prepareToAnimate("ForwardConnectedAnimation", SourceElement).let { if (config != null) it.configuration = config } }
+
+fun PrepareConnectedAnimation(config: ConnectedAnimationConfiguration?) { ConnectedAnimationService.getForCurrentView().prepareToAnimate("BackwardConnectedAnimation", DestinationElement).let { if (config != null) it.configuration = config } }
+
+private fun Repeater_ElementPrepared(sender: ItemsRepeater, args: ItemsRepeaterElementPreparedEventArgs) {
+        args.element.tapped.remove(tappedHandler); args.element.tapped.add(tappedHandler)
+        args.element.keyDown.remove(keyHandler); args.element.keyDown.add(keyHandler)
+    }
+
+private fun Item_Tapped(sender: Any?, args: TappedRoutedEventArgs) { sender?.asWinRT<FrameworkElement>()?.let(::NavigateToItem) }
+
+private fun Item_KeyDown(sender: Any?, args: KeyRoutedEventArgs) {
+        if (args.key == windows.system.VirtualKey.Enter || args.key == windows.system.VirtualKey.Space) { sender?.asWinRT<FrameworkElement>()?.let(::NavigateToItem); args.handled = true }
+    }
+
+private fun NavigateToItem(element: FrameworkElement) {
+        storedItem = checkNotNull(repeater.itemsSourceView).getAt(repeater.getElementIndex(element)) as? CustomDataObject
+        FindChildByName(element, "connectedElement")?.let { ConnectedAnimationService.getForCurrentView().prepareToAnimate("ForwardConnectedAnimation", it) }
+        persistedScrollPosition = scrollViewer.verticalOffset
+        checkNotNull(frame).navigate(DetailedInfoPage::class, storedItem, SuppressNavigationTransitionInfo())
+    }
+
+private fun FindChildByName(parent: DependencyObject, name: String): UIElement? {
+        for (index in 0 until VisualTreeHelper.getChildrenCount(parent)) {
+            val child = VisualTreeHelper.getChild(parent, index)
+            val element = runCatching { child.asWinRT<FrameworkElement>() }.getOrNull()
+            if (element?.name == name) return element
+            FindChildByName(child, name)?.let { return it }
+        }
+        return null
+    }

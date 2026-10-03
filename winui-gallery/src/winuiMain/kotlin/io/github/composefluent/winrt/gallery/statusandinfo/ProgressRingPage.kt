@@ -4,38 +4,22 @@ import io.github.composefluent.winrt.gallery.*
 import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.controls.primitives.PlacementMode
-import windows.foundation.Rect
-import windows.foundation.Uri
+import microsoft.ui.xaml.controls.primitives.*
+import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "ProgressRing", title = "ProgressRing", group = "StatusAndInfo", order = 3)
-internal fun progressRingPage() = ExamplePage {
-    fun background(ring: ProgressRing) = select("Background color", listOf("Transparent", "LightGray")) {
-        ring.background = if (it == 0) microsoft.ui.xaml.media.SolidColorBrush(windows.ui.Color(0u, 0u, 0u, 0u)) else brush(0xD3D3D3u)
+internal class ProgressRingPage : Page() {
+    private var ready = false
+    override fun initializeComponent() { super.initializeComponent(); ready = true; applyBackground(BackgroundComboBox1); applyBackground(BackgroundComboBox2) }
+    private fun ProgressValue_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) {
+        if (!ready) return
+        if (sender.value.isNaN()) sender.value = 0.0 else ProgressRing2.value = sender.value
     }
-    val indefinite = progressRingIndeterminateProgressRingSample()
-    example("An indeterminate ProgressRing.", indefinite, stack {
-        children.add(ToggleSwitch().apply {
-            isOn = true; offContent = "Do work"; onContent = "Working"
-            toggled.add { _, _ -> indefinite.isActive = isOn }
-        })
-        children.add(background(indefinite))
-    })
-    val definite = progressRingDeterminateSample()
-
-    example("A determinate ProgressRing.", stack(60.0, true) {
-        children.add(definite)
-        children.add(NumberBox().apply {
-            header = "Progress"; minimum = 0.0; maximum = 100.0; value = 0.0; minWidth = 120.0
-            spinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline
-            valueChanged.add { _, _ -> if (value.isFinite()) definite.value = value else value = 0.0 }
-        })
-    }, background(definite))
-
+    private fun applyBackground(box: ComboBox) {
+        val first = box == BackgroundComboBox1
+        val gray = box.selectedItem == "LightGray"
+        (if (first) ProgressRing1 else ProgressRing2).background = SolidColorBrush(if (gray) rgb(0xD3D3D3u) else windows.ui.Color(0u, 0u, 0u, 0u))
+        (if (first) RevealBackgroundProperty1 else RevealBackgroundProperty2).IsEnabled = gray
+    }
+    private fun Background_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) applyBackground(checkNotNull(sender).asWinRT<ComboBox>()) }
 }
-
-@GallerySample(route = "ProgressRing", title = "A determinate ProgressRing.")
-internal fun progressRingDeterminateSample() = ProgressRing().apply { width = 60.0; height = 60.0; isIndeterminate = false }
-
-@GallerySample(route = "ProgressRing", title = "An indeterminate ProgressRing.")
-internal fun progressRingIndeterminateProgressRingSample() = ProgressRing().apply { width = 60.0; height = 60.0; isActive = true }

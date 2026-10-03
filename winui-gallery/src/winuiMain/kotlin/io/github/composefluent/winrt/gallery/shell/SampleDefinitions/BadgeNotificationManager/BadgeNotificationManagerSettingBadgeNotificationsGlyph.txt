@@ -1,0 +1,6 @@
+--- header
+Setting badge notifications with Glyph
+--- kotlin
+private fun ClearBadgeButton_Click(sender: Any?, args: RoutedEventArgs) { if (GalleryPreferences.packaged) microsoft.windows.badgenotifications.BadgeNotificationManager.current.clearBadge() }
+
+private fun SetBadgeGlyphButton_Click(sender: Any?, args: RoutedEventArgs) { if (GalleryPreferences.packaged) { microsoft.windows.badgenotifications.BadgeNotificationManager.current.setBadgeAsGlyph(selectedGlyph); isBadgeSetted = true } }

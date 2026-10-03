@@ -692,20 +692,22 @@ internal class KotlinExpectActualProjectionRenderer(
             .addSuperclassConstructorParameter("nativeObject")
             .addSuperclassConstructorParameter(primaryTypeHandleExpression)
 
+        baseRenderer.addInterfaceNativeProjectionMemberCaches(builder, plan, emptyList(), emptyList(), emptyList())
         val emittedMethods = mutableSetOf<String>()
         val emittedProperties = mutableSetOf<String>()
         val emittedEvents = mutableSetOf<String>()
         baseRenderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
+            val invokeTarget = baseRenderer.interfaceNativeProjectionObjectReference(plan, interfaceType).toString()
             interfaceType.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 val key = projectedMethodSignatureKey(method)
                 if (emittedMethods.add(key)) {
-                    builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName))
+                    builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, invokeTarget))
                 }
             }
             interfaceType.properties.filterNot(WinRTPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
                 val propertyName = property.name.replaceFirstChar(Char::lowercase)
                 if (emittedProperties.add(propertyName)) {
-                    builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName))
+                    builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, invokeTarget))
                 }
             }
             interfaceType.events.filterNot(WinRTEventDefinition::isStatic).forEach { event ->
@@ -722,7 +724,7 @@ internal class KotlinExpectActualProjectionRenderer(
                                 ?.events
                                 ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
                                 ?.delegateTypeName,
-                            eventSourceObjectReference = baseRenderer.interfaceNativeProjectionEventSourceObjectReference(plan, interfaceType),
+                            eventSourceObjectReference = baseRenderer.interfaceNativeProjectionObjectReference(plan, interfaceType),
                             eventSourceAddSlot = baseRenderer.metadataSlotExpression(interfaceType, "${event.name.uppercase()}_ADD_SLOT"),
                             fallbackToAddRemove = false,
                         ),
@@ -738,6 +740,7 @@ internal class KotlinExpectActualProjectionRenderer(
         slotInterfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
         method: WinRTMethodDefinition,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
+        invokeTargetExpression: String,
     ): FunSpec {
         val returnBinding = baseRenderer.renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName, slotInterfaceType.namespace)
         val parameterBindings = method.parameters.map { parameter ->
@@ -754,7 +757,7 @@ internal class KotlinExpectActualProjectionRenderer(
             typesByQualifiedName = typesByQualifiedName,
         ) ?: error("Generator interface proxy parity failed to plan ${slotInterfaceType.qualifiedName}.${method.name}")
         val invocation = baseRenderer.renderInlineAbiInvocation(
-            invokeTargetExpression = "nativeObject",
+            invokeTargetExpression = invokeTargetExpression,
             slotExpression = baseRenderer.metadataSlotExpression(slotInterfaceType, method.abiSlotConstantName(slotInterfaceType.methods)),
             callPlan = callPlan,
         )
@@ -772,6 +775,7 @@ internal class KotlinExpectActualProjectionRenderer(
         slotInterfaceType: io.github.composefluent.winrt.metadata.WinRTTypeDefinition,
         property: WinRTPropertyDefinition,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRTTypeDefinition>,
+        invokeTargetExpression: String,
     ): PropertySpec {
         val propertyTypeName = property.projectedPropertyTypeName(slotInterfaceType.qualifiedName, typesByQualifiedName)
         val builder = PropertySpec.builder(
@@ -792,7 +796,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     .addCode(
                         "%L\n",
                         baseRenderer.renderInlineAbiInvocation(
-                            invokeTargetExpression = "nativeObject",
+                            invokeTargetExpression = invokeTargetExpression,
                             slotExpression = CodeBlock.of("%T.Metadata.%L", baseRenderer.resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
                             callPlan = getterCallPlan,
                         ),
@@ -827,7 +831,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     .addCode(
                         "%L\n",
                         baseRenderer.renderInlineAbiInvocation(
-                            invokeTargetExpression = "nativeObject",
+                            invokeTargetExpression = invokeTargetExpression,
                             slotExpression = CodeBlock.of("%T.Metadata.%L", baseRenderer.resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
                             callPlan = setterCallPlan,
                         ),

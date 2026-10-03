@@ -1,0 +1,8 @@
+--- header
+Driving several related animations together using ExpressionAnimation
+--- kotlin
+private fun StackedButtonsExample_Loaded(sender: Any?, args: RoutedEventArgs) {
+        val animation = compositor.createExpressionAnimation("(above.Scale.Y - 1) * 50 + above.Translation.Y % (50 * index)").apply { target = "Translation.Y" }
+        val buttons = listOf(ExpressionButton1, ExpressionButton2, ExpressionButton3, ExpressionButton4)
+        for (index in 1..3) { animation.setExpressionReferenceParameter("above", buttons[index - 1]); animation.setScalarParameter("index", index.toFloat()); buttons[index].startAnimation(animation) }
+    }

@@ -1,0 +1,20 @@
+--- header
+Adding items to a custom group
+--- Kotlin
+private fun AddCustomGroupButton_Click(sender: Any?, args: RoutedEventArgs) {
+    if (!JumpList.isSupported()) return
+    tasks.launch {
+        val list = JumpList.loadCurrentAsync().await()
+        list.items.add(JumpListItem.createWithArguments("/project-alpha", "Project Alpha").apply {
+            groupName = "Projects"
+            description = "Open Project Alpha"
+            logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
+        })
+        list.items.add(JumpListItem.createWithArguments("/project-beta", "Project Beta").apply {
+            groupName = "Projects"
+            description = "Open Project Beta"
+            logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
+        })
+        list.saveAsync().await()
+    }
+}

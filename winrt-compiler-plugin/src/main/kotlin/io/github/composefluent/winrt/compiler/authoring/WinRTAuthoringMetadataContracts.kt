@@ -3,6 +3,8 @@ package io.github.composefluent.winrt.compiler.authoring
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
+import io.github.composefluent.winrt.metadata.winRTMappedTypeForKotlinName
+import io.github.composefluent.winrt.metadata.winRTMappedTypeForAbiName
 import io.github.composefluent.winrt.runtime.Guid
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,6 +18,15 @@ data class IndexedWinRTType(
     val iid: Guid? = null,
 )
 
+/** CsWinRT AotOptimizer.AddWinRTInterfaceToVtable gives ordinary managed models
+ * mapped-interface CCWs without making them activatable exported components.
+ * The runtime owns these adapters; explicit authoring still opts into a component.
+ */
+internal fun requiresComponentAuthoring(types: List<IndexedWinRTType>, explicit: Boolean): Boolean =
+    types.isNotEmpty() && (explicit || types.any {
+        it.kind != WinRTTypeKind.Interface.name || winRTMappedTypeForAbiName(it.qualifiedName.substringBefore('`'))?.mappedQualifiedName == null
+    })
+
 data class KotlinWinRTAuthoredTypeCandidate(
     val packageName: String,
     val className: String,
@@ -26,6 +37,8 @@ data class KotlinWinRTAuthoredTypeCandidate(
     val isPublic: Boolean = true,
     val activatableFactoryInterfaceName: String? = null,
     val staticFactoryInterfaceNames: List<String> = emptyList(),
+    /** Original KMP fragment; source generation must not move a platform class into common code. */
+    val sourceSetName: String? = null,
 )
 
 data class KotlinWinRTAuthoredRuntimeClassAnnotation(
@@ -34,6 +47,7 @@ data class KotlinWinRTAuthoredRuntimeClassAnnotation(
     val overridableInterfaceNames: List<String> = emptyList(),
     val activatableFactoryInterfaceName: String? = null,
     val staticFactoryInterfaceNames: List<String> = emptyList(),
+    val isPresent: Boolean = false,
 ) {
     val hasMetadata: Boolean
         get() = baseClassName != null ||
@@ -93,7 +107,11 @@ object KotlinWinRTAuthoringCandidateFile {
                 candidate.isPublic.toString(),
                 candidate.activatableFactoryInterfaceName.orEmpty(),
                 candidate.staticFactoryInterfaceNames.joinToString(";"),
-            ).joinToString("\t")
+            ).let { columns ->
+                // Keep legacy standalone scans byte-compatible; the extra column
+                // is needed only when Gradle supplies an original source fragment.
+                if (candidate.sourceSetName == null) columns else columns + candidate.sourceSetName
+            }.joinToString("\t")
         }
         if (!Files.isRegularFile(path) || Files.readString(path) != content) {
             path.writeText(
@@ -104,7 +122,7 @@ object KotlinWinRTAuthoringCandidateFile {
 
     private fun parseLine(line: String): KotlinWinRTAuthoredTypeCandidate? {
         val parts = line.split('\t')
-        if (parts.size != 7 && parts.size != 9) {
+        if (parts.size != 7 && parts.size != 9 && parts.size != 10) {
             return null
         }
         if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
@@ -121,6 +139,7 @@ object KotlinWinRTAuthoringCandidateFile {
             isPublic = isPublic,
             activatableFactoryInterfaceName = parts.getOrNull(7)?.takeIf(String::isNotBlank),
             staticFactoryInterfaceNames = parts.getOrNull(8)?.semicolonListOrNull() ?: emptyList(),
+            sourceSetName = parts.getOrNull(9)?.takeIf(String::isNotBlank),
         )
     }
 }
@@ -295,7 +314,8 @@ fun resolveIndexedWinRTTypeByProjectedName(
     typeName: String,
     winRTTypes: Map<String, IndexedWinRTType>,
 ): IndexedWinRTType? {
-    val projectedName = projectionPackageToMetadataName(typeName)
+    val projectedName = winRTMappedTypeForKotlinName(typeName)?.abiQualifiedName
+        ?: projectionPackageToMetadataName(typeName)
     return winRTTypes[typeName]
         ?: winRTTypes[projectedName]
         ?: winRTTypes.values.firstOrNull { type ->

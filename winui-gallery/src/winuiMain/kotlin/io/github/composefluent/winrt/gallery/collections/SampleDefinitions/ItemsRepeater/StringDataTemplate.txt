@@ -1,0 +1,11 @@
+<DataTemplate x:Key="StringDataTemplate" x:DataType="x:String">
+            <Grid Margin="10" Background="{ThemeResource SystemControlBackgroundAccentBrush}">
+                <TextBlock
+                    Padding="10"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource SystemControlForegroundChromeWhiteBrush}"
+                    Text="{x:Bind}"
+                    TextWrapping="Wrap" />
+            </Grid>
+        </DataTemplate>

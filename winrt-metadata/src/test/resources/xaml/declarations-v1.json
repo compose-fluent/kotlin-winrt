@@ -1,0 +1,49 @@
+{
+  "SchemaVersion": 1,
+  "Pages": [
+    {
+      "ClassName": "probe.MainPage",
+      "ResourcePath": "MainPage.xaml",
+      "BaseTypeName": "Microsoft.UI.Xaml.Controls.Page",
+      "IsApplication": false,
+      "Features": [
+        "named-elements",
+        "events"
+      ],
+      "Connections": [
+        {
+          "Id": 1,
+          "TypeName": "Microsoft.UI.Xaml.Controls.Page",
+          "FieldName": null,
+          "Location": {
+            "Line": 1,
+            "Column": 2
+          },
+          "Events": []
+        },
+        {
+          "Id": 2,
+          "TypeName": "Microsoft.UI.Xaml.Controls.Button",
+          "FieldName": "myButton",
+          "Location": {
+            "Line": 4,
+            "Column": 4
+          },
+          "Events": [
+            {
+              "Name": "Click",
+              "HandlerName": "onClick",
+              "DeclaringTypeName": "Microsoft.UI.Xaml.Controls.Primitives.ButtonBase",
+              "DelegateTypeName": "Microsoft.UI.Xaml.RoutedEventHandler",
+              "Location": {
+                "Line": 4,
+                "Column": 45
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Resources": []
+}

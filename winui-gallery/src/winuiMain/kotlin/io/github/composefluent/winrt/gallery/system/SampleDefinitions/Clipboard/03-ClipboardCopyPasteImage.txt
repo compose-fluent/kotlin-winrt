@@ -1,0 +1,42 @@
+--- header
+Copy and paste an image
+--- Kotlin
+private fun CopyImage_Click(sender: Any?, args: RoutedEventArgs) {
+    val packageContent = DataPackage().apply {
+        setBitmap(RandomAccessStreamReference.createFromUri(Uri("ms-appx:///Assets/SampleMedia/rainier.jpg")))
+    }
+    val copied = Clipboard.setContentWithOptions(packageContent, ClipboardContentOptions())
+    ImageStatusText.text = if (copied) "Image copied to clipboard." else "Error copying image to clipboard."
+    ImageStatusText.visibility = Visibility.Visible
+    if (copied) announce(checkNotNull(sender).asWinRT<UIElement>(), "Image copied to clipboard", "ImageCopiedSuccessNotificationId")
+}
+
+private fun PasteImage_Click(sender: Any?, args: RoutedEventArgs) {
+    tasks.launch {
+        val packageView = Clipboard.getContent()
+        if (!packageView.contains(StandardDataFormats.bitmap)) {
+            ImageStatusText.text = "Bitmap format is not available in the clipboard."
+            ImageStatusText.visibility = Visibility.Visible
+            PastedImage.visibility = Visibility.Collapsed
+            return@launch
+        }
+        try {
+            val stream = packageView.getBitmapAsync().await().openReadAsync().await()
+            try {
+                val bitmap = BitmapImage()
+                bitmap.setSourceAsync(stream).await()
+                PastedImage.source = bitmap
+            } finally {
+                stream.close()
+            }
+            PastedImage.visibility = Visibility.Visible
+            ImageStatusText.text = "Image pasted from clipboard."
+            announce(checkNotNull(sender).asWinRT<UIElement>(), "Image pasted from clipboard", "ImagePastedSuccessNotificationId")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            ImageStatusText.text = "Error pasting image: " + error.message
+        }
+        ImageStatusText.visibility = Visibility.Visible
+    }
+}

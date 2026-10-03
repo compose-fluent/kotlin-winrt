@@ -1,0 +1,57 @@
+<UserControl
+    x:Class="io.github.composefluent.winrt.gallery.controls.SampleCodePresenter"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:io.github.composefluent.winrt.gallery.controls"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    VerticalContentAlignment="Top"
+    ActualThemeChanged="SampleCodePresenter_ActualThemeChanged"
+    Loaded="SampleCodePresenter_Loaded"
+    mc:Ignorable="d">
+
+    <Grid
+        Background="{x:Bind Background, Mode=OneWay}"
+        BorderBrush="{x:Bind BorderBrush, Mode=OneWay}"
+        BorderThickness="{x:Bind BorderThickness, Mode=OneWay}"
+        CornerRadius="{x:Bind CornerRadius, Mode=OneWay}">
+        <ScrollViewer
+            x:Name="CodeScrollViewer"
+            VerticalAlignment="{x:Bind VerticalContentAlignment, Mode=OneWay}"
+            HorizontalScrollBarVisibility="Auto"
+            HorizontalScrollMode="Auto"
+            Loaded="CodeScrollViewer_Loaded"
+            VerticalScrollBarVisibility="Auto"
+            VerticalScrollMode="Auto">
+            <ContentPresenter
+                x:Name="CodePresenter"
+                Padding="{x:Bind Padding, Mode=OneWay}"
+                MinHeight="30"
+                Loaded="CodePresenter_Loaded" />
+        </ScrollViewer>
+        <Border
+            x:Name="CopyButtonBorder"
+            Margin="0,0,8,0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Background="{ThemeResource ControlOnImageFillColorDefaultBrush}"
+            CornerRadius="{ThemeResource ControlCornerRadius}">
+            <local:CopyButton
+                x:Name="CopyCodeButton"
+                Click="CopyCodeButton_Click"
+                Content="&#xE8C8;" />
+        </Border>
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="SampleProgrammingLanguageState">
+                <VisualState x:Name="XAMLSample" />
+                <VisualState x:Name="KotlinSample" />
+                <VisualState x:Name="InlineSample">
+                    <VisualState.Setters>
+                        <Setter Target="CodeScrollViewer.HorizontalScrollMode" Value="Disabled" />
+                        <Setter Target="CodeScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+</UserControl>

@@ -1,0 +1,28 @@
+--- header
+Adding AnimatedIcon to a button
+--- xaml
+<Button PointerEntered="Button_PointerEntered" PointerExited="Button_PointerExited" Width="75">
+    <AnimatedIcon x:Name="SearchAnimatedIcon">
+        <AnimatedIcon.Source>
+            <animatedvisuals:$(AnimatedVisualSourceKind)/>
+        </AnimatedIcon.Source>
+        <AnimatedIcon.FallbackIconSource>
+            <SymbolIconSource Symbol="Find"/>
+        </AnimatedIcon.FallbackIconSource>
+    </AnimatedIcon>
+</Button>
+--- kotlin
+private fun Button_PointerEntered(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs) { AnimatedIcon.setState(SearchAnimatedIcon, "PointerOver") }
+    private fun Button_PointerExited(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs) { AnimatedIcon.setState(SearchAnimatedIcon, "Normal") }
+    companion object {
+        fun GetAnimationSourceFromString(selection: Any?): IAnimatedVisualSource2 = when (selection?.toString()) {
+            "AnimatedBackVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedBackVisualSource()
+            "AnimatedChevronDownSmallVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedChevronDownSmallVisualSource()
+            "AnimatedChevronRightDownSmallVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedChevronRightDownSmallVisualSource()
+            "AnimatedChevronUpDownSmallVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedChevronUpDownSmallVisualSource()
+            "AnimatedFindVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedFindVisualSource()
+            "AnimatedGlobalNavigationButtonVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedGlobalNavigationButtonVisualSource()
+            "AnimatedSettingsVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedSettingsVisualSource()
+            else -> error("$selection is not a valid animated visual")
+        }
+    }

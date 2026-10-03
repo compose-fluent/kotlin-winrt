@@ -4,23 +4,38 @@ internal object InteropRuntimeHooks {
     private val augmentedDefinitionCache =
         WeakKeyStateMap<WinRTCcwDefinition, CachedAugmentedDefinition>()
     @kotlin.concurrent.Volatile
-    private var lastAugmentedBase: WinRTCcwDefinition? = null
-    @kotlin.concurrent.Volatile
-    private var lastAugmentedConfiguration: AugmentationConfiguration? = null
-    @kotlin.concurrent.Volatile
-    private var lastAugmentedDefinition: WinRTCcwDefinition? = null
+    private var lastAugmentation: LastAugmentation? = null
 
     fun augmentInspectableDefinition(
         definition: WinRTCcwDefinition,
     ): WinRTCcwDefinition {
+        val last = lastAugmentation
+        val sameBase = definition === last?.base
         val customPropertyProvider =
-            XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
-                existingInterfaceIds = definition.interfaceDefinitions.mapTo(linkedSetOf()) { it.interfaceId },
-            )
-        val configuration = AugmentationConfiguration.current(customPropertyProvider != null)
-        if (definition === lastAugmentedBase && configuration == lastAugmentedConfiguration) {
-            lastAugmentedDefinition?.let { return it }
+            if (sameBase) {
+                XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
+                    existingInterfaceDefinitions = definition.interfaceDefinitions,
+                )
+            } else {
+                XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
+                    existingInterfaceIds = definition.interfaceDefinitions.mapTo(linkedSetOf()) { it.interfaceId },
+                )
+            }
+        val defaultCustomTypeMappings = FeatureSwitches.enableDefaultCustomTypeMappings
+        val customPropertyProviderSupport = FeatureSwitches.enableICustomPropertyProviderSupport
+        val customPropertyProviderIncluded = customPropertyProvider != null
+        if (sameBase && last != null &&
+            last.configuration.defaultCustomTypeMappings == defaultCustomTypeMappings &&
+            last.configuration.customPropertyProviderSupport == customPropertyProviderSupport &&
+            last.configuration.customPropertyProviderIncluded == customPropertyProviderIncluded
+        ) {
+            return last.definition
         }
+        val configuration = AugmentationConfiguration(
+            defaultCustomTypeMappings = defaultCustomTypeMappings,
+            customPropertyProviderSupport = customPropertyProviderSupport,
+            customPropertyProviderIncluded = customPropertyProviderIncluded,
+        )
         val cacheable =
             definition.queryInterfaceFallback == null &&
                 (definition.interfaceDefinitions + definition.hiddenInterfaceDefinitions)
@@ -54,17 +69,13 @@ internal object InteropRuntimeHooks {
         configuration: AugmentationConfiguration,
         definition: WinRTCcwDefinition,
     ): WinRTCcwDefinition {
-        lastAugmentedBase = base
-        lastAugmentedConfiguration = configuration
-        lastAugmentedDefinition = definition
+        lastAugmentation = LastAugmentation(base, configuration, definition)
         return definition
     }
 
     internal fun clearForTests() {
         augmentedDefinitionCache.clear()
-        lastAugmentedBase = null
-        lastAugmentedConfiguration = null
-        lastAugmentedDefinition = null
+        lastAugmentation = null
     }
 
     private fun augmentInspectableDefinitionUncached(
@@ -105,20 +116,19 @@ internal object InteropRuntimeHooks {
         val definition: WinRTCcwDefinition,
     )
 
+    // This replaces the existing single-entry hot cache with one coherent publication. The weak-map
+    // value deliberately does not retain the base definition; only this last-entry owner does.
+    private class LastAugmentation(
+        val base: WinRTCcwDefinition,
+        val configuration: AugmentationConfiguration,
+        val definition: WinRTCcwDefinition,
+    )
+
     private data class AugmentationConfiguration(
         val defaultCustomTypeMappings: Boolean,
         val customPropertyProviderSupport: Boolean,
         val customPropertyProviderIncluded: Boolean,
-    ) {
-        companion object {
-            fun current(customPropertyProviderIncluded: Boolean): AugmentationConfiguration =
-                AugmentationConfiguration(
-                defaultCustomTypeMappings = FeatureSwitches.enableDefaultCustomTypeMappings,
-                customPropertyProviderSupport = FeatureSwitches.enableICustomPropertyProviderSupport,
-                customPropertyProviderIncluded = customPropertyProviderIncluded,
-            )
-        }
-    }
+    )
 
     private val referenceAppendedInterfaceIds = setOf(
         IID.IStringable,

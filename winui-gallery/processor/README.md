@@ -15,6 +15,18 @@ collects resolved FIR symbols, and replaces those spans' enum constants in IR.
 The resulting application contains only text and final spans; no compiler or
 semantic index is shipped with it.
 
+Migrated XAML pages keep independent `SampleDefinitions/<route>/*.txt` files in
+the page's directory, following upstream `ControlExample.SampleDefinition`.
+Each definition has `header`, `xaml`, and optional `kotlin` sections. The catalog
+selects both languages by example title; it never repeats the complete page for
+each example. A markup-only example has only an XAML tab. Both markup and sample
+definition files participate in the KSP input fingerprint.
+
+These standalone display fragments use syntax highlighting, since they are not
+compilation units with a source origin. Source-extracted Kotlin examples retain
+the FIR-based semantic coloring described below. The definition text is display
+data only; the adjacent page files remain the compiled implementation.
+
 Resolution uses the actual target's source files and dependencies, including WinUI
 projections. It distinguishes declarations, constructor/member/package/extension
 calls, local and captured variables, parameters, instance/package/extension

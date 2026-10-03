@@ -1,0 +1,4 @@
+--- header
+A simple Slider.
+--- xaml
+<Slider AutomationProperties.Name="Simple example" Width="200"/>

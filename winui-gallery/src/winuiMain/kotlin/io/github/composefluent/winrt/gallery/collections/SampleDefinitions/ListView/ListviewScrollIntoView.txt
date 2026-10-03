@@ -1,0 +1,15 @@
+--- header
+Scroll a ListView programmatically with ScrollIntoView.
+--- xaml
+<ListView x:Name="ScrollIntoViewListView"
+          Height="220" Width="400" HorizontalAlignment="Left"
+          BorderThickness="1" BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+          ItemsSource="{x:Bind contacts6}">
+    <ListView.ItemTemplate>
+        <DataTemplate x:DataType="x:String">
+            <TextBlock Text="{x:Bind}" Margin="0,8,0,8"/>
+        </DataTemplate>
+    </ListView.ItemTemplate>
+</ListView>
+--- kotlin
+private fun ScrollIntoViewButton_Click(sender: Any?, args: RoutedEventArgs) { val index = ScrollIndexNumberBox.value.toInt(); if (index in ScrollIntoViewListView.items.indices) ScrollIntoViewListView.scrollIntoView(ScrollIntoViewListView.items[index], if (ScrollAlignmentComboBox.selectedIndex == 1) ScrollIntoViewAlignment.Leading else ScrollIntoViewAlignment.Default) }

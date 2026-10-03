@@ -1,0 +1,18 @@
+--- header
+A basic autosuggest box.
+--- xaml
+<AutoSuggestBox TextChanged="AutoSuggestBox_TextChanged"
+                SuggestionChosen="AutoSuggestBox_SuggestionChosen"
+                Width="300" AutomationProperties.Name="Basic AutoSuggestBox"/>
+
+--- Kotlin
+private fun AutoSuggestBox_TextChanged(sender: AutoSuggestBox, args: AutoSuggestBoxTextChangedEventArgs) {
+    if (args.reason != AutoSuggestionBoxTextChangeReason.UserInput) return
+    val words = sender.text.split(' ')
+    sender.itemsSource = galleryCats.filter { cat -> words.all { cat.contains(it, ignoreCase = true) } }
+        .ifEmpty { listOf("No results found") }
+}
+
+private fun AutoSuggestBox_SuggestionChosen(sender: AutoSuggestBox, args: AutoSuggestBoxSuggestionChosenEventArgs) {
+    SuggestionOutput.text = args.selectedItem?.toString().orEmpty()
+}

@@ -12,6 +12,36 @@ internal fun WinRTEventDefinition.withNullableEventContract(ownerTypeName: Strin
 }
 
 internal fun WinRTMethodDefinition.withNullableReturnContract(ownerTypeName: String): WinRTMethodDefinition {
+    // WinUI ConnectedAnimationService_Partial.cpp returns S_OK with a null
+    // animation when the requested key is absent. Preserve it like CsWinRT's
+    // MarshalInterface<T>.FromAbi rather than constructing a zero-pointer RCW.
+    if (ownerTypeName.substringBeforeLast('.') in setOf("Microsoft.UI.Xaml.Media.Animation", "Windows.UI.Xaml.Media.Animation") &&
+        ownerTypeName.substringAfterLast('.') in setOf("ConnectedAnimationService", "IConnectedAnimationService") &&
+        name == "GetAnimation") {
+        return copy(returnTypeName = returnTypeName.removeSuffix("?") + "?")
+    }
+    // Virtualized ItemsControl containers do not exist until they are realized.
+    // CsWinRT MarshalInterface<T>.FromAbi preserves the SDK's null pointer, also
+    // used explicitly by WinUI Gallery's ItemsPageBase container lookup.
+    if (ownerTypeName.substringBeforeLast('.') in setOf("Microsoft.UI.Xaml.Controls", "Windows.UI.Xaml.Controls") &&
+        ownerTypeName.substringAfterLast('.') in setOf("ItemsControl", "IItemContainerMapping") &&
+        name in setOf("ContainerFromItem", "ContainerFromIndex")) {
+        return copy(returnTypeName = returnTypeName.removeSuffix("?") + "?")
+    }
+    // Gallery's StringOrIntTemplateSelector returns null for unmatched items.
+    // CsWinRT MarshalInterface<T>.FromAbi (WinRT.Runtime/Marshalers.cs) preserves
+    // a zero ABI pointer. Normalize before planning so base calls and authored
+    // overrides expose the same nullable contract on JVM and Native.
+    if (ownerTypeName.substringBeforeLast('.') in setOf("Microsoft.UI.Xaml.Controls", "Windows.UI.Xaml.Controls") &&
+        ownerTypeName.substringAfterLast('.') in setOf("DataTemplateSelector", "IDataTemplateSelector", "IDataTemplateSelectorOverrides", "IDataTemplateSelectorOverrides2") &&
+        name in setOf("SelectTemplate", "SelectTemplateCore")) {
+        return copy(returnTypeName = returnTypeName.removeSuffix("?") + "?")
+    }
+    // XamlCompiler CSharpPagePass2.tt returns null when there is no binding scope.
+    // CsWinRT MarshalInterface<T>.FromAbi preserves that null across the ABI.
+    if (ownerTypeName == "Microsoft.UI.Xaml.Markup.IComponentConnector" && name == "GetBindingConnector") {
+        return copy(returnTypeName = returnTypeName.removeSuffix("?") + "?")
+    }
     // Picker cancellation completes successfully with a null result. CsWinRT's
     // MarshalInterface<T>.FromAbi preserves null; the operation itself is nonnull.
     val pickerNamespace = ownerTypeName.substringBeforeLast('.')
@@ -37,6 +67,28 @@ internal fun WinRTMethodDefinition.withNullableReturnContract(ownerTypeName: Str
         ) || name != "CreateDefaultItemTransitionProvider") return this
     // Nullability is a projection contract, not part of a WinMD type signature.
     return copy(returnTypeName = returnTypeName.removeSuffix("?") + "?")
+}
+
+internal fun WinRTMethodDefinition.withNullableParameterContract(ownerTypeName: String): WinRTMethodDefinition {
+    // CsWinRT MarshalInterface<T>.FromManaged (Marshalers.cs) sends null as a
+    // zero pointer. These documented XAML operations use it for the tree root,
+    // removing a composition child, and the default navigation transition.
+    // Normalize once so calls and authored overrides share this contract.
+    val ownerNamespace = ownerTypeName.substringBeforeLast('.')
+    val owner = ownerTypeName.substringAfterLast('.')
+    val nullableType = when {
+        ownerNamespace in setOf("Microsoft.UI.Xaml", "Windows.UI.Xaml") &&
+            owner in setOf("UIElement", "IUIElement") && name == "TransformToVisual" -> "$ownerNamespace.UIElement"
+        ownerNamespace in setOf("Microsoft.UI.Xaml.Hosting", "Windows.UI.Xaml.Hosting") &&
+            owner in setOf("ElementCompositionPreview", "IElementCompositionPreviewStatics") &&
+            name == "SetElementChildVisual" -> if (ownerNamespace.startsWith("Microsoft")) "Microsoft.UI.Composition.Visual" else "Windows.UI.Composition.Visual"
+        ownerNamespace in setOf("Microsoft.UI.Xaml.Controls", "Windows.UI.Xaml.Controls") &&
+            owner in setOf("Frame", "IFrame", "IFrame2") && name == "Navigate" -> ownerNamespace.removeSuffix(".Controls") + ".Media.Animation.NavigationTransitionInfo"
+        else -> return this
+    }
+    return copy(parameters = parameters.map { parameter ->
+        if (parameter.typeName.removeSuffix("?") == nullableType) parameter.copy(typeName = "$nullableType?") else parameter
+    })
 }
 
 fun WinRTPropertyDefinition.projectedPropertyTypeName(

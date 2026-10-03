@@ -1,0 +1,29 @@
+<DataTemplate x:Key="IconTextTemplate" x:DataType="local:CustomDataObject">
+            <RelativePanel
+                Width="280"
+                MinHeight="160"
+                AutomationProperties.Name="{x:Bind Title}">
+                <Image
+                    x:Name="image"
+                    Width="18"
+                    Margin="0,4,0,0"
+                    RelativePanel.AlignLeftWithPanel="True"
+                    RelativePanel.AlignTopWithPanel="True"
+                    Source="{x:Bind ImageLocation}"
+                    Stretch="Uniform" />
+                <TextBlock
+                    x:Name="title"
+                    Margin="8,0,0,0"
+                    RelativePanel.AlignTopWithPanel="True"
+                    RelativePanel.RightOf="image"
+                    Style="{StaticResource BaseTextBlockStyle}"
+                    Text="{x:Bind Title}" />
+                <TextBlock
+                    Margin="0,4,8,0"
+                    RelativePanel.Below="title"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Description}"
+                    TextTrimming="WordEllipsis"
+                    TextWrapping="Wrap" />
+            </RelativePanel>
+        </DataTemplate>

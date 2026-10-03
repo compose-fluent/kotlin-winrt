@@ -301,7 +301,6 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
         )
         listOf(
             "WinRTProjectionIntrinsic.setString:(Lio/github/composefluent/winrt/runtime/ComObjectReference;ILjava/lang/String;)V",
-            "WinRTProjectionIntrinsic.getInt32:(Lio/github/composefluent/winrt/runtime/ComObjectReference;I)I",
             "WinRTProjectionIntrinsic.getBoolean:(Lio/github/composefluent/winrt/runtime/ComObjectReference;I)Z",
             "WinRTProjectionIntrinsic.getString:(Lio/github/composefluent/winrt/runtime/ComObjectReference;I)Ljava/lang/String;",
             "WinRTManagedProjectionStateOwner.winRTManagedProjectionState",
@@ -323,8 +322,48 @@ val verifyPublishedRuntimeBoundary by tasks.registering {
             "confinedScope",
             "allocateBytes",
         )
-        check(localLoweringMarkers.none(consumerBytecode::contains)) {
-            "The JVM consumer locally contains lowered runtime implementation instead of ordinary calls."
+        // CsWinRT emits scalar ABI calls directly in generated members. Int32 likewise expands
+        // the published, already lowered runtime body; the ABI helper stays in the runtime JAR.
+        // Keep the other routes ordinary calls, and never allow a consumer-local ABI backend.
+        val consumerMethods = consumerBytecode.split(Regex("(?m)^  public static final "))
+        val inlineInt32Method = consumerMethods.single { it.startsWith("int consumePublishedInlineInt32(") }
+        val ordinaryMethods = consumerMethods.filterNot {
+            it.startsWith("int consumePublishedInlineInt32(")
+        }.joinToString("\n")
+        check(localLoweringMarkers.none(ordinaryMethods::contains)) {
+            "An ordinary runtime route contains lowered implementation in the JVM consumer."
+        }
+        listOf(
+            "acquireNativeScalarScratchFrame",
+            "NativeScalarScratchFrame.readInt32:()I",
+            "NativeScalarScratchFrame.close:()V",
+            "Reference.reachabilityFence:",
+            "throwHResultFailure-",
+        ).forEach { expectedCall ->
+            check(inlineInt32Method.contains(expectedCall)) {
+                "The published Int32 inline body is missing $expectedCall."
+            }
+        }
+        check("WinRTProjectionIntrinsic.getInt32:" !in inlineInt32Method)
+        val forbiddenInlineInt32Markers = localLoweringMarkers - setOf(
+            "acquireNativeScalarScratchFrame",
+            "NativeScalarScratchFrame",
+        )
+        check(forbiddenInlineInt32Markers.none(inlineInt32Method::contains)) {
+            "The Int32 consumer contains a local ABI backend instead of the published ABI helper."
+        }
+        val abiOwners = Regex("Method (io/github/composefluent/winrt/generated/abi/[\\w$]+)\\.")
+            .findAll(inlineInt32Method).map { it.groupValues[1] }.distinct().toList()
+        check(abiOwners.isNotEmpty()) { "The Int32 inline body does not call its published ABI helper." }
+        ZipFile(runtimeJar).use { runtimeArchive ->
+            abiOwners.forEach { abiOwner ->
+                check(runtimeArchive.getEntry("$abiOwner.class") != null) {
+                    "The inline ABI helper $abiOwner is missing from the published runtime JAR."
+                }
+                check(!consumerClassDirectory.resolve("$abiOwner.class").exists()) {
+                    "The inline ABI helper $abiOwner was generated inside the plugin-free consumer."
+                }
+            }
         }
         check(
                 "releaseWinRTManagedProjectionCallLease" !in consumerBytecode &&

@@ -1,0 +1,59 @@
+--- header
+Creating and customizing an AppWindow from a Window instance
+--- xaml
+<Window ...>
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <StackPanel HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8">
+        <Button x:Name="Hide"
+                Content="Hide"
+                Click="Hide_Click"
+                Width="200">
+            <ToolTipService.ToolTip>
+                <TextBlock Text="Hides the window from all UX representations in the system but keeps the object alive."
+                           TextWrapping="Wrap" />
+            </ToolTipService.ToolTip>
+        </Button>
+        <Button x:Name="Show"
+                Click="Show_Click"
+                Width="200" >
+            <ToolTipService.ToolTip>
+                <TextBlock Text="Hides and then shows the window and activates it after 3 seconds."
+                           TextWrapping="Wrap" />
+            </ToolTipService.ToolTip>
+            <TextBlock Text="Hide and show the window after 3 seconds" TextWrapping="WrapWholeWords" TextAlignment="Center"/>
+        </Button>
+        <Button x:Name="Close"
+                Click="Close_Click"
+                Width="200"
+                Margin="0,16,0,0">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <SymbolIcon Symbol="Cancel"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Margin="0,0,4,0" />
+                <TextBlock Text="Close"
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+            </StackPanel>
+            <ToolTipService.ToolTip>
+                <TextBlock Text="Closes the window and releases all resources."
+                           TextWrapping="Wrap" />
+            </ToolTipService.ToolTip>
+        </Button>
+    </StackPanel>
+</Window>
+--- kotlin
+internal class SampleWindow1 : Window() {
+    private val tasks by lazy { GalleryPageTasks(checkNotNull(content).asWinRT<FrameworkElement>()) }
+    override fun initializeComponent() { super.initializeComponent(); GalleryWindows.track(this) }
+    fun Configure(windowTitle: String, width: Int, height: Int, x: Int, y: Int) { checkNotNull(appWindow).apply {
+        title = windowTitle; resize(SizeInt32(width,height)); move(PointInt32(x,y)); setTaskbarIcon("Assets/Tiles/GalleryIcon.ico"); setTitleBarIcon("Assets/Tiles/GalleryIcon.ico"); titleBar?.preferredTheme = TitleBarTheme.UseDefaultAppMode
+    } }
+    private fun Show_Click(sender: Any?, args: RoutedEventArgs) { tasks.launch { checkNotNull(appWindow).hide(); delay(3000); checkNotNull(appWindow).show() } }
+    private fun Hide_Click(sender: Any?, args: RoutedEventArgs) { appWindow?.hide() }
+    private fun Close_Click(sender: Any?, args: RoutedEventArgs) { close() }
+
+}

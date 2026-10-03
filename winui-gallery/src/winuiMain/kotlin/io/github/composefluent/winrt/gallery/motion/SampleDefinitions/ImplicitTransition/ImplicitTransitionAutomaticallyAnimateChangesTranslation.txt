@@ -1,0 +1,22 @@
+--- header
+Automatically animate changes to Translation
+--- xaml
+<!-- Automatically animate changes to Translation -->
+<Rectangle x:Name="rectangle" Width="50" Height="50" Translation="0,0,0" >
+    <Rectangle.TranslationTransition>
+        <Vector3Transition />
+    </Rectangle.TranslationTransition>
+</Rectangle>
+--- kotlin
+TranslateRectangle.translationTransition = Vector3Transition()
+
+private fun EnsureValueIsNumber(box: NumberBox): Float { if (box.value.isNaN()) box.value = 0.0; return box.value.toFloat() }
+
+private fun Components(x: CheckBox, y: CheckBox, z: CheckBox): Vector3TransitionComponents =
+    (if (x.isChecked == true) Vector3TransitionComponents.X else Vector3TransitionComponents(0u)) or
+    (if (y.isChecked == true) Vector3TransitionComponents.Y else Vector3TransitionComponents(0u)) or
+    (if (z.isChecked == true) Vector3TransitionComponents.Z else Vector3TransitionComponents(0u))
+
+private fun ApplyTranslation(value: Float) { checkNotNull(TranslateRectangle.translationTransition).components = Components(TranslateX, TranslateY, TranslateZ); TranslateRectangle.translation = windows.foundation.numerics.Vector3(value, value, value); TranslationValue.Value = value; announce(TranslateBtn, "Rectangle translated by $value points", "RectangleChangedNotificationActivityId") }
+
+private fun TranslateButton_Click(sender: Any?, args: RoutedEventArgs) { ApplyTranslation(sender?.asWinRT<Button>()?.tag?.toString()?.toFloatOrNull() ?: EnsureValueIsNumber(TranslationNumberBox)) }

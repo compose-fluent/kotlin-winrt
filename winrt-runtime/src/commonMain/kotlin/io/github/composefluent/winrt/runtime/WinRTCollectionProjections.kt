@@ -59,8 +59,6 @@ open class WinRTReferenceValueAdapter<T>(
             action.invoke(inputAbi, resultOut)
         }
 
-    internal open fun asDirectHStringInputOrNull(value: T): String? = null
-
     open fun createOutputMarshaler(value: T): WinRTObjectMarshaler =
         marshaller(value).let { reference ->
             WinRTObjectMarshaler(reference.getRefPointer().asRawAddress(), reference::close)
@@ -114,8 +112,6 @@ object WinRTReferenceValueAdapters {
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, IID.NullableString) },
         ) {
             override val abiValueIsComReference: Boolean = false
-
-            override fun asDirectHStringInputOrNull(value: String): String = value
 
             override fun createInputMarshaler(value: String): WinRTObjectMarshaler {
                 val marshaler = NativeStringMarshaller.createMarshaler(value)
@@ -182,8 +178,21 @@ object WinRTReferenceValueAdapters {
             override fun createInputMarshaler(value: Any?): WinRTObjectMarshaler =
                 WinRTObjectMarshaller.createMarshaler(value)
 
-            override fun createOutputMarshaler(value: Any?): WinRTObjectMarshaler =
-                WinRTObjectMarshaller.createMarshaler(value)
+            // CsWinRT MarshalInspectable<T>.FromManaged detaches the caller's owned output.
+            // Closing this transfer carrier must leave that reference in the ABI result slot.
+            override fun createOutputMarshaler(value: Any?): WinRTObjectMarshaler {
+                val abi = WinRTObjectMarshaller.fromManaged(value)
+                return try {
+                    WinRTObjectMarshaler(abi)
+                } catch (error: Throwable) {
+                    try {
+                        disposeAbi(abi)
+                    } catch (cleanupError: Throwable) {
+                        error.addSuppressed(cleanupError)
+                    }
+                    throw error
+                }
+            }
         }
 
     fun <T : Any> valueType(
@@ -252,9 +261,16 @@ object WinRTReferenceValueAdapters {
         // the adapter so the hot path does not rebuild either descriptor or projector closure.
         val projectedTypeName = typeHandle.projectedTypeName
         val defaultInterfaceId = typeHandle.interfaceId
+        // CsWinRT GuidGenerator.GetSignature keeps runtime classes distinct from IInspectable
+        // when computing closed collection IIDs. Reuse the registered native name here too.
+        val runtimeClassName = TypeNameSupport.inferRuntimeClassName(projectedType)
+            ?: error("Runtime class '$projectedTypeName' is missing its registered WinRT class name.")
         return object : WinRTReferenceValueAdapter<T>(
             projectedTypeName = projectedTypeName,
-            typeSignature = WinRTTypeSignature.object_(),
+            typeSignature = WinRTTypeSignature.runtimeClass(
+                runtimeClassName,
+                WinRTTypeSignature.guid(defaultInterfaceId),
+            ),
             projector = { reference ->
                 val inspectable = reference?.asInspectable()
                     ?: throw WinRTInvalidCastException(
@@ -655,6 +671,10 @@ object WinRTReadOnlyListProjection {
 
         override fun get(index: Int): T = adapter[index]
 
+        override fun indexOf(element: T): Int = adapter.indexOf(element)
+
+        override fun contains(element: T): Boolean = adapter.contains(element)
+
         override fun close() {
             vectorView.close()
         }
@@ -822,6 +842,12 @@ object WinRTListProjection {
             get() = adapter.size
 
         override fun get(index: Int): T = adapter[index]
+
+        override fun indexOf(element: T): Int = adapter.indexOf(element)
+
+        override fun contains(element: T): Boolean = adapter.contains(element)
+
+        override fun remove(element: T): Boolean = adapter.remove(element)
 
         override fun set(index: Int, element: T): T = adapter.set(index, element)
 
@@ -1051,7 +1077,13 @@ object WinRTReadOnlyDictionaryProjection {
         override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractMap<K, V>(), IWinRTObject, AutoCloseable {
         private val lookupAction = RawAddressPairAction<V?> { keyAbi, resultOut ->
-            mapView.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+            // CsWinRT IReadOnlyDictionaryMethods.TryGetValue checks HasKey before Lookup.
+            // Keep the input marshaler alive across both calls instead of marshaling the key twice.
+            if (mapView.hasKey(keyAbi)) {
+                mapView.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+            } else {
+                null
+            }
         }
 
         override val nativeObject: ComObjectReference
@@ -1081,16 +1113,8 @@ object WinRTReadOnlyDictionaryProjection {
                 mapView.hasKey(keyAbi)
             }
 
-        override fun get(key: K): V? {
-            // CsWinRT IReadOnlyDictionaryMethods.TryGetValue checks HasKey before Lookup.
-            if (!containsKey(key)) return null
-            val directHString = keyAdapter.asDirectHStringInputOrNull(key)
-            return if (directHString == null) {
-                keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
-            } else {
-                mapView.lookupProjectedOrNull(directHString, valueAdapter)
-            }
-        }
+        override fun get(key: K): V? =
+            keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
 
         override fun close() {
             mapView.close()
@@ -1227,7 +1251,14 @@ object WinRTDictionaryProjection {
         override val primaryTypeHandle: WinRTTypeHandle,
     ) : AbstractMutableMap<K, V>(), IWinRTObject, AutoCloseable {
         private val lookupAction = RawAddressPairAction<V?> { keyAbi, resultOut ->
-            map.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+            // CsWinRT IDictionaryMethods.TryGetValue checks HasKey first. In particular,
+            // XAML ResourceDictionary.Lookup reports E_FAIL for an absent resource key.
+            // Keep the input marshaler alive across both calls instead of marshaling the key twice.
+            if (map.hasKey(keyAbi)) {
+                map.lookupProjectedOrNull(keyAbi, resultOut, valueAdapter)
+            } else {
+                null
+            }
         }
 
         override val nativeObject: ComObjectReference
@@ -1267,17 +1298,8 @@ object WinRTDictionaryProjection {
             return previous
         }
 
-        override fun get(key: K): V? {
-            // CsWinRT IDictionaryMethods.TryGetValue checks HasKey first. In particular,
-            // XAML ResourceDictionary.Lookup reports E_FAIL for an absent resource key.
-            if (!containsKey(key)) return null
-            val directHString = keyAdapter.asDirectHStringInputOrNull(key)
-            return if (directHString == null) {
-                keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
-            } else {
-                map.lookupProjectedOrNull(directHString, valueAdapter)
-            }
-        }
+        override fun get(key: K): V? =
+            keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
 
         override fun remove(key: K): V? {
             val previous = get(key)
@@ -1626,19 +1648,45 @@ private fun <T> RawAddress.writeManagedValues(
     values: List<T>,
     adapter: WinRTReferenceValueAdapter<T>,
 ) {
-    values.forEachIndexed { index, value ->
-        adapter.createOutputMarshaler(value).use { marshaler ->
-            PlatformAbi.writePointerAt(this, index, marshaler.abi)
+    var writtenCount = 0
+    try {
+        values.forEachIndexed { index, value ->
+            writeManagedValue(value, adapter, index)
+            writtenCount++
         }
+    } catch (error: Throwable) {
+        // CsWinRT MarshalInterfaceHelper<T>.CopyManagedArray releases prior owned outputs.
+        // The scalar writer already rolled back the current element before propagating.
+        repeat(writtenCount) { index ->
+            try {
+                adapter.disposeAbi(PlatformAbi.readPointerAt(this, index))
+            } catch (cleanupError: Throwable) {
+                error.addSuppressed(cleanupError)
+            }
+        }
+        throw error
     }
 }
 
 private fun <T> RawAddress.writeManagedValue(
     value: T,
     adapter: WinRTReferenceValueAdapter<T>,
+    index: Int = 0,
 ) {
-    adapter.createOutputMarshaler(value).use { marshaler ->
-        PlatformAbi.writePointer(this, marshaler.abi)
+    val marshaler = adapter.createOutputMarshaler(value)
+    val abi = marshaler.abi
+    try {
+        marshaler.use {
+            PlatformAbi.writePointerAt(this, index, abi)
+        }
+    } catch (error: Throwable) {
+        // A successful output factory detached this owned ABI; use only closes its carrier.
+        try {
+            adapter.disposeAbi(abi)
+        } catch (cleanupError: Throwable) {
+            error.addSuppressed(cleanupError)
+        }
+        throw error
     }
 }
 

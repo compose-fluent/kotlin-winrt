@@ -1,52 +1,150 @@
+// Copyright (c) Microsoft Corporation. Licensed under the MIT License.
 package io.github.composefluent.winrt.gallery.fundamentals
 
 import io.github.composefluent.winrt.gallery.*
-import io.github.composefluent.winrt.runtime.await
+import io.github.composefluent.winrt.runtime.*
+import microsoft.ui.text.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.media.FontFamily
+import microsoft.ui.xaml.input.KeyRoutedEventArgs
+import windows.system.VirtualKey
 
 @GalleryPage(route = "ScratchPad", title = "Scratch Pad", group = "FundamentalsItem", order = 6)
-internal fun scratchPadPage() = Grid().apply {
-    margin = Thickness(0.0, 12.0, 0.0, 0.0); minHeight = 600.0; cornerRadius = corners(8.0)
-    borderBrush = GalleryTheme.brush("CardStrokeColorDefaultBrush"); borderThickness = inset(1.0)
-    rowDefinitions.add(starRow()); rowDefinitions.add(starRow())
-    val owner = this
-    val tasks = GalleryPageTasks(this)
-    fun initialContent() = label("Click the Load button to load the sample below.").apply { horizontalAlignment = HorizontalAlignment.Center; verticalAlignment = VerticalAlignment.Center }
-    val preview = scroll(initialContent()).apply { horizontalScrollBarVisibility = ScrollBarVisibility.Visible; horizontalScrollMode = ScrollMode.Auto; background = GalleryTheme.brush("SolidBackgroundFillColorBaseBrush") }
-    val status = label("")
-    // The user allows the code-view area to remain a placeholder. Do not expose
-    // an editable program and pretend that loading a fixed factory executes it.
-    val editor = TextBox().apply {
-        isReadOnly = true; acceptsReturn = true; fontFamily = FontFamily("Consolas"); fontSize = 12.0
-        text = "Kotlin source editor — coming soon\n\nThis preview is built from projected StackPanel, TextBlock and Button classes."
-        named(this, "Kotlin source editor placeholder")
+internal class ScratchPadPage : Page() {
+    private val tasks = GalleryPageTasks(this)
+    private var ready = false
+    private var lastChangeFromTyping = false
+    private var oldText = ""
+    private val document get() = checkNotNull(textbox.textDocument)
+    override fun initializeComponent() {
+        super.initializeComponent()
+        ready = true
+        resetContent()
     }
-    children.add(preview)
-    children.add(Grid().apply {
-        Grid.setRow(this, 1); padding = inset(12.0); columnSpacing = 12.0; rowSpacing = 8.0
-        background = GalleryTheme.brush("ExpanderContentBackground"); borderBrush = GalleryTheme.brush("DividerStrokeColorDefaultBrush"); borderThickness = Thickness(0.0, 1.0, 0.0, 0.0)
-        rowDefinitions.add(starRow()); rowDefinitions.add(autoRow()); columnDefinitions.add(column(1.0, GridUnitType.Star)); columnDefinitions.add(column(1.0, GridUnitType.Auto).apply { minWidth = 168.0 })
-        children.add(editor)
-        children.add(stack(8.0) {
-            Grid.setColumn(this, 1); verticalAlignment = VerticalAlignment.Top
-            children.add(Button("Load") {
-                preview.content = stack(0.0) {
-                    borderThickness = inset(1.0); borderBrush = brush(0x008000u); cornerRadius = corners(4.0); padding = inset(3.0)
-                    children.add(label("This is a sample TextBlock.")); children.add(Button().apply { content = "Click me!" })
-                }; status.text = "Sample loaded."
-            }.apply { horizontalAlignment = HorizontalAlignment.Stretch; style = controlStyle("AccentButtonStyle") })
-            children.add(Button("Reset") { tasks.launch {
-                val dialog = ContentDialog().apply {
-                    xamlRoot = owner.xamlRoot; requestedTheme = owner.actualTheme; title = "Are you sure you want to reset?"
-                    content = "Resetting to the default content will replace your current content. Are you sure you want to reset?"
-                    primaryButtonText = "Reset"; closeButtonText = "Cancel"; defaultButton = ContentDialogButton.Primary
+    private fun readText(): String = WinRTOut<String>().also { document.getText(TextGetOptions.None, it) }.value.orEmpty()
+    private fun resetContent() {
+        lastChangeFromTyping = false
+        oldText = checkNotNull(GalleryCodeCatalog.sourceDocument("ScratchPad/DefaultXaml.txt")).source
+        document.setText(TextSetOptions.None, oldText)
+        applyColors()
+        scratchPad.content = TextBlock().apply {
+            text = "Click the Load button to load the content below."
+            horizontalAlignment = HorizontalAlignment.Center
+            verticalAlignment = VerticalAlignment.Center
+            textWrapping = TextWrapping.Wrap
+        }
+        loadStatus.text = ""
+    }
+    private fun ResetToDefaultClick(sender: Any?, args: RoutedEventArgs) { tasks.launch {
+        val dialog = ContentDialog().apply {
+            xamlRoot = this@ScratchPadPage.xamlRoot
+            title = "Are you sure you want to reset?"
+            content = "Resetting to the default content will replace your current content. Are you sure you want to reset?"
+            primaryButtonText = "Reset"; closeButtonText = "Cancel"
+            defaultButton = ContentDialogButton.Primary; requestedTheme = this@ScratchPadPage.actualTheme
+        }
+        if (dialog.showAsync().await() == ContentDialogResult.Primary) resetContent()
+    } }
+    private fun LoadClick(sender: Any?, args: RoutedEventArgs) = loadContent()
+    private fun loadContent() {
+        loadStatus.text = ""
+        try {
+            val xml = readText().trim()
+            val index = xml.indexOfFirst { it.isWhitespace() || it == '/' || it == '>' }
+            require(index >= 0) { "No end tag." }
+            val qualified = xml.take(index) + " xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' " + xml.drop(index)
+            scratchPad.content = checkNotNull(microsoft.ui.xaml.markup.XamlReader.load(qualified)).asWinRT<UIElement>()
+            loadStatus.text = "Load successful."
+        } catch (error: Exception) { loadStatus.text = error.message.orEmpty() }
+        loadStatus.opacity = 1.0
+        lastChangeFromTyping = false
+        applyColors()
+    }
+    private fun insertText(text: String, moveCursor: Boolean) {
+        val cursor = checkNotNull(document.selection).startPosition
+        lastChangeFromTyping = false
+        document.getRange(cursor, cursor).text = text
+        checkNotNull(document.selection).startPosition = cursor + if (moveCursor) text.length else 0
+    }
+    private fun textbox_PreviewKeyDown(sender: Any?, args: KeyRoutedEventArgs) {}
+    private fun textbox_KeyDown(sender: Any?, args: KeyRoutedEventArgs) {
+        lastChangeFromTyping = true
+        if (args.key != VirtualKey.Tab || checkNotNull(document.selection).length <= 1) return
+        val text = readText()
+        val selection = checkNotNull(document.selection)
+        var start = selection.startPosition
+        var end = selection.endPosition
+        val lineStart = text.take(start).lastIndexOfAny(charArrayOf('\r', '\n')) + 1
+        val shift = microsoft.ui.input.InputKeyboardSource.getKeyStateForCurrentThread(VirtualKey.Shift).abiValue and windows.ui.core.CoreVirtualKeyStates.Down.abiValue != 0u
+        document.beginUndoGroup()
+        try {
+            var range = document.getRange(lineStart, lineStart)
+            var first = true
+            while (range.startPosition < end) {
+                val delta = if (shift) {
+                    range.moveEnd(TextRangeUnit.Character, 4)
+                    val count = range.text.takeWhile { it == ' ' || it == '\t' }.length
+                    range = document.getRange(range.startPosition, range.startPosition + count)
+                    range.text = ""
+                    -count
+                } else { range.text = "    "; 4 }
+                if (first) { start += delta; first = false }
+                end += delta
+                val position = range.startPosition
+                range.move(TextRangeUnit.Paragraph, 1)
+                if (range.startPosition <= position) break
+            }
+            selection.startPosition = start.coerceAtLeast(lineStart)
+            selection.endPosition = end
+            args.handled = true
+        } finally { document.endUndoGroup() }
+    }
+    private fun textbox_PreviewKeyUp(sender: Any?, args: KeyRoutedEventArgs) {
+        lastChangeFromTyping = true
+        when (args.key) {
+            VirtualKey.F5 -> loadContent()
+            VirtualKey.Enter -> {
+                val text = readText()
+                val end = text.take(checkNotNull(document.selection).startPosition).trimEnd('\r', '\n').length
+                val start = text.take(end).lastIndexOfAny(charArrayOf('\r', '\n')) + 1
+                val indent = text.substring(start, end).takeWhile { it == ' ' || it == '\t' }
+                document.beginUndoGroup()
+                try {
+                    insertText(indent, true)
+                    val cursor = checkNotNull(document.selection).startPosition
+                    if (readText().drop(cursor).startsWith("</")) {
+                        insertText("    ", true)
+                        insertText("\n" + indent, false)
+                    }
+                } finally { document.endUndoGroup() }
+            }
+        }
+    }
+    private fun textbox_TextChanged(sender: Any?, args: RoutedEventArgs) {
+        if (!ready) return
+        val text = readText()
+        val cursor = checkNotNull(document.selection).startPosition
+        if (checkNotNull(document.selection).length == 0 && lastChangeFromTyping) {
+            if (loadStatus.text == "Load successful.") loadStatus.text = "" else loadStatus.opacity = 0.5
+            if (text.length == oldText.length + 1 && cursor in 1..text.length) {
+                val open = text.lastIndexOf('<', cursor - 1)
+                if (text[cursor - 1] == '>' && cursor >= 2 && text[cursor - 2] != '/' && open >= 0 && text.lastIndexOf('>', cursor - 2) < open) {
+                    val name = text.substring(open + 1, cursor - 1).takeWhile { !it.isWhitespace() && it != '/' }
+                    if (name.isNotEmpty() && !name.startsWith('!') && !name.startsWith('/')) insertText("</$name>", false)
+                } else if (text[cursor - 1] == '=' && text.getOrNull(cursor) != '"' && open > text.lastIndexOf('>', cursor - 1)) {
+                    val quote = text.lastIndexOf('"', cursor - 1)
+                    if (quote < open || text.getOrNull(quote - 1) != '=') {
+                        insertText("\"\"", false)
+                        checkNotNull(document.selection).startPosition = cursor + 1
+                    }
                 }
-                val response = try { dialog.showAsync().await() } finally { dialog.hide() }
-                if (response == ContentDialogResult.Primary) { preview.content = initialContent(); status.text = "" }
-            } }.apply { horizontalAlignment = HorizontalAlignment.Stretch; ToolTipService.setToolTip(this, "Resets to the default scratch pad content") })
-        })
-        Grid.setRow(status, 1); Grid.setColumnSpan(status, 2); children.add(status)
-    })
+            }
+        }
+        oldText = readText()
+    }
+    private fun textbox_ActualThemeChanged(sender: FrameworkElement, args: Any?) { if (ready) applyColors() }
+    private fun applyColors() {
+        lastChangeFromTyping = false
+        ScratchPadXamlTextFormatter.applyColors(textbox, readText())
+    }
 }

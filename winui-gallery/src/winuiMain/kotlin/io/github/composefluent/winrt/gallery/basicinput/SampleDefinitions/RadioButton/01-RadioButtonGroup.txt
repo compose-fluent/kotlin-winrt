@@ -1,0 +1,18 @@
+--- Header
+A group of RadioButtons.
+
+--- Xaml
+<RadioButtons Header="Options:">
+    <RadioButton AutomationProperties.AutomationId="Option1RadioButton"
+                 Checked="RadioButton_Checked" Content="Option 1" />
+    <RadioButton AutomationProperties.AutomationId="Option2RadioButton"
+                 Checked="RadioButton_Checked" Content="Option 2" />
+    <RadioButton AutomationProperties.AutomationId="Option3RadioButton"
+                 Checked="RadioButton_Checked" Content="Option 3" />
+</RadioButtons>
+
+--- Kotlin
+private fun RadioButton_Checked(sender: Any?, args: RoutedEventArgs) {
+    val selected = checkNotNull(sender).asWinRT<RadioButton>().content
+    Control1Output.text = "You selected $selected"
+}

@@ -27,6 +27,7 @@ data class WinRTMappedTypeDescriptor(
     val mappedName: String? = null,
     val requiresMarshaling: Boolean = false,
     val hasCustomMembersOutput: Boolean = false,
+    val kotlinQualifiedName: String? = null,
 ) {
     val abiQualifiedName: String
         get() = "$abiNamespace.$abiName"
@@ -141,6 +142,12 @@ class WinRTMetadataTypeClassifier private constructor(
 fun WinRTMetadataModel.typeClassifier(): WinRTMetadataTypeClassifier =
     WinRTMetadataTypeClassifier.create(this)
 
+/** Kotlin equivalents of the system mappings owned by CsWinRT helpers.h. */
+fun winRTMappedTypeForKotlinName(typeName: String): WinRTMappedTypeDescriptor? =
+    MAPPED_TYPES_BY_KOTLIN_NAME[typeName]
+
+fun winRTMappedTypeForAbiName(typeName: String): WinRTMappedTypeDescriptor? = MAPPED_TYPES[typeName]
+
 fun isWinRTObjectTypeName(typeName: String): Boolean =
     when (typeName.trim().substringBefore('<').removeSuffix("?")) {
         "Any", "Object", "System.Object" -> true
@@ -159,11 +166,11 @@ fun isWinRTGuidTypeName(typeName: String): Boolean =
         else -> false
     }
 
-fun isWinRTTypeTypeName(typeName: String): Boolean =
-    when (typeName.trim().substringBefore('<').removeSuffix("?")) {
-        "Type", "System.Type" -> true
-        else -> false
-    }
+fun isWinRTTypeTypeName(typeName: String): Boolean {
+    val name = typeName.trim().substringBefore('<').removeSuffix("?")
+    return name == "Type" || name == "System.Type" ||
+        MAPPED_TYPES[name]?.mappedQualifiedName == "System.Type"
+}
 
 internal fun WinRTProjectionCategory.toAbiCategory(): WinRTAbiTypeCategory =
     when (this) {
@@ -223,6 +230,7 @@ private fun mapped(
     mappedName: String? = null,
     requiresMarshaling: Boolean = false,
     hasCustomMembersOutput: Boolean = false,
+    kotlinQualifiedName: String? = null,
 ): WinRTMappedTypeDescriptor {
     val abiNamespace = abiQualifiedName.substringBeforeLast('.', "")
     val abiName = abiQualifiedName.substringAfterLast('.')
@@ -233,6 +241,7 @@ private fun mapped(
         mappedName = mappedName,
         requiresMarshaling = requiresMarshaling,
         hasCustomMembersOutput = hasCustomMembersOutput,
+        kotlinQualifiedName = kotlinQualifiedName,
     )
 }
 
@@ -267,7 +276,7 @@ private val MAPPED_TYPES: Map<String, WinRTMappedTypeDescriptor> = listOf(
     mapped("Microsoft.UI.Xaml.Media.Media3D.Matrix3DHelper"),
     mapped("WinRT.Interop.HWND", "System", "IntPtr"),
     mapped("WinRT.Interop.ProjectionInternalAttribute"),
-    mapped("Windows.Foundation.DateTime", "System", "DateTimeOffset", requiresMarshaling = true),
+    mapped("Windows.Foundation.DateTime", "System", "DateTimeOffset", requiresMarshaling = true, kotlinQualifiedName = "kotlin.time.Instant"),
     mapped("Windows.Foundation.EventHandler", "System", "EventHandler"),
     mapped("Windows.Foundation.EventRegistrationToken", "WinRT", "EventRegistrationToken"),
     mapped("Windows.Foundation.HResult", "System", "Exception", requiresMarshaling = true),
@@ -275,7 +284,7 @@ private val MAPPED_TYPES: Map<String, WinRTMappedTypeDescriptor> = listOf(
     mapped("Windows.Foundation.IPropertyValue", "Windows.Foundation", "IPropertyValue", requiresMarshaling = true),
     mapped("Windows.Foundation.IReference", "System", "Nullable", requiresMarshaling = true),
     mapped("Windows.Foundation.IReferenceArray", "Windows.Foundation", "IReferenceArray", requiresMarshaling = true),
-    mapped("Windows.Foundation.TimeSpan", "System", "TimeSpan", requiresMarshaling = true),
+    mapped("Windows.Foundation.TimeSpan", "System", "TimeSpan", requiresMarshaling = true, kotlinQualifiedName = "kotlin.time.Duration"),
     mapped("Windows.Foundation.Collections.IIterable", "System.Collections.Generic", "IEnumerable`1", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IIterator", "System.Collections.Generic", "IEnumerator`1", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IKeyValuePair", "System.Collections.Generic", "KeyValuePair`2", requiresMarshaling = true),
@@ -342,6 +351,9 @@ private val MAPPED_TYPES: Map<String, WinRTMappedTypeDescriptor> = listOf(
     mapped("Windows.UI.Xaml.Media.Media3D.IMatrix3DHelperStatics"),
     mapped("Windows.UI.Xaml.Media.Media3D.Matrix3DHelper"),
 ).associateBy(WinRTMappedTypeDescriptor::abiQualifiedName)
+
+private val MAPPED_TYPES_BY_KOTLIN_NAME = MAPPED_TYPES.values
+    .mapNotNull { mapping -> mapping.kotlinQualifiedName?.let { it to mapping } }.toMap()
 
 private val MAPPED_TYPES_BY_NAMESPACE: Map<String, List<WinRTMappedTypeDescriptor>> =
     MAPPED_TYPES.values

@@ -1,0 +1,38 @@
+--- header
+A TabView with keyboarding support
+--- xaml
+<TabView AddTabButtonClick="TabView_AddButtonClick" TabCloseRequested="TabView_TabCloseRequested" Loaded="TabView_Loaded">
+    <TabView.KeyboardAccelerators>
+        <KeyboardAccelerator Key="T" Modifiers="Control" Invoked="NewTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="W" Modifiers="Control" Invoked="CloseSelectedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number1" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number2" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number3" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number4" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number5" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number6" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number7" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number8" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Number9" Modifiers="Control" Invoked="NavigateToNumberedTabKeyboardAccelerator_Invoked" />
+    </TabView.KeyboardAccelerators>
+</TabView>
+--- kotlin
+private fun CreateNewTab(index: Int): TabViewItem = TabViewItem().apply {
+        header = "Document $index"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; contextFlyout = TabViewContextMenu
+        content = Frame().apply { navigate(page(index)) }
+    }
+
+private fun NewTabKeyboardAccelerator_Invoked(sender: KeyboardAccelerator, args: KeyboardAcceleratorInvokedEventArgs) {
+        args.element?.asWinRT<TabView>()?.let { it.tabItems.add(CreateNewTab(it.tabItems.size)) }; args.handled = true
+    }
+
+private fun CloseSelectedTabKeyboardAccelerator_Invoked(sender: KeyboardAccelerator, args: KeyboardAcceleratorInvokedEventArgs) {
+        args.element?.asWinRT<TabView>()?.let { tabs -> tabs.selectedItem?.asWinRT<TabViewItem>()?.takeIf { it.isClosable }?.let { tabs.tabItems.remove(it) } }; args.handled = true
+    }
+
+private fun NavigateToNumberedTabKeyboardAccelerator_Invoked(sender: KeyboardAccelerator, args: KeyboardAcceleratorInvokedEventArgs) {
+        val tabs = args.element?.asWinRT<TabView>() ?: return
+        val index = if (sender.key == VirtualKey.Number9) tabs.tabItems.lastIndex else (sender.key.abiValue - VirtualKey.Number1.abiValue).toInt()
+        if (index in tabs.tabItems.indices) tabs.selectedIndex = index
+        args.handled = true
+    }

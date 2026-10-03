@@ -364,8 +364,8 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         check(!active) { "Native HSTRING reference frame is already active." }
         handle = RawAddress.Null
         ensureCapacity(hStringFrameSizeBytes)
-        // Mirrors CsWinRT MarshalString.Pinnable: the HSTRING borrows pinned UTF-16 storage for this call.
-        pinnedValue = if (value.isEmpty()) null else value.toNativePinnable()
+        // Use the same terminated backing storage as the scoped fast-pass path.
+        pinnedValue = if (value.isEmpty()) null else winRTPinString(value, value.length)
         active = true
         return this
     }
@@ -625,7 +625,11 @@ private object ScopedNativeHStringFrames {
 
 @PublishedApi
 internal actual inline fun winRTPinString(value: String, length: Int): String =
-    if (length == 0) value else value.toNativePinnable()
+    // CsWinRT MarshalString.Pinnable borrows a NUL-terminated .NET string.
+    // Kotlin/Native's pinned UTF-16 storage does not promise that terminator;
+    // WindowsCreateStringReference requires it even though the header carries
+    // the original length. Keep the extra NUL outside that logical length.
+    if (length == 0) value else (value + '\u0000').toNativePinnable()
 
 @PublishedApi
 internal actual inline fun winRTStringAddress(value: String, length: Int): RawAddress =

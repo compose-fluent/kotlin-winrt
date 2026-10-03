@@ -17,6 +17,14 @@ internal data class ValueHostShapeKey(
 
 private val valueHostShapeCache = ConcurrentCacheMap<ValueHostShapeKey, WinRTCcwDefinition>()
 
+private class CachedReferenceHostDefinition(
+    val metadata: WinRTValueTypeMetadata,
+    val registeredType: WinRTTypeId<*>?,
+    val definition: WinRTCcwDefinition,
+)
+
+private val referenceHostDefinitions = ConcurrentCacheMap<Guid, CachedReferenceHostDefinition>()
+
 internal fun cachedValueHostDefinition(
     key: ValueHostShapeKey,
     interfaceDefinitions: () -> List<WinRTInspectableInterfaceDefinition>,
@@ -95,6 +103,21 @@ private fun createReferenceHost(
     includePropertyValueInterface: Boolean,
     augmentRuntimeInterfaces: Boolean,
 ): WinRTInspectableComObject {
+    // Cache only the complete closed-value base shape. The common CCW augmentation owner still
+    // selects standard interfaces for the current configuration, and each value owns a new host.
+    val metadata = if (includePropertyValueInterface) {
+        ValueBoxingMetadata.invariantReferenceHostMetadata(interfaceId, value)
+    } else {
+        null
+    }
+    val registeredType = metadata?.projectedClass?.registeredWinRTType()
+    if (metadata != null) {
+        referenceHostDefinitions[interfaceId]?.let { cached ->
+            if (cached.metadata === metadata && cached.registeredType === registeredType) {
+                return createValueHost(value, cached.definition, augmentRuntimeInterfaces)
+            }
+        }
+    }
     val propertyType =
         WinRTValueBoxing.propertyTypeForReferenceInterface(interfaceId)
             ?: if (WinRTValueBoxing.isPropertyValueCompatible(value)) {
@@ -121,6 +144,14 @@ private fun createReferenceHost(
             }
             add(ValueBoxingInterop.createHostReferenceInterfaceDefinition(interfaceId))
         }
+    }
+    // Registration replaces these immutable records. Recheck the observed records before
+    // publishing; a later replacement makes the next lookup miss the old entry.
+    if (metadata != null &&
+        metadata === ValueBoxingMetadata.invariantReferenceHostMetadata(interfaceId, value) &&
+        registeredType === metadata.projectedClass.registeredWinRTType()
+    ) {
+        referenceHostDefinitions[interfaceId] = CachedReferenceHostDefinition(metadata, registeredType, definition)
     }
     return createValueHost(value, definition, augmentRuntimeInterfaces = augmentRuntimeInterfaces)
 }

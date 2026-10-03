@@ -1,0 +1,31 @@
+--- header
+Pick a file and display its thumbnail
+--- xaml
+<StackPanel Spacing="8" Orientation="Horizontal">
+    <StackPanel Spacing="8">
+        <Button x:Name="PickFileForThumbnailButton" Content="Pick a file" Click="PickFileForThumbnailButton_Click"/>
+        <TextBlock x:Name="ThumbnailDetailsTextBlock" Text="No file picked" TextWrapping="Wrap"/>
+    </StackPanel>
+    <Border Width="160" Height="160" Background="{ThemeResource SubtleFillColorTertiaryBrush}"
+            CornerRadius="4" HorizontalAlignment="Left">
+        <Image x:Name="ThumbnailImage" Stretch="Uniform" AutomationProperties.Name="File thumbnail"/>
+    </Border>
+</StackPanel>
+--- kotlin
+private fun PickFileForThumbnailButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val selected = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply { fileTypeFilter.add("*") }.pickSingleFileAsync().await()
+            if (selected == null) { ThumbnailImage.source = null; ThumbnailDetailsTextBlock.text = "No file selected."; return@launch }
+            val file = windows.storage.StorageFile.getFileFromPathAsync(selected.path).await()
+            val mode = ThumbnailModeComboBox.selectedItem as windows.storage.fileproperties.ThumbnailMode
+            val pixels = ThumbnailSizeNumberBox.value.takeIf { !it.isNaN() && it > 0 }?.toUInt() ?: 200u
+            val thumbnail = file.getThumbnailAsync(mode, pixels, windows.storage.fileproperties.ThumbnailOptions.UseCurrentScale).await()
+            if (thumbnail == null) { ThumbnailImage.source = null; ThumbnailDetailsTextBlock.text = "No thumbnail available for the selected file." } else try {
+                val bitmap = microsoft.ui.xaml.media.imaging.BitmapImage(); bitmap.setSourceAsync(thumbnail).await(); ThumbnailImage.source = bitmap
+                ThumbnailDetailsTextBlock.text = "File: ${file.name}\nMode: ThumbnailMode.$mode\nRequested size: $pixels\nReturned size: ${thumbnail.originalWidth} x ${thumbnail.originalHeight}"
+            } finally { thumbnail.close() }
+            announce(button, ThumbnailDetailsTextBlock.text, "ThumbnailPickedNotificationId")
+        } catch (error: Exception) { ThumbnailImage.source = null; ThumbnailDetailsTextBlock.text = "Could not retrieve a thumbnail. ${error.message}" }
+          finally { button.isEnabled = true } }
+    }

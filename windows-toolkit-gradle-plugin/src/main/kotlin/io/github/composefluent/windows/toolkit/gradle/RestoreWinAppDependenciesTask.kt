@@ -132,7 +132,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
         require(output.parent == workspace) {
             "WinApp restore output must be the .winapp directory directly below its generated workspace: $output"
         }
-        val packageSpecs = nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
+        val packageSpecs = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages)).distinct().sorted()
         val existingLock = output.resolve("winmds.lock.json")
         if (restoreEnabled.get() && existingLock.isRegularFile()) {
             runCatching {
@@ -299,18 +299,13 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
             "includeToolingPackages" to includeToolingPackages.get().toString(),
             "winAppCliVersion" to winAppCliVersion.get(),
             "winAppCliPackageSha512" to winAppCliPackageSha512.get(),
-            "dependencyIdentitySha256" to dependencyIdentityFingerprint(),
+            // Dependency schemas and compiled type ownership do not change NuGet restore.
+            // The resolved package specs and generated configuration already cover its inputs.
             "packageInventory" to inventory,
         )
         return lines.entries.joinToString(System.lineSeparator()) { (key, value) -> "$key=$value" } +
             System.lineSeparator()
     }
-
-    private fun dependencyIdentityFingerprint(): String =
-        dependencyIdentityFiles.files
-            .filter(File::isFile)
-            .sortedBy(File::getAbsolutePath)
-            .joinToString("\u001f") { file -> "${file.name}:${sha256(file.toPath())}" }
 
     private fun effectiveNuGetConfigFingerprint(restoreBase: Path): String =
         effectiveNuGetConfigFiles(restoreBase)

@@ -1,105 +1,71 @@
 package io.github.composefluent.winrt.gallery.collections
 
 import io.github.composefluent.winrt.gallery.*
+import io.github.composefluent.winrt.gallery.pages.ItemsPageBase
+import io.github.composefluent.winrt.runtime.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.media.Stretch
+import microsoft.ui.xaml.controls.primitives.*
+import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "ItemsView", title = "ItemsView", group = "Collections", order = 3)
-internal fun itemsViewPage() = ExamplePage {
-    val basic = itemsViewBasicItemsViewSample()
-    val basicOutput = label("")
-    basic.itemInvoked.add { _, args -> basicOutput.text = "You invoked Item ${args.invokedItem.toString().toInt() + 1}." }
-    example("A basic ItemsView.", basic, output = basicOutput)
-
-    val lined = LinedFlowLayout().apply {
-        itemsStretch = LinedFlowLayoutItemsStretch.Fill
-        lineHeight = 160.0; lineSpacing = 5.0; minItemSpacing = 5.0
-    }
-    val uniform = UniformGridLayout().apply {
-        minColumnSpacing = 5.0; minRowSpacing = 5.0; maximumRowsOrColumns = 3
-    }
-    val vertical = StackLayout().apply { spacing = 5.0 }
-
-    val swappable = itemsViewSwappableLayoutsSample(lined)
-    val linedOptions = stack {
-        children.add(range("LineSpacing", 5.0, 0.0, 100.0) { lined.lineSpacing = it })
-        children.add(range("MinItemSpacing", 5.0, 0.0, 100.0) { lined.minItemSpacing = it })
-        children.add(choices("LineHeight", listOf("Small", "Large"), 1) { lined.lineHeight = if (it == 0) 80.0 else 160.0 })
-    }
-    val uniformOptions = stack {
-        visibility = Visibility.Collapsed
-        children.add(range("MinColumnSpacing", 5.0, 0.0, 100.0) { uniform.minColumnSpacing = it })
-        children.add(range("MinRowSpacing", 5.0, 0.0, 100.0) { uniform.minRowSpacing = it })
-        children.add(range("MaximumRowsOrColumns", 3.0, 1.0, 8.0) { uniform.maximumRowsOrColumns = it.toInt() })
-    }
-    val stackOptions = range("Spacing", 5.0, 0.0, 100.0) { vertical.spacing = it }.apply { visibility = Visibility.Collapsed }
-    example("ItemsView with swappable layouts.", swappable, stack {
-        children.add(choices("Layout", listOf("LinedFlowLayout", "UniformGridLayout", "StackLayout")) { index ->
-            swappable.layout = listOf(lined, uniform, vertical)[index]
-            listOf(linedOptions, uniformOptions, stackOptions).forEachIndexed { position, options ->
-                options.visibility = if (position == index) Visibility.Visible else Visibility.Collapsed
+internal class ItemsViewPage : ItemsPageBase() {
+    private var ready = false
+    private var initialized = false
+    private var linedFlowLayout: LinedFlowLayout? = null
+    private var stackLayout: StackLayout? = null
+    private var uniformGridLayout: UniformGridLayout? = null
+    private var linedFlowLayoutItemTemplate: DataTemplate? = null
+    private var applyLineHeight = false
+    private var applyOptions = false
+    override fun initializeComponent() {
+        super.initializeComponent(); ready = true; dataContext = this
+        loaded.add { _, _ ->
+            if (!initialized) {
+                initialized = true
+                linedFlowLayout = SwappableLayoutsItemsView.layout?.asWinRT<LinedFlowLayout>()
+                linedFlowLayoutItemTemplate = SwappableLayoutsItemsView.itemTemplate?.asWinRT<DataTemplate>()
+                SwappableLayoutsItemsView.scrollView?.viewChanged?.add(::SwappableLayoutsItemsViewScrollView_ViewChanged)
+                val items = WinRTObservableList(CustomDataObject.GetDataObjects(true))
+                BasicItemsView.itemsSource = items; SwappableSelectionModesItemsView.itemsSource = items
+                checkNotNull(dispatcherQueue).tryEnqueue(microsoft.ui.dispatching.DispatcherQueuePriority.Low) { SwappableLayoutsItemsView.itemsSource = items }
             }
-        })
-        children.add(linedOptions); children.add(uniformOptions); children.add(stackOptions)
-    })
-
-    val interactive = itemsViewItemsViewSelectionAndItemInvocationSample2()
-    val invocation = label("")
-    val selection = label("")
-    interactive.itemInvoked.add { _, args -> invocation.text = "You invoked Item ${args.invokedItem.toString().toInt() + 1}." }
-    interactive.selectionChanged.add { _, _ -> selection.text = "You have selected ${interactive.selectedItems.size} item(s)." }
-    example("ItemsView selection and item invocation.", interactive, stack {
-        children.add(option("IsItemInvokedEnabled") { interactive.isItemInvokedEnabled = it })
-        children.add(select("SelectionMode", listOf("None", "Single", "Multiple", "Extended"), 2) {
-            interactive.selectionMode = listOf(ItemsViewSelectionMode.None, ItemsViewSelectionMode.Single, ItemsViewSelectionMode.Multiple, ItemsViewSelectionMode.Extended)[it]
-        })
-    }, stack { children.add(invocation); children.add(selection) })
-
-}
-
-@GallerySample(route = "ItemsView", title = "A basic ItemsView.")
-internal fun itemsViewBasicItemsViewSample() = ItemsView().apply {
-    width = 220.0; height = 400.0
-    horizontalAlignment = HorizontalAlignment.Left
-    itemTemplate = GalleryElementFactory { value ->
-        val index = value.toString().toInt()
-        Image().apply { this.width = Double.NaN; this.height = Double.NaN; this.source = microsoft.ui.xaml.media.imaging.BitmapImage(windows.foundation.Uri(landscape(index)) ) }.apply {
-            minHeight = 100.0; stretch = Stretch.UniformToFill
-            named(this, "Item ${index + 1}")
         }
     }
-    itemsSource = (0 until 12).toList()
-    isItemInvokedEnabled = true
-}
-
-@GallerySample(route = "ItemsView", title = "ItemsView selection and item invocation.")
-internal fun itemsViewItemsViewSelectionAndItemInvocationSample2() = ItemsView().apply {
-    width = 500.0; height = 400.0
-    horizontalAlignment = HorizontalAlignment.Left
-    layout = UniformGridLayout().apply { maximumRowsOrColumns = 3; minColumnSpacing = 5.0; minRowSpacing = 5.0 }
-    itemTemplate = GalleryElementFactory { value ->
-        val index = value.toString().toInt()
-        Image().apply { this.width = Double.NaN; this.height = Double.NaN; this.source = microsoft.ui.xaml.media.imaging.BitmapImage(windows.foundation.Uri(landscape(index)) ) }.apply {
-            minHeight = 100.0; stretch = Stretch.UniformToFill
-            named(this, "Item ${index + 1}")
+    private fun BasicItemsView_ItemInvoked(sender: ItemsView, args: ItemsViewItemInvokedEventArgs) { (args.invokedItem as? CustomDataObject)?.let { tblBasicInvokeOutput.text = "You invoked ${it.Title}." } }
+    private fun ApplyLinedFlowLayoutLineHeight() { if (ready) linedFlowLayout?.lineHeight = if (rbSmallLineHeight.isChecked == true) 80.0 else 160.0 }
+    private fun ApplyLinedFlowLayoutOptions() { if (ready) linedFlowLayout?.let { it.lineSpacing = nbLineSpacing.value; it.minItemSpacing = nbMinItemSpacing.value } }
+    private fun RbLayout_Checked(sender: Any?, args: RoutedEventArgs) {
+        if (!ready) return
+        val name = checkNotNull(sender).asWinRT<RadioButton>().content.toString()
+        when (name) {
+            "LinedFlowLayout" -> { if (linedFlowLayout == null) linedFlowLayout = SwappableLayoutsItemsView.layout?.asWinRT<LinedFlowLayout>(); if (linedFlowLayoutItemTemplate == null) linedFlowLayoutItemTemplate = SwappableLayoutsItemsView.itemTemplate?.asWinRT<DataTemplate>(); SwappableLayoutsItemsView.layout = linedFlowLayout; SwappableLayoutsItemsView.itemTemplate = linedFlowLayoutItemTemplate }
+            "StackLayout" -> { if (stackLayout == null) stackLayout = StackLayout().apply { spacing = 5.0 }; SwappableLayoutsItemsView.layout = stackLayout; SwappableLayoutsItemsView.itemTemplate = checkNotNull(resources["StackLayoutItemTemplate"]).asWinRT<DataTemplate>() }
+            "UniformGridLayout" -> { if (uniformGridLayout == null) uniformGridLayout = UniformGridLayout().apply { minColumnSpacing = 5.0; minRowSpacing = 5.0; maximumRowsOrColumns = 3 }; SwappableLayoutsItemsView.layout = uniformGridLayout; SwappableLayoutsItemsView.itemTemplate = checkNotNull(resources["UniformGridLayoutItemTemplate"]).asWinRT<DataTemplate>() }
         }
+        spLinedFlowLayoutOptions.visibility = if (name == "LinedFlowLayout") Visibility.Visible else Visibility.Collapsed
+        spStackLayoutOptions.visibility = if (name == "StackLayout") Visibility.Visible else Visibility.Collapsed
+        spUniformGridLayoutOptions.visibility = if (name == "UniformGridLayout") Visibility.Visible else Visibility.Collapsed
     }
-    itemsSource = (0 until 12).toList()
-    selectionMode = ItemsViewSelectionMode.Multiple
-}
-
-@GallerySample(route = "ItemsView", title = "ItemsView with swappable layouts.")
-internal fun itemsViewSwappableLayoutsSample(initialLayout: Layout) = ItemsView().apply {
-    width = 500.0; height = 400.0
-    horizontalAlignment = HorizontalAlignment.Left
-    layout = initialLayout
-    itemTemplate = GalleryElementFactory { value ->
-        val index = value.toString().toInt()
-        Image().apply { this.width = Double.NaN; this.height = Double.NaN; this.source = microsoft.ui.xaml.media.imaging.BitmapImage(windows.foundation.Uri(landscape(index)) ) }.apply {
-            minHeight = 100.0; stretch = Stretch.UniformToFill
-            named(this, "Item ${index + 1}")
-        }
+    private fun RbLineHeight_Checked(sender: Any?, args: RoutedEventArgs) {
+        if (!ready) return
+        val view = SwappableLayoutsItemsView.scrollView
+        if (view != null && view.verticalOffset != 0.0) { applyLineHeight = true; view.scrollTo(0.0, 0.0, ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)) } else ApplyLinedFlowLayoutLineHeight()
     }
-    itemsSource = (0 until 12).toList()
+    private fun NbLinedFlowLayoutOptions_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) {
+        if (!ready) return
+        val view = SwappableLayoutsItemsView.scrollView
+        if (view != null && view.verticalOffset != 0.0) { applyOptions = true; view.scrollTo(0.0, 0.0, ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)) } else ApplyLinedFlowLayoutOptions()
+    }
+    private fun NbStackLayoutOptions_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) { if (ready) stackLayout?.spacing = nbSpacing.value }
+    private fun NbUniformGridLayoutOptions_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) { if (ready) uniformGridLayout?.let { it.minColumnSpacing = nbMinColumnSpacing.value; it.minRowSpacing = nbMinRowSpacing.value; it.maximumRowsOrColumns = nbMaximumRowsOrColumns.value.toInt() } }
+    private fun SwappableLayoutsItemsViewScrollView_ViewChanged(sender: ScrollView, args: Any?) {
+        if (sender.verticalOffset != 0.0) return
+        if (applyOptions) { applyOptions = false; ApplyLinedFlowLayoutOptions() }
+        if (applyLineHeight) { applyLineHeight = false; ApplyLinedFlowLayoutLineHeight() }
+    }
+    private fun SwappableSelectionModesItemsView_ItemInvoked(sender: ItemsView, args: ItemsViewItemInvokedEventArgs) { (args.invokedItem as? CustomDataObject)?.let { tblInvocationOutput.text = "You invoked ${it.Title}." } }
+    private fun SwappableSelectionModesItemsView_SelectionChanged(sender: ItemsView, args: ItemsViewSelectionChangedEventArgs) { if (ready) tblSelectionOutput.text = "You have selected ${sender.selectedItems.size} item(s)." }
+    private fun CmbSelectionMode_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) SwappableSelectionModesItemsView.selectionMode = ItemsViewSelectionMode.fromAbi(checkNotNull(sender).asWinRT<ComboBox>().selectedIndex) }
+    private fun ChkIsItemInvokedEnabled_IsCheckedChanged(sender: Any?, args: RoutedEventArgs) { if (ready) { tblInvocationOutput.text = ""; SwappableSelectionModesItemsView.isItemInvokedEnabled = chkIsItemInvokedEnabled.isChecked == true } }
 }

@@ -19,11 +19,15 @@ fun consumeRuntimeOwnedWrappers(
 ): PublishedRuntimeBoundaryResult {
     WinRTProjectionIntrinsic.setString(reference, slot, "published-runtime")
     return PublishedRuntimeBoundaryResult(
-        scalar = WinRTProjectionIntrinsic.getInt32(reference, slot),
+        scalar = consumePublishedInlineInt32(reference, slot),
         boolean = WinRTProjectionIntrinsic.getBoolean(reference, slot),
         string = WinRTProjectionIntrinsic.getString(reference, slot),
     )
 }
+
+// Int32 expands the runtime's already lowered body; this consumer has no WinRT compiler plugin.
+fun consumePublishedInlineInt32(reference: ComObjectReference, slot: Int): Int =
+    WinRTProjectionIntrinsic.getInt32(reference, slot)
 
 fun consumePublishedManagedCallLease(value: Any): Boolean {
     val lease = tryAcquireWinRTManagedProjectionCallLease(

@@ -96,8 +96,8 @@ internal fun named(element: DependencyObject, value: String) {
     AutomationProperties.setAutomationId(element, value)
 }
 
-// ControlExample.xaml responsibility: one live sample, optional output/options,
-// and the source-code expander. Construction and event binding are Kotlin-only.
+// Legacy construction retained until each page migrates. Source and responsive
+// behavior are shared with XAML pages through GalleryExampleBindings.
 private fun renderExample(title: String, sample: UIElement, options: UIElement?, output: UIElement?): StackPanel = stack(0.0) exampleRoot@ {
     margin = Thickness(0.0, 16.0, 0.0, 0.0)
     children.add(label(title).apply {
@@ -121,16 +121,7 @@ private fun renderExample(title: String, sample: UIElement, options: UIElement?,
         borderThickness = Thickness(1.0, 0.0, 0.0, 0.0)
         cornerRadius = CornerRadius(0.0, 8.0, 0.0, 0.0)
         child = optionsElement
-        val optionsHost = this
-        this@exampleRoot.sizeChanged.add { _, _ ->
-            val narrow = (this@exampleRoot.xamlRoot?.size?.width ?: this@exampleRoot.actualWidth.toFloat()) < 740f
-            Grid.setColumn(optionsHost, if (narrow) 0 else 2)
-            Grid.setColumnSpan(optionsHost, if (narrow) 3 else 1)
-            Grid.setRow(optionsHost, if (narrow) 1 else 0)
-            optionsHost.maxWidth = if (narrow) Double.POSITIVE_INFINITY else 320.0
-            optionsHost.borderThickness = if (narrow) Thickness(0.0, 1.0, 0.0, 0.0) else Thickness(1.0, 0.0, 0.0, 0.0)
-            optionsHost.margin = Thickness(0.0, if (narrow) 24.0 else 0.0, 0.0, 0.0)
-        }
+        bindExampleOptions(this@exampleRoot, this)
     } }
     val body = Grid().apply {
         cornerRadius = CornerRadius(8.0, 8.0, 0.0, 0.0)
@@ -155,20 +146,7 @@ private fun renderExample(title: String, sample: UIElement, options: UIElement?,
         horizontalAlignment = HorizontalAlignment.Stretch
         horizontalContentAlignment = HorizontalAlignment.Stretch
         cornerRadius = CornerRadius(0.0, 0.0, 8.0, 8.0)
-        val sampleState = GalleryTheme.sampleBeingConstructed
-        val route = sampleState?.sourceRoute
-        val exampleIndex = sampleState?.sourceExampleIndex ?: 0
-        if (sampleState != null) sampleState.sourceExampleIndex++
-        var initialized = false
-        expanding.add { _, _ ->
-            if (!initialized) {
-                val document = checkNotNull(route?.let { GalleryCodeCatalog.document(it, title, exampleIndex) }) {
-                    "No Kotlin source registered for $route example $exampleIndex"
-                }
-                content = kotlinCodePreview(document)
-                initialized = true
-            }
-        }
+        bindExampleSource(this, title)
     }
     children.add(sourceExpander)
     fun updateChrome() {

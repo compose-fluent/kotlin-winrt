@@ -1,0 +1,31 @@
+--- header
+Save file
+--- xaml
+<StackPanel Spacing="8">
+    <TextBox x:Name="FileContentTextBox" Header="File content" TextWrapping="Wrap" AcceptsReturn="True"
+                Width="500" Height="200" Text="Hello, WinUI!" IsSpellCheckEnabled="False" />
+    <Button x:Name="SaveFileButton" Content="Save a file" Click="SaveFileButton_Click" />
+    <TextBlock x:Name="SavedFileTextBlock" Grid.Column="1" Text="No file saved" />
+</StackPanel>
+--- kotlin
+private fun SaveFileButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val picker = microsoft.windows.storage.pickers.FileSavePicker(WindowId()).apply {
+                if (TxtCheckBox.isChecked == true) fileTypeChoices["Text Files"] = listOf(".txt")
+                if (JsonCheckBox.isChecked == true) fileTypeChoices["JSON Files"] = listOf(".json")
+                if (XmlCheckBox.isChecked == true) fileTypeChoices["XML Files"] = listOf(".xml")
+                defaultFileExtension = DefaultExtensionComboBox.selectedItem.toString(); suggestedFileName = SuggestedFileNameTextBox.text
+                commitButtonText = CommitButtonTextTextBox3.text; suggestedFolder = SuggestedFolderTextBox.text
+                suggestedStartLocation = PickerLocationComboBox3.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+            }
+            val result = picker.pickSaveFileAsync().await()
+            if (result == null) SavedFileTextBlock.text = "File save canceled." else {
+                val directory = windows.storage.StorageFolder.getFolderFromPathAsync(result.path.substringBeforeLast('\\')).await()
+                val file = directory.createFileAsync(result.path.substringAfterLast('\\'), windows.storage.CreationCollisionOption.ReplaceExisting).await()
+                windows.storage.FileIO.writeTextAsync(file, FileContentTextBox.text).await()
+                SavedFileTextBlock.text = "File saved to: ${result.path}"
+            }
+            announce(button, SavedFileTextBlock.text, "FileSavedNotificationId")
+        } finally { button.isEnabled = true } }
+    }

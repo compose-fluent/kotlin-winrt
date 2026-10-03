@@ -1,0 +1,60 @@
+<Page
+    x:Class="io.github.composefluent.winrt.gallery.samplepages.ItemsRepeaterCollectionPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+        TabFocusNavigation="Once" makes the whole repeater a single tab stop: Tab moves focus
+        into the group once (and the next Tab moves out), so Tab no longer steps through every
+        item. Navigation between items is done with the arrow keys via the ItemsRepeater's
+        XYFocusKeyboardNavigation="Enabled" below.
+    -->
+    <ScrollViewer
+        x:Name="scrollViewer"
+        TabFocusNavigation="Once">
+        <ItemsRepeater
+            x:Name="repeater"
+            XYFocusKeyboardNavigation="Enabled">
+            <ItemsRepeater.Layout>
+                <UniformGridLayout
+                    MinColumnSpacing="8"
+                    MinItemHeight="120"
+                    MinItemWidth="150"
+                    MinRowSpacing="8" />
+            </ItemsRepeater.Layout>
+            <ItemsRepeater.ItemTemplate>
+                <DataTemplate>
+                    <!--
+                        ItemsRepeater has no built-in focus or selection, but IsTabStop and the
+                        keyboard events live on UIElement, so the item's own Grid can be made
+                        keyboard-focusable directly - no Button wrapper needed. Arrow keys move
+                        between items (XYFocusKeyboardNavigation above); Enter/Space and pointer
+                        activate the focused item (handled in code-behind).
+                    -->
+                    <Grid
+                        AutomationProperties.Name="{Binding Title}"
+                        CornerRadius="4"
+                        IsTabStop="True"
+                        UseSystemFocusVisuals="True">
+                        <Image
+                            x:Name="connectedElement"
+                            Source="{Binding ImageLocation}"
+                            Stretch="UniformToFill" />
+                        <Border
+                            VerticalAlignment="Bottom"
+                            Background="{ThemeResource AcrylicBackgroundFillColorBaseBrush}"
+                            Padding="8,4">
+                            <TextBlock
+                                Style="{ThemeResource CaptionTextBlockStyle}"
+                                Text="{Binding Title}"
+                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        </Border>
+                    </Grid>
+                </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+    </ScrollViewer>
+</Page>

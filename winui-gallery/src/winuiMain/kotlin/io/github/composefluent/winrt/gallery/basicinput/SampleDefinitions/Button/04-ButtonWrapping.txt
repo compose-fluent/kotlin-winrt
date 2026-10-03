@@ -1,0 +1,20 @@
+--- Header
+Buttons with long content.
+
+--- Xaml
+<StackPanel>
+    <TextBlock Margin="0,0,0,8" Text="The following buttons' content may get clipped if we don't pay careful attention to their layout containers." TextWrapping="Wrap" />
+    <TextBlock Text="One option to mitigate clipped content is to place Buttons underneath each other, allowing for more space to grow horizontally:" Margin="0,0,0,8" TextWrapping="Wrap" />
+    <Button Margin="0,0,0,5" Content="This is some text that is too long and will get cut off" HorizontalAlignment="Stretch" />
+    <Button Content="This is another text that would result in being cut off" HorizontalAlignment="Stretch" />
+    <TextBlock Margin="0,8,0,8" Text="Another option is to explicitly wrap the Button's content" TextWrapping="Wrap" />
+    <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+        <Button x:Name="wrappedFirst" MaxWidth="240" Margin="0,0,8,0">
+            <TextBlock Text="This is some text that is too long and will get cut off without wrapping" TextWrapping="WrapWholeWords" />
+        </Button>
+        <Button x:Name="wrappedSecond" MaxWidth="240">
+            <TextBlock Text="This is another text that would result in being cut off without wrapping" TextWrapping="WrapWholeWords" />
+        </Button>
+    </StackPanel>
+</StackPanel>
+

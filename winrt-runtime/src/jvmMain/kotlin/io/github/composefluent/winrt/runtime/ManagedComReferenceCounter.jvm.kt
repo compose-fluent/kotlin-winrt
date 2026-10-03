@@ -4,6 +4,9 @@ import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 
+internal actual val useBulkManagedComInterfaceAttachment: Boolean
+    get() = false
+
 @PublishedApi
 internal actual class PlatformManagedComReferenceCounter actual constructor(
     initialValue: Long,
@@ -61,6 +64,22 @@ internal actual class PlatformManagedComReferenceCounter actual constructor(
                 managedComReferenceCounterSlot,
                 storagePointer,
             )
+        }
+    }
+
+    internal actual fun attachInterfaces(
+        objectMemoryView: NativeMemoryView,
+        interfaceObjectCount: Int,
+        interfaceObjectStrideBytes: Long,
+    ) {
+        if (storage == null) return
+        var index = 0
+        while (index < interfaceObjectCount) {
+            objectMemoryView.writePointer(
+                index * interfaceObjectStrideBytes + managedComReferenceCounterSlot * Long.SIZE_BYTES.toLong(),
+                storagePointer,
+            )
+            index += 1
         }
     }
 

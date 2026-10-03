@@ -1,5 +1,12 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.compiler.xaml.XamlSemanticOptions
+import io.github.composefluent.winrt.compiler.xaml.XamlFirRegistrar
+import io.github.composefluent.winrt.compiler.xaml.XamlPageBodies
+import io.github.composefluent.winrt.compiler.xaml.XamlConstruction
+import io.github.composefluent.winrt.compiler.xaml.XamlLibraryOptions
+import org.jetbrains.kotlin.fir.extensions.FirExtensionRegistrarAdapter
+
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionSupportLayout
 import io.github.composefluent.winrt.compiler.callsites.lowering.lowerWinRTProjectionCallSites
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
@@ -10,6 +17,7 @@ import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTProjectionTyp
 import io.github.composefluent.winrt.compiler.authoring.PROJECTION_PACKAGE_PREFIX
 import io.github.composefluent.winrt.compiler.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
 import io.github.composefluent.winrt.compiler.authoring.inheritedOverridableInterfaceNames
+import io.github.composefluent.winrt.compiler.authoring.requiresComponentAuthoring
 import io.github.composefluent.winrt.compiler.authoring.projectionPackageToMetadataName
 import io.github.composefluent.winrt.compiler.authoring.projectionTypeIndexRecordForSourceType
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
@@ -114,7 +122,7 @@ import java.nio.file.Path
 @OptIn(ExperimentalCompilerApi::class)
 class KotlinWinRTCommandLineProcessor : CommandLineProcessor {
     override val pluginId: String = PLUGIN_ID
-    override val pluginOptions: Collection<AbstractCliOption> = listOf(
+    override val pluginOptions: Collection<AbstractCliOption> = XamlSemanticOptions.options + XamlLibraryOptions.options + listOf(
         CliOption(
             optionName = "metadataIndex",
             valueDescription = "<path>",
@@ -194,6 +202,8 @@ class KotlinWinRTCommandLineProcessor : CommandLineProcessor {
         value: String,
         configuration: CompilerConfiguration,
     ) {
+        if (XamlSemanticOptions.process(option.optionName, value, configuration)) return
+        if (XamlLibraryOptions.process(option.optionName, value, configuration)) return
         if (option.optionName == "metadataIndex") {
             configuration.put(METADATA_INDEX_KEY, value)
         } else if (option.optionName == "typeIndexOutput") {
@@ -256,6 +266,22 @@ class KotlinWinRTCompilerPluginRegistrar : CompilerPluginRegistrar() {
     override val supportsK2: Boolean = true
 
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
+        XamlLibraryOptions.export(configuration)?.let {
+            IrGenerationExtension.registerExtension(it)
+            return
+        }
+        XamlSemanticOptions.compilation(configuration)?.let { xaml ->
+            FirExtensionRegistrarAdapter.registerExtension(XamlFirRegistrar(xaml.declarations))
+            val xamlRegistrars = if (xaml.semanticExport == null) readCompilerSupportManifestIfConfigured(
+                configuration.get(KotlinWinRTCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY))
+                .filter { it.kind == "xaml-type-registrar" }.map { it.className } else emptyList()
+            IrGenerationExtension.registerExtension(XamlPageBodies(xaml.declarations, xaml.semanticExport != null, xamlRegistrars))
+            xaml.semanticExport?.let {
+                // Isolated semantic pass: these binaries are never runtime or packaging inputs.
+                IrGenerationExtension.registerExtension(it)
+                return
+            }
+        }
         IrGenerationExtension.registerExtension(
             KotlinWinRTIrGenerationExtension(
                 metadataIndexPath = configuration.get(KotlinWinRTCommandLineProcessor.METADATA_INDEX_KEY),
@@ -272,6 +298,7 @@ class KotlinWinRTCompilerPluginRegistrar : CompilerPluginRegistrar() {
                 projectionSupportMode = configuration.get(KotlinWinRTCommandLineProcessor.PROJECTION_SUPPORT_MODE_KEY),
             ),
         )
+        IrGenerationExtension.registerExtension(XamlConstruction())
     }
 }
 
@@ -399,7 +426,7 @@ class KotlinWinRTIrGenerationExtension(
                 )?.sourceTypeName
             }
             .toSet()
-        lowerAuthoredTypeConstructors(moduleFragment, pluginContext, authoredTypeNames)
+        lowerAuthoredTypeConstructors(moduleFragment, pluginContext, authoredTypeNames, authoringRegistrarEntries)
         writeProjectionTypeIndex(classContexts, winRTTypes)
         val authoredCandidates = authoredCandidates(classContexts, winRTTypes, sourceSubtypedNames)
         writeAuthoredCandidates(authoredCandidates)
@@ -411,7 +438,7 @@ class KotlinWinRTIrGenerationExtension(
                 return@forEach
             }
             val authoredType = authoredTypeFor(klass, winRTTypes, isEffectivelyPublic(context), sourceSubtypedNames) ?: return@forEach
-            validateAuthoredType(klass, authoredType, pluginContext.afterK2, reportError)
+            validateAuthoredType(klass, authoredType, pluginContext.afterK2, winRTTypes, reportError)
         }
     }
 
@@ -665,7 +692,7 @@ class KotlinWinRTIrGenerationExtension(
         val annotation = authoredRuntimeClassAnnotation(klass, winRTTypes)
         val inheritedWinRTTypes = inheritedWinRTTypes(klass, winRTTypes)
         val resolvedWinRTTypes = annotation.resolvedTypes + inheritedWinRTTypes
-        if (resolvedWinRTTypes.isEmpty()) {
+        if (!requiresComponentAuthoring(resolvedWinRTTypes, annotation.isPresent)) {
             return null
         }
         val packageName = sourceTypeName.substringBeforeLast('.', missingDelimiterValue = "")
@@ -786,6 +813,7 @@ class KotlinWinRTIrGenerationExtension(
             }
             .map(IndexedWinRTType::qualifiedName)
         return ResolvedAuthoredRuntimeClassAnnotation(
+            isPresent = true,
             resolvedTypes = listOfNotNull(resolvedBase) + resolvedInterfaces,
             overridableInterfaceNames = resolvedOverridableInterfaces,
             activatableFactoryInterfaceName = resolvedActivatableFactoryInterface,
@@ -798,6 +826,7 @@ class KotlinWinRTIrGenerationExtension(
         val overridableInterfaceNames: List<String>,
         val activatableFactoryInterfaceName: String?,
         val staticFactoryInterfaceNames: List<String>,
+        val isPresent: Boolean = false,
     ) {
         companion object {
             val Empty = ResolvedAuthoredRuntimeClassAnnotation(emptyList(), emptyList(), null, emptyList())
@@ -816,6 +845,7 @@ class KotlinWinRTIrGenerationExtension(
         klass: IrClass,
         authoredType: KotlinWinRTAuthoredTypeCandidate,
         afterK2: Boolean,
+        winRTTypes: Map<String, IndexedWinRTType>,
         report: (String) -> Unit,
     ) {
         if (!afterK2) {
@@ -848,7 +878,7 @@ class KotlinWinRTIrGenerationExtension(
             report("WinRT authored class ${authoredType.sourceTypeName} must be final.")
         }
         validateAuthoredConstructors(klass, authoredType, report)
-        validateAuthoredMemberTypes(klass, authoredType, report)
+        validateAuthoredMemberTypes(klass, authoredType, winRTTypes, report)
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -875,17 +905,33 @@ class KotlinWinRTIrGenerationExtension(
     private fun validateAuthoredMemberTypes(
         klass: IrClass,
         authoredType: KotlinWinRTAuthoredTypeCandidate,
+        winRTTypes: Map<String, IndexedWinRTType>,
         report: (String) -> Unit,
     ) {
+        fun implementsProjectedInterface(function: IrSimpleFunction, visited: MutableSet<IrSimpleFunction> = mutableSetOf()): Boolean {
+            if (!visited.add(function)) return false
+            return function.overriddenSymbols.any { symbol ->
+                val method = symbol.owner
+                val ownerName = (method.parent as? IrClass)?.fqNameWhenAvailable?.asString()
+                val metadata = ownerName?.let { resolveIndexedWinRTTypeByProjectedName(it, winRTTypes) }
+                metadata?.kind == "Interface" || implementsProjectedInterface(method, visited)
+            }
+        }
         val publicFunctions = klass.declarations.filterIsInstance<IrSimpleFunction>()
             .filter { function ->
                 function.visibility == DescriptorVisibilities.PUBLIC &&
+                    // Internal application objects expose their implemented WinRT
+                    // interfaces, not an ABI for every ordinary Kotlin helper.
+                    (authoredType.isPublic || implementsProjectedInterface(function)) &&
                     function.origin != IrDeclarationOrigin.FAKE_OVERRIDE &&
                     function.name.asString() !in authoredMemberValidationSyntheticFunctionNames
             }
         publicFunctions
             .groupBy { function -> function.name.asString() }
-            .filterValues { overloads -> overloads.size > 1 }
+            // These methods retain their SDK interface slots and metadata, as in
+            // CsWinRT's interface implementation path. Only newly exported
+            // overloads require new DefaultOverload metadata.
+            .filterValues { overloads -> overloads.size > 1 && !overloads.all(::implementsProjectedInterface) }
             .keys
             .forEach { memberName ->
                 report(
@@ -1409,14 +1455,16 @@ class KotlinWinRTIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
         authoredTypeNames: Set<String>,
+        manifestEntries: List<KotlinWinRTAuthoringTypeDetailsRegistrarEntry>,
     ) {
         if (authoredTypeNames.isEmpty()) {
             return
         }
-        val registrar = requireCompilerSupportPrerequisite(
+        val registrars = requireCompilerSupportPrerequisite(
             description = "authoring type-details registrar",
             prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
-            value = authoringTypeDetailsRegistrarRegister(pluginContext, moduleFragment.files.firstOrNull()),
+            value = authoringTypeDetailsRegistrarRegisters(pluginContext, moduleFragment.files.firstOrNull(), manifestEntries)
+                .takeIf(List<*>::isNotEmpty),
         )
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
@@ -1434,39 +1482,18 @@ class KotlinWinRTIrGenerationExtension(
                     // marker before their value-dependent base-factory call.
                     val body = constructor.body as? IrBlockBody ?: return constructor
                     val builder = DeclarationIrBuilder(pluginContext, constructor.symbol, constructor.startOffset, constructor.endOffset)
-                    body.statements.add(
+                    body.statements.addAll(
                         0,
-                        builder.irCall(registrar.register).apply {
-                            dispatchReceiver = builder.irGetObject(registrar.registrarClass)
+                        registrars.map { registrar ->
+                            builder.irCall(registrar.register).apply {
+                                dispatchReceiver = builder.irGetObject(registrar.registrarClass)
+                            }
                         },
                     )
                     return constructor
                 }
             },
         )
-    }
-
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun authoringTypeDetailsRegistrarRegister(
-        pluginContext: IrPluginContext,
-        fromFile: IrFile?,
-    ): AuthoringTypeDetailsRegistrar? {
-        val registrarName = authoringTypeDetailsRegistrarName(authoringAssemblyName)
-        val registrarClass = pluginContext.findClassSymbol(
-            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.$registrarName")),
-            fromFile,
-        ) ?: return null
-        val register = registrarClass
-            .owner
-            .declarations
-            .filterIsInstance<IrSimpleFunction>()
-            .singleOrNull { function ->
-                function.name.asString() == "register" &&
-                    function.parameters.none { parameter -> parameter.kind == IrParameterKind.Regular }
-            }
-            ?.symbol
-            ?: return null
-        return AuthoringTypeDetailsRegistrar(registrarClass, register)
     }
 
     private fun authoringTypeDetailsRegistrarRegisters(
@@ -1909,6 +1936,7 @@ private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
         "projection-registrar",
         "xaml-component-resource",
         "authoring-type-details-registrar",
+        "xaml-type-registrar",
     )
 
 private const val COMPILER_SUPPORT_MANIFEST_HEADER: String =
@@ -1930,6 +1958,10 @@ private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupport
         "authoring-type-details-registrar" to CompilerSupportManifestExpectedEntry(
             className = null,
             sourceFile = "authoring-type-details-registrars.tsv",
+        ),
+        "xaml-type-registrar" to CompilerSupportManifestExpectedEntry(
+            className = null,
+            sourceFile = "xaml-type-registrars.tsv",
         ),
     )
 

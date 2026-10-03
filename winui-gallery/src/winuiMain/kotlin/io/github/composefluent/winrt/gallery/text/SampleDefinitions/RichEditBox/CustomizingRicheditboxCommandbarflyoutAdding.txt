@@ -1,0 +1,17 @@
+--- header
+Customizing RichEditBox's CommandBarFlyout - Adding 'Share'
+--- xaml
+<RichEditBox x:Name="REBCustom" 
+    AutomationProperties.Name="editor with custom menu"
+    Width="800" Height="200" 
+    Loaded="REBCustom_Loaded" 
+    Unloaded="REBCustom_Unloaded"/>
+--- kotlin
+private fun Menu_Opening(sender: microsoft.ui.xaml.controls.primitives.FlyoutBase, args: Any?) {
+        val flyout = sender.asWinRT<CommandBarFlyout>()
+        if (flyout.target == REBCustom) flyout.primaryCommands.add(AppBarButton().apply { command = microsoft.ui.xaml.input.StandardUICommand(microsoft.ui.xaml.input.StandardUICommandKind.Share).asWinRT<microsoft.ui.xaml.input.ICommand>() })
+    }
+
+private fun REBCustom_Loaded(sender: Any?, args: RoutedEventArgs) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.add(menuOpeningHandler) } }
+
+private fun REBCustom_Unloaded(sender: Any?, args: RoutedEventArgs) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.remove(menuOpeningHandler) } }

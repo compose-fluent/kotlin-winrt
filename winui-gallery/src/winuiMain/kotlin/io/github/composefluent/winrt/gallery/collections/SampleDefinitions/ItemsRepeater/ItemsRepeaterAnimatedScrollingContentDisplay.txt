@@ -1,0 +1,65 @@
+--- header
+Animated Scrolling and Content Display
+--- xaml
+<!-- XAML Code -->
+
+<!-- The below code shows the XAML for the ItemsRepeater as well as the
+color-changing rectangle besides it. -->
+
+<Grid>
+    <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="1*"/>
+        <ColumnDefinition Width="1*"/>
+    </Grid.ColumnDefinitions>
+
+    <ScrollViewer x:Name="Animated_ScrollViewer" 
+                    Grid.Column="0"
+                    Height="175"
+                    Width="250"
+                    ViewChanging="Animated_ScrollViewer_ViewChanging">
+        <ItemsRepeater x:Name="animatedScrollRepeater" >
+            <ItemsRepeater.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                    <Button Content="{x:Bind}"
+                            Background="{x:Bind}"
+                            Click="Animated_GotItem" 
+                            GotFocus="Animated_GotItem" 
+                            HorizontalAlignment="Stretch"
+                            Foreground="{ThemeResource ButtonForeground}"/>
+                </DataTemplate>
+            </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+    </ScrollViewer>
+
+    <Rectangle x:Name="colorRectangle"
+                Grid.Column="1"
+                Stroke="Black"
+                Height="150"
+                Width="150"
+                Margin="10,0,0,0"/>
+</Grid>
+--- kotlin
+private fun OnAnimatedItemGotFocus(sender: Any?, args: RoutedEventArgs) { val item = checkNotNull(sender).asWinRT<FrameworkElement>(); PreviouslyFocusedAnimatedScrollRepeaterIndex = animatedScrollRepeater.getElementIndex(item); item.startBringIntoView(BringIntoViewOptions().apply { verticalAlignmentRatio = 0.5; animationDesired = true }) }
+
+private fun OnElementPrepared(sender: ItemsRepeater, args: ItemsRepeaterElementPreparedEventArgs) {
+        val item = microsoft.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(args.element)
+        val viewport = microsoft.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(Animated_ScrollViewer)
+        val properties = microsoft.ui.xaml.hosting.ElementCompositionPreview.getScrollViewerManipulationPropertySet(Animated_ScrollViewer)
+        val scale = properties.compositor.createExpressionAnimation("1 - abs((svVisual.Size.Y/2 - scrollProperties.Translation.Y) - (item.Offset.Y + item.Size.Y/2))*(.25/(svVisual.Size.Y/2))").apply { setReferenceParameter("svVisual", viewport); setReferenceParameter("scrollProperties", properties); setReferenceParameter("item", item) }
+        item.startAnimation("Scale.X", scale); item.startAnimation("Scale.Y", scale)
+        item.startAnimation("CenterPoint", properties.compositor.createExpressionAnimation("Vector3(item.Size.X/2, item.Size.Y/2, 0)").apply { setReferenceParameter("item", item) })
+    }
+
+private fun OnAnimatedItemClicked(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); colorRectangle.fill = button.background
+        announce(button, "Rectangle color set to ${button.content}", "RectangleChangedNotificationActivityId")
+        LastSelectedColorButton?.let { microsoft.ui.xaml.automation.AutomationProperties.setName(it, it.content.toString()) }
+        microsoft.ui.xaml.automation.AutomationProperties.setName(button, "${button.content} , selected"); LastSelectedColorButton = button
+    }
+
+private fun OnAnimatedScrollRepeaterKeyDown(sender: Any?, args: microsoft.ui.xaml.input.KeyRoutedEventArgs) {
+        if (args.handled) return
+        val index = when (args.key) { windows.system.VirtualKey.Home -> 0; windows.system.VirtualKey.End -> ColorList.lastIndex; else -> return }
+        if (index == PreviouslyFocusedAnimatedScrollRepeaterIndex) return
+        animatedScrollRepeater.getOrCreateElement(index).let { it.startBringIntoView(); it.asWinRT<Control>().focus(FocusState.Programmatic) }; args.handled = true
+    }

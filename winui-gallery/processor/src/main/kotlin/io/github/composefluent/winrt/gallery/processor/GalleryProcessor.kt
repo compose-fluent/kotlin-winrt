@@ -2,6 +2,8 @@ package io.github.composefluent.winrt.gallery.processor
 
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
+import com.google.devtools.ksp.getAllSuperTypes
+import com.google.devtools.ksp.getConstructors
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 
@@ -60,7 +62,25 @@ private class GalleryProcessor(
                     failed = true
                     continue
                 }
-                if (kind in setOf("GalleryPage", "GallerySample") && !homePage && (declaration !is KSFunctionDeclaration ||
+                val pageClass = kind == "GalleryPage" && declaration is KSClassDeclaration
+                if (pageClass) {
+                    val page = declaration as KSClassDeclaration
+                    val accessibleConstructor = page.getConstructors().any {
+                        it.parameters.isEmpty() && Modifier.PRIVATE !in it.modifiers && Modifier.PROTECTED !in it.modifiers
+                    }
+                    val isElement = page.getAllSuperTypes().any {
+                        it.declaration.qualifiedName?.asString() == "microsoft.ui.xaml.UIElement"
+                    }
+                    if (page.classKind != ClassKind.CLASS || Modifier.ABSTRACT in page.modifiers ||
+                        Modifier.SEALED in page.modifiers || Modifier.INNER in page.modifiers ||
+                        Modifier.PRIVATE in page.modifiers || page.typeParameters.isNotEmpty() ||
+                        !accessibleConstructor || !isElement) {
+                        logger.error("@GalleryPage requires an accessible, concrete, non-generic UIElement subclass with a zero-parameter constructor", symbol)
+                        failed = true
+                        continue
+                    }
+                }
+                if (kind in setOf("GalleryPage", "GallerySample") && !homePage && !pageClass && (declaration !is KSFunctionDeclaration ||
                         (kind == "GalleryPage" && declaration.parameters.isNotEmpty()) || declaration.extensionReceiver != null ||
                         declaration.typeParameters.isNotEmpty() || Modifier.SUSPEND in declaration.modifiers ||
                         Modifier.PRIVATE in declaration.modifiers)) {
@@ -125,8 +145,74 @@ private class GalleryProcessor(
         val extractor = KotlinExampleExtractor()
         val sampleExtractor = KotlinSampleSourceExtractor()
         val parser = KotlinSourceParser()
+        val xamlDocuments = linkedMapOf<String, Map<String, String>>()
+        val sampleDefinitions = linkedMapOf<String, Triple<String, String, String>>()
+        val sourceDocuments = linkedMapOf<String, String>()
         data class RoutePreviews(val titleIndices: Map<String, Int>, val count: Int)
         val examples = pages.mapIndexed { routeIndex, page ->
+            val pageFile = java.io.File(sources.single { it.fileName == page.source }.filePath)
+            val xamlFile = java.io.File(pageFile.parentFile, "${pageFile.nameWithoutExtension}.xaml")
+            val pageDeclaration = sources.single { it.fileName == page.source }.declarations.firstOrNull {
+                it.qualifiedName?.asString() == page.symbol
+            }
+            if (xamlFile.isFile || pageDeclaration is KSClassDeclaration) {
+                val definitions = java.io.File(pageFile.parentFile, "SampleDefinitions/${page.route}")
+                    .listFiles()?.filter { it.extension == "txt" }?.sortedBy { it.name }.orEmpty()
+                if (definitions.isNotEmpty()) {
+                    val (structured, raw) = definitions.partition { file -> file.readLines().any { it.startsWith("--- ") } }
+                    val parsed = structured.map { it to GallerySampleDefinition.parse(it.readText()) }
+                    val headers = parsed.map { it.second.header }.filter(String::isNotBlank)
+                    require(headers.distinct().size == headers.size) {
+                        "Duplicate sample header for ${page.route}"
+                    }
+                    val documents = parsed.flatMapIndexed { index, (file, sample) -> listOf(
+                        "GalleryCode${routeIndex}_$index" to parser.parse("${file.nameWithoutExtension}.kt", sample.kotlin, isScript = true),
+                        "GalleryXaml${routeIndex}_$index" to XamlSourceParser().parse("${file.nameWithoutExtension}.xaml", sample.xaml),
+                    ) }.toMutableList()
+                    raw.forEachIndexed { index, file ->
+                        val name = "GallerySource${routeIndex}_$index"
+                        documents += name to XamlSourceParser().parse("${file.nameWithoutExtension}.xaml", file.readText())
+                        sourceDocuments["${page.route}\\${file.name}"] = name
+                    }
+                    if (parsed.isEmpty()) {
+                        documents += "GalleryCode${routeIndex}_0" to parser.parse(pageFile.name, pageFile.readText(), isScript = false)
+                        if (xamlFile.isFile) documents += "GalleryXaml${routeIndex}_0" to XamlSourceParser().parse(xamlFile.name, xamlFile.readText())
+                    }
+                    parsed.forEachIndexed { index, (file, sample) ->
+                        val name = file.name.replace(Regex("^\\d+-"), "")
+                        val path = "${page.route}\\$name"
+                        require(path !in sampleDefinitions) { "Duplicate sample definition $path" }
+                        sampleDefinitions[path] = Triple(sample.header, "GalleryCode${routeIndex}_$index", "GalleryXaml${routeIndex}_$index")
+                        sourceDocuments[path] = "GalleryXaml${routeIndex}_$index"
+                    }
+                    codeGenerator.createNewFile(
+                        Dependencies(true, *sources.toTypedArray()), galleryPackage, "GalleryCode$routeIndex",
+                    ).bufferedWriter().use { it.write(generateCodeDocuments(documents, emptyMap())) }
+                    xamlDocuments[page.route] = if (parsed.isEmpty()) mapOf("" to "GalleryXaml${routeIndex}_0") else parsed.mapIndexed { index, (file, sample) ->
+                        sample.header.ifBlank { file.name } to "GalleryXaml${routeIndex}_$index"
+                    }.toMap()
+                    return@mapIndexed RoutePreviews(parsed.mapIndexedNotNull { index, (_, sample) ->
+                        sample.header.takeIf(String::isNotBlank)?.let { it to index }
+                    }.toMap(), parsed.size.coerceAtLeast(1))
+                }
+                // Class registrations show the complete code-behind, with adjacent markup when present.
+                val source = texts.getValue(page.source)
+                val kotlinName = "GalleryCode${routeIndex}_0"
+                val xamlName = "GalleryXaml$routeIndex"
+                val documents = buildList {
+                    add(kotlinName to parser.parse(page.source, source, isScript = false))
+                    if (xamlFile.isFile) add(xamlName to XamlSourceParser().parse(xamlFile.name, xamlFile.readText()))
+                }
+                val origins = mapOf(kotlinName to KotlinCodeOriginData(
+                    repositoryRelativePath(pageFile.path, repositoryRoot),
+                    KotlinSourceFragment(source, IntArray(source.length) { it }),
+                ))
+                codeGenerator.createNewFile(
+                    Dependencies(true, *sources.toTypedArray()), galleryPackage, "GalleryCode$routeIndex",
+                ).bufferedWriter().use { it.write(generateCodeDocuments(documents, origins)) }
+                if (xamlFile.isFile) xamlDocuments[page.route] = mapOf("" to xamlName)
+                return@mapIndexed RoutePreviews(emptyMap(), 1)
+            }
             val origins = mutableMapOf<String, KotlinCodeOriginData>()
             fun document(name: String, fileName: String, fragment: KotlinSourceFragment): Pair<String, io.github.composefluent.winrt.gallery.code.KotlinCodeDocument> {
                 origins[name] = KotlinCodeOriginData(
@@ -178,7 +264,27 @@ private class GalleryProcessor(
                 writer.appendLine("      }")
                 writer.appendLine("    }")
             }
-            writer.appendLine("    else -> null\n  }\n}")
+            writer.appendLine("    else -> null\n  }")
+            writer.appendLine("  actual fun xamlDocument(route: String, title: String, index: Int): $galleryPackage.code.KotlinCodeDocument? = when (route) {")
+            xamlDocuments.forEach { (route, documents) ->
+                writer.appendLine("    ${kotlinLiteral(route)} -> when (title) {")
+                documents.forEach { (title, name) -> writer.appendLine("      ${kotlinLiteral(title)} -> $name.create()") }
+                writer.appendLine("      else -> when (index) {")
+                documents.values.forEachIndexed { index, name -> writer.appendLine("        $index -> $name.create()") }
+                writer.appendLine("        else -> null\n      }\n    }")
+            }
+            writer.appendLine("    else -> null\n  }")
+            writer.appendLine("  actual fun sampleDefinition(path: String): GallerySampleCode? = when (path.replace('/', '\\\\')) {")
+            sampleDefinitions.forEach { (path, document) ->
+                writer.appendLine("    ${kotlinLiteral(path)} -> GallerySampleCode(${kotlinLiteral(document.first)}, ${document.second}.create(), ${document.third}.create())")
+            }
+            writer.appendLine("    else -> null\n  }")
+            writer.appendLine("  actual fun sourceDocument(path: String): $galleryPackage.code.KotlinCodeDocument? = when (path.replace('/', '\\\\')) {")
+            sourceDocuments.forEach { (path, name) ->
+                writer.appendLine("    ${kotlinLiteral(path)} -> $name.create()")
+            }
+            writer.appendLine("    else -> null\n  }")
+            writer.appendLine("}")
         }
     }
 }

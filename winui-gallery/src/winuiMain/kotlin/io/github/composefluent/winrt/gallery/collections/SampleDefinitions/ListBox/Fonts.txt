@@ -1,0 +1,9 @@
+--- header
+A ListBox with its ItemsSource and Height set.
+--- xaml
+<StackPanel>
+                <ListBox x:Name="FontsList" Height="164" SelectedIndex="2" SelectionChanged="FontChanged"><x:String>Arial</x:String><x:String>Comic Sans MS</x:String><x:String>Courier New</x:String><x:String>Segoe UI</x:String><x:String>Times New Roman</x:String></ListBox>
+                <TextBlock x:Name="fontOutput" Text="You can set the font used for this text." FontFamily="Courier New" Margin="0,10,0,0" />
+            </StackPanel>
+--- kotlin
+private fun FontChanged(sender: Any?, args: SelectionChangedEventArgs) { FontsList.selectedItem?.toString()?.let { fontOutput.fontFamily = FontFamily(it) } }

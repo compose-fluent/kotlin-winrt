@@ -1,0 +1,5 @@
+<Page x:Class="io.github.composefluent.winrt.gallery.multiplewindows.CreateMultipleWindowsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:io.github.composefluent.winrt.gallery.controls">
+    <controls:ControlExample SampleDefinition="CreateMultipleWindows/CreateWindow.txt"><Button Content="Create new Window" Click="CreateWindow_Click" /></controls:ControlExample>
+</Page>

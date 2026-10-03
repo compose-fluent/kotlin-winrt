@@ -36,3 +36,5 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
     testImplementation(libs.junit)
 }
+
+kotlin.compilerOptions.freeCompilerArgs.add("-Xcontext-parameters")

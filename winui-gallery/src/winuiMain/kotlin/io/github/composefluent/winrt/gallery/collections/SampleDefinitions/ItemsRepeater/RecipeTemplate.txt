@@ -1,0 +1,29 @@
+<DataTemplate x:Key="RecipeTemplate" x:DataType="local:Recipe">
+            <StackPanel
+                Margin="5"
+                Background="{ThemeResource SystemControlBackgroundBaseLowBrush}"
+                BorderThickness="1">
+                <StackPanel
+                    Height="75"
+                    Margin="8"
+                    Background="{x:Bind Color}"
+                    Opacity=".8">
+                    <TextBlock
+                        Padding="12"
+                        FontSize="35"
+                        Foreground="{ThemeResource SystemControlForegroundAltHighBrush}"
+                        Text="{x:Bind Num.ToString()}"
+                        TextAlignment="Center" />
+                </StackPanel>
+                <TextBlock
+                    x:Name="recipeName"
+                    Margin="15,0,10,0"
+                    Style="{StaticResource TitleTextBlockStyle}"
+                    Text="{x:Bind Name}"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Margin="15,0,15,15"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="{x:Bind Ingredients}" />
+            </StackPanel>
+        </DataTemplate>

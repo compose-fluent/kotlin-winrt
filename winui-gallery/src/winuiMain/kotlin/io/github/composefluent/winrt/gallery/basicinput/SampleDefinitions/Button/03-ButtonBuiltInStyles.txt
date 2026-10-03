@@ -1,0 +1,9 @@
+--- Header
+Buttons with built-in styles.
+
+--- Xaml
+<StackPanel Orientation="Horizontal" Spacing="16">
+    <Button x:Name="accentButton" AutomationProperties.Name="Accent style" Content="Accent style button" Style="{StaticResource AccentButtonStyle}" />
+    <Button x:Name="subtleButton" AutomationProperties.Name="Subtle style" Content="Subtle style button" Style="{StaticResource SubtleButtonStyle}" />
+</StackPanel>
+

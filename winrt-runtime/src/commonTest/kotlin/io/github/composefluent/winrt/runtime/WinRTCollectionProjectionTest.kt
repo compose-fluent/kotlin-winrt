@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.runtime
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
@@ -279,6 +280,61 @@ class WinRTCollectionProjectionTest {
         }
     }
 
+    @Test
+    fun object_collection_outputs_preserve_the_callers_owned_references() {
+        // CsWinRT Marshalers.cs FromManaged detaches the result independently of its carrier.
+        LabelInspectableBox.create("owned-object").use { box ->
+            val adapter = WinRTReferenceValueAdapters.object_
+            val pointer = box.reference.pointer.asRawAddress()
+            val baseline = WinRTInspectableComObject.tryProbeReferenceCount(pointer)!!
+            val listAbi = WinRTReadOnlyListProjection.fromManaged(
+                listOf<Any?>(box.reference, null, box.reference), adapter,
+            )
+            WinRTVectorViewReference(listAbi, vectorViewInterfaceIdFor(adapter)).use { view ->
+                view.getAtOrNull(0u)!!.use { result ->
+                    assertEquals(baseline + 1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+                    assertEquals("owned-object", result.asInspectable().use { it.getRuntimeClassName() })
+                }
+                assertEquals(baseline, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+                val results = view.getMany(0u, 3)
+                try {
+                    assertEquals(3, results.size)
+                    assertEquals(null, results[1])
+                    assertEquals(baseline + 2u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+                } finally {
+                    results.forEach { it?.close() }
+                }
+                assertEquals(baseline, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            }
+        }
+    }
+
+    @Test
+    fun collection_get_many_rolls_back_outputs_before_an_element_failure() {
+        // CsWinRT Marshalers.cs CopyManagedArray releases each preceding detached ABI output.
+        LabelInspectableBox.create("rollback-object").use { box ->
+            val pointer = box.reference.pointer.asRawAddress()
+            val baseline = WinRTInspectableComObject.tryProbeReferenceCount(pointer)!!
+            var outputs = 0
+            val adapter = WinRTReferenceValueAdapter<ComObjectReference>(
+                projectedTypeName = "test.RollbackObject",
+                typeSignature = WinRTTypeSignature.object_(),
+                projector = { requireNotNull(it) },
+                marshaller = { value ->
+                    if (++outputs == 2) error("Intentional second-element failure")
+                    cloneComReference(value)
+                },
+            )
+            val listAbi = WinRTReadOnlyListProjection.fromManaged(
+                listOf(box.reference, box.reference), adapter,
+            )
+            WinRTVectorViewReference(listAbi, vectorViewInterfaceIdFor(adapter)).use { view ->
+                assertFailsWith<WinRTRuntimeException> { view.getMany(0u, 2) }
+                assertEquals(2, outputs)
+                assertEquals(baseline, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            }
+        }
+    }
     @Test
     fun object_dictionary_ccw_distinguishes_null_values_from_missing_keys() {
         val allocated = mutableListOf<AutoCloseable>()

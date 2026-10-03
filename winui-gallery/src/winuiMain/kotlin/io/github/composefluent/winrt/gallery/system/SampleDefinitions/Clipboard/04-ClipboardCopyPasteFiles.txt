@@ -1,0 +1,40 @@
+--- header
+Copy and paste files
+--- Kotlin
+private fun CopyFiles_Click(sender: Any?, args: RoutedEventArgs) {
+    tasks.launch {
+        val picker = FileOpenPicker(checkNotNull(checkNotNull(xamlRoot).contentIslandEnvironment).appWindowId)
+            .apply { fileTypeFilter.add("*") }
+        val files = picker.pickMultipleFilesAsync().await()
+        if (files.isEmpty()) return@launch
+        val items = mutableListOf<IStorageItem>()
+        for (file in files) items.add(StorageFile.getFileFromPathAsync(file.path).await())
+        val packageContent = DataPackage().apply {
+            setStorageItems(items)
+            requestedOperation = DataPackageOperation.Copy
+        }
+        val copied = Clipboard.setContentWithOptions(packageContent, ClipboardContentOptions())
+        FilesStatusText.text = if (copied) "${items.size} file(s) copied to clipboard." else "Error copying files to clipboard."
+        if (copied) announce(checkNotNull(sender).asWinRT<UIElement>(), "${items.size} files copied to clipboard", "FilesCopiedSuccessNotificationId")
+    }
+}
+
+private fun PasteFiles_Click(sender: Any?, args: RoutedEventArgs) {
+    tasks.launch {
+        val packageView = Clipboard.getContent()
+        if (!packageView.contains(StandardDataFormats.storageItems)) {
+            FilesStatusText.text = "StorageItems format is not available in the clipboard."
+            return@launch
+        }
+        try {
+            val items = packageView.getStorageItemsAsync().await()
+            FilesStatusText.text = "Requested operation: ${packageView.requestedOperation}\nFile(s) on clipboard (${items.size}):\n" +
+                items.joinToString("\n") { "  • ${it.name}" }
+            announce(checkNotNull(sender).asWinRT<UIElement>(), "Files pasted from clipboard", "FilesPastedSuccessNotificationId")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FilesStatusText.text = "Error pasting files: " + error.message
+        }
+    }
+}

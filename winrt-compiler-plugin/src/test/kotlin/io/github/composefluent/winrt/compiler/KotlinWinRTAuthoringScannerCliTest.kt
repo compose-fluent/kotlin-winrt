@@ -14,6 +14,34 @@ import kotlin.io.path.writeText
 
 class KotlinWinRTAuthoringScannerCliTest {
     @Test
+    fun xaml_pages_share_the_authored_candidate_and_validate_the_declared_base() {
+        // XamlCompiler's generated C# partial adds IComponentConnector to the page itself;
+        // the source scanner must predict the same interface as our FIR extension.
+        val root = Files.createTempDirectory("kotlin-winrt-xaml-authoring-")
+        root.resolve("MainPage.kt").writeText("package sample\nclass MainPage : microsoft.ui.xaml.controls.Page()")
+        root.resolve("OtherPage.kt").writeText("package sample\nclass OtherPage : microsoft.ui.xaml.controls.Page()")
+        val index = root.resolve("index.tsv")
+        index.writeText("Microsoft.UI.Xaml.Controls.Page\tRuntimeClass\tMicrosoft.UI.Xaml.Controls.IPageOverrides\nMicrosoft.UI.Xaml.Controls.IPageOverrides\tInterface\t\nMicrosoft.UI.Xaml.Markup.IComponentConnector\tInterface\t\n")
+        val declarations = root.resolve("declarations.json")
+        val declarationText = """{"SchemaVersion":1,"Pages":[{"ClassName":"sample.MainPage","ResourcePath":"MainPage.xaml","BaseTypeName":"Microsoft.UI.Xaml.Controls.Page","IsApplication":false,"Features":[],"Connections":[]}],"Resources":[]}"""
+        declarations.writeText(declarationText)
+        val output = root.resolve("candidates.tsv")
+        val args = arrayOf("--metadata-index", index.toString(), "--source-root", root.toString(),
+            "--output", output.toString(), "--xaml-declarations", declarations.toString())
+        KotlinWinRTAuthoringScannerCli.main(args)
+        val rows = output.readText().lines().filter { it.isNotBlank() }
+        assertEquals(2, rows.size)
+        assertTrue(rows[0].contains("IComponentConnector"))
+        assertTrue(!rows[1].contains("IComponentConnector"))
+        declarations.writeText(declarationText.replace("Controls.Page", "Controls.Button"))
+        assertTrue(runCatching { KotlinWinRTAuthoringScannerCli.main(args) }.exceptionOrNull()
+            ?.message.orEmpty().contains("requires base"))
+        declarations.writeText(declarationText.replace("sample.MainPage", "sample.MissingPage"))
+        assertTrue(runCatching { KotlinWinRTAuthoringScannerCli.main(args) }.exceptionOrNull()
+            ?.message.orEmpty().contains("must resolve"))
+    }
+
+    @Test
     fun rejects_missing_authoring_metadata_index() {
         val missingIndex = Files.createTempDirectory("kotlin-winrt-missing-authoring-index-")
             .resolve("metadata-index.tsv")

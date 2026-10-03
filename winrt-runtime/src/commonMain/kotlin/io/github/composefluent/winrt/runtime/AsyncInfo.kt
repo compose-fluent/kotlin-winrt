@@ -28,6 +28,13 @@ class WinRTAsyncProgressReporter<T> internal constructor(
 }
 
 object AsyncInfo {
+    /** CsWinRT TaskToAsyncOperationAdapter's synchronous-result constructor, with
+     * the shared IInspectable marshaler owning the returned reference. */
+    fun fromInspectableResult(result: Any?): WinRTAsyncOperationReference<Any?> =
+        fromResult(result, WinRTTypeSignature.ObjectType) { value, resultOut ->
+            PlatformAbi.writePointer(resultOut, WinRTObjectMarshaller.fromManaged(value))
+        }
+
     fun completedAction(): WinRTAsyncActionReference =
         actionReference(WinRTTaskToAsyncInfoAdapter.completed(Unit))
 

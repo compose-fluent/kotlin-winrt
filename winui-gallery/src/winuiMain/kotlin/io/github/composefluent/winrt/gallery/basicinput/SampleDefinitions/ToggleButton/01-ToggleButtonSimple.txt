@@ -1,0 +1,15 @@
+--- Header
+A simple ToggleButton.
+
+--- Xaml
+<ToggleButton x:Name="toggleButton" Content="ToggleButton" Click="onToggleClick" />
+
+
+--- Kotlin
+private fun onToggleClick(sender: Any?, args: RoutedEventArgs) {
+    output.text = if (toggleButton.isChecked == true) "On" else "Off"
+}
+
+private fun onDisableClick(sender: Any?, args: RoutedEventArgs) {
+    toggleButton.isEnabled = disableToggle.isChecked != true
+}

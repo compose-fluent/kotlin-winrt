@@ -19,6 +19,8 @@ import io.github.composefluent.winrt.runtime.WinRTComposableObjectReference
 import io.github.composefluent.winrt.runtime.WinRTInspectableInterfaceDefinition
 import io.github.composefluent.winrt.runtime.WinRTInspectableMethodDefinition
 import io.github.composefluent.winrt.runtime.WinRTUnsupportedOperationException
+import io.github.composefluent.winrt.runtime.WinRTXamlComponent
+import io.github.composefluent.winrt.runtime.initializeWinRTXamlComponent
 import kotlin.reflect.KClass
 
 data class WinRTAuthoredTypeDefinition<T : Any>(
@@ -119,6 +121,7 @@ data class WinRTAuthoredActivationFactoryDefinition<T : Any>(
                 KnownHResults.E_NOTIMPL,
             )
         val instance = create()
+        if (instance is WinRTXamlComponent) initializeWinRTXamlComponent(instance)
         ComWrappersSupport.createCCWForObject(instance).use { reference ->
             PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(reference.getRefPointer()))
         }

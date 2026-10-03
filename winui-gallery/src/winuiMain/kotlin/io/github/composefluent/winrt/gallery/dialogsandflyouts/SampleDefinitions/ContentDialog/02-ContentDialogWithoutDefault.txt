@@ -1,0 +1,46 @@
+--- header
+A content dialog without a default button.
+--- xaml
+<Page
+    x:Class="io.github.composefluent.winrt.gallery.dialogsandflyouts.ContentDialogContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <StackPanel VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+        <!-- Content body -->
+        <TextBlock Text="Lorem ipsum dolor sit amet, adipisicing elit." TextWrapping="Wrap" />
+        <CheckBox Content="Upload your content to the cloud."/>
+    </StackPanel>
+
+</Page>
+--- Kotlin
+private fun ShowDialogNoDefault_Click(sender: Any?, args: RoutedEventArgs) {
+    showDialog(checkNotNull(sender).asWinRT<Button>(), true, DialogResultNoDefault)
+}
+
+private fun showDialog(button: Button, noDefault: Boolean, output: TextBlock) = tasks.launch {
+    val dialog = ContentDialogExample().apply {
+        xamlRoot = button.xamlRoot
+        requestedTheme = button.actualTheme
+        style = controlStyle("DefaultContentDialogStyle")
+        title = if (noDefault) "Replace file?" else "Save your work?"
+        primaryButtonText = if (noDefault) "Replace" else "Save"
+        secondaryButtonText = if (noDefault) "Keep" else "Don't Save"
+        closeButtonText = "Cancel"
+        defaultButton = if (noDefault) ContentDialogButton.None else ContentDialogButton.Primary
+        content = ContentDialogContent()
+    }
+    try {
+        val result = dialog.showAsync().await()
+        output.text = when (result) {
+            ContentDialogResult.Primary -> if (noDefault) "User replaced the file" else "User saved their work"
+            ContentDialogResult.Secondary -> if (noDefault) "User kept the file" else "User did not save their work"
+            else -> "User cancelled the dialog"
+        }
+        val peer = FrameworkElementAutomationPeer.fromElement(output)
+            ?: FrameworkElementAutomationPeer.createPeerForElement(output)
+        peer?.raiseAutomationEvent(AutomationEvents.LiveRegionChanged)
+    } finally {
+        dialog.hide()
+    }
+}

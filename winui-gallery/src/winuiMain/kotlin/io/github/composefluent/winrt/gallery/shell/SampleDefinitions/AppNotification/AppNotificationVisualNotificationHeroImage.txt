@@ -1,0 +1,8 @@
+--- header
+Visual notification with hero image and attribution
+--- kotlin
+private fun ShowVisualNotificationWithHeroImageButton_Click(sender: Any?, args: RoutedEventArgs) {
+    checkNotNull(microsoft.windows.appnotifications.AppNotificationManager.default).show(microsoft.windows.appnotifications.builder.AppNotificationBuilder()
+        .addText("Harbor Scene with Boats").addText("A quiet harbor with boats gently anchored in view.")
+        .setHeroImage(windows.foundation.Uri("ms-appx:///Assets/SampleMedia/LandscapeImage5.jpg")).setAttributionText("WinUI gallery assets").buildNotification())
+}

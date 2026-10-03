@@ -46,6 +46,11 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val compilerCandidates: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceCandidates: ConfigurableFileCollection
+
     @get:Input
     abstract val metadataInputs: ListProperty<String>
 
@@ -111,12 +116,18 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot(outputRoot::equals)
             .forEach(GradleFileOperations::deleteDirectory)
+        val sourceOwners = sourceCandidates.files.filter { it.isFile }
+            .flatMap { KotlinWinRTAuthoringCandidateFile.read(it.toPath()) }
+            .associate { it.sourceTypeName to it.sourceSetName }
         val candidates = compilerCandidates.files
             .singleOrNull()
             ?.takeIf { file -> file.isFile }
             ?.toPath()
             ?.let(KotlinWinRTAuthoringCandidateFile::read)
             .orEmpty()
+            // ABI shapes come exclusively from IR. Gradle's source provenance is
+            // only used to reproduce the same fragment-owned output layout.
+            .map { it.copy(sourceSetName = sourceOwners[it.sourceTypeName]) }
         val sources = metadataSources()
         val unfilteredModel = WinRTMetadataLoader.loadSources(sources)
         val exportedCandidates = candidates.filter { candidate -> candidate.isPublic }

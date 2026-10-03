@@ -9,6 +9,17 @@ import kotlin.io.path.inputStream
 import kotlin.io.path.name
 
 object WinRTMetadataLoader {
+    /** Declaring assemblies come from metadata, never from namespace or file-name guesses. */
+    fun loadTypeAssemblyNames(paths: List<Path>): Map<String, String> = buildMap {
+        discoverMetadataFiles(paths).forEach { path ->
+            WinRTCliMetadataFile.parseTypeAssemblyNames(path).forEach { (type, assembly) ->
+                val previous = put(type, assembly)
+                require(previous == null || previous == assembly) {
+                    "Ambiguous declaring assembly for $type: $previous and $assembly"
+                }
+            }
+        }
+    }
     fun load(paths: List<Path>): WinRTMetadataModel {
         return WinRTMetadataSourceResolver.resolvePathInputs(paths).load()
     }
@@ -153,6 +164,9 @@ private class WinRTCliMetadataFile private constructor(
             }
         }
 
+        fun parseTypeAssemblyNames(path: Path): Map<String, String> =
+            parseMetadata(path, java.nio.file.Files.readAllBytes(path)) { it.parseTables().typeAssemblyNames() }
+
         fun parseAuxiliaryTableInventory(path: Path): WinRTMetadataFileAuxiliaryTableInventory {
             path.inputStream().use { input ->
                 val bytes = input.readAllBytes()
@@ -239,6 +253,12 @@ private class MetadataTables private constructor(
     private val guidIndexSize: Int,
     private val blobIndexSize: Int,
 ) {
+    fun typeAssemblyNames(): Map<String, String> {
+        require(rowCounts[TABLE_ASSEMBLY] == 1) { "Expected one Assembly definition" }
+        val assembly = readStringAt(tableOffsets[TABLE_ASSEMBLY] + 16 + blobIndexSize)
+        return readRawTypeDefs().filterNot { it.name == "<Module>" }
+            .associate { it.qualifiedName to assembly }
+    }
     fun auxiliaryTableInventory(): List<WinRTMetadataAuxiliaryTableDescriptor> =
         AUXILIARY_TABLE_IDS.map { tableId ->
             WinRTMetadataAuxiliaryTableDescriptor(
@@ -2474,38 +2494,6 @@ private data class ParsedMethodSignature(
 private data class ParsedPropertySignature(
     val type: ParsedTypeSignature,
 )
-
-private const val ELEMENT_TYPE_BOOLEAN = 0x02
-private const val ELEMENT_TYPE_CHAR = 0x03
-private const val ELEMENT_TYPE_I1 = 0x04
-private const val ELEMENT_TYPE_U1 = 0x05
-private const val ELEMENT_TYPE_I2 = 0x06
-private const val ELEMENT_TYPE_U2 = 0x07
-private const val ELEMENT_TYPE_I4 = 0x08
-private const val ELEMENT_TYPE_U4 = 0x09
-private const val ELEMENT_TYPE_I8 = 0x0A
-private const val ELEMENT_TYPE_U8 = 0x0B
-private const val ELEMENT_TYPE_R4 = 0x0C
-private const val ELEMENT_TYPE_R8 = 0x0D
-private const val ELEMENT_TYPE_STRING = 0x0E
-
-private fun winRTFundamentalTypeForElementTypeMarker(marker: Int): WinRTFundamentalType? =
-    when (marker) {
-        ELEMENT_TYPE_BOOLEAN -> WinRTFundamentalType.Boolean
-        ELEMENT_TYPE_CHAR -> WinRTFundamentalType.Char
-        ELEMENT_TYPE_I1 -> WinRTFundamentalType.Int8
-        ELEMENT_TYPE_U1 -> WinRTFundamentalType.UInt8
-        ELEMENT_TYPE_I2 -> WinRTFundamentalType.Int16
-        ELEMENT_TYPE_U2 -> WinRTFundamentalType.UInt16
-        ELEMENT_TYPE_I4 -> WinRTFundamentalType.Int32
-        ELEMENT_TYPE_U4 -> WinRTFundamentalType.UInt32
-        ELEMENT_TYPE_I8 -> WinRTFundamentalType.Int64
-        ELEMENT_TYPE_U8 -> WinRTFundamentalType.UInt64
-        ELEMENT_TYPE_R4 -> WinRTFundamentalType.Float
-        ELEMENT_TYPE_R8 -> WinRTFundamentalType.Double
-        ELEMENT_TYPE_STRING -> WinRTFundamentalType.String
-        else -> null
-    }
 
 private class SignatureReader(
     private val bytes: ByteArray,

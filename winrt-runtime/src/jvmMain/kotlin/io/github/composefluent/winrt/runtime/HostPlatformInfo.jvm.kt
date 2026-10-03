@@ -6,8 +6,7 @@ actual object HostPlatformInfo {
     actual val osName: String
         get() = System.getProperty("os.name").orEmpty()
 
-    actual val isWindows: Boolean
-        get() = normalizedOsName.contains("win")
+    actual val isWindows: Boolean = normalizedOsName.contains("win")
 
     actual val isLinux: Boolean
         get() = normalizedOsName.contains("linux")

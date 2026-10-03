@@ -800,6 +800,15 @@ private fun KotlinProjectionRenderer.prepareActivationFactoryCall(
         kind = KotlinProjectionAbiValueKind.InspectableReference,
         typeName = IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
     )
+    // CsWinRT write_factory_constructors attaches the factory's declared default interface
+    // directly. Keep that WinMD identity even though this helper returns an owning raw reference.
+    val factoryReturnBinding = if (plan.defaultInterfaceIid != null) {
+        returnBinding.copy(
+            resolvedTypeName = resolveTypeName(plan.type.qualifiedName).toString(),
+            sourceTypeKind = plan.type.kind,
+            interfaceId = plan.defaultInterfaceIid,
+        )
+    } else returnBinding
     val parameterBindings = method.parameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             parameter.name,
@@ -809,7 +818,7 @@ private fun KotlinProjectionRenderer.prepareActivationFactoryCall(
     }
     return requireAbiCallPlan(
         bindingName = "${factoryType.qualifiedName}.${method.name}",
-        returnBinding = returnBinding,
+        returnBinding = factoryReturnBinding,
         parameterBindings = parameterBindings,
         suppressHResultCheck = method.isNoException,
     )

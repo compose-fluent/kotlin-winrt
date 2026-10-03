@@ -1,0 +1,25 @@
+--- Header
+Using a three-state CheckBox as a Select all control.
+
+--- Xaml
+<StackPanel>
+    <CheckBox x:Name="allOptions" Content="Select all" IsThreeState="True" IsChecked="{x:Null}" Click="onSelectAllClick" />
+    <CheckBox x:Name="option1" Content="Option 1" Margin="24,0,0,0" Click="onOptionClick" />
+    <CheckBox x:Name="option2" Content="Option 2" Margin="24,0,0,0" IsChecked="True" Click="onOptionClick" />
+    <CheckBox x:Name="option3" Content="Option 3" Margin="24,0,0,0" Click="onOptionClick" />
+</StackPanel>
+
+
+--- Kotlin
+private fun onSelectAllClick(sender: Any?, args: RoutedEventArgs) {
+    listOf(option1, option2, option3).forEach { it.isChecked = allOptions.isChecked != false }
+}
+
+private fun onOptionClick(sender: Any?, args: RoutedEventArgs) {
+    val options = listOf(option1, option2, option3)
+    allOptions.isChecked = when {
+        options.all { it.isChecked == true } -> true
+        options.none { it.isChecked == true } -> false
+        else -> null
+    }
+}

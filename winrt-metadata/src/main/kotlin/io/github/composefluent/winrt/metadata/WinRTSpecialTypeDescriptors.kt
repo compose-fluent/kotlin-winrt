@@ -11,15 +11,27 @@ enum class WinRTSpecialTypeFamily {
 enum class WinRTCollectionInterfaceKind(
     val isReadOnly: Boolean,
     val isMutable: Boolean,
+    val kotlinProjectedName: String? = null,
 ) {
-    Iterable(isReadOnly = true, isMutable = false),
+    Iterable(isReadOnly = true, isMutable = false, kotlinProjectedName = "kotlin.collections.Iterable"),
     Iterator(isReadOnly = true, isMutable = false),
-    VectorView(isReadOnly = true, isMutable = false),
-    Vector(isReadOnly = false, isMutable = true),
-    MapView(isReadOnly = true, isMutable = false),
-    Map(isReadOnly = false, isMutable = true),
+    VectorView(isReadOnly = true, isMutable = false, kotlinProjectedName = "kotlin.collections.List"),
+    Vector(isReadOnly = false, isMutable = true, kotlinProjectedName = "kotlin.collections.MutableList"),
+    MapView(isReadOnly = true, isMutable = false, kotlinProjectedName = "kotlin.collections.Map"),
+    Map(isReadOnly = false, isMutable = true, kotlinProjectedName = "kotlin.collections.MutableMap"),
     KeyValuePair(isReadOnly = true, isMutable = false),
 }
+
+/** Reverse of CsWinRT's IList/IReadOnlyList collection mapping, shared by source and IR schema export. */
+fun winRTCollectionAbiNameForKotlinType(name: String): String? {
+    val kind = WinRTCollectionInterfaceKind.entries.firstOrNull {
+        it.kotlinProjectedName == name || it.kotlinProjectedName?.substringAfterLast('.') == name
+    } ?: return null
+    return COLLECTION_TYPES.entries.single { it.value == kind }.key
+}
+
+fun winRTCollectionKindForAbiName(name: String): WinRTCollectionInterfaceKind? =
+    COLLECTION_TYPES[name.substringBefore('`').substringBefore('<')]
 
 enum class WinRTBindableCollectionKind(
     val isReadOnly: Boolean,

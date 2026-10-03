@@ -1,0 +1,17 @@
+<UserControl
+    x:Class="io.github.composefluent.winrt.gallery.controls.KotlinSourcePreview"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:io.github.composefluent.winrt.gallery.controls">
+    <Grid RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <SelectorBar x:Name="Languages" Margin="-12,0,0,0" SelectionChanged="Languages_SelectionChanged">
+            <SelectorBarItem x:Name="XamlTab" Text="XAML" />
+            <SelectorBarItem x:Name="KotlinTab" Text="Kotlin" />
+        </SelectorBar>
+        <local:SampleCodePresenter x:Name="Code" Grid.Row="1" VerticalAlignment="Top" Margin="0,0,0,16" />
+    </Grid>
+</UserControl>

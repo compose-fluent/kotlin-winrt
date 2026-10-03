@@ -1,0 +1,70 @@
+--- header
+Counter Control with Increment/Decrement Mode
+--- xaml
+<!-- Generic.xaml -->
+<ResourceDictionary 
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:YourNamesapace">
+
+    <!-- Style definition for CounterControl -->
+    <Style TargetType="local:CounterControl">
+        <Setter Property="Template">
+            <Setter.Value>
+                <!-- ControlTemplate defines the structure of CounterControl -->
+                <ControlTemplate TargetType="local:CounterControl">
+                    <StackPanel HorizontalAlignment="Left" Spacing="8">
+                        <TextBlock x:Name="CountText" FontSize="20" Text="0" HorizontalAlignment="Center" />
+                        <Button x:Name="ActionButton" Content="Increase" HorizontalAlignment="Center" Width="100" />
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>
+
+<!-- YourPage.xaml -->
+<Page ...
+      xmlns:controls="using:YourNamesapace">
+    <StackPanel Orientation="Horizontal" Spacing="8">
+        <controls:CounterControl Mode="Increment" />
+        <controls:CounterControl Mode="Decrement" />
+    </StackPanel>
+</Page>
+--- kotlin
+internal class CounterControl : Control() {
+    private var ActionButton: Button? = null
+    private var CountText: TextBlock? = null
+    private var actionHandler: RoutedEventHandler? = null
+    var Count: Int
+        get() = getValue(CountProperty) as Int
+        set(value) { setValue(CountProperty, value) }
+    var Mode: CounterMode
+        get() = getValue(ModeProperty) as CounterMode
+        set(value) { setValue(ModeProperty, value) }
+    init { defaultStyleKey = CounterControl::class }
+    override fun onApplyTemplate() {
+        actionHandler?.let { handler -> ActionButton?.click?.remove(handler) }
+        super.onApplyTemplate()
+        ActionButton = getTemplateChild("ActionButton")?.asWinRT<Button>()
+        CountText = getTemplateChild("CountText")?.asWinRT<TextBlock>()
+        actionHandler = RoutedEventHandler { _, _ -> Count += if (Mode == CounterMode.Increment) 1 else -1 }
+        actionHandler?.let { ActionButton?.click?.add(it) }
+        UpdateButtonText(); UpdateUI()
+    }
+    private fun UpdateButtonText() {
+        val button = ActionButton ?: return
+        val text = if (Mode == CounterMode.Increment) "Increase" else "Decrease"
+        button.content = text; AutomationProperties.setName(button, "$text counter")
+    }
+    private fun UpdateUI() {
+        CountText?.let { text -> text.text = Count.toString()
+            if (AutomationPeer.listenerExists(AutomationEvents.LiveRegionChanged))
+                FrameworkElementAutomationPeer.createPeerForElement(text).raiseAutomationEvent(AutomationEvents.LiveRegionChanged)
+        }
+    }
+    companion object {
+        val CountProperty: DependencyProperty = DependencyProperty.register("Count", Int::class, CounterControl::class, PropertyMetadata(0, PropertyChangedCallback { sender, _ -> checkNotNull(sender).asWinRT<CounterControl>().UpdateUI() }))
+        val ModeProperty: DependencyProperty = DependencyProperty.register("Mode", CounterMode::class, CounterControl::class, PropertyMetadata(CounterMode.Increment, PropertyChangedCallback { sender, _ -> checkNotNull(sender).asWinRT<CounterControl>().UpdateButtonText() }))
+    }
+}

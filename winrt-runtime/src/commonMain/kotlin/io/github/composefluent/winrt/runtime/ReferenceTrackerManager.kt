@@ -3,37 +3,59 @@ package io.github.composefluent.winrt.runtime
 /**
  * Common owner of the XAML reference-tracker manager protocol.
  *
- * CsWinRT delegates this responsibility to CLR `ComWrappers`. Kotlin keeps the same COM protocol
- * here and uses the existing common CCW/RCW identity infrastructure; only GC collection remains a
- * platform operation.
+ * CsWinRT delegates this responsibility to CLR `ComWrappers`/`TrackerObjectManager`. Kotlin's
+ * collectors do not expose CLR dependent handles or GC callouts. During a XAML-requested walk,
+ * each RCW therefore owns ordinary managed references to its discovered targets. Global tracker
+ * pins are removed only after these edges are published, while XAML still locks its native graph.
+ * Pins are restored before unlocking; ordinary collections outside this protocol stay conservative.
+ * Native collection waits for cleaners, so COM releases are deferred until the XAML lock is gone.
  */
 internal object ReferenceTrackerManager {
     private val lock = PlatformLock()
     private val trackers = linkedMapOf<Long, TrackerEntry>()
+    private val registrations = mutableMapOf<Long, TrackerEntry>()
+    private var nextRegistrationKey = 1L
+    private val targets = mutableSetOf<ManagedComHostState>()
     private val disconnectedReleases = mutableListOf<() -> Unit>()
+    private val finalizerReleases = mutableListOf<() -> Unit>()
+    private var collecting = false
+    private var currentSources: List<ReferenceTrackerSource>? = null
     private var managerPointer: RawComPtr = PlatformAbi.nullComPtr
 
-    fun attach(trackerPointer: RawComPtr): Long {
+    @kotlin.concurrent.Volatile
+    internal var isGlobalPeggingEnabled: Boolean = true
+        private set
+
+    internal fun registerTarget(target: ManagedComHostState) {
+        lock.withLock { targets += target }
+    }
+
+    internal fun unregisterTarget(target: ManagedComHostState) {
+        lock.withLock { targets -= target }
+    }
+
+    fun attach(
+        trackerPointer: RawComPtr,
+        source: PlatformManagedWeakReference<ReferenceTrackerSource>,
+    ): Long {
         ensureManager(trackerPointer)
         val key = PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(trackerPointer))
-        lock.withLock {
-            val existing = trackers[key]
-            if (existing != null) {
-                existing.referenceCount += 1
-                if (!existing.connected) {
-                    invokeTracker(trackerPointer, ReferenceTrackerVftblSlots.ConnectFromTrackerSource)
-                    existing.connected = true
-                }
-                return@withLock
+        var connect = false
+        val registrationKey = lock.withLock {
+            val entry = trackers.getOrPut(key) {
+                TrackerEntry(pointer = trackerPointer, contextTokenKey = currentContextTokenKey())
             }
-
-            invokeTracker(trackerPointer, ReferenceTrackerVftblSlots.ConnectFromTrackerSource)
-            trackers[key] = TrackerEntry(
-                pointer = trackerPointer,
-                contextTokenKey = currentContextTokenKey(),
-            )
+            if (!entry.connected) {
+                entry.connected = true
+                connect = true
+            }
+            val registration = nextRegistrationKey++
+            entry.sources[registration] = source
+            registrations[registration] = entry
+            registration
         }
-        return key
+        if (connect) invokeTracker(trackerPointer, ReferenceTrackerVftblSlots.ConnectFromTrackerSource)
+        return registrationKey
     }
 
     fun detach(
@@ -44,12 +66,12 @@ internal object ReferenceTrackerManager {
             return false
         }
         val entry = lock.withLock {
-            val entry = trackers[registrationKey] ?: return@withLock null
-            entry.referenceCount -= 1
-            if (entry.referenceCount > 0) {
+            val entry = registrations.remove(registrationKey) ?: return@withLock null
+            entry.sources.remove(registrationKey)
+            if (entry.sources.isNotEmpty()) {
                 return@withLock null
             }
-            trackers.remove(registrationKey)
+            trackers.remove(PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(entry.pointer)))
             disconnectedReleases += disconnectedRelease
             entry
         } ?: return false
@@ -63,6 +85,10 @@ internal object ReferenceTrackerManager {
         val releases = lock.withLock {
             disconnectedReleases.toList().also { disconnectedReleases.clear() }
         }
+        releaseAll(releases)
+    }
+
+    private fun releaseAll(releases: List<() -> Unit>) {
         var failure: Throwable? = null
         releases.forEach { release ->
             runCatching(release).onFailure { error ->
@@ -70,6 +96,12 @@ internal object ReferenceTrackerManager {
             }
         }
         failure?.let { throw it }
+    }
+
+    internal fun deferFinalizerRelease(release: () -> Unit): Boolean = lock.withLock {
+        if (!collecting) return@withLock false
+        finalizerReleases += release
+        true
     }
 
     internal fun clearForTests() {
@@ -81,6 +113,7 @@ internal object ReferenceTrackerManager {
                 }
             }
             trackers.clear()
+            registrations.clear()
             if (!PlatformAbi.isNull(managerPointer)) {
                 WinRTPlatformApi.releaseRaw(PlatformAbi.fromRawComPtr(managerPointer))
                 managerPointer = PlatformAbi.nullComPtr
@@ -132,57 +165,93 @@ internal object ReferenceTrackerManager {
         }
 
     internal fun collect() {
-        val manager = lock.withLock { managerPointer }
+        val manager = lock.withLock {
+            if (collecting || PlatformAbi.isNull(managerPointer)) return
+            collecting = true
+            managerPointer
+        }
         if (PlatformAbi.isNull(manager)) {
             return
         }
-
-        checkSucceeded(
-            ComVtableInvoker.invoke(
-                manager,
-                ReferenceTrackerManagerVftblSlots.ReferenceTrackingStarted,
-            ),
-        )
-        var walkFailed = false
         try {
-            val snapshot = lock.withLock {
-                trackers.values.filter(TrackerEntry::connected).map(TrackerEntry::pointer)
-            }
-            findReferenceTargetsCallback.createReference(IID.IFindReferenceTargetsCallback).use { callback ->
-                for (tracker in snapshot) {
-                    val hResult = ComVtableInvoker.invokeArgs(
-                        tracker,
-                        ReferenceTrackerVftblSlots.FindTrackerTargets,
-                        callback.pointer,
+            checkSucceeded(
+                ComVtableInvoker.invoke(manager, ReferenceTrackerManagerVftblSlots.ReferenceTrackingStarted),
+            )
+            try {
+                var walkFailed = true
+                try {
+                    walkFailed = !walkTrackerSources()
+                } finally {
+                    checkSucceeded(
+                        ComVtableInvoker.invokeArgs(
+                            manager,
+                            ReferenceTrackerManagerVftblSlots.FindTrackerTargetsCompleted,
+                            if (walkFailed) 1 else 0,
+                        ),
                     )
-                    if (hResult < 0) {
-                        walkFailed = true
-                        break
-                    }
+                }
+                if (!walkFailed) {
+                    // Unlike CLR dependent handles, Kotlin owns the edges on each RCW. Only
+                    // remove global pins after every edge and every XAML root peg is published.
+                    setGlobalPegging(false)
+                    PlatformFinalization.collectForReferenceTracking()
+                    disconnectCollectedSources()
+                }
+            } finally {
+                try {
+                    setGlobalPegging(true)
+                } finally {
+                    checkSucceeded(
+                        ComVtableInvoker.invoke(manager, ReferenceTrackerManagerVftblSlots.ReferenceTrackingCompleted),
+                    )
                 }
             }
-        } catch (failure: Throwable) {
-            walkFailed = true
-            throw failure
         } finally {
-            try {
-                checkSucceeded(
-                    ComVtableInvoker.invokeArgs(
-                        manager,
-                        ReferenceTrackerManagerVftblSlots.FindTrackerTargetsCompleted,
-                        if (walkFailed) 1 else 0,
-                    ),
-                )
-                // XAML holds its reference-tracker lock until this callback returns. A synchronous
-                // Kotlin/Native collection here can finalize a XAML object and wait on that lock.
-            } finally {
-                checkSucceeded(
-                    ComVtableInvoker.invoke(
-                        manager,
-                        ReferenceTrackerManagerVftblSlots.ReferenceTrackingCompleted,
-                    ),
-                )
+            val releases = lock.withLock {
+                collecting = false
+                finalizerReleases.toList().also { finalizerReleases.clear() }
             }
+            // A failed release must not strand the other references queued by this collection.
+            releaseAll(releases)
+        }
+    }
+
+    private fun setGlobalPegging(enabled: Boolean) {
+        isGlobalPeggingEnabled = enabled
+        val snapshot = lock.withLock { targets.toList() }
+        snapshot.forEach { it.updateTrackerRoot() }
+    }
+
+    private fun walkTrackerSources(): Boolean {
+        val snapshot = lock.withLock { trackers.values.filter(TrackerEntry::connected) }
+        findReferenceTargetsCallback.createReference(IID.IFindReferenceTargetsCallback).use { callback ->
+            for (entry in snapshot) {
+                val sources = lock.withLock { entry.sources.values.mapNotNull { it.get() } }
+                sources.forEach { it.targets.clear() }
+                currentSources = sources
+                try {
+                    if (ComVtableInvoker.invokeArgs(
+                            entry.pointer,
+                            ReferenceTrackerVftblSlots.FindTrackerTargets,
+                            callback.pointer,
+                        ) < 0
+                    ) return false
+                } finally {
+                    currentSources = null
+                }
+            }
+        }
+        // No local owning source or target may remain in the collecting stack frame.
+        return true
+    }
+
+    private fun disconnectCollectedSources() {
+        val snapshot = lock.withLock {
+            trackers.values.filter { entry -> entry.connected && entry.sources.values.none { it.get() != null } }
+        }
+        for (entry in snapshot) {
+            invokeTracker(entry.pointer, ReferenceTrackerVftblSlots.DisconnectFromTrackerSource)
+            entry.connected = false
         }
     }
 
@@ -288,10 +357,17 @@ internal object ReferenceTrackerManager {
                     baseKind = WinRTComInterfaceBaseKind.IUnknown,
                     methods = listOf(
                         WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr) { _, args ->
-                            if (PlatformAbi.isNull(args[0] as RawAddress)) {
+                            val pointer = args[0] as RawAddress
+                            if (PlatformAbi.isNull(pointer)) {
                                 KnownHResults.E_POINTER.value
                             } else {
-                                KnownHResults.S_OK.value
+                                val target = WinRTInspectableComObject.findManagedValue(pointer)
+                                if (target == null) {
+                                    KnownHResults.S_FALSE.value
+                                } else {
+                                    currentSources?.forEach { it.targets += target }
+                                    KnownHResults.S_OK.value
+                                }
                             }
                         },
                     ),
@@ -311,7 +387,16 @@ internal object ReferenceTrackerManager {
     private class TrackerEntry(
         val pointer: RawComPtr,
         val contextTokenKey: Long,
-        var referenceCount: Int = 1,
-        var connected: Boolean = true,
-    )
+        var connected: Boolean = false,
+    ) {
+        val sources = linkedMapOf<Long, PlatformManagedWeakReference<ReferenceTrackerSource>>()
+    }
+}
+
+/** Kotlin counterpart of a ComWrappers dependent-handle source, owned only by its RCW. */
+internal class ReferenceTrackerSource {
+    val targets = mutableListOf<Any>()
+    // One weak registration identity per strong RCW source; neither support nor its cleaner
+    // owns the graph edges. CsWinRT's CLR ComWrappers owns the corresponding dependent handles.
+    val weakReference = PlatformManagedWeakReference(this)
 }

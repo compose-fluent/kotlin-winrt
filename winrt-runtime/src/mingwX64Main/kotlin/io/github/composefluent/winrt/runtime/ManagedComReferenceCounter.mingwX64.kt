@@ -1,4 +1,8 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(
+    kotlinx.cinterop.ExperimentalForeignApi::class,
+    kotlin.native.internal.InternalForKotlinNative::class,
+)
+@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
 package io.github.composefluent.winrt.runtime
 
@@ -12,7 +16,11 @@ import kotlinx.cinterop.rawValue
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.value
-import platform.windows._InterlockedCompareExchange64
+import kotlin.native.internal.GCUnsafeCall
+import kotlin.native.internal.NativePtr
+
+internal actual val useBulkManagedComInterfaceAttachment: Boolean
+    get() = true
 
 @PublishedApi
 internal actual class PlatformManagedComReferenceCounter actual constructor(
@@ -33,10 +41,14 @@ internal actual class PlatformManagedComReferenceCounter actual constructor(
 
     actual fun load(): Long = storage?.atomicLoad() ?: 0L
 
-    actual fun compareAndSet(expectedValue: Long, newValue: Long): Boolean =
-        storage?.let { pointer ->
-            _InterlockedCompareExchange64(pointer, newValue, expectedValue) == expectedValue
-        } ?: false
+    actual fun compareAndSet(expectedValue: Long, newValue: Long): Boolean {
+        val pointer = storage ?: return false
+        return compareExchangeManagedComReferenceCount(
+            pointer.rawValue,
+            expectedValue,
+            newValue,
+        ) == expectedValue
+    }
 
     actual fun store(newValue: Long) {
         storage?.let { pointer ->
@@ -67,6 +79,23 @@ internal actual class PlatformManagedComReferenceCounter actual constructor(
         }
     }
 
+    internal actual fun attachInterfaces(
+        objectMemoryView: NativeMemoryView,
+        interfaceObjectCount: Int,
+        interfaceObjectStrideBytes: Long,
+    ) {
+        val pointer = storage ?: return
+        val pointerWord = RawAddress(pointer.rawValue.toLong())
+        var index = 0
+        while (index < interfaceObjectCount) {
+            objectMemoryView.writePointer(
+                index * interfaceObjectStrideBytes + managedComReferenceCounterSlot * Long.SIZE_BYTES.toLong(),
+                pointerWord,
+            )
+            index += 1
+        }
+    }
+
     actual override fun close() {
         val pointer = storage ?: return
         storage = null
@@ -80,3 +109,15 @@ internal actual class PlatformManagedComReferenceCounter actual constructor(
 // avoids a second locked RMW on every steady-state AddRef and Release.
 private fun CPointer<LongVar>.atomicLoad(): Long =
     pointed.value
+
+// CsWinRT obtains its CCW IUnknown implementation from CLR ComWrappers. This
+// platform primitive changes only the existing aligned native count cell;
+// ManagedComHostState still owns every COM/GC-root transition and cleanup.
+// NativePtr uses the existing Kotlin/Native runtime pointer ABI (like cfree).
+// The named C leaf has no allocation, blocking call, COM call, or Kotlin callback.
+@GCUnsafeCall("kotlin_winrt_compare_exchange_managed_com_reference_count")
+private external fun compareExchangeManagedComReferenceCount(
+    address: NativePtr,
+    expectedValue: Long,
+    newValue: Long,
+): Long

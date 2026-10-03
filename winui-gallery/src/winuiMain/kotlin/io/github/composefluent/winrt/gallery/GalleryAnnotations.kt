@@ -10,7 +10,7 @@ internal annotation class GalleryGroupEntry(
     val order: Int,
 )
 
-@Target(AnnotationTarget.FUNCTION)
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.SOURCE)
 internal annotation class GalleryPage(
     val route: String,

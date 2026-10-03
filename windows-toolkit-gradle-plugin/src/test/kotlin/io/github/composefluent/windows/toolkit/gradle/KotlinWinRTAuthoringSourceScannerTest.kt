@@ -421,6 +421,24 @@ class KotlinWinRTAuthoringSourceScannerTest {
     }
 
     @Test
+    fun nullable_interface_return_uses_the_abi_type_identity() {
+        // CsWinRT MarshalInterface<T>.FromManaged accepts null while retaining T's IID.
+        val output = Files.createTempDirectory("kotlin-winrt-nullable-interface-")
+        val candidate = KotlinWinRTAuthoredTypeCandidate("sample", "Node", "sample.Node", null,
+            listOf("Sample.INode"), emptyList())
+        val type = WinRTTypeDefinition(namespace = "Sample", name = "INode", kind = WinRTTypeKind.Interface,
+            iid = io.github.composefluent.winrt.runtime.Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
+            methods = listOf(WinRTMethodDefinition(name = "GetNext", returnTypeName = "Sample.INode?",
+                returnTypeSignature = io.github.composefluent.winrt.metadata.WinRTTypeRef.fromDisplayName("Sample.INode"))))
+        KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(listOf(candidate),
+            WinRTMetadataModel(namespaces = listOf(WinRTNamespace("Sample", listOf(type)))), output)
+        val generated = output.resolve("sample/WinRT_Node_TypeDetails.kt").readText()
+        assertTrue(generated.contains("getNext()"))
+        assertTrue(generated.contains("30d5a829-7fa4-4026-83bb-d75bae4ea99e"))
+        assertTrue(generated.contains("): INode?"))
+    }
+
+    @Test
     fun rejects_authored_type_details_for_missing_winrt_interface_metadata() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-missing-interface-details-")
         val candidate = KotlinWinRTAuthoredTypeCandidate(

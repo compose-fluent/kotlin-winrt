@@ -1,0 +1,15 @@
+--- header
+Creating and applying a style
+--- xaml
+<StackPanel Spacing="8">
+    <StackPanel.Resources>
+        <Style x:Key="CustomButtonStyle" TargetType="Button" BasedOn="{StaticResource ButtonRevealStyle}">
+            <Setter Property="Background" Value="{ThemeResource AccentAcrylicBackgroundFillColorDefaultBrush}" />
+            <Setter Property="MinWidth" Value="200" />
+        </Style>
+    </StackPanel.Resources>
+    <Button Content="Default style" />
+    <Button Content="Custom style" Style="{StaticResource CustomButtonStyle}" />
+    <Button Content="Custom style with overridden background" Style="{StaticResource CustomButtonStyle}"
+            Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
+</StackPanel>

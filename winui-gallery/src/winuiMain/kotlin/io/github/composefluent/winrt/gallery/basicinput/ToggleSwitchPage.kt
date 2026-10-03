@@ -1,23 +1,21 @@
 package io.github.composefluent.winrt.gallery.basicinput
 
 import io.github.composefluent.winrt.gallery.*
-import io.github.composefluent.winrt.runtime.asWinRT
-import microsoft.ui.xaml.UIElement
-import microsoft.ui.xaml.controls.*
+import microsoft.ui.xaml.RoutedEventArgs
+import microsoft.ui.xaml.controls.Page
 
 @GalleryPage(route = "ToggleSwitch", title = "ToggleSwitch", group = "BasicInput", order = 13)
-internal fun toggleSwitchPage() = ExamplePage {
-    example("A simple ToggleSwitch.", toggleSwitchSimpleSample())
-    example("A ToggleSwitch with custom content.", toggleSwitchCustomContentSample())
+internal class ToggleSwitchPage : Page() {
+    private var initialized = false
+
+    override fun initializeComponent() {
+        super.initializeComponent()
+        initialized = true
+        progress.isActive = workToggle.isOn
+    }
+
+    private fun onWorkToggled(sender: Any?, args: RoutedEventArgs) {
+        // IsOn can raise Toggled while LoadComponent is still connecting later siblings.
+        if (initialized) progress.isActive = workToggle.isOn
+    }
 }
-
-@GallerySample(route = "ToggleSwitch", title = "A simple ToggleSwitch.")
-internal fun toggleSwitchSimpleSample() = ToggleSwitch()
-
-@GallerySample(route = "ToggleSwitch", title = "A ToggleSwitch with custom content.")
-internal fun toggleSwitchCustomContentSample() = StackPanel().apply { this.spacing = 12.0; this.orientation = Orientation.Horizontal; val progress = ProgressRing().apply { width = 32.0; isActive = true }
-        val toggle = ToggleSwitch().apply {
-            header = "Toggle work"; isOn = true; offContent = "Do work"; onContent = "Working"
-            toggled.add { _, _ -> progress.isActive = isOn }
-        }
-        children.add(toggle); children.add(progress) }

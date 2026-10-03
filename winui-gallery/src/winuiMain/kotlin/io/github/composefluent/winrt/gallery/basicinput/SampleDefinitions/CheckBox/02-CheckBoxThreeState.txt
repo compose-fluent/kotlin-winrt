@@ -1,0 +1,15 @@
+--- Header
+A three-state CheckBox.
+
+--- Xaml
+<CheckBox x:Name="threeStateCheckBox" Content="Three-state CheckBox" IsThreeState="True" Click="onThreeStateClick" />
+
+
+--- Kotlin
+private fun onThreeStateClick(sender: Any?, args: RoutedEventArgs) {
+    threeStateOutput.text = when (threeStateCheckBox.isChecked) {
+        true -> "Checked"
+        false -> "Unchecked"
+        null -> "Indeterminate"
+    }
+}

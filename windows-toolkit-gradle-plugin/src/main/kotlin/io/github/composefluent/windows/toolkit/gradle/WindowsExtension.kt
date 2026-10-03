@@ -169,6 +169,23 @@ abstract class WindowsExtension @Inject constructor(
         .convention(WinAppConfigurationDefaults.WINDOWS_SDK_TOOLS_VERSION)
 
     val applicationEnabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+
+    /** The forked compiler package; local overrides use the same versioned protocol. */
+    @get:Nested
+    val xaml: WinRTXamlConfiguration = objects.newInstance(WinRTXamlConfiguration::class.java).apply {
+        val projectDirectory = project.layout.projectDirectory
+        compilerDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.compilerDirectory").map { projectDirectory.dir(it) })
+        genXbfDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.genXbfDirectory").map { projectDirectory.dir(it) })
+        compilerVersion.convention(project.providers.gradleProperty("kotlinWinRT.xaml.version").orElse("0.1.0-preview.5"))
+        archiveSha256.convention(project.providers.gradleProperty("kotlinWinRT.xaml.sha256").orElse(
+            "6f0d4e9738ed435edeb16519c15dc6472f9c83dcbc1cea0c3127c4986a3d69da",
+        ))
+        archiveUrl.convention(compilerVersion.map { version ->
+            "https://github.com/compose-fluent/microsoft-ui-xaml/releases/download/kotlin-xamlc-v$version/kotlin-xamlc-$version-win-x64.zip"
+        })
+    }
+
+    fun xaml(action: Action<in WinRTXamlConfiguration>) = action.execute(xaml)
     /** Stable namespace owned by this module's generated AppX resource accessor. */
     val appxResourcePackageName: Property<String> = objects.property(String::class.java).convention(
         defaultAppxResourcePackageName(project.name),
@@ -212,6 +229,15 @@ abstract class WindowsExtension @Inject constructor(
     internal val nugetConfigDirectory get() = packageReferences.nugetConfigDirectory
     internal val nugetPackages get() = packageReferences.nugetPackages
     internal val runtimeAssets get() = application.runtimeAssets
+}
+
+abstract class WinRTXamlConfiguration @Inject constructor(objects: ObjectFactory) {
+    val compilerVersion: Property<String> = objects.property(String::class.java)
+    val archiveSha256: Property<String> = objects.property(String::class.java)
+    val archiveUrl: Property<String> = objects.property(String::class.java)
+    val compilerDirectory: DirectoryProperty = objects.directoryProperty()
+    val genXbfDirectory: DirectoryProperty = objects.directoryProperty()
+    val minimumWindowsVersion: Property<String> = objects.property(String::class.java).convention("10.0.19041.0")
 }
 
 abstract class WinAppConfiguration @Inject constructor(

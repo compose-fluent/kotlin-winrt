@@ -2,3 +2,20 @@ package = io.github.composefluent.winrt.runtime.nativeapi
 headers = kotlin_winrt_com.h
 headerFilter = kotlin_winrt_com.h
 compilerOpts = -Isrc/nativeInterop/cinterop
+excludedFunctions = kotlin_winrt_compare_exchange_managed_com_reference_count
+
+---
+/* Private bitcode leaf for ManagedComReferenceCounter.mingwX64.kt. NativePtr
+ * maps to the existing runtime pointer ABI, so no pointer-to-integer conversion
+ * is required. Only one CAS touches an already-owned aligned native count cell;
+ * there is no allocation, blocking call or callback. Ordinary COM ref-count
+ * invocations keep their cinterop transition because COM can reenter. */
+#if !defined(__x86_64__) || !defined(_WIN64)
+#error This managed COM counter leaf requires the mingw_x64 ABI.
+#endif
+__attribute__((used))
+int64_t kotlin_winrt_compare_exchange_managed_com_reference_count(
+    void *address, int64_t expected_value, int64_t new_value) {
+    return __sync_val_compare_and_swap(
+        (int64_t *)address, expected_value, new_value);
+}

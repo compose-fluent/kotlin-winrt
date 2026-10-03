@@ -1,0 +1,11 @@
+--- Header
+A HyperlinkButton that handles a Click event.
+
+--- Xaml
+<HyperlinkButton x:Name="Control2" Click="GoToHyperlinkButton_Click"
+                 Content="Go to ToggleButton" />
+
+--- Kotlin
+private fun GoToHyperlinkButton_Click(sender: Any?, args: RoutedEventArgs) {
+    GalleryNavigationHost.navigate("ToggleButton")
+}

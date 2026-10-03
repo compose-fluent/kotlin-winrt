@@ -1,0 +1,17 @@
+--- header
+Automatically animate changes to Rotation
+--- xaml
+<!-- Automatically animate changes to Rotation -->
+<Rectangle x:Name="rectangle" Width="50" Height="50" Rotation="0" >
+    <Rectangle.RotationTransition>
+        <ScalarTransition />
+    </Rectangle.RotationTransition>
+</Rectangle>
+--- kotlin
+RotationRectangle.rotationTransition = ScalarTransition()
+
+private fun EnsureValueIsNumber(box: NumberBox): Float { if (box.value.isNaN()) box.value = 0.0; return box.value.toFloat() }
+
+private fun ApplyRotation(value: Float) { RotationRectangle.centerPoint = windows.foundation.numerics.Vector3((RotationRectangle.actualWidth / 2).toFloat(), (RotationRectangle.actualHeight / 2).toFloat(), 0f); RotationRectangle.rotation = value; RotationValue.Value = value; announce(RotateBtn, "Rectangle rotated by $value degrees", "RectangleChangedNotificationActivityId") }
+
+private fun RotationButton_Click(sender: Any?, args: RoutedEventArgs) { ApplyRotation(EnsureValueIsNumber(RotationNumberBox)) }

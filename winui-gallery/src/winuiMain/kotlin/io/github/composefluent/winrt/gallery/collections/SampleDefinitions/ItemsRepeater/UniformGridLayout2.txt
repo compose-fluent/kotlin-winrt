@@ -1,0 +1,6 @@
+<UniformGridLayout
+            x:Key="UniformGridLayout2"
+            MinColumnSpacing="12"
+            MinItemHeight="108"
+            MinItemWidth="108"
+            MinRowSpacing="12" />

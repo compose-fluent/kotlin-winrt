@@ -1,0 +1,18 @@
+--- header
+A TabView with support for adding, closing, and rearranging tabs
+--- xaml
+<TabView AddTabButtonClick="TabView_AddButtonClick" TabCloseRequested="TabView_TabCloseRequested" Loaded="TabView_Loaded" />
+--- kotlin
+private fun TabView_Loaded(sender: Any?, args: RoutedEventArgs) {
+        val tabs = checkNotNull(sender).asWinRT<TabView>()
+        if (initializedTabViews.add(tabs)) repeat(3) { tabs.tabItems.add(CreateNewTab(it)) }
+    }
+
+private fun TabView_AddButtonClick(sender: TabView, args: Any?) { sender.tabItems.add(CreateNewTab(sender.tabItems.size)) }
+
+private fun TabView_TabCloseRequested(sender: TabView, args: TabViewTabCloseRequestedEventArgs) { sender.tabItems.remove(args.tab) }
+
+private fun CreateNewTab(index: Int): TabViewItem = TabViewItem().apply {
+        header = "Document $index"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; contextFlyout = TabViewContextMenu
+        content = Frame().apply { navigate(page(index)) }
+    }

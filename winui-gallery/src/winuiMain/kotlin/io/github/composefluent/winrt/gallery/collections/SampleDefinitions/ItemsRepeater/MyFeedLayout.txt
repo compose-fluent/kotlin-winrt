@@ -1,0 +1,5 @@
+<layouts:ActivityFeedLayout
+            x:Key="MyFeedLayout"
+            ColumnSpacing="12"
+            MinItemSize="80, 108"
+            RowSpacing="12" />

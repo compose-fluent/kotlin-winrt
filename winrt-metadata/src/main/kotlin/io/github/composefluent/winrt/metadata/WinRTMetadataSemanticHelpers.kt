@@ -1619,7 +1619,7 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
         return WinRTSignatureWriterDescriptor(
             methodName = method.name,
             escapedMethodName = escapeIdentifier(method.name),
-            projectionReturnTypeName = method.returnType.normalized().typeName,
+            projectionReturnTypeName = method.returnTypeName.trim(),
             abiReturnTypeName = renderAbiTypeName(method.returnType),
             parameters = parameters,
             hasProjectedGenericParameters = usage.containsProjectedGenericParameter || parameterHasGeneric,
@@ -2237,7 +2237,9 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             originalName = parameter.name,
             escapedName = escapeIdentifier(parameter.name),
             category = category,
-            projectionTypeName = parameter.type.normalized().typeName,
+            // WinMD type references have no Kotlin nullability. Keep the projection
+            // contract here; only the ABI descriptor below uses the normalized type.
+            projectionTypeName = parameter.typeName.trim(),
             abiTypeName = renderAbiTypeName(parameter.type),
             modifier = when (category) {
                 WinRTMetadataParameterCategory.Ref -> "ref"

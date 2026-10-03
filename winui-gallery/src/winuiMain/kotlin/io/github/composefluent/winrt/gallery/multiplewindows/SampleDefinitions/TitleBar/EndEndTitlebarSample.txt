@@ -1,0 +1,45 @@
+--- header
+End to end TitleBar sample
+--- xaml
+<Grid>
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <!--  TitleBar  -->
+        <RowDefinition Height="*" />
+        <!--  NavigationView  -->
+    </Grid.RowDefinitions>
+
+    <TitleBar
+        x:Name="titleBar"
+        BackRequested="TitleBar_BackRequested"
+        IsBackButtonVisible="{x:Bind navFrame.CanGoBack, Mode=OneWay}"
+        IsPaneToggleButtonVisible="True"
+        PaneToggleRequested="TitleBar_PaneToggleRequested" />
+
+    <NavigationView
+        x:Name="navView"
+        Grid.Row="1"
+        IsBackButtonVisible="Collapsed"
+        IsPaneToggleButtonVisible="False">
+        <NavigationView.MenuItems... />
+        <Frame x:Name="navFrame" />
+    </NavigationView>
+</Grid>
+--- kotlin
+internal class TitleBarWindow : Window() {
+    private var ready = false
+    override fun initializeComponent() {
+        super.initializeComponent(); GalleryWindows.track(this); ready = true; extendsContentIntoTitleBar = true
+        appWindow?.titleBar?.preferredHeightOption = TitleBarHeightOption.Tall; setTitleBar(titleBar); appWindow?.setIcon("Assets/Tiles/GalleryIcon.ico")
+        navView.selectedItem = navView.menuItems.firstOrNull()
+    }
+    private fun TitleBar_PaneToggleRequested(sender: TitleBar, args: Any?) { navView.isPaneOpen = !navView.isPaneOpen }
+    private fun TitleBar_BackRequested(sender: TitleBar, args: Any?) { if (navFrame.canGoBack) navFrame.goBack() }
+    private fun navView_SelectionChanged(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) {
+        if (!ready) return
+        val tag = args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString() ?: return
+        val page = when (tag) { "SamplePage1" -> SamplePage1::class; "SamplePage2" -> SamplePage2::class; "SamplePage3" -> SamplePage3::class; else -> SamplePage4::class }
+        sender.header = "Sample Page ${tag.last()}"; navFrame.navigate(page)
+    }
+
+}

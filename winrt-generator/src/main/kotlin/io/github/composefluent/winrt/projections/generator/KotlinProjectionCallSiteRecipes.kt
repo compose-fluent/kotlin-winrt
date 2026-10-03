@@ -6,6 +6,7 @@ import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.TypeName
 import io.github.composefluent.winrt.metadata.WinRTIntegralType
 import io.github.composefluent.winrt.metadata.WinRTMetadataParameterCategory
+import io.github.composefluent.winrt.metadata.WinRTTypeKind
 
 /** The sole recursive recipe builder, called only while [buildAbiCallPlan] is assembled. */
 internal fun KotlinProjectionRenderer.buildCallSiteRecipe(
@@ -390,8 +391,13 @@ private fun KotlinProjectionRenderer.buildStorageRecipe(
             ),
         )
     }
-    mappedCallSiteAdapter(binding)?.let { adapter ->
-        return mappedProjectionRecipe(binding, adapter)
+    // CsWinRT Type.Pinnable changes the input lifetime, not the struct's physical ABI.
+    // Its factory is selected separately by buildCallSiteInputFactory; owned output and
+    // array storage still use the struct's copy/decode/dispose codecs.
+    if (binding.kind != KotlinProjectionAbiValueKind.Struct) {
+        mappedCallSiteAdapter(binding)?.let { adapter ->
+            return mappedProjectionRecipe(binding, adapter)
+        }
     }
     return when (binding.kind) {
         KotlinProjectionAbiValueKind.Unit -> error("Unit has no ABI marshaler recipe.")
@@ -705,8 +711,12 @@ internal fun KotlinProjectionAbiTypeBinding.closedCallSiteAbiTypeName(): String 
     }
 }
 
+internal fun KotlinProjectionAbiTypeBinding.hasKnownInspectableOutputInterface(): Boolean =
+    kind == KotlinProjectionAbiValueKind.InspectableReference &&
+        sourceTypeKind == WinRTTypeKind.RuntimeClass && interfaceId != null
+
 private fun KotlinProjectionAbiTypeBinding.hasExplicitCallSiteAbiIdentity(): Boolean =
-    mappedCallSiteType(this) != null || typeArguments.any { argument ->
+    hasKnownInspectableOutputInterface() || mappedCallSiteType(this) != null || typeArguments.any { argument ->
         argument.hasExplicitCallSiteAbiIdentity()
     }
 
@@ -891,10 +901,9 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
             .add("} finally {\n")
             .indent()
             .add(
-                "if (!%T.isNull(__abi)) %T(%T.toRawComPtr(__abi)).close()\n",
+                "if (!%T.isNull(__abi)) %T.releaseRaw(__abi)\n",
                 PLATFORM_ABI_CLASS_NAME,
-                IUNKNOWN_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
+                WINRT_PLATFORM_API_CLASS_NAME,
             )
             .unindent()
             .add("}\n")
@@ -1051,6 +1060,9 @@ private fun KotlinProjectionRenderer.isNullableProjectedType(binding: KotlinProj
 internal fun KotlinProjectionAbiTypeBinding.canonicalCallSiteTypeSignature(
     projectedTypeName: String = typeName,
 ): String {
+    if (hasKnownInspectableOutputInterface()) {
+        return "InspectableReference(${closedCallSiteAbiTypeName()}|default-interface)"
+    }
     if (kind in CANONICAL_RECIPE_SIGNATURE_KINDS) return kind.name
     return buildString {
         append(kind.name)

@@ -1,0 +1,52 @@
+--- header
+Binding a collection with data templates
+--- xaml
+<ListView
+    x:Name="ListDetailListView"
+    ItemsSource="{x:Bind Items}"
+    SelectedIndex="0"
+    SelectionMode="Single">
+    <ListView.ItemTemplate>
+        <DataTemplate x:DataType="local:ListDetailItem">
+            <StackPanel Padding="4" Spacing="2">
+                <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" />
+                <TextBlock Text="{x:Bind DateCreatedFormatted}"
+                    Style="{ThemeResource CaptionTextBlockStyle}" />
+            </StackPanel>
+        </DataTemplate>
+    </ListView.ItemTemplate>
+</ListView>
+
+<!-- Detail panel bound to the selected item -->
+<StackPanel DataContext="{x:Bind ListDetailListView.SelectedItem, Mode=OneWay}">
+    <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold" />
+    <TextBlock Text="{Binding DateCreatedFormatted}"
+        Style="{ThemeResource CaptionTextBlockStyle}" />
+    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+</StackPanel>
+--- kotlin
+val Items: List<ListDetailItem> = listOf(
+    ListDetailItem(0, "Item 1", "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer id facilisis lectus. Cras nec convallis ante, quis pulvinar tellus.", bindingDate(2025, 6, 15, 9, 30)),
+    ListDetailItem(1, "Item 2", "Quisque accumsan pretium ligula in faucibus. Mauris sollicitudin augue vitae lorem cursus condimentum quis ac mauris.", bindingDate(2025, 7, 22, 14, 15)),
+    ListDetailItem(2, "Item 3", "Ut consequat magna luctus justo egestas vehicula. Integer pharetra risus libero, et posuere justo mattis et.", bindingDate(2025, 8, 3, 11, 0)),
+    ListDetailItem(3, "Item 4", "Duis facilisis, quam ut laoreet commodo, elit ex aliquet massa, non varius tellus lectus et nunc.", bindingDate(2025, 9, 10, 16, 45))
+)
+
+internal class ListDetailItem(val Id: Int, val Title: String, val Text: String, val DateCreated: kotlin.time.Instant) {
+    // WinRT's formatter keeps this shared sample locale-aware on JVM and Native.
+    val DateCreatedFormatted: String
+        get() = windows.globalization.datetimeformatting.DateTimeFormatter("month.abbreviated day year hour minute").format(DateCreated)
+}
+
+internal fun bindingDate(year: Int, month: Int, day: Int, hour: Int, minute: Int): kotlin.time.Instant =
+    windows.globalization.Calendar().apply {
+        changeClock("24HourClock")
+        this.day = 1
+        this.year = year
+        this.month = month
+        this.day = day
+        this.hour = hour
+        this.minute = minute
+        second = 0
+        nanosecond = 0
+    }.getDateTime()

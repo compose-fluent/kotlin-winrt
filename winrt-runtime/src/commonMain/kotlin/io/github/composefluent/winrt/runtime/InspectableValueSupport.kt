@@ -59,6 +59,13 @@ internal fun createSyntheticInspectableCcwDefinition(
     declaredReferenceArrayElementType: KClass<*>? = null,
 ): WinRTCcwDefinition? {
     createSyntheticValueCcwDefinition(value, declaredReferenceArrayElementType)?.let { return it }
+    return createSyntheticInterfaceCcwDefinition(value)
+}
+
+/** CsWinRT GetInterfaceTableEntries includes projected interfaces alongside authored ones.
+ * Keep interface adaptation separate from value boxing so notification registrations
+ * cannot suppress IEnumerable/IBindableIterable on the same managed object. */
+internal fun createSyntheticInterfaceCcwDefinition(value: Any): WinRTCcwDefinition? {
     val interfaces = buildList {
         // CsWinRT Projections/Bindable.net5.cs exposes IEnumerable as IBindableIterable
         // even when the caller's declared ABI type is only IInspectable (ItemsSource).
@@ -102,6 +109,7 @@ private fun createClosableInspectableInterfaceDefinition(value: AutoCloseable): 
 internal fun tryProjectInspectableValue(
     inspectable: IInspectableReference,
     runtimeClassName: String? = inspectable.tryGetRuntimeClassName(),
+    runtimeClassProjectionAttempted: Boolean = false,
 ): Any? {
     if (!runtimeClassName.isNullOrBlank()) {
         // CsWinRT's MarshalInspectable<object> only attempts value unboxing when the
@@ -113,13 +121,29 @@ internal fun tryProjectInspectableValue(
             return null
         }
 
-        WinRTValueBoxing.tryProjectInspectableForRuntimeClassName(inspectable, runtimeClassName)?.let { return it }
+        if (!runtimeClassProjectionAttempted) {
+            WinRTValueBoxing.tryProjectInspectableForRuntimeClassName(inspectable, runtimeClassName)?.let { return it }
+        }
     }
 
     WinRTPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asRawAddress())?.let { return it }
     WinRTValueBoxing.tryProjectInspectableReference(inspectable)?.let { return it }
     WinRTValueBoxing.tryProjectInspectableReferenceArray(inspectable)?.let { return it }
     return null
+}
+
+/** Closed-value attempt for an ABI-owned pointer that remains live throughout this call.
+ * A null result still requires the normal interface fallback; that fallback must be told
+ * the closed-value plan was already attempted, so a nullable delegate does not read Value twice.
+ */
+internal fun tryProjectInspectableValueForRuntimeClassName(
+    inspectablePointer: RawAddress,
+    runtimeClassName: String?,
+): Any? {
+    if (runtimeClassName.isNullOrBlank()) {
+        return null
+    }
+    return WinRTValueBoxing.tryProjectInspectableForRuntimeClassName(inspectablePointer, runtimeClassName)
 }
 
 internal fun tryProjectBorrowedInspectableValue(pointer: RawAddress): Any? {

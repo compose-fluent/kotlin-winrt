@@ -1,0 +1,9 @@
+--- header
+Notification with AppNotification controls
+--- kotlin
+private fun ShowNotificationWithControlsButton_Click(sender: Any?, args: RoutedEventArgs) {
+    checkNotNull(microsoft.windows.appnotifications.AppNotificationManager.default).show(microsoft.windows.appnotifications.builder.AppNotificationBuilder()
+        .addText("Survey").addText("Please select your satisfaction level and leave a comment.")
+        .addComboBox(microsoft.windows.appnotifications.builder.AppNotificationComboBox("satisfaction").addItem("1", "Very Bad").addItem("2", "Bad").addItem("3", "Neutral").addItem("4", "Good").addItem("5", "Excellent").setSelectedItem("3"))
+        .addTextBox("comment", "Leave a comment here...", "").addButton(microsoft.windows.appnotifications.builder.AppNotificationButton("Submit").addArgument("action", "submit_survey")).buildNotification())
+}

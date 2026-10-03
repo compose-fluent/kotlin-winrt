@@ -92,6 +92,26 @@ class IWinRTObjectTest {
             nativeReference.close()
         }
     }
+
+    @Test
+    fun runtime_class_primary_type_queries_inspectable_for_default_interface() {
+        // CsWinRT MarshalInspectable<T>.CreateMarshaler2 calls objRef.AsValue(iid).
+        // XAML connector targets start as IInspectable, not the class's default ABI.
+        val defaultIid = Guid("12345678-1234-1234-1234-1234567890AF")
+        val typeHandle = WinRTTypeHandle("test.XamlControl", defaultIid)
+        val defaultReference = FakeComObjectReference(defaultIid)
+        val inspectable = FakeComObjectReference(IID.IInspectable, mapOf(defaultIid to defaultReference))
+        val wrapper = FakeWinRTObject(inspectable, primaryTypeHandle = typeHandle)
+        try {
+            assertTrue(wrapper.isInterfaceImplemented(typeHandle))
+            assertSame(defaultReference, wrapper.getObjectReferenceForType(typeHandle))
+            assertSame(defaultReference, wrapper.getObjectReferenceForType(typeHandle))
+            assertEquals(1, inspectable.queryCount(defaultIid))
+        } finally {
+            defaultReference.close()
+            inspectable.close()
+        }
+    }
 }
 
 private class FakeWinRTObject(

@@ -1,0 +1,39 @@
+--- header
+Other clipboard operations
+--- Kotlin
+private fun ShowFormats_Click(sender: Any?, args: RoutedEventArgs) {
+    val formats = Clipboard.getContent().availableFormats
+    OtherOperationsStatusText.text = if (formats.isEmpty()) "The clipboard is empty."
+    else "Available formats on the clipboard:\n" + formats.joinToString("\n") { "  • $it" }
+}
+
+private fun ClearClipboard_Click(sender: Any?, args: RoutedEventArgs) {
+    try {
+        Clipboard.clear()
+        OtherOperationsStatusText.text = "Clipboard has been cleared."
+    } catch (error: Exception) {
+        OtherOperationsStatusText.text = "Error clearing clipboard: " + error.message
+    }
+}
+
+private fun ContentChangedToggle_Toggled(sender: Any?, args: RoutedEventArgs) {
+    updateMonitoring()
+    OtherOperationsStatusText.text = if (ContentChangedToggle.isOn)
+        "Monitoring clipboard changes..." else "Stopped monitoring clipboard changes."
+}
+
+private fun updateMonitoring() {
+    stopMonitoring?.invoke()
+    stopMonitoring = null
+    if (!ContentChangedToggle.isOn) return
+    val subscription = Clipboard.contentChanged.add { _, _ ->
+        dispatcherQueue?.tryEnqueue {
+            if (isLoaded && ContentChangedToggle.isOn) {
+                val formats = Clipboard.getContent().availableFormats
+                OtherOperationsStatusText.text = if (formats.isEmpty()) "Clipboard is now empty."
+                else "Clipboard content changed!\nNew formats:\n" + formats.joinToString("\n") { "  • $it" }
+            }
+        }
+    }
+    stopMonitoring = { Clipboard.contentChanged.remove(subscription) }
+}

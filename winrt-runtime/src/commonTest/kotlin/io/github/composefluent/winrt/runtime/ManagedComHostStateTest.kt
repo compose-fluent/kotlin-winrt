@@ -137,7 +137,8 @@ class ManagedComHostStateTest {
 
         assertEquals(1, state.addTrackerReference())
         assertEquals(1, root.pinCalls)
-        assertEquals(1, state.releaseReference())
+        // CLR ComWrappers' tracker count retains the ABI allocation separately from COM refs.
+        assertEquals(0, state.releaseReference())
         assertEquals(0, cleaned)
         assertEquals(0, state.releaseTrackerReference())
         assertEquals(1, root.unpinCalls)

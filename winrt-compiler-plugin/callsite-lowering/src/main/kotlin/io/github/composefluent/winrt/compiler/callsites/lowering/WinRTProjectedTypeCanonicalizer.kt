@@ -24,6 +24,8 @@ internal class WinRTProjectedTypeCanonicalizer(
 ) {
     fun canonicalize(type: IrType): String? = canonicalizeIrType(type, emptyMap())?.render()
 
+    internal fun classSymbol(classifier: String): IrClassSymbol? = referenceClassifier(classifier) as? IrClassSymbol
+
     fun canonicalize(typeText: String): String? {
         val parsed = ProjectedTypeTextParser(typeText.canonicalProjectedTypeText()).parse() ?: return null
         return canonicalizeParsedType(parsed)?.render()

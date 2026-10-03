@@ -8,8 +8,10 @@ import microsoft.ui.xaml.controls.*
 internal object GallerySamples {
     fun create(id: String): GalleryTheme.SamplePage = GalleryTheme.createSample {
         GalleryTheme.sampleBeingConstructed?.sourceRoute = id
-        GalleryPageFactories.create(id)
+        val element = GalleryPageFactories.create(id)
             ?: error("Gallery sample factory is missing for route '$id'")
+        GalleryXamlValidation.onPageCreated(id, element)
+        element
     }
 }
 

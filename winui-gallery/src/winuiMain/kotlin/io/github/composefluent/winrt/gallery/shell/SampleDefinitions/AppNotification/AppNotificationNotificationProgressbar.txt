@@ -1,0 +1,7 @@
+--- header
+Notification with ProgressBar
+--- kotlin
+private fun ShowNotificationWithProgressBarButton_Click(sender: Any?, args: RoutedEventArgs) {
+    checkNotNull(microsoft.windows.appnotifications.AppNotificationManager.default).show(microsoft.windows.appnotifications.builder.AppNotificationBuilder().addText("Progress Bar Example").addText("This is a sample notification showing how to use a progress bar.")
+        .addProgressBar(microsoft.windows.appnotifications.builder.AppNotificationProgressBar().apply { title = "Demo Progress"; value = 0.6; valueStringOverride = "60%"; status = "In progress..." }).buildNotification())
+}

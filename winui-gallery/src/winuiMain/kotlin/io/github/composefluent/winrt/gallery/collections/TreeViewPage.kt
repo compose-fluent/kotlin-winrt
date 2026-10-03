@@ -1,71 +1,23 @@
 package io.github.composefluent.winrt.gallery.collections
 
 import io.github.composefluent.winrt.gallery.*
+import io.github.composefluent.winrt.gallery.samplepages.*
+import io.github.composefluent.winrt.runtime.*
+import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
+import microsoft.ui.xaml.controls.primitives.*
+import microsoft.ui.xaml.media.*
+import microsoft.ui.xaml.media.animation.*
 
 @GalleryPage(route = "TreeView", title = "TreeView", group = "Collections", order = 7)
-internal fun treeViewPage() = ExamplePage {
-    example("A simple TreeView with drag and drop.", treeViewDragAndDropSample())
-    example("A TreeView with multiple selection.", treeViewMultipleSelectionSample())
-    example("A TreeView with a data source.", treeViewDataSourceSample())
-    example("A TreeView with different item presentations.", treeViewItemPresentationsSample())
-}
-
-@GallerySample(route = "TreeView", title = "A simple TreeView with drag and drop.")
-internal fun treeViewDragAndDropSample() = TreeView().apply {
-    minWidth = 345.0; maxHeight = 400.0; height = 280.0; canDragItems = true; allowDrop = true
-    rootNodes.add(TreeViewNode().apply {
-        content = "Work Documents"; isExpanded = true
-        children.add(TreeViewNode().apply { content = "XYZ Functional Spec"; isExpanded = true })
-        children.add(TreeViewNode().apply { content = "Feature Schedule"; isExpanded = true })
-    })
-    rootNodes.add(TreeViewNode().apply {
-        content = "Personal Documents"; isExpanded = true
-        children.add(TreeViewNode().apply {
-            content = "Home Remodel"; isExpanded = true
-            children.add(TreeViewNode().apply { content = "Contractor Contact Info"; isExpanded = true })
-            children.add(TreeViewNode().apply { content = "Paint Color Scheme"; isExpanded = true })
-        })
-    })
-}
-
-@GallerySample(route = "TreeView", title = "A TreeView with multiple selection.")
-internal fun treeViewMultipleSelectionSample() = TreeView().apply {
-    minWidth = 345.0; maxHeight = 400.0; height = 280.0; selectionMode = TreeViewSelectionMode.Multiple
-    rootNodes.add(TreeViewNode().apply {
-        content = "Work Documents"; isExpanded = true
-        children.add(TreeViewNode().apply { content = "XYZ Functional Spec"; isExpanded = true })
-        children.add(TreeViewNode().apply { content = "Feature Schedule"; isExpanded = true })
-    })
-    rootNodes.add(TreeViewNode().apply {
-        content = "Personal Documents"; isExpanded = true
-        children.add(TreeViewNode().apply {
-            content = "Home Remodel"; isExpanded = true
-            children.add(TreeViewNode().apply { content = "Contractor Contact Info"; isExpanded = true })
-            children.add(TreeViewNode().apply { content = "Paint Color Scheme"; isExpanded = true })
-        })
-    })
-}
-
-@GallerySample(route = "TreeView", title = "A TreeView with a data source.")
-internal fun treeViewDataSourceSample() = TreeView().apply {
-    minWidth = 345.0; maxHeight = 400.0; height = 200.0
-    fun item(title: String, descendants: List<TreeViewItem> = emptyList()) = TreeViewItem().apply { isExpanded = true; itemsSource = descendants; content = title }
-    itemsSource = listOf(
-        item("Documents", listOf(item("ProjectProposal"), item("BudgetReport"))),
-        item("Projects", listOf(item("Project Plan"))),
-    )
-}
-
-@GallerySample(route = "TreeView", title = "A TreeView with different item presentations.")
-internal fun treeViewItemPresentationsSample() = TreeView().apply {
-    minWidth = 345.0; maxHeight = 400.0; height = 200.0
-    fun item(title: String, descendants: List<TreeViewItem> = emptyList()) = TreeViewItem().apply {
-        isExpanded = true; itemsSource = descendants
-        content = StackPanel().apply { this.spacing = 10.0; this.orientation = Orientation.Horizontal; children.add(FontIcon().apply { this.glyph = if (descendants.isEmpty()) "\uE8A5" else "\uE8B7"; this.fontSize = 16.0 }); children.add(TextBlock().apply { this.text = title; this.fontSize = 14.0; this.textWrapping = microsoft.ui.xaml.TextWrapping.Wrap }) }
+internal class TreeViewPage : Page() {
+    val DataSource: MutableList<ExplorerItem> = WinRTObservableList(listOf(
+        ExplorerItem("Documents", true, listOf(ExplorerItem("ProjectProposal"), ExplorerItem("BudgetReport"))),
+        ExplorerItem("Projects", true, listOf(ExplorerItem("Project Plan")))))
+    override fun initializeComponent() { super.initializeComponent(); dataContext = this; InitializeSampleTreeView(sampleTreeView); InitializeSampleTreeView(sampleTreeView2) }
+    private fun InitializeSampleTreeView(tree: TreeView) {
+        fun node(title: String, children: List<TreeViewNode> = emptyList()) = TreeViewNode().apply { content = title; isExpanded = children.isNotEmpty(); children.forEach { this.children.add(it) } }
+        tree.rootNodes.add(node("Work Documents", listOf(node("XYZ Functional Spec"), node("Feature Schedule"))))
+        tree.rootNodes.add(node("Personal Documents", listOf(node("Home Remodel", listOf(node("Contractor Contact Info"), node("Paint Color Scheme"))))))
     }
-    itemsSource = listOf(
-        item("Documents", listOf(item("ProjectProposal"), item("BudgetReport"))),
-        item("Projects", listOf(item("Project Plan"))),
-    )
 }

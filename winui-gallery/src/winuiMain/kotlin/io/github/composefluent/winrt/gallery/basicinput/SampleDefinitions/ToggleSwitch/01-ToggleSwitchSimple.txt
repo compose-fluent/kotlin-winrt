@@ -1,0 +1,6 @@
+--- Header
+A simple ToggleSwitch.
+
+--- Xaml
+<ToggleSwitch x:Name="simpleToggle" />
+

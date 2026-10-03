@@ -1,0 +1,34 @@
+--- header
+Basic, non-interactive items laid out by ItemsRepeater
+--- xaml
+<!-- The ItemsRepeater and ScrollViewer used: -->
+<ScrollViewer HorizontalScrollBarVisibility="Auto" 
+              HorizontalScrollMode="Auto" 
+              IsVerticalScrollChainingEnabled="False"
+              MaxHeight="500">
+    <ItemsRepeater
+               ItemsSource="{x:Bind BarItems}"
+               Layout="{StaticResource $(Layout)}"
+               ItemTemplate="{StaticResource $(ElementGenerator)}" />
+</ScrollViewer>
+                    
+<!-- The Layout specifications used: -->
+                    
+$(SampleCodeLayout)     
+                    
+<!-- The DataTemplate used: $(ElementGenerator)-->
+                    
+$(SampleCodeDT)
+--- kotlin
+internal class Bar(val Length: Double, val MaxLength: Int) {
+    val Height: Double = Length / 4
+    val MaxHeight: Double = MaxLength / 4.0
+    val Diameter: Double = Length / 6
+    val MaxDiameter: Double = MaxLength / 6.0
+}
+
+val BarItems: MutableList<Bar> = WinRTObservableList(listOf(Bar(300.0, 425), Bar(25.0, 425), Bar(175.0, 425)))
+
+private fun AddBtn_Click(sender: Any?, args: RoutedEventArgs) { BarItems.add(Bar(kotlin.random.Random.nextInt(MaxLength).toDouble(), MaxLength)); DeleteBtn.isEnabled = true }
+
+private fun DeleteBtn_Click(sender: Any?, args: RoutedEventArgs) { if (BarItems.isNotEmpty()) BarItems.removeAt(0); DeleteBtn.isEnabled = BarItems.isNotEmpty() }

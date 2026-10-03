@@ -1,0 +1,36 @@
+--- header
+A MediaCapture preview displayed via a MediaPlayerElement.
+--- xaml
+<Grid RowDefinitions="Auto,*" ColumnDefinitions="*,100"  MinWidth="400" MinHeight="300" RowSpacing="10" ColumnSpacing="4">
+    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
+        <ComboBox x:Name="cameraSourceComboBox" Header="Camera source" DisplayMemberPath="DisplayName" SelectionChanged="CameraSourceComboBox_SelectionChanged" />
+        <TextBlock x:Name="frameSourceName" VerticalAlignment="Center"/>
+    </StackPanel>
+    <MediaPlayerElement x:Name="captureElement" Grid.Row="1" Grid.Column="0" Stretch="Uniform" AutoPlay="True" />
+    <TextBlock x:Name="capturedText" Visibility="Collapsed" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Text="Captured:" />
+    <Grid x:Name="captureContainer" Grid.Row="1" Grid.Column="1">
+        <ScrollViewer VerticalScrollMode="Enabled">
+            <StackPanel x:Name="snapshots" Spacing="2"/>
+        </ScrollViewer>
+    </Grid>
+</Grid>
+--- kotlin
+private fun CameraSourceComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        val selected = cameraSourceComboBox.selectedItem?.asWinRT<windows.media.capture.frames.MediaFrameSourceGroup>() ?: return
+        val request = ++generation
+        tasks.launch {
+            try { StartCapture(selected, request) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { frameSourceName.text = "Error: ${error.message}"; throw error }
+        }
+    }
+
+private fun CapturePhoto_Click(sender: Any?, args: RoutedEventArgs) { tasks.launch { cameraLock.withLock {
+        val capture = mediaCapture ?: return@withLock
+        windows.storage.streams.InMemoryRandomAccessStream().use { stream ->
+            capture.capturePhotoToStreamAsync(windows.media.mediaproperties.ImageEncodingProperties.createJpeg(), stream).await(); stream.seek(0uL)
+            val bitmap = microsoft.ui.xaml.media.imaging.BitmapImage(); bitmap.setSourceAsync(stream).await()
+            snapshots.children.add(0, Image().apply { source = bitmap }); capturedText.visibility = Visibility.Visible
+            announce(captureButton, "Photo successfully captured.", "CameraPreviewSampleCaptureNotificationId")
+        }
+    } } }

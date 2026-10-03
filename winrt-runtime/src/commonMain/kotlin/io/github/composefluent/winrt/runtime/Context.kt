@@ -286,11 +286,12 @@ internal class ObjectReferenceContext private constructor(
             interfaceIdLowBits: Long,
             interfaceIdHighBits: Long,
             knownInterfaceId: Guid?,
+            callsAreFreeThreaded: Boolean,
         ): ObjectReferenceContext? {
-            if (ComThreadingSupport.isFreeThreaded(pointer)) {
+            if (callsAreFreeThreaded) {
                 return null
             }
-            return capture(
+            return captureCore(
                 pointer = pointer,
                 interfaceIdLowBits = interfaceIdLowBits,
                 interfaceIdHighBits = interfaceIdHighBits,
@@ -308,7 +309,7 @@ internal class ObjectReferenceContext private constructor(
             interfaceIdLowBits: Long,
             interfaceIdHighBits: Long,
             knownInterfaceId: Guid?,
-        ): ObjectReferenceContext? = capture(
+        ): ObjectReferenceContext? = captureCore(
             pointer = pointer,
             interfaceIdLowBits = interfaceIdLowBits,
             interfaceIdHighBits = interfaceIdHighBits,
@@ -316,7 +317,7 @@ internal class ObjectReferenceContext private constructor(
             callsAreFreeThreaded = true,
         )
 
-        private fun capture(
+        private fun captureCore(
             pointer: RawComPtr,
             interfaceIdLowBits: Long,
             interfaceIdHighBits: Long,
@@ -366,7 +367,7 @@ internal fun drainDeferredComReleasesForCurrentContext() {
     DeferredContextActions.drainCurrentContext()
 }
 
-private object ComThreadingSupport {
+internal object ComThreadingSupport {
     private val inProcFreeThreadedMarshaler = guidOf("0000033A-0000-0000-C000-000000000046")
 
     fun isFreeThreaded(pointer: RawComPtr): Boolean {

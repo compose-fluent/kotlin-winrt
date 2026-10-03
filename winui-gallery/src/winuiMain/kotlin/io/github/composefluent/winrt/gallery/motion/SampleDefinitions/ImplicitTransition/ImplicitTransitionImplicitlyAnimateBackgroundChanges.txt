@@ -1,0 +1,12 @@
+--- header
+Implicitly animate when the Background changes
+--- xaml
+<ContentPresenter x:Name="BrushPresenter" Background="Blue" Width="50" Height="50">
+    <ContentPresenter.BackgroundTransition>
+        <BrushTransition />
+    </ContentPresenter.BackgroundTransition>
+</ContentPresenter>
+--- kotlin
+BrushPresenter.backgroundTransition = BrushTransition()
+
+private fun BackgroundButton_Click(sender: Any?, args: RoutedEventArgs) { val blue = BrushPresenter.background?.asWinRT<SolidColorBrush>()?.color == rgb(0x0000FFu); BrushPresenter.background = SolidColorBrush(if (blue) rgb(0xFFFF00u) else rgb(0x0000FFu)); announce(BgColorBtn, "Rectangle color changed to " + if (blue) "Yellow" else "Blue", "RectangleChangedNotificationActivityId") }

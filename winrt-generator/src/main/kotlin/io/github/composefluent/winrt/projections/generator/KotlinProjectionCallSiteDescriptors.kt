@@ -270,6 +270,8 @@ private fun KotlinProjectionRenderer.registerCallSiteAbiType(
     support: KotlinModulePlatformAbiCallSupport?,
 ) {
     if (support == null) return
+    // Factory outputs resolve the runtime class's existing Metadata.TYPE_HANDLE, without a codec.
+    if (binding.hasKnownInspectableOutputInterface()) return
     if (binding.kind == KotlinProjectionAbiValueKind.Delegate &&
         recipe.callables?.ownerFqName == WINRT_DELEGATE_BRIDGE_CLASS_NAME.canonicalName &&
         recipe.callables?.createMarshaler == "createProjectedDelegateArgument"

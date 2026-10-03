@@ -27,7 +27,7 @@ interface IWinRTObject {
     ): Boolean =
         winRTObjectSupport.isInterfaceImplemented(
             instance = this,
-            primaryTypeHandle = primaryTypeHandle,
+            primaryTypeHandle = nativePrimaryTypeHandle(),
             interfaceType = interfaceType,
             nativeObject = nativeObject,
             throwIfNotImplemented = throwIfNotImplemented,
@@ -38,7 +38,7 @@ interface IWinRTObject {
     fun getObjectReferenceForType(interfaceType: WinRTTypeHandle): ComObjectReference =
         winRTObjectSupport.getObjectReferenceForType(
             instance = this,
-            primaryTypeHandle = primaryTypeHandle,
+            primaryTypeHandle = nativePrimaryTypeHandle(),
             interfaceType = interfaceType,
             nativeObject = nativeObject,
             tryQueryInterface = nativeObject::tryQueryInterface,
@@ -55,6 +55,13 @@ interface IWinRTObject {
             factory = factory,
         )
 }
+
+// CsWinRT MarshalInspectable.CreateMarshaler2 uses objRef.AsValue(iid). A runtime-class
+// wrapper can hold IInspectable (for example a XAML connector target), even though
+// its projected primary type describes the default interface. Only bypass QI when
+// the stored native reference actually has that interface's ABI layout.
+private fun IWinRTObject.nativePrimaryTypeHandle(): WinRTTypeHandle? =
+    primaryTypeHandle?.takeIf { it.interfaceId == nativeObject.interfaceId }
 
 abstract class WinRTObjectBase<T : ComObjectReference>(
     nativeObject: T?,

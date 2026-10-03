@@ -1,0 +1,14 @@
+--- header
+Paste text from the Clipboard
+--- xaml
+<Button Content="Paste Text from the Clipboard" Click="PasteText_Click"/>
+--- Kotlin
+private fun PasteText_Click(sender: Any?, args: RoutedEventArgs) {
+    tasks.launch {
+        val packageView = Clipboard.getContent()
+        if (packageView.contains(StandardDataFormats.text)) {
+            PasteClipboard2.text = packageView.getTextAsync().await()
+            announce(checkNotNull(sender).asWinRT<UIElement>(), "Text pasted from clipboard", "TextPastedSuccessNotificationId")
+        }
+    }
+}

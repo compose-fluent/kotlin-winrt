@@ -1,55 +1,62 @@
 package io.github.composefluent.winrt.gallery.basicinput
 
-import io.github.composefluent.winrt.gallery.*
-import microsoft.ui.xaml.*
-import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.controls.primitives.*
+import io.github.composefluent.winrt.gallery.GalleryPage
+import io.github.composefluent.winrt.gallery.GalleryPageTasks
+import io.github.composefluent.winrt.gallery.rgb
+import io.github.composefluent.winrt.runtime.asWinRT
+import kotlinx.coroutines.delay
+import microsoft.ui.text.TextSetOptions
+import microsoft.ui.xaml.FocusState
+import microsoft.ui.xaml.RoutedEventArgs
+import microsoft.ui.xaml.controls.ItemClickEventArgs
+import microsoft.ui.xaml.controls.Page
+import microsoft.ui.xaml.controls.SplitButton
+import microsoft.ui.xaml.controls.SplitButtonClickEventArgs
 import microsoft.ui.xaml.media.SolidColorBrush
 import microsoft.ui.xaml.shapes.Rectangle
-import microsoft.ui.text.MarkerType
-import windows.foundation.Uri
 
 @GalleryPage(route = "SplitButton", title = "SplitButton", group = "BasicInput", order = 5)
-internal fun splitButtonPage() = ExamplePage {
-    val editor = RichEditBox().apply { width = 240.0; minHeight = 96.0; placeholderText = "Type something here" }
-    example("A SplitButton with a color picker.", splitButtonColorSample(editor), editor)
-    example("A SplitButton with text.", splitButtonTextSample(editor))
-}
+internal class SplitButtonPage : Page() {
+    private var currentColor = rgb(0x008000u)
+    private val tasks = GalleryPageTasks(this)
 
-@GallerySample(route = "SplitButton", title = "A SplitButton with a color picker.")
-internal fun splitButtonColorSample(editor: RichEditBox) = SplitButton().apply {
-    var color = rgb(0x008000u)
-    val preview = Border().apply { width = 32.0; height = 32.0; background = SolidColorBrush(color); cornerRadius = corners(4.0) }
-    val picker = Flyout()
-    picker.content = VariableSizedWrapGrid().apply {
-        maximumRowsOrColumns = 3; orientation = Orientation.Horizontal
-        swatches.forEach { (name, value) -> children.add(Button().apply {
-            padding = inset(0.0); minWidth = 0.0; minHeight = 0.0; margin = inset(6.0)
-            content = Rectangle().apply { width = 32.0; height = 32.0; radiusX = 4.0; radiusY = 4.0; fill = brush(value) }
-            named(this, name)
-            click.add { _, _ ->
-                color = rgb(value); preview.background = SolidColorBrush(color)
-                editor.document!!.selection!!.characterFormat!!.foregroundColor = color
-                picker.hide(); editor.focus(FocusState.Keyboard)
-            }
-        }) }
+    override fun initializeComponent() {
+        super.initializeComponent()
+        val selection = checkNotNull(checkNotNull(myRichEditBox.document).selection)
+        selectedTextFormat().foregroundColor = currentColor
+        selection.setText(TextSetOptions.None,
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit, " +
+                "sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Tempor commodo ullamcorper a lacus.")
     }
-    content = preview; padding = inset(0.0); minWidth = 0.0; minHeight = 0.0; flyout = picker
-    named(this, "Font color")
-    click.add { _, _ -> editor.document!!.selection!!.characterFormat!!.foregroundColor = color; editor.focus(FocusState.Keyboard) }
+
+    private fun GridView_ItemClick(sender: Any?, args: ItemClickEventArgs) {
+        val rectangle = checkNotNull(args.clickedItem).asWinRT<Rectangle>()
+        currentColor = checkNotNull(rectangle.fill).asWinRT<SolidColorBrush>().color
+        selectedTextFormat().foregroundColor = currentColor
+        CurrentColor.background = SolidColorBrush(currentColor)
+        myRichEditBox.focus(FocusState.Keyboard)
+        // The original Gallery delays closing for microsoft-ui-xaml issue #6350.
+        tasks.launch {
+            delay(10)
+            myColorButton.flyout?.hide()
+        }
+    }
+
+    private fun RevealColorButton_Click(sender: Any?, args: RoutedEventArgs) {
+        myColorButtonReveal.flyout?.hide()
+    }
+
+    private fun myColorButton_Click(sender: SplitButton, args: SplitButtonClickEventArgs) {
+        currentColor = checkNotNull(CurrentColor.background).asWinRT<SolidColorBrush>().color
+        selectedTextFormat().foregroundColor = currentColor
+    }
+
+    private fun MyRichEditBox_TextChanged(sender: Any?, args: RoutedEventArgs) {
+        val format = selectedTextFormat()
+        if (format.foregroundColor != currentColor) format.foregroundColor = currentColor
+    }
+
+    private fun selectedTextFormat() = checkNotNull(
+        checkNotNull(checkNotNull(myRichEditBox.document).selection).characterFormat
+    )
 }
-
-@GallerySample(route = "SplitButton", title = "A SplitButton with text.")
-internal fun splitButtonTextSample(editor: RichEditBox) = SplitButton().apply {
-    content = "Choose color"
-    flyout = MenuFlyout().apply { swatches.forEach { (name, value) -> items.add(MenuFlyoutItem().apply {
-            text = name; click.add { _, _ -> editor.document!!.selection!!.characterFormat!!.foregroundColor = rgb(value) }
-    }) } }
-}
-
-// Ported from WinUI Gallery Samples/{DropDownButton,HyperlinkButton,RepeatButton,
-// ToggleButton,SplitButton,ToggleSplitButton,RadioButton,RatingControl,ColorPicker} (MIT).
-
-
-internal val swatches = listOf("Red" to 0xFF0000u, "Orange" to 0xFFA500u, "Yellow" to 0xFFFF00u,
-    "Green" to 0x008000u, "Blue" to 0x0000FFu, "Indigo" to 0x4B0082u, "Violet" to 0xEE82EEu, "Gray" to 0x808080u)

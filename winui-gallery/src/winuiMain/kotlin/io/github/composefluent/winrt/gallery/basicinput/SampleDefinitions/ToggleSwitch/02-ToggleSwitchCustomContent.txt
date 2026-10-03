@@ -1,0 +1,23 @@
+--- Header
+A ToggleSwitch with custom content.
+
+--- Xaml
+<StackPanel Orientation="Horizontal" Spacing="12">
+    <ToggleSwitch x:Name="workToggle" Header="Toggle work" IsOn="True" OffContent="Do work" OnContent="Working" Toggled="onWorkToggled" />
+    <ProgressRing x:Name="progress" Width="32" IsActive="True" />
+</StackPanel>
+
+
+--- Kotlin
+private var initialized = false
+
+override fun initializeComponent() {
+    super.initializeComponent()
+    initialized = true
+    progress.isActive = workToggle.isOn
+}
+
+private fun onWorkToggled(sender: Any?, args: RoutedEventArgs) {
+    // IsOn can raise Toggled while LoadComponent is still connecting later siblings.
+    if (initialized) progress.isActive = workToggle.isOn
+}

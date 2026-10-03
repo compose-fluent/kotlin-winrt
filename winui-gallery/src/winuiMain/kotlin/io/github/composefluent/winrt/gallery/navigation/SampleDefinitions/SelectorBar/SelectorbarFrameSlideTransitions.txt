@@ -1,0 +1,20 @@
+--- header
+SelectorBar with Frame Slide Transitions
+--- xaml
+<SelectorBar x:Name="SelectorBar2" SelectionChanged="SelectorBar2_SelectionChanged">
+    <SelectorBarItem x:Name="SelectorBarItemPage1" Text="Page1" IsSelected="True" />
+    <SelectorBarItem x:Name="SelectorBarItemPage2" Text="Page2" />
+    <SelectorBarItem x:Name="SelectorBarItemPage3" Text="Page3" />
+    <SelectorBarItem x:Name="SelectorBarItemPage4" Text="Page4" />
+    <SelectorBarItem x:Name="SelectorBarItemPage5" Text="Page5" />
+</SelectorBar>
+
+<Frame x:Name="ContentFrame" IsNavigationStackEnabled="False" />
+--- kotlin
+private fun SelectorBar2_SelectionChanged(sender: SelectorBar, args: SelectorBarSelectionChangedEventArgs) {
+        if (!ready) return
+        val index = sender.items.indexOf(sender.selectedItem)
+        val page = listOf(SamplePage1::class, SamplePage2::class, SamplePage3::class, SamplePage4::class, SamplePage5::class)[index.coerceIn(0, 4)]
+        ContentFrame.navigate(page, null, SlideNavigationTransitionInfo().apply { effect = if (index > previousSelectedIndex) SlideNavigationTransitionEffect.FromRight else SlideNavigationTransitionEffect.FromLeft })
+        previousSelectedIndex = index
+    }

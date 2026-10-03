@@ -1,260 +1,84 @@
+// Ported from WinUI Gallery v2.9.3 (MIT).
 package io.github.composefluent.winrt.gallery.navigation
 
 import io.github.composefluent.winrt.gallery.*
-import io.github.composefluent.winrt.runtime.asWinRT
+import io.github.composefluent.winrt.gallery.models.*
+import io.github.composefluent.winrt.gallery.samplepages.*
+import io.github.composefluent.winrt.runtime.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.input.KeyboardAccelerator
+import microsoft.ui.xaml.controls.primitives.*
+import microsoft.ui.xaml.input.*
+import microsoft.ui.xaml.media.*
+import kotlin.reflect.KClass
 import windows.system.VirtualKey
-import windows.system.VirtualKeyModifiers
 
 @GalleryPage(route = "TabView", title = "TabView", group = "Navigation", order = 4)
-internal fun tabViewPage() = ExamplePage {
-    example("A TabView with support for adding and closing tabs.", tabViewTabViewWithSupportForAddingAndClosingTabsSample())
-    example("A TabView with TabViewItems defined in code.", tabViewTabViewWithTabViewItemsDefinedInCodeSample1())
-    val bound = tabViewTabViewBoundToACollectionSample2()
-    example("A TabView bound to a collection.", bound)
-    example("A TabView with keyboard support.", stack {
-        children.add(label("- Ctrl+T opens a new tab\n- Ctrl+W closes the selected tab\n- Ctrl+1 to Ctrl+8 selects that number tab\n- Ctrl+9 selects the last tab (regardless of the number of tabs)"))
-        children.add(tabViewKeyboardSample())
-    })
-    example("A TabView with header and footer content.", tabViewTabViewWithHeaderAndFooterContentSample4())
-    val width = tabViewTabWidthsCanBeSizedToContentEqualOrCompactSample5()
-    listOf("Home", "Tab 2 Has Longer Text", "Third Tab").forEachIndexed { index, title -> checkNotNull(width.tabItems[index]).asWinRT<TabViewItem>().apply { header = title; isClosable = false } }
-    example("Tab widths can be sized to content, equal, or compact.", width, select("TabWidthBehavior", listOf("SizeToContent", "Equal", "Compact")) {
-        width.tabWidthMode = listOf(TabViewWidthMode.SizeToContent, TabViewWidthMode.Equal, TabViewWidthMode.Compact)[it]
-    })
-    val close = tabViewPersistentOrHoverOnlyCloseButtonSample6()
-    example("A persistent or hover-only close button.", close, select("TabViewItem CloseButtonOverlayMode", listOf("Auto", "Always", "OnHover"), 1) {
-        close.closeButtonOverlayMode = listOf(TabViewCloseButtonOverlayMode.Auto, TabViewCloseButtonOverlayMode.Always, TabViewCloseButtonOverlayMode.OnPointerOver)[it]
-    })
-    example("A TabView with color icons.", tabViewTabViewWithColorIconsSample7())
-    example("An accent-colored tab strip.", tabViewAccentColoredTabStripSample8())
-    example("A complete TabView windowing sample.", tabViewCompleteTabViewWindowingSampleSample9())
-
-}
-
-@GallerySample(route = "TabView", title = "A TabView with keyboard support.")
-internal fun tabViewKeyboardSample() = TabView().apply {
-    minHeight = 475.0
-    margin = inset(-12.0)
-    repeat(3) { index ->
-        tabItems.add(TabViewItem().apply {
-            header = "Document $index"
-            iconSource = SymbolIconSource().apply { symbol = Symbol.Document }
-            content = sampleContent(index % 3 + 1)
-        })
+internal class TabViewPage : Page() {
+    val myDatas: MutableList<MyData> = WinRTObservableList()
+    private var ready = false
+    private val initializedTabViews = mutableSetOf<TabView>()
+    override fun initializeComponent() { super.initializeComponent(); repeat(3) { myDatas.add(CreateNewMyData(it)) }; ready = true }
+    private fun page(index: Int): KClass<out Page> = when (index % 3) { 0 -> SamplePage1::class; 1 -> SamplePage2::class; else -> SamplePage3::class }
+    private fun TabView_Loaded(sender: Any?, args: RoutedEventArgs) {
+        val tabs = checkNotNull(sender).asWinRT<TabView>()
+        if (initializedTabViews.add(tabs)) repeat(3) { tabs.tabItems.add(CreateNewTab(it)) }
     }
-    selectedIndex = 0
-    val tabs = this
-    fun accelerator(key: VirtualKey, action: () -> Unit) {
-        keyboardAccelerators.add(KeyboardAccelerator().apply {
-            this.key = key; modifiers = VirtualKeyModifiers.Control
-            invoked.add { _, args -> action(); args.handled = true }
-        })
+    private fun TabView_BringIntoViewRequested(sender: UIElement, args: BringIntoViewRequestedEventArgs) { args.handled = true }
+    private fun TabView_AddButtonClick(sender: TabView, args: Any?) { sender.tabItems.add(CreateNewTab(sender.tabItems.size)) }
+    private fun TabView_TabCloseRequested(sender: TabView, args: TabViewTabCloseRequestedEventArgs) { sender.tabItems.remove(args.tab) }
+    private fun CreateNewTab(index: Int): TabViewItem = TabViewItem().apply {
+        header = "Document $index"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; contextFlyout = TabViewContextMenu
+        content = Frame().apply { navigate(page(index)) }
     }
-    accelerator(VirtualKey.T) { tabs.tabItems.add(TabViewItem().apply { header = "Document ${tabs.tabItems.size}"; content = sampleContent(1) }) }
-    accelerator(VirtualKey.W) { tabs.selectedItem?.asWinRT<TabViewItem>()?.takeIf { it.isClosable }?.let { tabs.tabItems.remove(it) } }
-    listOf(VirtualKey.Number1, VirtualKey.Number2, VirtualKey.Number3, VirtualKey.Number4, VirtualKey.Number5,
-        VirtualKey.Number6, VirtualKey.Number7, VirtualKey.Number8, VirtualKey.Number9).forEachIndexed { index, key ->
-        accelerator(key) { val selected = if (index == 8) tabs.tabItems.size - 1 else index; if (selected in 0 until tabs.tabItems.size) tabs.selectedIndex = selected }
+    private fun CreateNewMyData(index: Int): MyData = MyData("MyData Doc $index", SymbolIconSource().apply { symbol = Symbol.Placeholder }, Frame().apply { navigate(page(index)) })
+    private fun TabViewItemsSourceSample_AddTabButtonClick(sender: TabView, args: Any?) { myDatas.add(CreateNewMyData(myDatas.size)) }
+    private fun TabViewItemsSourceSample_TabCloseRequested(sender: TabView, args: TabViewTabCloseRequestedEventArgs) { (args.item as? MyData)?.let(myDatas::remove) }
+    private fun NewTabKeyboardAccelerator_Invoked(sender: KeyboardAccelerator, args: KeyboardAcceleratorInvokedEventArgs) {
+        args.element?.asWinRT<TabView>()?.let { it.tabItems.add(CreateNewTab(it.tabItems.size)) }; args.handled = true
     }
-    bringIntoViewRequested.add { _, args -> args.handled = true }
-}
-
-@GallerySample(route = "TabView", title = "A TabView with support for adding and closing tabs.")
-internal fun tabViewTabViewWithSupportForAddingAndClosingTabsSample() = TabView().apply {
-    minHeight = 475.0
-    margin = inset(-12.0)
-    repeat(3) { index ->
-        tabItems.add(TabViewItem().apply {
-            header = "Document $index"
-            iconSource = SymbolIconSource().apply { symbol = Symbol.Document }
-            content = sampleContent(index % 3 + 1)
-        })
+    private fun CloseSelectedTabKeyboardAccelerator_Invoked(sender: KeyboardAccelerator, args: KeyboardAcceleratorInvokedEventArgs) {
+        args.element?.asWinRT<TabView>()?.let { tabs -> tabs.selectedItem?.asWinRT<TabViewItem>()?.takeIf { it.isClosable }?.let { tabs.tabItems.remove(it) } }; args.handled = true
     }
-    selectedIndex = 0
-    addTabButtonClick.add { _, _ ->
-        tabItems.add(TabViewItem().apply {
-            header = "Document ${tabItems.size}"
-            iconSource = SymbolIconSource().apply { symbol = Symbol.Document }
-            content = sampleContent(tabItems.size % 3 + 1)
-        })
+    private fun NavigateToNumberedTabKeyboardAccelerator_Invoked(sender: KeyboardAccelerator, args: KeyboardAcceleratorInvokedEventArgs) {
+        val tabs = args.element?.asWinRT<TabView>() ?: return
+        val index = if (sender.key == VirtualKey.Number9) tabs.tabItems.lastIndex else (sender.key.abiValue - VirtualKey.Number1.abiValue).toInt()
+        if (index in tabs.tabItems.indices) tabs.selectedIndex = index
+        args.handled = true
     }
-    tabCloseRequested.add { _, args -> tabItems.remove(args.tab) }
-    bringIntoViewRequested.add { _, args -> args.handled = true }
-}
-
-@GallerySample(route = "TabView", title = "A TabView with TabViewItems defined in code.")
-internal fun tabViewTabViewWithTabViewItemsDefinedInCodeSample1() = TabView().apply {
-    minHeight = 475.0
-    margin = inset(-12.0)
-    tabItems.add(TabViewItem().apply { header = "Home"; content = sampleContent(1) })
-    tabItems.add(TabViewItem().apply { header = "Tab 2"; content = sampleContent(2) })
-    tabItems.add(TabViewItem().apply { header = "Tab 3"; content = sampleContent(3) })
-    selectedIndex = 0
-    addTabButtonClick.add { _, _ -> tabItems.add(TabViewItem().apply { header = "Tab ${tabItems.size + 1}"; content = sampleContent(tabItems.size % 3 + 1) }) }
-    tabCloseRequested.add { _, args -> tabItems.remove(args.tab) }
-    bringIntoViewRequested.add { _, args -> args.handled = true }
-}
-
-@GallerySample(route = "TabView", title = "A TabView bound to a collection.")
-internal fun tabViewTabViewBoundToACollectionSample2() = TabView().apply {
-    minHeight = 475.0
-    margin = inset(-12.0)
-    val source = mutableListOf<TabViewItem>()
-    repeat(3) { index ->
-        source.add(TabViewItem().apply {
-            header = "MyData Doc $index"
-            iconSource = SymbolIconSource().apply { symbol = Symbol.Document }
-            content = sampleContent(index % 3 + 1)
-        })
+    private fun TabWidthBehaviorComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        if (ready) TabView3.tabWidthMode = when (args.addedItems.firstOrNull()?.asWinRT<ComboBoxItem>()?.content?.toString()) { "SizeToContent" -> TabViewWidthMode.SizeToContent; "Compact" -> TabViewWidthMode.Compact; else -> TabViewWidthMode.Equal }
     }
-    tabItemsSource = source.toList()
-    selectedIndex = 0
-    addTabButtonClick.add { _, _ ->
-        source.add(TabViewItem().apply {
-            header = "MyData Doc ${source.size}"
-            iconSource = SymbolIconSource().apply { symbol = Symbol.Document }
-            content = sampleContent(source.size % 3 + 1)
-        })
-        tabItemsSource = source.toList()
+    private fun TabCloseButtonOverlayModeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        if (ready) TabView4.closeButtonOverlayMode = when (args.addedItems.firstOrNull()?.asWinRT<ComboBoxItem>()?.content?.toString()) { "Always" -> TabViewCloseButtonOverlayMode.Always; "OnHover" -> TabViewCloseButtonOverlayMode.OnPointerOver; else -> TabViewCloseButtonOverlayMode.Auto }
     }
-    tabCloseRequested.add { _, args ->
-        args.tab?.let { item -> source.removeAll { it == item } }
-        tabItemsSource = source.toList()
-    }
-    bringIntoViewRequested.add { _, args -> args.handled = true }
-}
-
-@GallerySample(route = "TabView", title = "A TabView with header and footer content.")
-internal fun tabViewTabViewWithHeaderAndFooterContentSample4() = TabView().apply {
-        minHeight = 475.0
-        margin = inset(-12.0)
-        repeat(3) { index -> tabItems.add(TabViewItem().apply { header = "Document $index"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; content = sampleContent(index % 3 + 1) }) }
-        selectedIndex = 0
-        addTabButtonClick.add { _, _ -> tabItems.add(TabViewItem().apply { header = "Document ${tabItems.size}"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; content = sampleContent(tabItems.size % 3 + 1) }) }
-        tabCloseRequested.add { _, args -> tabItems.remove(args.tab) }
-        bringIntoViewRequested.add { _, args -> args.handled = true }
-        tabWidthMode = TabViewWidthMode.SizeToContent
-        tabStripHeader = TextBlock().apply { this.text = "TabStripHeader Content"; this.fontSize = 14.0; this.textWrapping = microsoft.ui.xaml.TextWrapping.Wrap }.apply { margin = inset(8.0) }
-        tabStripFooter = TextBlock().apply { this.text = "TabStripFooter Content"; this.fontSize = 14.0; this.textWrapping = microsoft.ui.xaml.TextWrapping.Wrap }.apply { margin = inset(6.0) }
-    }
-
-@GallerySample(route = "TabView", title = "A TabView with color icons.")
-internal fun tabViewTabViewWithColorIconsSample7() = TabView().apply {
-        isAddTabButtonVisible = false; tabWidthMode = TabViewWidthMode.SizeToContent
-        listOf("CMD Prompt" to "cmd.png", "PowerShell" to "powershell.png", "Windows Subsystem for Linux" to "linux.png").forEach { (title, image) ->
-            tabItems.add(TabViewItem().apply {
-                header = title; isClosable = false
-                iconSource = BitmapIconSource().apply { showAsMonochrome = false; uriSource = windows.foundation.Uri("ms-appx:///Assets/SampleMedia/$image") }
-            })
+    private fun TabViewWindowingButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val page = TabViewWindowingSamplePage()
+        GalleryWindows.create("TabView",page).apply {
+            extendsContentIntoTitleBar = true; systemBackdrop = MicaBackdrop()
+            appWindow?.setIcon("Assets/Tiles/GalleryIcon.ico"); page.LoadDemoData(); activate()
         }
     }
-
-@GallerySample(route = "TabView", title = "An accent-colored tab strip.")
-internal fun tabViewAccentColoredTabStripSample8() = TabView().apply {
-    minHeight = 475.0
-    margin = inset(-12.0)
-    repeat(3) { index -> tabItems.add(TabViewItem().apply { header = "Document $index"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; content = sampleContent(index % 3 + 1) }) }
-    selectedIndex = 0
-    addTabButtonClick.add { _, _ -> tabItems.add(TabViewItem().apply { header = "Document ${tabItems.size}"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; content = sampleContent(tabItems.size % 3 + 1) }) }
-    tabCloseRequested.add { _, args -> tabItems.remove(args.tab) }
-    bringIntoViewRequested.add { _, args -> args.handled = true }
-    resources["TabViewBackground"] = GalleryTheme.brush("AccentFillColorDefaultBrush")
-}
-
-@GallerySample(route = "TabView", title = "A complete TabView windowing sample.")
-internal fun tabViewCompleteTabViewWindowingSampleSample9() = Button().apply { this.content = "Click here to launch the sample" }.also { galleryButton -> galleryButton.click.add { _, _ -> GalleryTabWindows.open() } }
-
-@GallerySample(route = "TabView", title = "Tab widths can be sized to content, equal, or compact.")
-internal fun tabViewTabWidthsCanBeSizedToContentEqualOrCompactSample5() = TabView().apply {
-    minHeight = 475.0
-    margin = inset(-12.0)
-    repeat(3) { index -> tabItems.add(TabViewItem().apply { header = "Document $index"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; content = sampleContent(index % 3 + 1) }) }
-    selectedIndex = 0
-    isAddTabButtonVisible = false
-    tabCloseRequested.add { _, args -> tabItems.remove(args.tab) }
-    bringIntoViewRequested.add { _, args -> args.handled = true }
-    tabWidthMode = TabViewWidthMode.SizeToContent
-}
-
-@GallerySample(route = "TabView", title = "A persistent or hover-only close button.")
-internal fun tabViewPersistentOrHoverOnlyCloseButtonSample6() = TabView().apply {
-    minHeight = 475.0
-    margin = inset(-12.0)
-    repeat(3) { index -> tabItems.add(TabViewItem().apply { header = "Document $index"; iconSource = SymbolIconSource().apply { symbol = Symbol.Document }; content = sampleContent(index % 3 + 1) }) }
-    selectedIndex = 0
-    isAddTabButtonVisible = false
-    closeButtonOverlayMode = TabViewCloseButtonOverlayMode.Always
-    tabCloseRequested.add { _, args -> tabItems.remove(args.tab) }
-    bringIntoViewRequested.add { _, args -> args.handled = true }
-}
-
-/** Native TabView tear-out protocol; tab instances move between windows without recreating content. */
-private object GalleryTabWindows {
-    private val hosts = mutableMapOf<TabView, Window>()
-    private fun tab(title: String) = TabViewItem().apply {
-        header = title
-        iconSource = SymbolIconSource().apply { symbol = Symbol.Placeholder }
-        content = stack {
-            padding = inset(24.0)
-            children.add(label(title, 28.0))
-            children.add(TextBox().apply { header = "Tab content"; placeholderText = "Text stays with this tab when you move it" })
+    private fun TabViewContextMenu_Opening(sender: Any?, args: Any?) {
+        val flyout = checkNotNull(sender).asWinRT<MenuFlyout>(); flyout.items.clear()
+        val tab = flyout.target?.asWinRT<TabViewItem>() ?: return
+        var current: DependencyObject? = VisualTreeHelper.getParent(tab)
+        var list: ListView? = null; var tabs: TabView? = null
+        while (current != null) {
+            if (current is ListView) list = current
+            if (current is TabView) { tabs = current; break }
+            current = VisualTreeHelper.getParent(current)
         }
+        val target = tabs ?: return; val index = list?.indexFromContainer(tab) ?: target.tabItems.indexOf(tab)
+        val items = (target.tabItemsSource as? MutableList<Any?>) ?: target.tabItems
+        fun addMove(text: String, destination: Int) {
+            flyout.items.add(MenuFlyoutItem().apply { this.text = text; click.add { _, _ ->
+                val item = items.removeAt(index); items.add(destination,item)
+            } })
+        }
+        if (index > 0) addMove("Move tab left",index-1)
+        if (index >= 0 && index < items.lastIndex) addMove("Move tab right",index+1)
+        if (flyout.items.isEmpty()) flyout.hide()
     }
 
-    fun open() { create(true).second.activate() }
-
-    private fun create(demo: Boolean): Pair<TabView, Window> {
-        val drag = Grid().apply { minWidth = 188.0; minHeight = 48.0; background = brush(0x000000u).apply { opacity = 0.0 } }
-        val tabs = TabView().apply { canTearOutTabs = true; tabStripFooter = drag }
-        val window = GalleryWindows.create("TabView", tabs)
-        hosts[tabs] = window
-        window.systemBackdrop = microsoft.ui.xaml.media.MicaBackdrop()
-        window.extendsContentIntoTitleBar = true
-        window.setTitleBar(drag)
-        window.appWindow?.resize(windows.graphics.SizeInt32(800, 600))
-        tabs.loaded.add { _, _ ->
-            window.appWindow?.presenter?.asWinRT<microsoft.ui.windowing.OverlappedPresenter>()?.apply {
-                preferredMinimumWidth = 500
-                preferredMinimumHeight = 300
-            }
-        }
-        window.closed.add { _, _ -> hosts.remove(tabs) }
-        var pending: Pair<TabView, Window>? = null
-        if (demo) repeat(3) { tabs.tabItems.add(tab("Item $it")) }
-        tabs.selectedIndex = 0
-        tabs.addTabButtonClick.add { _, _ -> tabs.tabItems.add(tab("New Item")) }
-        tabs.tabCloseRequested.add { _, args -> tabs.tabItems.remove(args.tab); closeIfEmpty(tabs) }
-        tabs.tabTearOutWindowRequested.add { _, args ->
-            val target = create(false)
-            pending = target
-            args.newWindowId = checkNotNull(target.second.appWindow).id
-        }
-        tabs.tabTearOutRequested.add { _, args ->
-            val destination = pending?.first ?: return@add
-            args.tabs.forEach { value ->
-                val item = value.asWinRT<TabViewItem>()
-                tabs.tabItems.remove(item)
-                destination.tabItems.add(item)
-            }
-            destination.selectedIndex = 0
-            pending = null
-            closeIfEmpty(tabs)
-        }
-        tabs.externalTornOutTabsDropping.add { _, args -> args.allowDrop = true }
-        tabs.externalTornOutTabsDropped.add { _, args ->
-            args.tabs.forEachIndexed { offset, value ->
-                val item = value.asWinRT<TabViewItem>()
-                val source = hosts.keys.firstOrNull { it.tabItems.contains(item) }
-                source?.tabItems?.remove(item)
-                tabs.tabItems.add((args.dropIndex + offset).coerceIn(0, tabs.tabItems.size), item)
-                if (source != null && source != tabs) closeIfEmpty(source)
-            }
-        }
-        return tabs to window
-    }
-
-    private fun closeIfEmpty(tabs: TabView) { if (tabs.tabItems.isEmpty()) hosts[tabs]?.close() }
 }

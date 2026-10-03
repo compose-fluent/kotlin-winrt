@@ -71,12 +71,21 @@ internal object WinRTValueBoxing {
     internal fun tryProjectInspectableForRuntimeClassName(
         inspectable: IInspectableReference,
         runtimeClassName: String,
+    ): Any? = try {
+        tryProjectInspectableForRuntimeClassName(inspectable.pointer.asRawAddress(), runtimeClassName)
+    } finally {
+        winRTKeepAlive(inspectable)
+    }
+
+    internal fun tryProjectInspectableForRuntimeClassName(
+        inspectablePointer: RawAddress,
+        runtimeClassName: String,
     ): Any? {
         val plan = runtimeClassProjectionPlans[runtimeClassName]
             ?: buildRuntimeClassProjectionPlan(runtimeClassName)?.also { candidate ->
                 runtimeClassProjectionPlans.putIfAbsent(runtimeClassName, candidate)
             }
-        return plan?.project(inspectable.pointer.asRawAddress())
+        return plan?.project(inspectablePointer)
     }
 
     internal fun clearRuntimeClassProjectionPlans() {

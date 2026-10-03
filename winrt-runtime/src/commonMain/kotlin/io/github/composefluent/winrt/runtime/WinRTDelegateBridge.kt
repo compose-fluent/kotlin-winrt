@@ -186,6 +186,7 @@ object WinRTDelegateBridge {
         return WinRTDelegateHandle(
             descriptor = descriptor,
             callback = callback,
+            managedTarget = managedTarget,
             comObject = comObject,
             releaseAction = comObject::releaseManagedReference,
         )
@@ -253,16 +254,21 @@ fun createWinRTDelegateDescriptor(
     )
 
 /** Preserves CsWinRT's statically determined parameter types at the callback boundary. */
+@kotlin.jvm.JvmOverloads
 fun createWinRTTypedDelegateDescriptor(
     interfaceId: Guid,
     returnKind: WinRTDelegateValueKind,
     parameterKinds: Array<WinRTDelegateValueKind>,
     vararg parameterTypeHandles: WinRTTypeHandle?,
+    parameterStructAdapters: Array<NativeStructAdapter<*>?> = emptyArray(),
+    returnStructAdapter: NativeStructAdapter<*>? = null,
 ): WinRTDelegateDescriptor = WinRTDelegateDescriptor(
     interfaceId = interfaceId,
     parameterKinds = parameterKinds.asList(),
     returnKind = returnKind,
     parameterTypeHandles = parameterTypeHandles.asList(),
+    parameterStructAdapters = parameterStructAdapters.asList(),
+    returnStructAdapter = returnStructAdapter,
 )
 
 class WinRTDelegateArgumentMarshaler internal constructor(

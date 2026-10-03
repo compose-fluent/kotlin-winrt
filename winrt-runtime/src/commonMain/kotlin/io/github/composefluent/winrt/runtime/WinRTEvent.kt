@@ -23,10 +23,14 @@ class WinRTEvent<T : Any>(
         val token = subscribe(handler)
         val tokensByHandler = tokensByHandler
             ?: mutableMapOf<T, MutableList<EventRegistrationToken>>().also { this.tokensByHandler = it }
-        val handlersByToken = handlersByToken
-            ?: mutableMapOf<EventRegistrationToken, T>().also { this.handlersByToken = it }
+        val handlersByToken = if (unsubscribeHandler != null) {
+            handlersByToken
+                ?: mutableMapOf<EventRegistrationToken, T>().also { this.handlersByToken = it }
+        } else {
+            null
+        }
         tokensByHandler.getOrPut(handler) { mutableListOf() }.add(token)
-        handlersByToken[token] = handler
+        handlersByToken?.set(token, handler)
         return token
     }
 

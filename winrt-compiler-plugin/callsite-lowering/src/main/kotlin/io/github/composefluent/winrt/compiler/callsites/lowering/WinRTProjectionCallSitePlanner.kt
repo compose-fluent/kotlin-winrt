@@ -52,6 +52,8 @@ import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.platform.jvm.isJvm
+import org.jetbrains.kotlin.platform.konan.isNative
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 
@@ -62,6 +64,7 @@ internal class WinRTProjectionCallSitePlanner(
     private val projectedTypes: WinRTProjectedTypeCanonicalizer,
 ) {
     private val abiTypesByName = linkedMapOf<String, AbiTypeFacts>()
+    private val classesByName = linkedMapOf<String, IrClass>()
     private val codecsByAbiType = linkedMapOf<String, MutableList<CodecFacts>>()
     private data class RecipeKey(val type: IrType, val abiType: String, val usage: RecipeUsage)
     // Immutable recipes may share symbols inside this compilation; never cache emitted IR bodies.
@@ -233,6 +236,11 @@ internal class WinRTProjectionCallSitePlanner(
                 ?: error("cannot canonicalize explicit ABI type '$explicit'")
         }
         val abiTypeName = explicitAbiTypeName ?: projectedName
+        if (usage == RecipeUsage.OUTPUT && type.classFqName == WINRT_INSPECTABLE_REFERENCE_FQ_NAME &&
+            explicitAbiTypeName != null && explicitAbiTypeName != projectedName
+        ) {
+            return knownInspectableOutputRecipe(type, explicitAbiTypeName)
+        }
         val directDeclarationIdentity = abiTypeName.matchesProjectedDeclaration(type, projectedName)
         if (directDeclarationIdentity) {
             directEnumRecipe(type, projectedName)?.let { return it }
@@ -261,7 +269,7 @@ internal class WinRTProjectionCallSitePlanner(
         val signature = requiredFacts.kind.typeSignature(projectedName)
         return when (requiredFacts.kind) {
             AbiTypeKind.ENUM -> enumRecipe(type, abiTypeName, projectedName, signature, requiredFacts)
-            AbiTypeKind.STRUCT -> structRecipe(type, abiTypeName, projectedName, signature, requiredFacts)
+            AbiTypeKind.STRUCT -> structRecipe(type, abiTypeName, projectedName, signature, requiredFacts, usage)
             AbiTypeKind.COM_REFERENCE,
             AbiTypeKind.PROJECTION -> projectionRecipe(
                 type,
@@ -273,6 +281,35 @@ internal class WinRTProjectionCallSitePlanner(
             )
             AbiTypeKind.ARRAY -> arrayRecipe(type, abiTypeName, projectedName, signature, requiredFacts, usage)
         }
+    }
+
+    /**
+     * Factory returns and plain runtime-class outputs retain their declared default interface.
+     * CsWinRT GetObjectReferenceForInterface(ptr, defaultIid, false) likewise records that
+     * interface identity without querying or constructing a runtime-class wrapper.
+     */
+    private fun knownInspectableOutputRecipe(
+        type: IrType,
+        abiTypeName: String,
+    ): WinRTProjectionCallSiteRecipe {
+        val declaration = classesByName[abiTypeName] ?: projectedTypes.classSymbol(abiTypeName)?.owner
+            ?: error("factory output has no projected declaration for $abiTypeName")
+        val metadata = metadataClass(declaration)
+            ?: error("factory output $abiTypeName has no generated Metadata")
+        require(metadata.metadataPropertyGetter("DEFAULT_INTERFACE_IID")?.returnType?.classFqName == WINRT_GUID_FQ_NAME) {
+            "factory output $abiTypeName has no declared default interface IID"
+        }
+        val typeHandle = metadata.metadataPropertyGetter("TYPE_HANDLE")
+            ?: error("factory output $abiTypeName has no generated TYPE_HANDLE")
+        require(typeHandle.returnType.classFqName?.asString() == "io.github.composefluent.winrt.runtime.WinRTTypeHandle") {
+            "factory output $abiTypeName TYPE_HANDLE has an unexpected type"
+        }
+        return referenceRecipe(
+            access = WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE,
+            signature = "InspectableReference($abiTypeName|default-interface)",
+            nullable = type.isNullable(),
+            projectedTypeHandleSymbol = typeHandle.symbol,
+        )
     }
 
     private fun hasSpecializedInputCodec(abiTypeName: String): Boolean =
@@ -414,10 +451,22 @@ internal class WinRTProjectionCallSitePlanner(
         }
         val owner = metadata.fqNameWhenAvailable?.asString() ?: return null
         val signature = AbiTypeKind.PROJECTION.typeSignature(projectedName)
+        val defaultInterfaceTypeHandle = if (
+            pluginContext.platform?.isNative() == true &&
+                referenceAccess == WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE &&
+                metadata.metadataPropertyGetter("DEFAULT_INTERFACE_IID") != null
+        ) {
+            // Reuse the factory-output proof; specialized codecs were selected earlier. JVM keeps
+            // its existing output path because tagging regressed custom-object marshaling benchmarks.
+            knownInspectableOutputRecipe(type, projectedBaseName).projectedTypeHandleSymbol
+        } else {
+            null
+        }
         val storage = referenceRecipe(
             access = referenceAccess,
             signature = signature,
             nullable = type.isNullable(),
+            projectedTypeHandleSymbol = defaultInterfaceTypeHandle,
         )
         return WinRTProjectionCallSiteRecipe(
             kind = WinRTProjectionCallSiteRecipeKind.PROJECTION,
@@ -539,10 +588,11 @@ internal class WinRTProjectionCallSitePlanner(
         )
     }
 
-    private fun metadataClass(type: IrType): IrClass? =
-        type.classOrNull?.owner?.declarations
-            ?.filterIsInstance<IrClass>()
-            ?.singleOrNull { declaration -> declaration.name.asString() == "Metadata" }
+    private fun metadataClass(type: IrType): IrClass? = type.classOrNull?.owner?.let(::metadataClass)
+
+    private fun metadataClass(type: IrClass): IrClass? = type.declarations
+        .filterIsInstance<IrClass>()
+        .singleOrNull { declaration -> declaration.name.asString() == "Metadata" }
 
     private fun String.matchesProjectedDeclaration(type: IrType, projectedName: String): Boolean {
         val abiBaseName = removeSuffix("?")
@@ -759,6 +809,7 @@ internal class WinRTProjectionCallSitePlanner(
         projectedName: String,
         signature: String,
         facts: AbiTypeFacts,
+        usage: RecipeUsage,
     ): WinRTProjectionCallSiteRecipe {
         val carrier = facts.carrier.loweringCarrier()
         val carrierType = facts.carrier.kotlinTypeName()
@@ -777,7 +828,7 @@ internal class WinRTProjectionCallSitePlanner(
         val disposeAbi = exactCodec(abiTypeName, projectedName, AbiCodecRole.DISPOSE_ABI) { codec ->
             codec.parameterTypes == listOf(WINRT_RAW_ADDRESS_FQ_NAME.asString())
         }
-        return WinRTProjectionCallSiteRecipe(
+        val storage = WinRTProjectionCallSiteRecipe(
             kind = WinRTProjectionCallSiteRecipeKind.STRUCT,
             abiCarriers = listOf(carrier),
             valueCarrier = carrier,
@@ -792,6 +843,31 @@ internal class WinRTProjectionCallSitePlanner(
                 disposeAbi = disposeAbi,
                 fromAbiCarrier = fromAbiCarrier,
             ),
+            typeSignature = signature,
+        )
+        // CsWinRT Type.Pinnable is an input-only factory over the existing struct ABI.
+        // Select this declared capability on JVM; Native keeps its owned CopyManaged/DisposeAbi path.
+        // Outputs, array elements and structs without this codec keep their original storage recipe.
+        if (pluginContext.platform?.isJvm() != true ||
+            usage != RecipeUsage.INPUT ||
+            carrier != WinRTProjectionCallSiteAbiCarrier.ADDRESS
+        ) return storage
+        val create = exactCodec(abiTypeName, projectedName, AbiCodecRole.CREATE_MARSHALER) { codec ->
+            codec.parameterTypes == listOf(projectedName)
+        } ?: return storage
+        val (carrierProperty, extraCarrierProperties) = create.factoryCarrierProperties()
+        return WinRTProjectionCallSiteRecipe(
+            kind = WinRTProjectionCallSiteRecipeKind.PROJECTION,
+            abiCarriers = storage.abiCarriers,
+            valueCarrier = storage.valueCarrier,
+            nullable = type.isNullable(),
+            callables = callables(
+                projectedName = projectedName,
+                createMarshaler = create,
+                carrierProperty = carrierProperty,
+                extraCarrierProperties = extraCarrierProperties,
+            ),
+            children = listOf(storage),
             typeSignature = signature,
         )
     }
@@ -1300,6 +1376,7 @@ internal class WinRTProjectionCallSitePlanner(
             override fun visitClass(declaration: IrClass) {
                 if (externalFriend != null && declaration.visibility != DescriptorVisibilities.PUBLIC &&
                     !(externalFriend && declaration.visibility == DescriptorVisibilities.INTERNAL)) return
+                declaration.fqNameWhenAvailable?.asString()?.let { name -> classesByName.putIfAbsent(name, declaration) }
                 declaration.annotations.singleOrNull { annotation ->
                     annotation.type.classFqName?.asString() == WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
                 }?.let(::indexAbiType)

@@ -2463,17 +2463,19 @@ internal fun WinRTMethodDefinition.projectionSignatureKey(): String = buildStrin
     append('|')
     append(name)
     append('|')
-    append(returnTypeName)
+    // CsWinRT helpers.h method_signature matches metadata types. Projection
+    // nullability annotations do not change the WinRT ABI method identity.
+    append(returnTypeName.removeSuffix("?"))
     append('|')
-    append(parameters.joinToString(",") { "${it.name}:${it.typeName}:${it.direction}" })
+    append(parameters.joinToString(",") { "${it.typeName.removeSuffix("?")}:${it.direction}" })
 }
 
 internal fun WinRTMethodDefinition.projectionSignatureIgnoringStaticKey(): String = buildString {
     append(name)
     append('|')
-    append(returnTypeName)
+    append(returnTypeName.removeSuffix("?"))
     append('|')
-    append(parameters.joinToString(",") { "${it.name}:${it.typeName}:${it.direction}" })
+    append(parameters.joinToString(",") { "${it.typeName.removeSuffix("?")}:${it.direction}" })
 }
 
 internal fun WinRTPropertyDefinition.projectionSignatureKey(): String = buildString {

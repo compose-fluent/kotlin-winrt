@@ -1,0 +1,50 @@
+--- header
+A TreeView with ItemTemplateSelector
+--- xaml
+<Page ...
+      xmlns:local="using:YourNamespace" >
+
+    <Page.Resources>
+        <!-- DataTemplate for folders -->
+        <DataTemplate x:Key="FolderTemplate" x:DataType="local:ExplorerItem"> 
+            <TreeViewItem AutomationProperties.Name="{x:Bind Name}"
+                ItemsSource="{x:Bind Children}" IsExpanded="True">
+                <StackPanel Orientation="Horizontal">
+                    <Image Width="20" Source="../Assets/SampleMedia/folder.png"/>
+                    <TextBlock Margin="0,0,10,0"/>
+                    <TextBlock Text="{x:Bind Name}" />
+                </StackPanel>
+            </TreeViewItem>
+        </DataTemplate>
+
+        <!-- DataTemplate for files -->
+        <DataTemplate x:Key="FileTemplate" x:DataType="local:ExplorerItem"> 
+            <TreeViewItem AutomationProperties.Name="{x:Bind Name}">
+                <StackPanel Orientation="Horizontal">
+                    <FontIcon Glyph="&#xE8A5;" />
+                    <TextBlock Margin="0,0,10,0"/>
+                    <TextBlock Text="{x:Bind Name}"/>
+                </StackPanel>
+            </TreeViewItem>
+        </DataTemplate>
+
+        <!-- Template selector for ExplorerItem types -->
+        <local:ExplorerItemTemplateSelector x:Key="ExplorerItemTemplateSelector"
+            FolderTemplate="{StaticResource FolderTemplate}"
+            FileTemplate="{StaticResource FileTemplate}" />
+    </Page.Resources>
+
+    <!-- TreeView bound to DataSource, using the ItemTemplateSelector -->
+    <TreeView ItemsSource="{x:Bind DataSource}"
+              ItemTemplateSelector="{StaticResource ExplorerItemTemplateSelector}" />
+</Page>
+--- kotlin
+val DataSource: MutableList<ExplorerItem> = WinRTObservableList(listOf(
+        ExplorerItem("Documents", true, listOf(ExplorerItem("ProjectProposal"), ExplorerItem("BudgetReport"))),
+        ExplorerItem("Projects", true, listOf(ExplorerItem("Project Plan")))))
+    override fun initializeComponent() { super.initializeComponent(); dataContext = this; InitializeSampleTreeView(sampleTreeView); InitializeSampleTreeView(sampleTreeView2) }
+    private fun InitializeSampleTreeView(tree: TreeView) {
+        fun node(title: String, children: List<TreeViewNode> = emptyList()) = TreeViewNode().apply { content = title; isExpanded = children.isNotEmpty(); children.forEach { this.children.add(it) } }
+        tree.rootNodes.add(node("Work Documents", listOf(node("XYZ Functional Spec"), node("Feature Schedule"))))
+        tree.rootNodes.add(node("Personal Documents", listOf(node("Home Remodel", listOf(node("Contractor Contact Info"), node("Paint Color Scheme"))))))
+    }

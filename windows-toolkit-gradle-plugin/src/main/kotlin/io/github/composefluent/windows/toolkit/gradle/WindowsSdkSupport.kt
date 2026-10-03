@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.metadata.WindowsSdkRootDiscovery
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import java.nio.file.Files
 import java.nio.file.Path
+import java.io.File
 import java.util.Comparator
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
@@ -38,6 +39,16 @@ internal data class WindowsSdkLayout(
         return directTool.takeIf { it.isRegularFile() }
     }
 }
+
+/** XamlCompiler's reflection loader resolves SDK AssemblyRefs through Windows.winmd. */
+internal fun windowsSdkUnionMetadataFiles(references: Iterable<File>): List<File> =
+    references.mapNotNull { reference ->
+        val referencesRoot = generateSequence(reference.parentFile) { it.parentFile }
+            .firstOrNull { it.name.equals("References", ignoreCase = true) } ?: return@mapNotNull null
+        val version = generateSequence(reference.parentFile) { it.parentFile }
+            .firstOrNull { it.parentFile == referencesRoot }?.name ?: return@mapNotNull null
+        referencesRoot.parentFile.resolve("UnionMetadata/$version/Windows.winmd").takeIf(File::isFile)
+    }.distinct().sortedBy(File::getAbsolutePath)
 
 internal fun findWindowsSdk(
     version: String? = null,

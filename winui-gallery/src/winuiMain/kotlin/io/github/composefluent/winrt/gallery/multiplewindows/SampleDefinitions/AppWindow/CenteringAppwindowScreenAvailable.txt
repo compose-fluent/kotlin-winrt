@@ -1,0 +1,23 @@
+--- header
+Centering AppWindow on the screen using the available display area
+--- xaml
+<Window ...>
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+        <TextBlock Text="This is a centred sample window" Style="{ThemeResource TitleTextBlockStyle}" TextAlignment="Center" />
+    </StackPanel>
+</Window>
+--- kotlin
+internal class SampleWindow2 : Window() {
+    override fun initializeComponent() {
+        super.initializeComponent(); GalleryWindows.track(this)
+        checkNotNull(appWindow).apply {
+            setIcon("Assets/Tiles/GalleryIcon.ico"); titleBar?.preferredTheme = TitleBarTheme.UseDefaultAppMode
+            DisplayArea.getFromWindowId(id,DisplayAreaFallback.Nearest)?.workArea?.let { area -> move(PointInt32(area.x+(area.width-size.width)/2,area.y+(area.height-size.height)/2)) }
+        }
+    }
+
+}

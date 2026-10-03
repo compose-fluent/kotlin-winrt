@@ -1,0 +1,8 @@
+<DataTemplate x:Key="NormalItemTemplate" x:DataType="x:Int32">
+            <Border Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Text="{x:Bind}" />
+            </Border>
+        </DataTemplate>

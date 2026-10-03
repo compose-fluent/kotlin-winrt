@@ -1,0 +1,16 @@
+--- header
+A MediaPlayerElement with transport controls.
+--- xaml
+<MediaPlayerElement Source="/Assets/SampleMedia/ladybug.wmv"
+                    MaxWidth="400"
+                    AutoPlay="False"
+                    AreTransportControlsEnabled="True" />
+--- Kotlin
+private fun OpenFileButton_Click(sender: Any?, args: RoutedEventArgs) {
+    tasks.launch {
+        val picker = FileOpenPicker(checkNotNull(checkNotNull(Player1.xamlRoot).contentIslandEnvironment).appWindowId)
+        val file = picker.pickSingleFileAsync().await() ?: return@launch
+        Player1.mediaPlayer?.pause()
+        Player1.source = MediaSource.createFromStorageFile(StorageFile.getFileFromPathAsync(file.path).await())
+    }
+}

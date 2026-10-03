@@ -132,8 +132,10 @@ internal fun validateAuthoredCandidateHandoff(
     scannerCandidates: File?,
     compilerCandidates: File?,
 ) {
-    val scanner = scannerCandidates.readCandidates()
-    val compiler = compilerCandidates.readCandidates()
+    // Source-set ownership is Gradle provenance, not part of the authored ABI.
+    // Keep every type/member/factory comparison; IR cannot recover this label.
+    val scanner = scannerCandidates.readCandidates().map { it.copy(sourceSetName = null) }
+    val compiler = compilerCandidates.readCandidates().map { it.copy(sourceSetName = null) }
     if (scanner == compiler) {
         return
     }

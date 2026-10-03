@@ -117,7 +117,7 @@ internal fun interface RawAddressPairAction<R> {
 }
 
 /**
- * Borrows a Windows HSTRING reference and a pointer-sized output slot for one synchronous ABI call.
+ * Borrows a Windows HSTRING reference and a pointer-sized output slot for a synchronous ABI operation.
  * Common code owns the call lifetime; targets only adapt storage, pinning, and raw addresses.
  */
 internal inline fun <R> withNativeHStringReferenceAbi(

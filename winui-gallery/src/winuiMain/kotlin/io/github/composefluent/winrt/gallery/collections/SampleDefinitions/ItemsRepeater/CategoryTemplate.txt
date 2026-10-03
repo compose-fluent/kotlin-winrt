@@ -1,0 +1,16 @@
+<DataTemplate x:Key="CategoryTemplate" x:DataType="local:NestedCategory">
+            <StackPanel>
+                <TextBlock
+                    Padding="8"
+                    Style="{StaticResource TitleTextBlockStyle}"
+                    Text="{x:Bind CategoryName}" />
+                <ItemsRepeater
+                    x:Name="innerRepeater"
+                    ItemTemplate="{StaticResource StringDataTemplate}"
+                    ItemsSource="{x:Bind CategoryItems}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Orientation="Horizontal" />
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
+            </StackPanel>
+        </DataTemplate>

@@ -1,0 +1,27 @@
+<DataTemplate x:Key="ImageTextTemplate" x:DataType="local:CustomDataObject">
+            <Grid Width="280" AutomationProperties.Name="{x:Bind Title}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Image
+                    Height="100"
+                    VerticalAlignment="Top"
+                    Source="{x:Bind ImageLocation}"
+                    Stretch="Fill" />
+                <StackPanel Grid.Column="1" Margin="8,0,0,8">
+                    <TextBlock
+                        Margin="0,0,0,8"
+                        Style="{ThemeResource SubtitleTextBlockStyle}"
+                        Text="{x:Bind Title}" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="{x:Bind Views}" />
+                        <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text=" Views " />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text="{x:Bind Likes}" />
+                        <TextBlock Style="{ThemeResource CaptionTextBlockStyle}" Text=" Likes" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>

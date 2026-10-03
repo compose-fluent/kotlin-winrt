@@ -9,6 +9,8 @@ internal data class WinRTIntrinsicType(
     val canonicalRuntimeName: String,
     val signature: WinRTTypeSignature,
     val typeAliases: Set<KClass<*>>,
+    val isTypeNamePrimitive: Boolean = true,
+    val xamlLiteralParser: ((String) -> Any)? = null,
     val runtimeNameAliases: Set<String> = setOf(canonicalRuntimeName),
     val primitiveArrayType: KClass<*>? = null,
     val boxPrimitiveArray: ((Any) -> Array<*>)? = null,
@@ -128,24 +130,38 @@ internal object WinRTTypeClassifier {
                 canonicalRuntimeName = "String",
                 signature = WinRTTypeSignature.string(),
                 typeAliases = setOf(String::class),
+                isTypeNamePrimitive = false,
             ),
             WinRTIntrinsicType(
                 representativeType = Guid::class,
                 canonicalRuntimeName = "Guid",
                 signature = WinRTTypeSignature.guidValue(),
                 typeAliases = setOf(Guid::class),
+                isTypeNamePrimitive = false,
             ),
             WinRTIntrinsicType(
                 representativeType = Any::class,
                 canonicalRuntimeName = "Object",
                 signature = WinRTTypeSignature.object_(),
                 typeAliases = setOf(Any::class),
+                isTypeNamePrimitive = false,
                 runtimeNameAliases = setOf("Object", "System.Object", "Any"),
+            ),
+            // CsWinRT TypeNameSupport uses the simple name TimeSpan while its
+            // ABI signature remains the Windows.Foundation.TimeSpan struct.
+            WinRTIntrinsicType(
+                representativeType = kotlin.time.Duration::class,
+                canonicalRuntimeName = "TimeSpan",
+                signature = WinRTTypeSignature.struct("Windows.Foundation.TimeSpan", WinRTTypeSignature.int64()),
+                typeAliases = setOf(kotlin.time.Duration::class),
+                isTypeNamePrimitive = false,
+                runtimeNameAliases = setOf("TimeSpan", "Windows.Foundation.TimeSpan", "System.TimeSpan"),
+                xamlLiteralParser = TimeSpanProjection::parseXamlLiteral,
             ),
         )
 
     private val intrinsicTypesByType: Map<KClass<*>, WinRTIntrinsicType> =
-        buildMap {
+        buildMap(capacity = intrinsicClassKeyMapInitialCapacity(intrinsicTypes.sumOf { it.typeAliases.size })) {
             intrinsicTypes.forEach { knownType ->
                 knownType.typeAliases.forEach { alias ->
                     put(alias, knownType)
@@ -163,7 +179,7 @@ internal object WinRTTypeClassifier {
         }
 
     private val intrinsicTypesByPrimitiveArrayType: Map<KClass<*>, WinRTIntrinsicType> =
-        buildMap {
+        buildMap(capacity = intrinsicClassKeyMapInitialCapacity(intrinsicTypes.count { it.primitiveArrayType != null })) {
             intrinsicTypes.forEach { knownType ->
                 knownType.primitiveArrayType?.let { arrayType ->
                     put(arrayType, knownType)

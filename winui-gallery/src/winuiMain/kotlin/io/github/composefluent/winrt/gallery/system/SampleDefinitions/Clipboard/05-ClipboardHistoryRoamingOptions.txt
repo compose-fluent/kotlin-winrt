@@ -1,0 +1,27 @@
+--- header
+Clipboard history and roaming options
+--- Kotlin
+private fun CopyWithOptions_Click(sender: Any?, args: RoutedEventArgs) {
+    val text = HistoryRoamingTextBox.text
+    if (text.isEmpty()) {
+        HistoryRoamingStatusText.text = "Please enter text to copy."
+        return
+    }
+    val options = ClipboardContentOptions().apply {
+        isAllowedInHistory = AllowHistoryToggle.isOn
+        isRoamable = AllowRoamingToggle.isOn
+    }
+    val copied = Clipboard.setContentWithOptions(DataPackage().apply { setText(text) }, options)
+    HistoryRoamingStatusText.text = if (copied)
+        "Text copied to clipboard. History: " + (if (options.isAllowedInHistory) "allowed" else "excluded") +
+            ". Roaming: " + (if (options.isRoamable) "allowed" else "excluded") + "."
+    else "Error copying content to clipboard."
+    if (copied) announce(checkNotNull(sender).asWinRT<UIElement>(), "Text copied with options", "OptionsCopiedSuccessNotificationId")
+}
+
+private fun UpdateHistoryRoamingStatus() {
+    runCatching {
+        HistoryEnabledText.text = "Clipboard history: " + if (Clipboard.isHistoryEnabled()) "enabled" else "disabled"
+        RoamingEnabledText.text = "Clipboard roaming: " + if (Clipboard.isRoamingEnabled()) "enabled" else "disabled"
+    }
+}

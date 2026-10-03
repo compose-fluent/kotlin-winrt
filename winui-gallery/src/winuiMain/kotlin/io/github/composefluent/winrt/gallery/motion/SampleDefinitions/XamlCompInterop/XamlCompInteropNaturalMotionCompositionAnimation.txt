@@ -1,0 +1,6 @@
+--- header
+Use a natural motion composition animation on a UIElement
+--- kotlin
+private fun element_PointerEntered(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs) { if (springAnimation != null) { UpdateSpringAnimation(1.5f); checkNotNull(sender).asWinRT<UIElement>().startAnimation(checkNotNull(springAnimation)) } }
+
+private fun element_PointerExited(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs) { if (springAnimation != null) { UpdateSpringAnimation(1f); checkNotNull(sender).asWinRT<UIElement>().startAnimation(checkNotNull(springAnimation)) } }

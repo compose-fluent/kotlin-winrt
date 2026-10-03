@@ -1,62 +1,30 @@
 package io.github.composefluent.winrt.gallery.navigation
 
 import io.github.composefluent.winrt.gallery.*
-import io.github.composefluent.winrt.runtime.asWinRT
+import io.github.composefluent.winrt.gallery.samplepages.*
+import io.github.composefluent.winrt.runtime.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.media.animation.SlideNavigationTransitionInfo
-import microsoft.ui.xaml.media.animation.SlideNavigationTransitionEffect
+import microsoft.ui.xaml.controls.primitives.*
+import microsoft.ui.xaml.media.*
+import microsoft.ui.xaml.media.animation.*
 
 @GalleryPage(route = "SelectorBar", title = "SelectorBar", group = "Navigation", order = 3)
-internal fun selectorBarPage() = ExamplePage {
-    example("A basic SelectorBar.", basicSelectorBarSample())
-    example("A SelectorBar that switches between pages.", switchingSelectorBarSample())
-    example("A SelectorBar displaying different collections.", selectorBarCollectionsSample())
-}
-
-@GallerySample(route = "SelectorBar", title = "A basic SelectorBar.")
-internal fun basicSelectorBarSample() = SelectorBar().apply {
-    listOf("Recent" to Symbol.Clock, "Shared" to Symbol.Share, "Favorites" to Symbol.Favorite).forEach { (title, symbol) ->
-        items.add(SelectorBarItem().apply { text = title; icon = SymbolIcon(symbol) })
+internal class SelectorBarPage : Page() {
+    private var previousSelectedIndex = 0
+    private var ready = false
+    val PinkColorCollection: MutableList<SolidColorBrush> = WinRTObservableList(List(5) { SolidColorBrush(rgb(0xFFC0CBu)) })
+    val PlumColorCollection: MutableList<SolidColorBrush> = WinRTObservableList(List(7) { SolidColorBrush(rgb(0xDDA0DDu)) })
+    val PowderBlueColorCollection: MutableList<SolidColorBrush> = WinRTObservableList(List(4) { SolidColorBrush(rgb(0xB0E0E6u)) })
+    override fun initializeComponent() { super.initializeComponent(); ready = true; ContentFrame.navigate(SamplePage1::class); ItemsView3.itemsSource = PinkColorCollection }
+    private fun SelectorBar2_SelectionChanged(sender: SelectorBar, args: SelectorBarSelectionChangedEventArgs) {
+        if (!ready) return
+        val index = sender.items.indexOf(sender.selectedItem)
+        val page = listOf(SamplePage1::class, SamplePage2::class, SamplePage3::class, SamplePage4::class, SamplePage5::class)[index.coerceIn(0, 4)]
+        ContentFrame.navigate(page, null, SlideNavigationTransitionInfo().apply { effect = if (index > previousSelectedIndex) SlideNavigationTransitionEffect.FromRight else SlideNavigationTransitionEffect.FromLeft })
+        previousSelectedIndex = index
     }
-}
-
-@GallerySample(route = "SelectorBar", title = "A SelectorBar that switches between pages.")
-internal fun switchingSelectorBarSample() = stack {
-    val host = sampleFrame().apply { isNavigationStackEnabled = false; navigate(Page::class, 1) }
-    var previous = 0
-    children.add(SelectorBar().apply {
-        (1..5).forEach { number -> items.add(SelectorBarItem().apply { text = "Page$number"; isSelected = number == 1 }) }
-        selectionChanged.add { _, _ -> selectedItem?.let { selected ->
-            val index = items.indexOf(selected)
-            host.navigate(Page::class, index + 1, SlideNavigationTransitionInfo().apply {
-                effect = if (index > previous) SlideNavigationTransitionEffect.FromRight else SlideNavigationTransitionEffect.FromLeft
-            })
-            previous = index
-        } }
-    })
-    children.add(host)
-}
-
-@GallerySample(route = "SelectorBar", title = "A SelectorBar displaying different collections.")
-internal fun selectorBarCollectionsSample() = stack {
-    val colors = ItemsView().apply {
-        layout = StackLayout().apply { orientation = Orientation.Horizontal }
-        itemTemplate = GalleryRepeaterFactory(create = { ItemContainer() }, bind = { element, value ->
-            element.asWinRT<ItemContainer>().apply {
-                width = 112.0; height = 82.0; margin = inset(4.0)
-                background = value!!.asWinRT<microsoft.ui.xaml.media.Brush>()
-            }
-        })
+    private fun SelectorBar3_SelectionChanged(sender: SelectorBar, args: SelectorBarSelectionChangedEventArgs) {
+        if (ready) ItemsView3.itemsSource = when (sender.selectedItem) { SelectorBarItemPink -> PinkColorCollection; SelectorBarItemPlum -> PlumColorCollection; else -> PowderBlueColorCollection }
     }
-    fun update(index: Int) {
-        colors.itemsSource = List(listOf(5, 7, 4)[index]) { brush(listOf(0xFFC0CBu, 0xDDA0DDu, 0xB0E0E6u)[index]) }
-    }
-    update(0)
-    val names = listOf("Pink", "Plum", "PowderBlue")
-    children.add(SelectorBar().apply {
-        names.forEachIndexed { index, title -> items.add(SelectorBarItem().apply { text = title; isSelected = index == 0 }) }
-        selectionChanged.add { _, _ -> names.indexOf(selectedItem?.text).takeIf { it >= 0 }?.let(::update) }
-    })
-    children.add(colors)
 }

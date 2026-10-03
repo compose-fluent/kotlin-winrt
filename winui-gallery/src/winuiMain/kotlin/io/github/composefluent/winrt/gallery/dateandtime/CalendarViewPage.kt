@@ -1,29 +1,34 @@
 package io.github.composefluent.winrt.gallery.dateandtime
 
 import io.github.composefluent.winrt.gallery.*
+import io.github.composefluent.winrt.runtime.asWinRT
+import io.github.composefluent.winrt.runtime.WinRTObservableList
+import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import windows.globalization.Calendar
-import windows.globalization.CalendarIdentifiers
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
+import microsoft.ui.xaml.controls.primitives.*
+import microsoft.ui.xaml.media.*
+import microsoft.ui.xaml.media.animation.*
 
 @GalleryPage(route = "CalendarView", title = "CalendarView", group = "DateAndTime", order = 1)
-internal fun calendarViewPage() = ExamplePage {
-    val calendar = calendarViewBasicCalendarViewSample()
-    val identifiers = listOf(CalendarIdentifiers.gregorian, CalendarIdentifiers.hebrew, CalendarIdentifiers.hijri,
-        CalendarIdentifiers.japanese, CalendarIdentifiers.julian, CalendarIdentifiers.korean, CalendarIdentifiers.persian,
-        CalendarIdentifiers.taiwan, CalendarIdentifiers.thai, CalendarIdentifiers.umAlQura)
-    example("A basic CalendarView.", calendar, stack {
-        children.add(option("IsGroupLabelVisible", true) { calendar.isGroupLabelVisible = it })
-        children.add(option("IsOutOfScopeEnabled", true) { calendar.isOutOfScopeEnabled = it })
-        children.add(select("SelectionMode", listOf("None", "Single", "Multiple"), 1) {
-            calendar.selectionMode = listOf(CalendarViewSelectionMode.None, CalendarViewSelectionMode.Single, CalendarViewSelectionMode.Multiple)[it]
-        })
-        children.add(select("CalendarIdentifier", identifiers) { calendar.calendarIdentifier = identifiers[it] }.apply { width = 220.0 })
-        children.add(select("Language", galleryLanguages.map { it.first }) { calendar.language = galleryLanguages[it].second }.apply { width = 220.0 })
-    })
+internal class CalendarViewPage : Page() {
+    val Languages: MutableList<io.github.composefluent.winrt.gallery.helpers.Language> = WinRTObservableList(io.github.composefluent.winrt.gallery.helpers.LanguageList.Languages)
+    private var ready = false
+    override fun initializeComponent() {
+        super.initializeComponent(); ready = true
+        calendarIdentifier.itemsSource = listOf(windows.globalization.CalendarIdentifiers.gregorian, windows.globalization.CalendarIdentifiers.hebrew,
+            windows.globalization.CalendarIdentifiers.hijri, windows.globalization.CalendarIdentifiers.japanese, windows.globalization.CalendarIdentifiers.julian,
+            windows.globalization.CalendarIdentifiers.korean, windows.globalization.CalendarIdentifiers.persian, windows.globalization.CalendarIdentifiers.taiwan,
+            windows.globalization.CalendarIdentifiers.thai, windows.globalization.CalendarIdentifiers.umAlQura)
+        calendarIdentifier.selectedItem = windows.globalization.CalendarIdentifiers.gregorian
+    }
+    private fun SelectionMode_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        if (ready) Control1.selectionMode = when (checkNotNull(sender).asWinRT<ComboBox>().selectedItem?.toString()) {
+            "Multiple" -> CalendarViewSelectionMode.Multiple; "None" -> CalendarViewSelectionMode.None; else -> CalendarViewSelectionMode.Single
+        }
+    }
+    private fun calendarLanguages_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        if (!ready) return
+        val selected = calendarLanguages.selectedItem as? io.github.composefluent.winrt.gallery.helpers.Language ?: return
+        if (windows.globalization.Language.isWellFormed(selected.Code)) Control1.language = selected.Code
+    }
 }
-
-@GallerySample(route = "CalendarView", title = "A basic CalendarView.")
-internal fun calendarViewBasicCalendarViewSample() = CalendarView().apply { selectionMode = CalendarViewSelectionMode.Single }

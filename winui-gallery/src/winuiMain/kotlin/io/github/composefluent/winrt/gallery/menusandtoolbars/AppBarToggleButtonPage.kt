@@ -1,54 +1,32 @@
 package io.github.composefluent.winrt.gallery.menusandtoolbars
 
-import io.github.composefluent.winrt.gallery.*
-import microsoft.ui.xaml.*
-import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.input.KeyboardAccelerator
-import microsoft.ui.xaml.media.*
-import windows.foundation.Point
-import windows.foundation.Uri
-import windows.system.VirtualKey
-import windows.system.VirtualKeyModifiers
+import io.github.composefluent.winrt.gallery.GalleryPage
+import io.github.composefluent.winrt.runtime.asWinRT
+import microsoft.ui.xaml.RoutedEventArgs
+import microsoft.ui.xaml.controls.AppBarToggleButton
+import microsoft.ui.xaml.controls.Page
+import microsoft.ui.xaml.controls.TextBlock
 
 @GalleryPage(route = "AppBarToggleButton", title = "AppBarToggleButton", group = "MenusAndToolbars", order = 2)
-internal fun appBarToggleButtonPage() = ExamplePage {
-    val samples: List<Pair<String, (TextBlock) -> AppBarToggleButton>> = listOf(
-        "An AppBarToggleButton with SymbolIcon." to ::appBarToggleButtonSymbolIconSample,
-        "An AppBarToggleButton with BitmapIcon." to ::appBarToggleButtonBitmapIconSample,
-        "An AppBarToggleButton with FontIcon." to ::appBarToggleButtonFontIconSample,
-        "An AppBarToggleButton with PathIcon." to ::appBarToggleButtonPathIconSample,
-    )
-    samples.forEach { (title, create) ->
-        val output = label("")
-        example(title, create(output), output = output)
+internal class AppBarToggleButtonPage : Page() {
+    override fun initializeComponent() {
+        super.initializeComponent()
     }
-}
 
-@GallerySample(route = "AppBarToggleButton", title = "An AppBarToggleButton with SymbolIcon.")
-internal fun appBarToggleButtonSymbolIconSample(output: TextBlock) = AppBarToggleButton().apply {
-    label = "SymbolIcon"
-    icon = SymbolIcon(Symbol.Shuffle)
-    click.add { _, _ -> output.text = "IsChecked = ${isChecked?.toString().orEmpty()}" }
-}
-
-@GallerySample(route = "AppBarToggleButton", title = "An AppBarToggleButton with BitmapIcon.")
-internal fun appBarToggleButtonBitmapIconSample(output: TextBlock) = AppBarToggleButton().apply {
-    label = "BitmapIcon"
-    icon = BitmapIcon().apply { uriSource = Uri("ms-appx:///Assets/SampleMedia/Slices2.png") }
-    click.add { _, _ -> output.text = "IsChecked = ${isChecked?.toString().orEmpty()}" }
-}
-
-@GallerySample(route = "AppBarToggleButton", title = "An AppBarToggleButton with FontIcon.")
-internal fun appBarToggleButtonFontIconSample(output: TextBlock) = AppBarToggleButton().apply {
-    label = "FontIcon"
-    icon = FontIcon().apply { fontFamily = FontFamily("Candara"); glyph = "\u03A3" }
-    click.add { _, _ -> output.text = "IsChecked = ${isChecked?.toString().orEmpty()}" }
-}
-
-@GallerySample(route = "AppBarToggleButton", title = "An AppBarToggleButton with PathIcon.")
-internal fun appBarToggleButtonPathIconSample(output: TextBlock) = AppBarToggleButton().apply {
-    label = "PathIcon"
-    icon = samplePath()
-    isThreeState = true
-    click.add { _, _ -> output.text = "IsChecked = ${isChecked?.toString().orEmpty()}" }
+    private fun AppBarButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<AppBarToggleButton>()
+        val output: TextBlock = when (button.name) {
+            "Button1" -> Control1Output
+            "Button2" -> Control2Output
+            "Button3" -> Control3Output
+            "Button4" -> Control4Output
+            else -> return
+        }
+        val checked = when (button.isChecked) {
+            true -> "True"
+            false -> "False"
+            null -> ""
+        }
+        output.text = "IsChecked = $checked"
+    }
 }

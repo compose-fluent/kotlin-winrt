@@ -1,38 +1,40 @@
 package io.github.composefluent.winrt.gallery.basicinput
 
-import io.github.composefluent.winrt.gallery.*
-import microsoft.ui.xaml.*
-import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.controls.primitives.*
-import microsoft.ui.xaml.media.SolidColorBrush
-import microsoft.ui.xaml.shapes.Rectangle
+import io.github.composefluent.winrt.gallery.GalleryPage
+import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.text.MarkerType
-import windows.foundation.Uri
+import microsoft.ui.xaml.FocusState
+import microsoft.ui.xaml.RoutedEventArgs
+import microsoft.ui.xaml.automation.AutomationProperties
+import microsoft.ui.xaml.controls.Button
+import microsoft.ui.xaml.controls.Page
+import microsoft.ui.xaml.controls.Symbol
+import microsoft.ui.xaml.controls.SymbolIcon
+import microsoft.ui.xaml.controls.ToggleSplitButton
+import microsoft.ui.xaml.controls.ToggleSplitButtonIsCheckedChangedEventArgs
 
 @GalleryPage(route = "ToggleSplitButton", title = "ToggleSplitButton", group = "BasicInput", order = 6)
-internal fun toggleSplitButtonPage() = ExamplePage {
-    val editor = RichEditBox().apply { width = 240.0; minHeight = 96.0; placeholderText = "Type something here" }
-    example("A ToggleSplitButton for a bulleted list.", toggleSplitButtonBulletsSample(editor), editor)
-}
+internal class ToggleSplitButtonPage : Page() {
+    private var marker = MarkerType.Bullet
 
-@GallerySample(route = "ToggleSplitButton", title = "A ToggleSplitButton for a bulleted list.")
-internal fun toggleSplitButtonBulletsSample(editor: RichEditBox) = ToggleSplitButton().apply {
-    var marker = MarkerType.Bullet
-    val icon = SymbolIcon(Symbol.List)
-    val toggle = this
-    content = icon; named(this, "Bullets")
-    val menu = Flyout()
-    menu.content = StackPanel().apply { this.spacing = 8.0; this.orientation = Orientation.Horizontal; listOf(Symbol.List to MarkerType.Bullet, Symbol.Bullets to MarkerType.UppercaseRoman).forEach { (symbol, type) ->
-            children.add(Button().apply {
-                content = SymbolIcon(symbol)
-                named(this, if (type == MarkerType.Bullet) "Bullets" else "Roman Numerals")
-                click.add { _, _ ->
-                    marker = type; icon.symbol = symbol; toggle.isChecked = true
-                    editor.document!!.selection!!.paragraphFormat!!.listType = marker
-                    menu.hide(); editor.focus(FocusState.Keyboard)
-                }
-            })
-        } }
-    flyout = menu
-    isCheckedChanged.add { _, _ -> editor.document!!.selection!!.paragraphFormat!!.listType = if (isChecked) marker else MarkerType.None }
+    override fun initializeComponent() {
+        super.initializeComponent()
+    }
+
+    private fun BulletButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>()
+        val symbol = checkNotNull(button.content).asWinRT<SymbolIcon>().symbol
+        marker = if (symbol == Symbol.List) MarkerType.Bullet else MarkerType.UppercaseRoman
+        mySymbolIcon.symbol = symbol
+        AutomationProperties.setName(myListButton, if (symbol == Symbol.List) "Bullets" else "Roman Numerals")
+        myRichEditBox.document!!.selection!!.paragraphFormat!!.listType = marker
+        myListButton.isChecked = true
+        myListButton.flyout?.hide()
+        myRichEditBox.focus(FocusState.Keyboard)
+    }
+
+    private fun MyListButton_IsCheckedChanged(sender: ToggleSplitButton, args: ToggleSplitButtonIsCheckedChangedEventArgs) {
+        myRichEditBox.document!!.selection!!.paragraphFormat!!.listType =
+            if (sender.isChecked) marker else MarkerType.None
+    }
 }

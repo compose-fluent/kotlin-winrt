@@ -1,0 +1,13 @@
+--- header
+A ListBox with items defined inline and its minimum width set.
+--- xaml
+<StackPanel>
+                <ListBox x:Name="ColorsList" MinWidth="200" SelectionChanged="ColorChanged"><x:String>Blue</x:String><x:String>Green</x:String><x:String>Red</x:String><x:String>Yellow</x:String></ListBox>
+                <Rectangle x:Name="colorOutput" Width="100" Height="30" Margin="0,10,0,0" />
+            </StackPanel>
+--- kotlin
+private fun ColorChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        val selected = ColorsList.selectedItem?.toString() ?: return
+        colorOutput.fill = brush(when (selected) { "Blue" -> 0x0000FFu; "Green" -> 0x008000u; "Red" -> 0xFF0000u; else -> 0xFFFF00u })
+    }
+

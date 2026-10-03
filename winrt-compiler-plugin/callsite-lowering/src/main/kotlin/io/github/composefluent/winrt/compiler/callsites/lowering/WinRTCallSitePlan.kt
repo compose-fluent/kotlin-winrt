@@ -84,7 +84,7 @@ internal data class WinRTProjectionCallSiteRecipe(
     val nullable: Boolean = false,
     val sizeBytes: Int = 0,
     val alignmentBytes: Int = 0,
-    /** Exact generated interface type handle used to select the ABI interface pointer on input. */
+    /** Exact generated interface handle for input selection or the declared default IID on raw owned output. */
     val projectedTypeHandleSymbol: IrSimpleFunctionSymbol? = null,
     val callables: WinRTProjectionCallSiteCallables? = null,
     val children: List<WinRTProjectionCallSiteRecipe> = emptyList(),

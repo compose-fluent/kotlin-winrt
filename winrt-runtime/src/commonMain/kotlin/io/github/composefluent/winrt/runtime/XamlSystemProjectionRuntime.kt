@@ -148,10 +148,31 @@ internal object XamlSystemProjectionRuntimeHooks {
 
     internal fun defaultCustomPropertyProviderInterfaceDefinition(
         existingInterfaceIds: Set<Guid>,
+    ): WinRTInspectableInterfaceDefinition? =
+        defaultCustomPropertyProviderInterfaceDefinition {
+            IID.ICustomPropertyProvider in existingInterfaceIds
+        }
+
+    internal fun defaultCustomPropertyProviderInterfaceDefinition(
+        existingInterfaceDefinitions: List<WinRTInspectableInterfaceDefinition>,
+    ): WinRTInspectableInterfaceDefinition? {
+        // WinRTCcwDefinition accepts a caller-owned List. Recheck the same membership used by the
+        // original hot cache, and visit the full list before reading feature switches as mapTo did.
+        var hasExistingCustomPropertyProvider = false
+        for (definition in existingInterfaceDefinitions) {
+            if (definition.interfaceId == IID.ICustomPropertyProvider) {
+                hasExistingCustomPropertyProvider = true
+            }
+        }
+        return defaultCustomPropertyProviderInterfaceDefinition { hasExistingCustomPropertyProvider }
+    }
+
+    private inline fun defaultCustomPropertyProviderInterfaceDefinition(
+        hasExistingCustomPropertyProvider: () -> Boolean,
     ): WinRTInspectableInterfaceDefinition? {
         if (!FeatureSwitches.enableDefaultCustomTypeMappings ||
             !FeatureSwitches.enableICustomPropertyProviderSupport ||
-            IID.ICustomPropertyProvider in existingInterfaceIds
+            hasExistingCustomPropertyProvider()
         ) {
             return null
         }
@@ -202,6 +223,9 @@ internal object XamlSystemProjectionRuntimeHooks {
             } else arg0
             val name = HString.fromHandle(nameHandle, owner = false).use { it.toKString() }
             val authored = WinUiAuthoredTypeMetadata.tryCreate(name, ::resolveWinUiXamlType)
+            if (FeatureSwitches.traceCcw) {
+                println("winrt-xaml-metadata: lookup slot=$slot name=$name authored=${!PlatformAbi.isNull(authored)}")
+            }
             if (!PlatformAbi.isNull(authored)) {
                 PlatformAbi.writePointer(arg1, authored)
                 return KnownHResults.S_OK.value
@@ -1401,7 +1425,9 @@ private object CustomPropertyProviderDefinitionHolder {
                         signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { managedValue, rawArgs ->
                         val provider = explicitOrBindableCustomPropertyProvider(requireNotNull(managedValue))
-                        val property = provider?.getCustomProperty(decodeBorrowedString(rawArgs[0] as RawAddress))
+                        val name = decodeBorrowedString(rawArgs[0] as RawAddress)
+                        val property = provider?.getCustomProperty(name)
+                            ?: WinUiAuthoredTypeMetadata.customProperty(requireNotNull(managedValue), name)
                         (rawArgs[1] as RawAddress).writeReturnedPointer(propertyPointer(property))
                         KnownHResults.S_OK.value
                     },

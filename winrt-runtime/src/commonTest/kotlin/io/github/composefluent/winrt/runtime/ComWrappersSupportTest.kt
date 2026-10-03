@@ -489,6 +489,148 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun typed_owned_rcw_and_cache_probe_release_input_when_cache_validation_throws() {
+        // CsWinRT IWeakReferenceSourceMethods.GetWeakReference keeps the out pointer
+        // in its finally DisposeAbi even if RCW identity/cache validation throws.
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("49494949-4949-4949-4949-494949494941")
+        val typeHandle = WinRTTypeHandle("test.ITypedOwnedCacheFailure", interfaceId)
+        val host = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(WinRTInspectableInterfaceDefinition(interfaceId, emptyList())),
+            defaultInterfaceId = interfaceId,
+        )
+        var source: ComObjectReference? = null
+        try {
+            val reference = host.createPrimaryReference()
+            source = reference
+            val pointer = reference.pointer.asRawAddress()
+            val expectedFailure = IllegalStateException("cached native reference unavailable")
+            var failValidation = false
+            val cached = object : IWinRTObject {
+                override val nativeObject: ComObjectReference
+                    get() = if (failValidation) throw expectedFailure else reference
+                override val primaryTypeHandle: WinRTTypeHandle = typeHandle
+            }
+            ComWrappersSupport.registerObjectForComInterface(cached, pointer)
+            val retainedCount = requireNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            failValidation = true
+            val ownedPointer = reference.getRefPointer().asRawAddress()
+
+            val failure = assertFailsWith<IllegalStateException> {
+                ComWrappersSupport.createRcwForOwnedComObject<Any>(ownedPointer, typeHandle) { _, _ ->
+                    error("Cached RCW validation must fail before the factory runs.")
+                }
+            }
+            assertSame(expectedFailure, failure)
+            assertEquals(retainedCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+
+            // Collection projection probes the typed hot cache before full creation.
+            // A validation exception must consume its owned input at that entry too.
+            val probeOwnedPointer = reference.getRefPointer().asRawAddress()
+            val probeFailure = assertFailsWith<IllegalStateException> {
+                ComWrappersSupport.tryConsumeCachedRcwForOwnedComObject<Any>(probeOwnedPointer, typeHandle)
+            }
+            assertSame(expectedFailure, probeFailure)
+            assertEquals(retainedCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        } finally {
+            source?.close()
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun typed_owned_rcw_releases_adopted_reference_once_when_factory_throws() {
+        // CsWinRT ObjectReference.Attach transfers ownership to a reference owner;
+        // cleanup after that transfer uses the owner, not a second raw DisposeAbi.
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("49494949-4949-4949-4949-494949494942")
+        val typeHandle = WinRTTypeHandle("test.ITypedOwnedFactoryFailure", interfaceId)
+        val host = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(WinRTInspectableInterfaceDefinition(interfaceId, emptyList())),
+            defaultInterfaceId = interfaceId,
+        )
+        var source: ComObjectReference? = null
+        try {
+            val reference = host.createPrimaryReference()
+            source = reference
+            val pointer = reference.pointer.asRawAddress()
+            val retainedCount = requireNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            val ownedPointer = reference.getRefPointer().asRawAddress()
+            val expectedFailure = IllegalStateException("typed RCW factory failed")
+
+            val failure = assertFailsWith<IllegalStateException> {
+                ComWrappersSupport.createRcwForOwnedComObject<Any>(ownedPointer, typeHandle) { _, _ ->
+                    throw expectedFailure
+                }
+            }
+            assertSame(expectedFailure, failure)
+            assertEquals(retainedCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            PlatformFinalization.drain()
+            assertEquals(retainedCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        } finally {
+            source?.close()
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun typed_owned_rcw_consumes_input_on_context_failure_but_ordinary_create_keeps_it() {
+        if (!PlatformRuntime.isWindows) return
+        // ObjectReference.Attach only clears its ref pointer after construction.
+        // Kotlin's opt-in consuming constructor performs that caller rollback;
+        // ordinary ComPtr.create preserves the existing caller-owned failure contract.
+        ComWrappersSupport.clearRegistriesForTests()
+        val typeHandle = WinRTTypeHandle("test.IFailingMarshal", IID.IMarshal)
+        val host = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRTInspectableInterfaceDefinition(
+                    interfaceId = IID.IMarshal,
+                    baseKind = WinRTComInterfaceBaseKind.IUnknown,
+                    methods = listOf(
+                        WinRTInspectableMethodDefinition(
+                            signature = ComMethodSignature.of(
+                                ComAbiValueKind.Pointer, ComAbiValueKind.Pointer,
+                                ComAbiValueKind.Int32, ComAbiValueKind.Pointer,
+                                ComAbiValueKind.Int32, ComAbiValueKind.Pointer,
+                            ),
+                            handler = { _: List<Any?> -> KnownHResults.E_FAIL.value },
+                        ),
+                    ),
+                ),
+            ),
+            defaultInterfaceId = IID.IMarshal,
+        )
+        var legacyOwnedPointer = RawAddress.Null
+        try {
+            // Bypass reference construction so the owned ABI input exists before
+            // its non-agile IMarshal.GetUnmarshalClass deliberately fails.
+            val ownedPointer = requireNotNull(host.tryCreateDetachedReference(IID.IMarshal))
+            val countWithOwnedInput = requireNotNull(WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer))
+            val failure = assertFailsWith<WinRTRuntimeException> {
+                ComWrappersSupport.createRcwForOwnedComObject<Any>(ownedPointer, typeHandle) { _, _ ->
+                    error("Context acquisition must fail before the factory runs.")
+                }
+            }
+            assertEquals(KnownHResults.E_FAIL, failure.hResult)
+            assertEquals(countWithOwnedInput - 1u, WinRTInspectableComObject.tryProbeReferenceCount(ownedPointer))
+
+            legacyOwnedPointer = requireNotNull(host.tryCreateDetachedReference(IID.IMarshal))
+            val countWithLegacyInput = requireNotNull(WinRTInspectableComObject.tryProbeReferenceCount(legacyOwnedPointer))
+            val legacyFailure = assertFailsWith<WinRTRuntimeException> {
+                ComPtr.create(legacyOwnedPointer.asRawComPtr(), IID.IMarshal)
+            }
+            assertEquals(KnownHResults.E_FAIL, legacyFailure.hResult)
+            assertEquals(countWithLegacyInput, WinRTInspectableComObject.tryProbeReferenceCount(legacyOwnedPointer))
+        } finally {
+            if (!PlatformAbi.isNull(legacyOwnedPointer)) WinRTPlatformApi.releaseRaw(legacyOwnedPointer)
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
     fun registering_uninitialized_winrt_object_does_not_read_lateinit_native_object() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRTTypeHandle(
@@ -1283,6 +1425,71 @@ class ComWrappersSupportTest {
             firstById.getValue(IID.IReferenceTrackerTarget),
             secondById.getValue(IID.IReferenceTrackerTarget),
         )
+    }
+
+    @Test
+    fun ccw_augmentation_hot_cache_rechecks_authored_provider_and_feature_switches() {
+        // CsWinRT's PregenerateNativeTypeInformation owns cached interface entries; authored
+        // ICustomPropertyProvider and feature-switch selection must still precede a hot-cache hit.
+        val publicInterfaceId = Guid("68686868-6868-6868-6868-686868686870")
+        val interfaces = mutableListOf(
+            WinRTInspectableInterfaceDefinition(publicInterfaceId, methods = emptyList()),
+        )
+        val definition = WinRTCcwDefinition(interfaces, defaultInterfaceId = publicInterfaceId)
+        val authoredProvider = WinRTInspectableInterfaceDefinition(
+            IID.ICustomPropertyProvider,
+            methods = emptyList(),
+        )
+        val mappingsKey = FeatureSwitches.EnableDefaultCustomTypeMappingsPropertyName
+        val providerKey = FeatureSwitches.EnableICustomPropertyProviderSupportPropertyName
+        InteropRuntimeHooks.clearForTests()
+        FeatureSwitches.overrideForTests(mappingsKey, true)
+        FeatureSwitches.overrideForTests(providerKey, true)
+        try {
+            val initial = InteropRuntimeHooks.augmentInspectableDefinition(definition)
+            val defaultProvider = initial.interfaceDefinitions.single { it.interfaceId == IID.ICustomPropertyProvider }
+            assertSame(initial, InteropRuntimeHooks.augmentInspectableDefinition(definition))
+
+            interfaces += authoredProvider
+            val withAuthoredProvider = InteropRuntimeHooks.augmentInspectableDefinition(definition)
+            assertNotSame(initial, withAuthoredProvider)
+            assertSame(
+                authoredProvider,
+                withAuthoredProvider.interfaceDefinitions.single { it.interfaceId == IID.ICustomPropertyProvider },
+            )
+            assertSame(withAuthoredProvider, InteropRuntimeHooks.augmentInspectableDefinition(definition))
+
+            interfaces.remove(authoredProvider)
+            val afterRemoval = InteropRuntimeHooks.augmentInspectableDefinition(definition)
+            assertSame(
+                defaultProvider,
+                afterRemoval.interfaceDefinitions.single { it.interfaceId == IID.ICustomPropertyProvider },
+            )
+            assertSame(afterRemoval, InteropRuntimeHooks.augmentInspectableDefinition(definition))
+
+            FeatureSwitches.overrideForTests(providerKey, false)
+            val providerDisabled = InteropRuntimeHooks.augmentInspectableDefinition(definition)
+            assertFalse(providerDisabled.interfaceDefinitions.any { it.interfaceId == IID.ICustomPropertyProvider })
+            assertSame(providerDisabled, InteropRuntimeHooks.augmentInspectableDefinition(definition))
+
+            FeatureSwitches.overrideForTests(providerKey, true)
+            FeatureSwitches.overrideForTests(mappingsKey, false)
+            val mappingsDisabled = InteropRuntimeHooks.augmentInspectableDefinition(definition)
+            assertFalse(mappingsDisabled.interfaceDefinitions.any { it.interfaceId == IID.ICustomPropertyProvider })
+            assertSame(mappingsDisabled, InteropRuntimeHooks.augmentInspectableDefinition(definition))
+
+            FeatureSwitches.overrideForTests(mappingsKey, true)
+            val restored = InteropRuntimeHooks.augmentInspectableDefinition(definition)
+            assertSame(
+                defaultProvider,
+                restored.interfaceDefinitions.single { it.interfaceId == IID.ICustomPropertyProvider },
+            )
+            assertSame(restored, InteropRuntimeHooks.augmentInspectableDefinition(definition))
+        } finally {
+            FeatureSwitches.overrideForTests(mappingsKey, null)
+            FeatureSwitches.overrideForTests(providerKey, null)
+            InteropRuntimeHooks.clearForTests()
+        }
     }
 
     @Test

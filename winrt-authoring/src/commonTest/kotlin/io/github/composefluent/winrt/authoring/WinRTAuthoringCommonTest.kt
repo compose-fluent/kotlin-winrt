@@ -15,6 +15,9 @@ import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRTComInterfaceBaseKind
 import io.github.composefluent.winrt.runtime.WinRTNotImplementedException
+import io.github.composefluent.winrt.runtime.WinRTXamlComponent
+import io.github.composefluent.winrt.runtime.WinRTXamlLoadState
+import io.github.composefluent.winrt.runtime.initializeWinRTXamlComponent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -22,6 +25,33 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class WinRTAuthoringCommonTest {
+    @Test
+    fun xamlActivationCompletesConstructionBeforePublishingWithoutRepeatingInitialization() {
+        // CsWinRT code_writers.h write_factory_class publishes only after construction;
+        // Kotlin adds the user-requested C++/WinRT create_and_initialize lifecycle at this boundary.
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("58ba0ec1-f2dc-4c15-9201-8b3d4f4a1b73")
+        WinRTAuthoring.registerType<XamlActivationComponent>(WinRTAuthoredTypeDefinition(
+            runtimeClassName = "Sample.Authoring.XamlActivationComponent",
+            defaultInterfaceId = interfaceId,
+            interfaces = listOf(WinRTAuthoredInterfaceDefinition(interfaceId, emptyList(), isDefault = true)),
+        ))
+        for (alreadyInitialized in listOf(false, true)) {
+            val name = "Sample.Authoring.XamlActivationComponent.$alreadyInitialized"
+            WinRTAuthoring.registerActivationFactory<XamlActivationComponent>(name, createInstance = {
+                XamlActivationComponent().also { if (alreadyInitialized) initializeWinRTXamlComponent(it) }
+            })
+            ActivationFactory.get(name).use { factory ->
+                factory.activateInstance().use { reference ->
+                    val instance = assertNotNull(ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(reference.pointer), XamlActivationComponent::class))
+                    assertEquals(1, instance.initializations)
+                    assertEquals(1, instance.loads)
+                }
+            }
+        }
+    }
+
     @Test
     fun authoredTypeStaticDefinitionDispatchesToEachCurrentHostValue() {
         ComWrappersSupport.clearRegistriesForTests()
@@ -595,6 +625,19 @@ class WinRTAuthoringCommonTest {
     private object TrackedInnerComponent
 
     private class ActivatableComponent
+
+    private class XamlActivationComponent : WinRTXamlComponent {
+        private val construction = WinRTXamlLoadState()
+        private val markup = WinRTXamlLoadState()
+        var initializations = 0
+        var loads = 0
+        override fun initializeComponent() {
+            super.initializeComponent()
+            initializations++
+        }
+        override fun _kotlinXamlInitialize() = markup.load { loads++ }
+        override fun _kotlinXamlCompleteConstruction() = construction.load { initializeComponent() }
+    }
 
     private class FactoryBackedComponent
 

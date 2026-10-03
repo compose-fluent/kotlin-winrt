@@ -1,0 +1,10 @@
+--- header
+A TreeView with Multi-selection enabled
+--- xaml
+<TreeView x:Name="sampleTreeView" SelectionMode="Multiple" />
+--- kotlin
+private fun InitializeSampleTreeView(tree: TreeView) {
+        fun node(title: String, children: List<TreeViewNode> = emptyList()) = TreeViewNode().apply { content = title; isExpanded = children.isNotEmpty(); children.forEach { this.children.add(it) } }
+        tree.rootNodes.add(node("Work Documents", listOf(node("XYZ Functional Spec"), node("Feature Schedule"))))
+        tree.rootNodes.add(node("Personal Documents", listOf(node("Home Remodel", listOf(node("Contractor Contact Info"), node("Paint Color Scheme"))))))
+    }

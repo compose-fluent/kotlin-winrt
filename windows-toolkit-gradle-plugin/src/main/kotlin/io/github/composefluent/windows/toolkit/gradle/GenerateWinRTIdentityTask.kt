@@ -3,6 +3,7 @@ package io.github.composefluent.windows.toolkit.gradle
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.compiler.authoring.renderAuthoringMetadataIndexRow
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
+import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -91,6 +92,10 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredMetadataFiles: ConfigurableFileCollection
 
+    /** Application schema is compiler input, never an exported/activatable component. */
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.NONE)
+    abstract val xamlSchemaFiles: ConfigurableFileCollection
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -130,6 +135,7 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
                 appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFiles.files, typeShapeDescriptorFiles.files).toJsonArray()},")
+                appendLine("  \"authoredTypes\": ${readAuthoredTypeNames(authoredMetadataFiles.files).toJsonArray()},")
                 appendLine("  \"sourceAdditions\": ${readGeneratedSourceAdditionTypeNames(sourceAdditionManifestFiles.files).toJsonArray()},")
                 appendLine("  \"excludeNamespaces\": ${excludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"excludeTypes\": ${excludeTypes.get().toJsonArray()},")
@@ -142,6 +148,7 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
                 appendLine("  \"runtimeAssetRecords\": ${runtimeAssetRecordsToJsonArray(readRuntimeAssetRecords(runtimeAssetFiles.files))},")
                 appendLine("  \"authoredMetadataRecords\": ${authoredMetadataRecordsToJsonArray(readAuthoredMetadataRecords(authoredMetadataFiles.files))},")
+                appendLine("  \"xamlSchemaRecords\": ${authoredMetadataRecordsToJsonArray(readXamlSchemaRecords(xamlSchemaFiles.files))},")
                 appendLine("  \"authoringMetadataIndexRows\": ${readAuthoringMetadataIndexRows(authoringMetadataIndexFiles.files).toJsonArray()},")
                 appendLine("  \"authoredHostManifestRecords\": ${authoredHostManifestRecordsToJsonArray(readAuthoredHostManifestRecords(authoredHostManifestFiles.files))},")
                 appendLine("  \"authoredTargetArtifactRecords\": ${authoredTargetArtifactRecordsToJsonArray(readAuthoredTargetArtifactRecords(authoredTargetArtifactFiles.files))},")
@@ -446,6 +453,13 @@ private fun runtimeAssetRecordsToJsonArray(records: List<RuntimeAssetRecord>): S
 internal fun authoredMetadataRecordsToJsonArray(records: List<AuthoredMetadataRecord>): String =
     records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
 
+internal fun readXamlSchemaRecords(files: Iterable<File>): List<AuthoredMetadataRecord> =
+    files.filter(File::isFile).mapNotNull { file ->
+        val assembly = io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+            .loadTypeAssemblyNames(listOf(file.toPath())).values.distinct().singleOrNull() ?: return@mapNotNull null
+        AuthoredMetadataRecord("$assembly.winmd", Base64.getEncoder().encodeToString(file.readBytes()))
+    }.sortedBy { it.fileName }
+
 private fun compilerSupportFileRecordsToJsonArray(records: List<CompilerSupportFileRecord>): String =
     records.joinToString(prefix = "[", postfix = "]") { it.toJsonObject() }
 
@@ -476,6 +490,17 @@ internal data class AuthoredMetadataRecord(
     val fileName: String,
     val contentBase64: String,
 )
+
+/** Imported metadata is compiler knowledge, not ownership of compiled declarations.
+ * As with cswinrt's component filter, only the component's own TypeDefs suppress RCWs.
+ */
+private fun readAuthoredTypeNames(files: Iterable<File>): List<String> = files.filter(File::isFile).let { metadata ->
+    if (metadata.isEmpty()) emptyList() else WinRTMetadataLoader.load(metadata.map(File::toPath)).namespaces
+        .flatMap { namespace -> namespace.types.map { it.qualifiedName } }.distinct().sorted()
+}
+
+internal fun readDependencyAuthoredTypeNames(identityFile: File): List<String> =
+    readIdentityJsonStringArray(identityFile.takeIf(File::isFile)?.readText().orEmpty(), "authoredTypes")
 
 internal data class RuntimeAssetRecord(
     val fileName: String,

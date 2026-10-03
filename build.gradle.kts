@@ -10,7 +10,8 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.mavenPublish) apply false
-    id("io.github.compose-fluent.windows-toolkit") apply false
+    // Consumers load windows-toolkit in their own project scope. Exporting that
+    // included-build plugin here breaks ValueSource cache restoration on Gradle 9.4.
     id("winrt.prebuilt-projection") apply false
 }
 

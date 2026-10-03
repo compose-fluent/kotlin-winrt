@@ -1,0 +1,23 @@
+--- header
+RichTextBlock with custom TextHighlighting
+--- xaml
+<RichTextBlock x:Name="TextHighlightingRichTextBlock">
+    <Paragraph>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua
+    </Paragraph>
+</RichTextBlock>
+--- Kotlin
+private fun HighlightColorCombobox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+        val selected = (sender as? ComboBox)?.selectedItem as? ComboBoxItem
+        val color = when (selected?.content as? String) {
+            "Red" -> rgb(0xFF0000u)
+            "Blue" -> rgb(0x0000FFu)
+            else -> rgb(0xFFFF00u)
+        }
+        val highlighter = TextHighlighter().apply {
+            background = SolidColorBrush(color)
+            ranges.add(TextRange(28, 11))
+        }
+        TextHighlightingRichTextBlock.textHighlighters.clear()
+        TextHighlightingRichTextBlock.textHighlighters.add(highlighter)
+    }

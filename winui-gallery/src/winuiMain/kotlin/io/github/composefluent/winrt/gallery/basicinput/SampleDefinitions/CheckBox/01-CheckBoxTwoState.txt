@@ -1,0 +1,11 @@
+--- Header
+A two-state CheckBox.
+
+--- Xaml
+<CheckBox x:Name="twoStateCheckBox" Content="Two-state CheckBox" Click="onTwoStateClick" />
+
+
+--- Kotlin
+private fun onTwoStateClick(sender: Any?, args: RoutedEventArgs) {
+    twoStateOutput.text = if (twoStateCheckBox.isChecked == true) "Checked" else "Unchecked"
+}

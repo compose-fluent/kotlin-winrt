@@ -213,6 +213,25 @@ internal object ValueBoxingMetadata {
             boxedReferenceRuntimeClassName(interfaceId, descriptor)
         }
 
+    /**
+     * An exact closed scalar/struct descriptor selects one boxed host shape, like CsWinRT's
+     * type-level InspectableInfo. Keep array and value-dependent fallback classification here.
+     */
+    fun invariantReferenceHostMetadata(
+        interfaceId: Guid,
+        value: Any,
+    ): WinRTValueTypeMetadata? {
+        // Preserve the bootstrap performed by TypeNameSupport before reusing a cached name.
+        ensureProjectionMappingsRegistered()
+        val descriptor = descriptorForReferenceInterface(interfaceId) ?: return null
+        val valueClass = value::class
+        return descriptor.takeIf {
+            it.projectedClass == valueClass &&
+                !isSupportedArrayValue(value, valueClass) &&
+                descriptorForClass(valueClass) === it
+        }
+    }
+
     fun inspectableArrayMetadata(): WinRTValueTypeMetadata = objectMetadata
 
     fun descriptorForClass(type: KClass<*>): WinRTValueTypeMetadata? =
@@ -350,8 +369,11 @@ internal object ValueBoxingMetadata {
         }
     }
 
-    private fun isSupportedArrayValue(value: Any): Boolean =
-        WinRTTypeClassifier.primitiveArrayElementType(value::class) != null || value is Array<*>
+    private fun isSupportedArrayValue(
+        value: Any,
+        valueClass: KClass<*> = value::class,
+    ): Boolean =
+        WinRTTypeClassifier.primitiveArrayElementType(valueClass) != null || value is Array<*>
 
     private fun normalizePrimitiveManagedArray(value: Any): ManagedArrayMetadata? {
         val elementType = WinRTTypeClassifier.primitiveArrayElementType(value::class) ?: return null

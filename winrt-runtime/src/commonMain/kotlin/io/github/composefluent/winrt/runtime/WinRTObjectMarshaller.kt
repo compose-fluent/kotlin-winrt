@@ -25,12 +25,7 @@ object WinRTObjectMarshaller {
     @kotlin.concurrent.Volatile
     private var hotInboundRcw: HotInboundRcw? = null
 
-    private fun isLiveCachedValue(value: Any): Boolean =
-        when (value) {
-            is WinRTObjectBase<*> -> value.tryGetInitializedNativeObject()?.isDisposed == false
-            is IWinRTObject -> !value.nativeObject.isDisposed
-            else -> true
-        }
+    private fun isLiveCachedValue(value: Any): Boolean = ComWrappersSupport.hasLiveRcwIdentity(value)
 
     fun createMarshaler(
         value: Any?,
@@ -44,10 +39,38 @@ object WinRTObjectMarshaller {
             } else {
                 createDelegateMarshaler(value)
             }
-            else -> ComWrappersSupport.tryUnwrapObject(value)?.let(::createUnwrappedInspectableMarshaler)
+            else -> tryCreateUnwrappedInspectableMarshaler(value)
                 ?: createManagedInspectableLeaseMarshaler(value)
                 ?: createMarshalerCore(value, declaredReferenceArrayElementType)
         }
+
+    /** Uses the existing projected-object unwrap rules without creating temporary RCW wrappers. */
+    private fun tryCreateUnwrappedInspectableMarshaler(value: Any): WinRTObjectMarshaler? {
+        // Raw carriers and composable identity keep their existing owned-reference path.
+        if (value is ComObjectReference || value is WinRTComposableObject) {
+            return ComWrappersSupport.tryUnwrapObject(value)?.let(::createUnwrappedInspectableMarshaler)
+        }
+        val reference = WinRTBorrowedReferenceSupport.tryBorrowReference(
+            value = value,
+            interfaceType = null,
+            unwrapWinRTObject = ::borrowableWinRTObject,
+            cloneReference = { it },
+        ) ?: return null
+        val lease = reference.comPtr.tryAcquireScopedQueryInterfaceLease(IID.IInspectable)
+            ?: return createUnwrappedInspectableMarshaler(cloneComReference(reference))
+        return try {
+            WinRTObjectMarshaler(lease.abi) {
+                try {
+                    lease.close()
+                } finally {
+                    winRTKeepAlive(value)
+                }
+            }
+        } catch (error: Throwable) {
+            lease.close()
+            throw error
+        }
+    }
 
     /**
      * Generic object parameters are frequently sent back synchronously from a delegate. When the
@@ -72,7 +95,6 @@ object WinRTObjectMarshaller {
             is RawAddress -> WinRTObjectMarshaler(value)
             is RawComPtr -> WinRTObjectMarshaler(value.asRawAddress())
             is ComObjectReference -> createInspectableMarshaler(value)
-            is IWinRTObject -> createInspectableMarshaler(value.nativeObject)
             else -> ComWrappersSupport.createCCWForObjectForMarshaling(
                 value = value,
                 interfaceId = IID.IInspectable,
@@ -101,7 +123,8 @@ object WinRTObjectMarshaller {
         // Preserve the managed CCW identity probe before creating or reusing an RCW.
         WinRTInspectableComObject.findManagedValue(pointer)?.let { return it }
         return ComWrappersSupport.createRcwForComObject(pointer)?.also { rcw ->
-            hotInboundRcw = HotInboundRcw(pointerKey, PlatformManagedWeakReference(rcw))
+            if (ComWrappersSupport.canCacheRcwIdentity(rcw))
+                hotInboundRcw = HotInboundRcw(pointerKey, PlatformManagedWeakReference(rcw))
         }
     }
 
@@ -137,7 +160,8 @@ object WinRTObjectMarshaller {
             return managed
         }
         return ComWrappersSupport.createRcwForOwnedComObject(pointer)?.also { rcw ->
-            hotInboundRcw = HotInboundRcw(pointerKey, PlatformManagedWeakReference(rcw))
+            if (ComWrappersSupport.canCacheRcwIdentity(rcw))
+                hotInboundRcw = HotInboundRcw(pointerKey, PlatformManagedWeakReference(rcw))
         }
     }
 
@@ -173,7 +197,6 @@ object WinRTObjectMarshaller {
             is RawAddress -> value
             is RawComPtr -> value.asRawAddress()
             is ComObjectReference -> value.asInspectable().useAndGetRef()
-            is IWinRTObject -> value.nativeObject.asInspectable().useAndGetRef()
             else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable, declaredReferenceArrayElementType).useAndGetRef()
         }
 
@@ -251,12 +274,15 @@ internal object ProjectedDelegateCcwCache {
     private fun getOrCreate(value: WinRTProjectedDelegate): WinRTDelegateHandle =
         handles.getOrPut(value) {
             value.createWinRTDelegateHandle().also { handle ->
-                // Like CsWinRT's CCW strong handle, the inbound binding roots the host until
-                // native Release. Its cleanup callback also retains this handle; a second
-                // global root list would duplicate that lifetime and serialize every call.
+                // Native ownership is represented by the CCW's COM/tracker roots. The
+                // identity cache and cleanup callback must not themselves keep the delegate alive.
+                val weakHandle = PlatformManagedWeakReference(handle)
+                val weakValue = PlatformManagedWeakReference(value)
                 handle.addCleanupAction {
-                    handle.markClosedAfterNativeCleanup()
-                    handles.remove(value, handle)
+                    weakHandle.get()?.let { liveHandle ->
+                        liveHandle.markClosedAfterNativeCleanup()
+                        weakValue.get()?.let { liveValue -> handles.remove(liveValue, liveHandle) }
+                    }
                 }
             }
         }

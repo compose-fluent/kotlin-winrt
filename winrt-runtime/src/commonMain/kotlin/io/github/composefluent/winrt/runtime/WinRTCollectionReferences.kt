@@ -100,6 +100,11 @@ open class WinRTCollectionReferenceBase(
             invokeSlot(slot, value.pointer.asRawAddress(), indexOut, foundOut)
         }
 
+    protected fun invokeIndexOfAbiArg(slot: Int, value: RawAddress): Pair<Boolean, UInt> =
+        RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
+            invokeSlot(slot, value, indexOut, foundOut)
+        }
+
     protected fun invokeObjectGetMany(
         slot: Int,
         startIndex: UInt?,
@@ -301,6 +306,9 @@ open class WinRTVectorViewReference(
     open fun indexOf(value: ComObjectReference): Pair<Boolean, UInt> =
         invokeIndexOfMethodWithObjectArg(slot = 8, value = value)
 
+    open fun indexOf(value: RawAddress): Pair<Boolean, UInt> =
+        invokeIndexOfAbiArg(slot = 8, value = value)
+
     open fun getMany(startIndex: UInt, capacity: Int): List<IUnknownReference?> {
         require(capacity >= 0) { "capacity must be non-negative." }
         return invokeGetMany(slot = 9, startIndex = startIndex, capacity = capacity)
@@ -356,6 +364,9 @@ open class WinRTVectorReference(
 
     open fun indexOf(value: ComObjectReference): Pair<Boolean, UInt> =
         invokeIndexOfMethodWithObjectArg(slot = 9, value = value)
+
+    open fun indexOf(value: RawAddress): Pair<Boolean, UInt> =
+        invokeIndexOfAbiArg(slot = 9, value = value)
 
     open fun setAt(index: UInt, value: ComObjectReference) {
         setAt(index, value.pointer.asRawAddress())

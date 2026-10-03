@@ -1,0 +1,4 @@
+<StackLayout
+            x:Name="HorizontalStackLayout"
+            Orientation="Horizontal"
+            Spacing="8" />

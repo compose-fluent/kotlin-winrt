@@ -8,9 +8,14 @@ import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.builders.declarations.buildField
+import org.jetbrains.kotlin.ir.builders.declarations.buildProperty
+import org.jetbrains.kotlin.ir.builders.declarations.addGetter
+import org.jetbrains.kotlin.ir.builders.irBlockBody
+import org.jetbrains.kotlin.ir.builders.irReturn
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irCallWithSubstitutedType
 import org.jetbrains.kotlin.ir.builders.irGetField
+import org.jetbrains.kotlin.ir.builders.irImplicitCast
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irVararg
 import org.jetbrains.kotlin.ir.declarations.IrClass
@@ -170,6 +175,7 @@ private fun lowerGenericDelegateSamValue(
         parameterKinds = parameterKinds,
         parameterTypes = invokeParameters,
         returnKind = returnKind,
+        returnType = invokeReturnType,
         descriptorFields = descriptorFields,
         startOffset = callback.startOffset,
         endOffset = callback.endOffset,
@@ -197,6 +203,7 @@ private fun createDescriptorExpression(
     parameterKinds: List<DelegateValueKind>,
     parameterTypes: List<IrType>,
     returnKind: DelegateValueKind,
+    returnType: IrType,
 ): IrExpression? {
     val guidClass = pluginContext.findClassSymbol(ClassId.topLevel(FqName(WINRT_GUID_FQ_NAME)), fromFile) ?: return null
     val guidConstructor = guidClass.owner.constructors.singleOrNull { constructor ->
@@ -212,7 +219,7 @@ private fun createDescriptorExpression(
     val returnElement = enumValue(builder, enumClass, enumType, returnKind.name) ?: return null
     val call = builder.irCall(helper)
     val regularParameters = helper.owner.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
-    if (regularParameters.size != 4) return null
+    if (regularParameters.size !in setOf(4, 6)) return null
     val interfaceIndex = helper.owner.parameters.indexOf(regularParameters[0])
     val returnIndex = helper.owner.parameters.indexOf(regularParameters[1])
     val varargIndex = helper.owner.parameters.indexOf(regularParameters[2])
@@ -234,7 +241,42 @@ private fun createDescriptorExpression(
         }
     }
     call.arguments[helper.owner.parameters.indexOf(regularParameters[3])] = builder.irVararg(handleType, handles)
+    // CsWinRT closes Marshaler<T>.AbiType together with the delegate IID.
+    // Carry the generated struct adapter through the same closed descriptor;
+    // Native and JVM must not discover this information through reflection.
+    if (regularParameters.size == 6) {
+        val adapterType = (regularParameters[4].type as? IrSimpleType)
+            ?.arguments?.singleOrNull()?.typeOrNull ?: return null
+        val adapters = parameterTypes.zip(parameterKinds).map { (type, kind) ->
+            structAdapterExpression(builder, type, kind, adapterType)
+        }
+        call.arguments[helper.owner.parameters.indexOf(regularParameters[4])] = builder.irVararg(adapterType, adapters)
+        call.arguments[helper.owner.parameters.indexOf(regularParameters[5])] = structAdapterExpression(
+            builder, returnType, returnKind, regularParameters[5].type,
+        )
+    } else {
+        check(DelegateValueKind.STRUCT !in parameterKinds && returnKind != DelegateValueKind.STRUCT) {
+            "Struct-valued WinRT delegates require the updated kotlin-winrt runtime."
+        }
+    }
     return call
+}
+
+private fun structAdapterExpression(
+    builder: DeclarationIrBuilder,
+    type: IrType,
+    kind: DelegateValueKind,
+    adapterType: IrType,
+): IrExpression {
+    if (kind != DelegateValueKind.STRUCT) return builder.irNull(adapterType.makeNullable())
+    val metadata = type.classOrNull?.owner?.declarations?.filterIsInstance<IrClass>()
+        ?.singleOrNull { it.isCompanion && it.superTypes.any { parent ->
+            parent.classFqName?.asString() == WINRT_NATIVE_STRUCT_ADAPTER_FQ_NAME
+        } }
+    checkNotNull(metadata) {
+        "WinRT struct '${type.classFqName}' must expose its generated NativeStructAdapter companion."
+    }
+    return builder.irImplicitCast(builder.irGetObject(metadata.symbol), adapterType)
 }
 
 /**
@@ -252,13 +294,17 @@ private fun descriptorFieldExpression(
     parameterKinds: List<DelegateValueKind>,
     parameterTypes: List<IrType>,
     returnKind: DelegateValueKind,
+    returnType: IrType,
     descriptorFields: MutableMap<Pair<IrFile, WinRTDelegateDescriptorShape>, IrField>,
     startOffset: Int,
     endOffset: Int,
 ): IrExpression? {
     val shape = WinRTDelegateDescriptorShape(interfaceId, parameterKinds, returnKind)
     val key = file to shape
-    descriptorFields[key]?.let { field -> return builder.irGetField(null, field) }
+    fun read(field: IrField): IrExpression = field.correspondingPropertySymbol?.owner?.getter?.let {
+        builder.irCall(it.symbol)
+    } ?: builder.irGetField(null, field)
+    descriptorFields[key]?.let { field -> return read(field) }
 
     val helper = resolveRuntimeFunction(pluginContext, WINRT_CREATE_DESCRIPTOR_FQ_NAME, file)
         ?: return null
@@ -270,7 +316,7 @@ private fun descriptorFieldExpression(
         "kotlinWinRTDelegateDescriptor_${descriptorFieldFileSuffix(file)}_${descriptorFieldSuffix(shape)}",
     )
     val field = file.declarations
-        .filterIsInstance<IrField>()
+        .filterIsInstance<IrProperty>().mapNotNull { it.backingField }
         .singleOrNull { candidate -> candidate.name == fieldName }
         ?: pluginContext.irFactory.buildField {
             this.startOffset = startOffset
@@ -298,16 +344,40 @@ private fun descriptorFieldExpression(
                 parameterKinds = parameterKinds,
                 parameterTypes = parameterTypes,
                 returnKind = returnKind,
+                returnType = returnType,
             ) ?: return null
             created.initializer = pluginContext.irFactory.createExpressionBody(
                 startOffset,
                 endOffset,
                 initializer,
             )
-            file.declarations += created
+            // Native's lazy file initialization is attached to property accessors.
+            // A naked IrGetField in a class method can read the zero-initialized
+            // storage before the descriptor initializer has run.
+            val property = pluginContext.irFactory.buildProperty {
+                this.startOffset = startOffset
+                this.endOffset = endOffset
+                origin = IrDeclarationOrigin.DEFINED
+                name = fieldName
+                visibility = DescriptorVisibilities.PRIVATE
+                isVar = false
+            }.apply {
+                parent = file
+                backingField = created
+                created.correspondingPropertySymbol = symbol
+                val getter = addGetter {
+                    origin = IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR
+                    visibility = DescriptorVisibilities.PRIVATE
+                    this.returnType = created.type
+                }
+                getter.body = DeclarationIrBuilder(pluginContext, getter.symbol, startOffset, endOffset).irBlockBody {
+                    +irReturn(irGetField(null, created))
+                }
+            }
+            file.declarations += property
         }
     descriptorFields[key] = field
-    return builder.irGetField(null, field)
+    return read(field)
 }
 
 private data class WinRTDelegateDescriptorShape(
@@ -532,6 +602,7 @@ private const val WINRT_DELEGATE_TYPE_ANNOTATION_FQ_NAME = "io.github.composeflu
 private const val WINRT_CREATE_DESCRIPTOR_FQ_NAME = "io.github.composefluent.winrt.runtime.createWinRTTypedDelegateDescriptor"
 private const val WINRT_DELEGATE_VALUE_KIND_FQ_NAME = "io.github.composefluent.winrt.runtime.WinRTDelegateValueKind"
 private const val WINRT_GUID_FQ_NAME = "io.github.composefluent.winrt.runtime.Guid"
+private const val WINRT_NATIVE_STRUCT_ADAPTER_FQ_NAME = "io.github.composefluent.winrt.runtime.NativeStructAdapter"
 private const val KOTLIN_UNIT_FQ_NAME = "kotlin.Unit"
 private const val KOTLIN_BOOLEAN_FQ_NAME = "kotlin.Boolean"
 private const val KOTLIN_BYTE_FQ_NAME = "kotlin.Byte"

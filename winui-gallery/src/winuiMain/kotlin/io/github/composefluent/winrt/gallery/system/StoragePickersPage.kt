@@ -1,389 +1,112 @@
 package io.github.composefluent.winrt.gallery.system
 
 import io.github.composefluent.winrt.gallery.*
-import io.github.composefluent.winrt.runtime.await
-import microsoft.ui.WindowId
-import windows.storage.fileproperties.StorageItemThumbnail
+import io.github.composefluent.winrt.runtime.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.media.Stretch
-import microsoft.ui.xaml.media.imaging.BitmapImage
-import microsoft.windows.storage.pickers.*
-import windows.storage.CreationCollisionOption
-import windows.storage.FileIO
-import windows.storage.StorageFile
-import windows.storage.StorageFolder
+import microsoft.windows.storage.pickers.PickerLocationId
+import microsoft.windows.storage.pickers.PickerViewMode
 import windows.storage.fileproperties.ThumbnailMode
-import windows.storage.fileproperties.ThumbnailOptions
 
 @GalleryPage(route = "StoragePickers", title = "Storage pickers", group = "System", order = 2)
-internal fun storagePickersPage() = ExamplePage {
-    val owner = this
-    val tasks = GalleryPageTasks(owner)
-    fun input(title: String, initial: String, placeholder: String = "") = TextBox().apply {
-        header = title
-        text = initial
-        placeholderText = placeholder
+internal class StoragePickersPage : Page() {
+    private val tasks = GalleryPageTasks(this)
+    private val pickerLocationIds: List<PickerLocationId> = listOf(PickerLocationId.DocumentsLibrary, PickerLocationId.ComputerFolder, PickerLocationId.Desktop, PickerLocationId.Downloads, PickerLocationId.MusicLibrary, PickerLocationId.PicturesLibrary, PickerLocationId.VideosLibrary, PickerLocationId.Objects3D, PickerLocationId.Unspecified)
+    private val pickerViewModes: List<PickerViewMode> = listOf(PickerViewMode.List, PickerViewMode.Thumbnail)
+    private val thumbnailModes: List<ThumbnailMode> = listOf(ThumbnailMode.PicturesView, ThumbnailMode.VideosView, ThumbnailMode.MusicView, ThumbnailMode.DocumentsView, ThumbnailMode.ListView, ThumbnailMode.SingleItem)
+    private fun WindowId(): microsoft.ui.WindowId = checkNotNull(checkNotNull(xamlRoot).contentIslandEnvironment).appWindowId
+    private fun AddFilters(picker: microsoft.windows.storage.pickers.FileOpenPicker, combo: ComboBox) {
+        when (combo.selectedItem?.asWinRT<ComboBoxItem>()?.tag?.toString()) { ".txt" -> picker.fileTypeFilter.add(".txt"); "images" -> { picker.fileTypeFilter.add(".jpg"); picker.fileTypeFilter.add(".png") }; else -> picker.fileTypeFilter.add("*") }
     }
-    children.add(InfoBar().apply {
-        isClosable = false
-        margin = Thickness(0.0, 8.0, 0.0, 0.0)
-        content = label("The picker reopens in the last selected location and view. The SuggestedStartLocation and ViewMode are only applied the first time the picker is opened (for example, right after app installation or when no previous selection exists).").apply {
-            margin = Thickness(0.0, 12.0, 12.0, 12.0)
-        }
-        isOpen = true
-    })
-    repeat(2) { index ->
-        val multiple = index == 1
-        var filter = 0; var location = 0; var view = 0
-        val commit = input("Commit button text", if (multiple) "Pick Files" else "Pick File", "Open")
-        val output = label(if (multiple) "No files picked" else "No file picked")
-        val pick = if (multiple) storagePickerMultipleFilesDemo(owner, tasks, { filter }, { location }, { view }, commit, output)
-        else storagePickerSingleFileDemo(owner, tasks, { filter }, { location }, { view }, commit, output)
-        val visual = stack(8.0) { children.add(pick); children.add(output) }
-        val options = stack(8.0) {
-            children.add(select("File type", listOf("All Files (*)", "Text Files (*.txt)", "Images (*.jpg, *.png)")) { filter = it }.apply { width = 200.0 })
-            children.add(commit)
-            children.add(select("Suggested start location", pickerLocationNames) { location = it }.apply { width = 200.0 })
-            children.add(select("View mode", listOf("List", "Thumbnail")) { view = it }.apply { width = 200.0 })
-        }
-        if (multiple) example("Pick multiple files.", visual, options)
-        else example("Pick a single file.", visual, options)
+    private fun ComboBoxItemToFileFilter(value: Any?): String = when (value?.asWinRT<ComboBoxItem>()?.tag?.toString()) {
+        ".txt" -> "\n        picker.fileTypeFilter.add(\".txt\")"
+        "images" -> "\n        picker.fileTypeFilter.add(\".jpg\")\n        picker.fileTypeFilter.add(\".png\")"
+        else -> ""
     }
-    val fileContent = input("File content", "Hello, WinUI!").apply {
-        width = 500.0; height = 200.0; acceptsReturn = true
-        textWrapping = TextWrapping.Wrap; isSpellCheckEnabled = false
-        horizontalAlignment = HorizontalAlignment.Left
-    }
-    val extensions = listOf(".txt", ".json", ".xml")
-    val typeNames = listOf("Text Files", "JSON Files", "XML Files")
-    val enabledTypes = BooleanArray(3)
-    var defaultExtension = 0; var saveLocation = 0
-    val fileName = input("Suggested file name", "NewDocument")
-    val saveCommit = input("Commit button text", "Save File", "Save")
-    val folder = input("Suggested folder", "", "Optional").apply {
-        width = 148.0; isReadOnly = true
-        foreground = GalleryTheme.brush("AccentTextFillColorPrimaryBrush")
-    }
-    val saved = label("No file saved")
-    val saveSample = storageSaveFileDemo(owner, tasks, fileContent, enabledTypes, { defaultExtension }, { saveLocation }, fileName, saveCommit, folder, saved)
-    example("Save a file.", saveSample, stack(8.0) {
-        children.add(label("File types:"))
-        typeNames.forEachIndexed { index, title -> children.add(option("$title (*${extensions[index]})") { enabledTypes[index] = it }) }
-        children.add(select("Default extension", extensions) { defaultExtension = it })
-        children.add(fileName); children.add(saveCommit)
-        children.add(select("Suggested start location", pickerLocationNames) { saveLocation = it })
-        children.add(stack(8.0, true) {
-            children.add(folder)
-            children.add(Button().apply {
-                content = glyph("\uF89A")
-                verticalAlignment = VerticalAlignment.Bottom
-                named(this, "Select folder")
-                click.add { _, _ ->
-                    tasks.launch {
-                        val selected = FolderPicker(checkNotNull(checkNotNull(owner.xamlRoot).contentIslandEnvironment).appWindowId)
-                            .apply { commitButtonText = "Select folder" }
-                            .pickSingleFolderAsync().await()
-                        if (selected != null) folder.text = selected.path
-                    }
-                }
-            })
-        })
-    })
-    var folderLocation = 0; var folderView = 0
-    val folderCommit = input("Commit button text", "Pick Folder", "Select Folder")
-    val pickedFolder = label("No folder picked")
-
-    val folderSample = storagePickFolderDemo(owner, tasks, folderCommit, { folderLocation }, { folderView }, pickedFolder)
-    example("Pick a folder.", folderSample, stack(8.0) {
-        children.add(folderCommit)
-        children.add(select("Suggested start location", pickerLocationNames) { folderLocation = it })
-        children.add(select("View mode", listOf("List", "Thumbnail")) { folderView = it })
-    })
-    val modes = listOf(ThumbnailMode.PicturesView, ThumbnailMode.VideosView, ThumbnailMode.MusicView, ThumbnailMode.DocumentsView, ThumbnailMode.ListView, ThumbnailMode.SingleItem)
-    val names = listOf("PicturesView", "VideosView", "MusicView", "DocumentsView", "ListView", "SingleItem")
-    var thumbnailMode = 0
-    val size = NumberBox().apply {
-        width = 200.0
-        header = "Requested size (px)"; value = 200.0; minimum = 16.0; maximum = 1024.0
-        spinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline
-    }
-    val image = Image().apply { stretch = Stretch.Uniform; named(this, "File thumbnail") }
-    val details = label("No file picked")
-
-    val thumbnailSample = storageThumbnailDemo(owner, tasks, modes, names, { thumbnailMode }, size, image, details)
-    example("File thumbnail.", thumbnailSample, stack(8.0) { children.add(select("Thumbnail mode", names) { thumbnailMode = it }.apply { width = 200.0 }); children.add(size) })
-
-
-
-}
-
-private fun storagePickerSingleFileDemo(
-    owner: FrameworkElement,
-    tasks: GalleryPageTasks,
-    filter: () -> Int,
-    location: () -> Int,
-    view: () -> Int,
-    commit: TextBox,
-    output: TextBlock,
-) = Button().apply {
-    content = "Pick a single file"
-    click.add { _, _ ->
-        isEnabled = false
-        tasks.launch {
-            try {
-                output.text = storagePickerSingleFileSample(
-                    checkNotNull(checkNotNull(owner.xamlRoot).contentIslandEnvironment).appWindowId,
-                    listOf(listOf("*"), listOf(".txt"), listOf(".jpg", ".png"))[filter()],
-                    commit.text, pickerLocations[location()], pickerViews[view()],
-                ).invoke()?.let { "Picked: ${it.path}" } ?: "No file selected."
-            } finally {
-                isEnabled = true
+    private fun TxtCheckBoxIsCheckedToCode(value: Boolean?): String = if (value == true) "\n        picker.fileTypeChoices[\"Text Files\"] = listOf(\".txt\")\n" else ""
+    private fun JsonCheckBoxIsCheckedToCode(value: Boolean?): String = if (value == true) "\n        picker.fileTypeChoices[\"JSON Files\"] = listOf(\".json\")\n" else ""
+    private fun XmlCheckBoxIsCheckedToCode(value: Boolean?): String = if (value == true) "\n        picker.fileTypeChoices[\"XML Files\"] = listOf(\".xml\")\n" else ""
+    private fun PickSingleFileButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val picker = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply {
+                AddFilters(this, FileTypeComboBox1); commitButtonText = CommitButtonTextTextBox.text
+                suggestedStartLocation = PickerLocationComboBox1.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+                viewMode = PickerViewModeComboBox1.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
             }
-        }
+            PickedSingleFileTextBlock.text = picker.pickSingleFileAsync().await()?.let { "Picked: ${it.path}" } ?: "No file selected."
+            announce(button, PickedSingleFileTextBlock.text, "FilePickedNotificationId")
+        } finally { button.isEnabled = true } }
     }
-}
-
-private fun storagePickerMultipleFilesDemo(
-    owner: FrameworkElement,
-    tasks: GalleryPageTasks,
-    filter: () -> Int,
-    location: () -> Int,
-    view: () -> Int,
-    commit: TextBox,
-    output: TextBlock,
-) = Button().apply {
-    content = "Pick multiple files"
-    click.add { _, _ ->
-        isEnabled = false
-        tasks.launch {
-            try {
-                val files = storagePickerMultipleFilesSample(
-                    checkNotNull(checkNotNull(owner.xamlRoot).contentIslandEnvironment).appWindowId,
-                    listOf(listOf("*"), listOf(".txt"), listOf(".jpg", ".png"))[filter()],
-                    commit.text, pickerLocations[location()], pickerViews[view()],
-                ).invoke()
-                output.text = if (files.isEmpty()) "No files selected." else files.joinToString("\n") { "- Picked: ${it.path}" }
-            } finally {
-                isEnabled = true
+    private fun PickMultipleFilesButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val picker = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply {
+                AddFilters(this, FileTypeComboBox2); commitButtonText = CommitButtonTextTextBox2.text
+                suggestedStartLocation = PickerLocationComboBox2.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+                viewMode = PickerViewModeComboBox2.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
             }
-        }
+            val files = picker.pickMultipleFilesAsync().await()
+            PickedMultipleFilesTextBlock.text = if (files.isEmpty()) "No files selected." else files.joinToString("\n") { "- Picked: ${it.path}" }
+            announce(button, PickedMultipleFilesTextBlock.text, "FilesPickedNotificationId")
+        } finally { button.isEnabled = true } }
     }
-}
-
-private fun storageSaveFileDemo(
-    owner: FrameworkElement,
-    tasks: GalleryPageTasks,
-    fileContent: TextBox,
-    enabledTypes: BooleanArray,
-    defaultExtension: () -> Int,
-    saveLocation: () -> Int,
-    fileName: TextBox,
-    saveCommit: TextBox,
-    folder: TextBox,
-    saved: TextBlock,
-) = stack(8.0) {
-    children.add(fileContent)
-    children.add(Button().apply {
-        content = "Save a file"
-        click.add { _, _ ->
-            isEnabled = false
-            tasks.launch {
-                try {
-                    val extensions = listOf(".txt", ".json", ".xml")
-                    val typeNames = listOf("Text Files", "JSON Files", "XML Files")
-                    val choices = typeNames.indices.filter { enabledTypes[it] }.associate { typeNames[it] to listOf(extensions[it]) }
-                    val path = storageSaveFileSample(
-                        checkNotNull(checkNotNull(owner.xamlRoot).contentIslandEnvironment).appWindowId,
-                        fileContent.text, choices, extensions[defaultExtension()], fileName.text,
-                        saveCommit.text, pickerLocations[saveLocation()], folder.text,
-                    ).invoke()
-                    saved.text = path?.let { "File saved to: $it" } ?: "File save canceled."
-                } finally {
-                    isEnabled = true
-                }
+    private fun SaveFileButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val picker = microsoft.windows.storage.pickers.FileSavePicker(WindowId()).apply {
+                if (TxtCheckBox.isChecked == true) fileTypeChoices["Text Files"] = mutableListOf(".txt")
+                if (JsonCheckBox.isChecked == true) fileTypeChoices["JSON Files"] = mutableListOf(".json")
+                if (XmlCheckBox.isChecked == true) fileTypeChoices["XML Files"] = mutableListOf(".xml")
+                defaultFileExtension = DefaultExtensionComboBox.selectedItem.toString(); suggestedFileName = SuggestedFileNameTextBox.text
+                commitButtonText = CommitButtonTextTextBox3.text; suggestedFolder = SuggestedFolderTextBox.text
+                suggestedStartLocation = PickerLocationComboBox3.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
             }
-        }
-    })
-    children.add(saved)
-}
-
-private fun storagePickFolderDemo(
-    owner: FrameworkElement,
-    tasks: GalleryPageTasks,
-    commit: TextBox,
-    location: () -> Int,
-    view: () -> Int,
-    pickedFolder: TextBlock,
-) = stack(8.0) {
-    children.add(Button().apply {
-        content = "Pick a folder"
-        click.add { _, _ ->
-            isEnabled = false
-            tasks.launch {
-                try {
-                    val result = storagePickFolderSample(
-                        checkNotNull(checkNotNull(owner.xamlRoot).contentIslandEnvironment).appWindowId,
-                        commit.text, pickerLocations[location()], pickerViews[view()],
-                    ).invoke()
-                    pickedFolder.text = result?.let { "Picked: ${it.path}" } ?: "No folder selected."
-                } finally {
-                    isEnabled = true
-                }
+            val result = picker.pickSaveFileAsync().await()
+            if (result == null) SavedFileTextBlock.text = "File save canceled." else {
+                val directory = windows.storage.StorageFolder.getFolderFromPathAsync(result.path.substringBeforeLast('\\')).await()
+                val file = directory.createFileAsync(result.path.substringAfterLast('\\'), windows.storage.CreationCollisionOption.ReplaceExisting).await()
+                windows.storage.FileIO.writeTextAsync(file, FileContentTextBox.text).await()
+                SavedFileTextBlock.text = "File saved to: ${result.path}"
             }
-        }
-    })
-    children.add(pickedFolder)
-}
-
-private fun storageThumbnailDemo(
-    owner: FrameworkElement,
-    tasks: GalleryPageTasks,
-    modes: List<ThumbnailMode>,
-    names: List<String>,
-    thumbnailMode: () -> Int,
-    size: NumberBox,
-    image: Image,
-    details: TextBlock,
-) = stack(8.0, true) {
-    children.add(stack(8.0) {
-        children.add(Button().apply {
-            content = "Pick a file"
-            click.add { _, _ ->
-                isEnabled = false
-                tasks.launch {
-                    try {
-                        val result = FileOpenPicker(checkNotNull(checkNotNull(owner.xamlRoot).contentIslandEnvironment).appWindowId)
-                            .apply { fileTypeFilter.add("*") }
-                            .pickSingleFileAsync().await()
-                        if (result == null) {
-                            details.text = "No file selected."
-                            image.source = null
-                        } else {
-                            val file = StorageFile.getFileFromPathAsync(result.path).await()
-                            val pixels = if (size.value.isNaN() || size.value <= 0.0) 200u else size.value.toUInt()
-                            val thumbnail = storageThumbnailSample(file, modes[thumbnailMode()], pixels).invoke()
-                            if (thumbnail == null) {
-                                image.source = null
-                                details.text = "No thumbnail available for the selected file."
-                            } else try {
-                                val bitmap = BitmapImage()
-                                bitmap.setSourceAsync(thumbnail).await()
-                                image.source = bitmap
-                                details.text = "File: ${file.name}\nMode: ThumbnailMode.${names[thumbnailMode()]}\nRequested size: $pixels\nReturned size: ${thumbnail.originalWidth} x ${thumbnail.originalHeight}"
-                            } finally {
-                                thumbnail.close()
-                            }
-                        }
-                    } finally {
-                        isEnabled = true
-                    }
-                }
+            announce(button, SavedFileTextBlock.text, "FileSavedNotificationId")
+        } finally { button.isEnabled = true } }
+    }
+    private fun PickFolderButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val picker = microsoft.windows.storage.pickers.FolderPicker(WindowId()).apply {
+                commitButtonText = CommitButtonTextTextBox4.text
+                suggestedStartLocation = PickerLocationComboBox4.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+                viewMode = PickerViewModeComboBox3.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
             }
-        })
-        children.add(details)
-    })
-    children.add(Border().apply {
-        width = 160.0
-        height = 160.0
-        background = GalleryTheme.brush("SubtleFillColorTertiaryBrush")
-        cornerRadius = corners(4.0)
-        horizontalAlignment = HorizontalAlignment.Left
-        child = image
-    })
-}
-
-// Ported from WinUI Gallery Samples/StoragePickers (MIT).
-
-
-internal val pickerLocations = listOf(PickerLocationId.DocumentsLibrary, PickerLocationId.ComputerFolder, PickerLocationId.Desktop, PickerLocationId.Downloads, PickerLocationId.MusicLibrary, PickerLocationId.PicturesLibrary, PickerLocationId.VideosLibrary, PickerLocationId.Objects3D, PickerLocationId.Unspecified)
-internal val pickerLocationNames = listOf("DocumentsLibrary", "ComputerFolder", "Desktop", "Downloads", "MusicLibrary", "PicturesLibrary", "VideosLibrary", "Objects3D", "Unspecified")
-internal val pickerViews = listOf(PickerViewMode.List, PickerViewMode.Thumbnail)
-
-
-@GallerySample(route = "StoragePickers", title = "Pick a single file.")
-internal fun storagePickerSingleFileSample(
-    windowId: WindowId,
-    extensions: List<String>,
-    commitText: String,
-    startLocation: PickerLocationId,
-    view: PickerViewMode,
-) = suspend {
-    val picker = FileOpenPicker(windowId).apply {
-        extensions.forEach { fileTypeFilter.add(it) }
-        commitButtonText = commitText
-        suggestedStartLocation = startLocation
-        viewMode = view
+            PickedFolderTextBlock.text = picker.pickSingleFolderAsync().await()?.let { "Picked: ${it.path}" } ?: "No folder selected."
+            announce(button, PickedFolderTextBlock.text, "FolderPickedNotificationId")
+        } finally { button.isEnabled = true } }
     }
-    picker.pickSingleFileAsync().await()
-}
-
-@GallerySample(route = "StoragePickers", title = "Pick multiple files.")
-internal fun storagePickerMultipleFilesSample(
-    windowId: WindowId,
-    extensions: List<String>,
-    commitText: String,
-    startLocation: PickerLocationId,
-    view: PickerViewMode,
-) = suspend {
-    val picker = FileOpenPicker(windowId).apply {
-        extensions.forEach { fileTypeFilter.add(it) }
-        commitButtonText = commitText
-        suggestedStartLocation = startLocation
-        viewMode = view
+    private fun SelectSuggestedFolderButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val folder = microsoft.windows.storage.pickers.FolderPicker(WindowId()).apply { commitButtonText = "Select folder" }.pickSingleFolderAsync().await()
+            if (folder != null) SuggestedFolderTextBox.text = folder.path
+            announce(button, folder?.let { "Folder selected: ${it.path}" } ?: "No folder selected", "SuggestedFolderNotificationId")
+        } finally { button.isEnabled = true } }
     }
-    picker.pickMultipleFilesAsync().await()
-}
-
-@GallerySample(route = "StoragePickers", title = "Save a file.")
-internal fun storageSaveFileSample(
-    windowId: WindowId,
-    text: String,
-    types: Map<String, List<String>>,
-    extension: String,
-    name: String,
-    commitText: String,
-    startLocation: PickerLocationId,
-    folder: String,
-) = suspend {
-    val picker = FileSavePicker(windowId).apply {
-        types.forEach { (title, extensions) -> fileTypeChoices[title] = extensions.toMutableList() }
-        defaultFileExtension = extension
-        suggestedFileName = name
-        commitButtonText = commitText
-        suggestedStartLocation = startLocation
-        suggestedFolder = folder
+    private fun PickFileForThumbnailButton_Click(sender: Any?, args: RoutedEventArgs) {
+        val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
+        tasks.launch { try {
+            val selected = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply { fileTypeFilter.add("*") }.pickSingleFileAsync().await()
+            if (selected == null) { ThumbnailImage.source = null; ThumbnailDetailsTextBlock.text = "No file selected."; return@launch }
+            val file = windows.storage.StorageFile.getFileFromPathAsync(selected.path).await()
+            val mode = ThumbnailModeComboBox.selectedItem as windows.storage.fileproperties.ThumbnailMode
+            val pixels = ThumbnailSizeNumberBox.value.takeIf { !it.isNaN() && it > 0 }?.toUInt() ?: 200u
+            val thumbnail = file.getThumbnailAsync(mode, pixels, windows.storage.fileproperties.ThumbnailOptions.UseCurrentScale).await()
+            if (thumbnail == null) { ThumbnailImage.source = null; ThumbnailDetailsTextBlock.text = "No thumbnail available for the selected file." } else try {
+                val bitmap = microsoft.ui.xaml.media.imaging.BitmapImage(); bitmap.setSourceAsync(thumbnail).await(); ThumbnailImage.source = bitmap
+                ThumbnailDetailsTextBlock.text = "File: ${file.name}\nMode: ThumbnailMode.$mode\nRequested size: $pixels\nReturned size: ${thumbnail.originalWidth} x ${thumbnail.originalHeight}"
+            } finally { thumbnail.close() }
+            announce(button, ThumbnailDetailsTextBlock.text, "ThumbnailPickedNotificationId")
+        } catch (error: Exception) { ThumbnailImage.source = null; ThumbnailDetailsTextBlock.text = "Could not retrieve a thumbnail. ${error.message}" }
+          finally { button.isEnabled = true } }
     }
-    val result = picker.pickSaveFileAsync().await()
-    if (result == null) null else {
-        val directory = StorageFolder.getFolderFromPathAsync(result.path.substringBeforeLast('\\')).await()
-        val file = directory.createFileAsync(result.path.substringAfterLast('\\'), CreationCollisionOption.ReplaceExisting).await()
-        FileIO.writeTextAsync(file, text).await()
-        result.path
-    }
-}
-
-@GallerySample(route = "StoragePickers", title = "Pick a folder.")
-internal fun storagePickFolderSample(
-    windowId: WindowId,
-    commitText: String,
-    startLocation: PickerLocationId,
-    view: PickerViewMode,
-) = suspend {
-    val picker = FolderPicker(windowId).apply {
-        commitButtonText = commitText
-        suggestedStartLocation = startLocation
-        viewMode = view
-    }
-    picker.pickSingleFolderAsync().await()
-}
-
-@GallerySample(route = "StoragePickers", title = "File thumbnail.")
-internal fun storageThumbnailSample(
-    file: StorageFile,
-    mode: ThumbnailMode,
-    requestedSize: UInt,
-): suspend () -> StorageItemThumbnail? = suspend {
-    // Dispose the returned thumbnail after reading its stream.
-    file.getThumbnailAsync(mode, requestedSize, ThumbnailOptions.UseCurrentScale).await()
 }

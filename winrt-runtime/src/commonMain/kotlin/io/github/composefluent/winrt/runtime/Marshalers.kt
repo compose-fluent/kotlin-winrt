@@ -597,7 +597,9 @@ object MarshalReferenceValueAdapter {
         pointerMarshaler(
             category = WinRTAbiCategory.INTERFACE,
             nullFromAbi = { adapter.projector(null) },
-            createMarshaler = { value -> value?.let(adapter::createOutputMarshaler) },
+            // CsWinRT Marshaler<T>.CreateMarshaler2 owns only a scoped input; FromManaged
+            // below independently detaches the reference transferred to an ABI caller.
+            createMarshaler = { value -> value?.let(adapter::createInputMarshaler) },
             getAbiPointer = { value ->
                 when (value) {
                     null -> PlatformAbi.nullPointer

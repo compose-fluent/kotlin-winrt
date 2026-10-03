@@ -1,0 +1,11 @@
+--- header
+Informational notification with logo and custom audio
+--- kotlin
+private var selectedAppNotificationSoundEvent = microsoft.windows.appnotifications.builder.AppNotificationSoundEvent.Default
+
+private fun ShowInformationalNotificationWithLogoButton_Click(sender: Any?, args: RoutedEventArgs) {
+    checkNotNull(microsoft.windows.appnotifications.AppNotificationManager.default).show(microsoft.windows.appnotifications.builder.AppNotificationBuilder()
+        .addText("Control Highlight: PersonPicture").addText("Use the PersonPicture control to display user avatars with initials or images.")
+        .setAppLogoOverride(windows.foundation.Uri("ms-appx:///Assets/ControlImages/PersonPicture.png"), microsoft.windows.appnotifications.builder.AppNotificationImageCrop.Circle)
+        .setAudioEvent(selectedAppNotificationSoundEvent).setTimeStamp(kotlin.time.Clock.System.now()).buildNotification())
+}

@@ -183,10 +183,11 @@ abstract class EventSourceState<T : Any> protected constructor(
             return false
         }
 
-        // Kotlin tracker references also increment ManagedComHostState's normal COM count,
-        // so one pinned managed-host probe covers both checks without dereferencing stale CCW pointers.
+        // CsWinRT EventSourceState.HasComReferences checks both independent counts.
+        // Resolve the managed host instead of dereferencing a possibly stale native delegate pointer.
         val countAfterRelease = WinRTInspectableComObject.tryProbeReferenceCount(reference.first) ?: return false
-        return countAfterRelease > reference.second
+        return countAfterRelease > reference.second ||
+            WinRTInspectableComObject.trackerReferenceCount(reference.first) > 0
     }
 
     override fun close() {

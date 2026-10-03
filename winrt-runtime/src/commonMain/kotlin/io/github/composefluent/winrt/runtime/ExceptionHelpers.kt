@@ -108,6 +108,10 @@ object ExceptionHelpers {
     fun hResultFromException(error: Throwable): HResult = platformHResultFromThrowable(error)
 
     fun setErrorInfo(error: Throwable) {
+        if (FeatureSwitches.traceCcw) {
+            println("winrt-ccw: exception crossing the ABI boundary")
+            error.printStackTrace()
+        }
         if (!PlatformRuntime.isWindows) {
             return
         }

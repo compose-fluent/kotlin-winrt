@@ -1,0 +1,28 @@
+--- header
+Binding to a view model
+--- xaml
+<TextBlock Text="Title:" FontWeight="SemiBold" />
+<TextBlock Text="{Binding Title}" FontSize="16" />
+
+<TextBlock Text="Description:" FontWeight="SemiBold" />
+<TextBlock Text="{Binding Description}" FontSize="16" />
+--- kotlin
+val ViewModel: ExampleViewModel = ExampleViewModel()
+
+override fun initializeComponent() {
+    super.initializeComponent()
+    dataContext = ViewModel
+}
+
+internal class ExampleViewModel : INotifyPropertyChanged {
+    private val handlers = mutableListOf<PropertyChangedEventHandler>()
+    var Title: String = "Welcome to WinUI 3"
+        set(value) { if (field != value) { field = value; changed("Title") } }
+    var Description: String = "This is an example of binding to a view model."
+        set(value) { if (field != value) { field = value; changed("Description") } }
+    var NullString: String? = ""
+        set(value) { if (field != value) { field = value; changed("NullString") } }
+    override fun addPropertyChanged(handler: PropertyChangedEventHandler) { handlers.add(handler) }
+    override fun removePropertyChanged(handler: PropertyChangedEventHandler) { handlers.remove(handler) }
+    private fun changed(name: String) { handlers.toList().forEach { it(this, PropertyChangedEventArgs(name)) } }
+}

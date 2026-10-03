@@ -1,0 +1,10 @@
+--- header
+Play Specific System Sound
+--- Kotlin
+private fun Button_Click(sender: Any?, args: RoutedEventArgs) {
+    val index = checkNotNull(sender).asWinRT<Button>().tag?.toString()?.toIntOrNull() ?: return
+    val kind = listOf(ElementSoundKind.Focus, ElementSoundKind.Invoke, ElementSoundKind.Show,
+        ElementSoundKind.Hide, ElementSoundKind.MovePrevious, ElementSoundKind.MoveNext, ElementSoundKind.GoBack)
+        .getOrNull(index) ?: return
+    ElementSoundPlayer.play(kind)
+}

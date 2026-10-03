@@ -2020,7 +2020,7 @@ internal fun appxGeneratedPackageName(mainClass: String): String {
     return packageName.takeIf(String::isNotBlank) ?: "io.github.composefluent.winrt.appx"
 }
 
-private fun appxResourceRoots(project: Project, targetSourceSetNames: Iterable<String>): List<Path> {
+internal fun appxResourceRoots(project: Project, targetSourceSetNames: Iterable<String>): List<Path> {
     val kotlin = project.extensions.findByType(KotlinMultiplatformExtension::class.java)
     val sourceSetsByName = kotlin?.sourceSets?.associateBy { sourceSet -> sourceSet.name }.orEmpty()
     val visited = linkedSetOf<String>()
@@ -2297,6 +2297,7 @@ private fun configureWinRTGeneration(
                 },
             )
             task.sourceRoots.from(authoringSourceRoots)
+            task.sourceRootOwners.set(project.provider { winRTSourceRootOwners(project) })
             task.scannerClasspath.from(compilerPluginClasspath)
             task.scannerClasspath.from(kotlinWinRTAuthoringScannerRuntimeClasspath(project))
             task.scannerJvmArgs.set(
@@ -2446,7 +2447,13 @@ private fun configureWinRTGeneration(
             project,
             project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"),
         )
-        addGeneratedSourcesToKotlinMultiplatformWinuiMain(project, generatedAuthoringSources)
+        // The source scanner retains the original fragment on every candidate.
+        // TypeDetails for a JVM-only class must remain in that JVM fragment.
+        project.afterEvaluate {
+            winRTMainSourceSets(project).forEach { sourceSet ->
+                sourceSet.kotlin.srcDir(generatedAuthoringSources.map { it.dir("sourceSets/${sourceSet.name}") })
+            }
+        }
         configureKotlinWinRTCompilerPluginClasspath(project)
         configureKotlinWinRTCompilerPluginOptions(
             project = project,
@@ -2505,6 +2512,13 @@ private fun configureWinRTGeneration(
             task.dependsOn(generateTask)
         })
     }
+
+    configureWinRTXamlPipeline(
+        project, extension, authoringSourceRoots,
+        prepareMetadataTask.flatMap { it.outputDirectory.file("kotlin-winrt-metadata/resolved-sources.tsv") },
+        prepareMetadataTask.flatMap { it.outputDirectory.file("kotlin-winrt-authoring/metadata-index.tsv") },
+        authoringCandidatesTask, compilerPluginClasspath,
+    )
 
     // KGP requests prepareKotlinIdeaImport during IDE import. Task-backed metadata must be
     // prepared through Gradle's dependency graph, never by invoking producer actions here.
@@ -3056,6 +3070,9 @@ private fun registerWinRTAuthoredCandidateValidation(
         Action<GenerateWinRTCompilerAuthoredTypeDetailsTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Regenerates authored TypeDetails from compiler IR authored candidates for validation."
+            task.sourceCandidates.from(generatedSources.map { directory ->
+                directory.file("kotlin-winrt-authoring/authored-candidates.tsv")
+            })
             task.outputDirectory.set(
                 compilerAuthoringTypeDetailsOutputDirectory(project, compileTaskName),
             )
@@ -3617,7 +3634,7 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
         .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
 }
 
-private fun kotlinWinRTAuthoringScannerRuntimeClasspath(project: Project): Any {
+internal fun kotlinWinRTAuthoringScannerRuntimeClasspath(project: Project): Any {
     val kotlinCompilerVersion = project.getKotlinPluginVersion()
     val compilerRuntime = listOf(
         "org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment",
@@ -4715,6 +4732,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
         authoringTargetArtifactName
     }
     project.tasks.withType(KotlinNativeCompile::class.java).configureEach(Action<KotlinNativeCompile> { task ->
+        if (isXamlSemanticTask(task.name)) return@Action
         val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
         addWinRTCompilerPluginOptions(
             project = project,
@@ -4733,7 +4751,7 @@ private fun configureKotlinWinRTCompilerPluginOptions(
         )
     })
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
-        if (taskNameOwnsStaticProjectionSupport(task.name)) {
+        if (taskNameOwnsStaticProjectionSupport(task.name) || isXamlSemanticTask(task.name)) {
             return@Action
         }
         jvmToolchainVersion?.let { version ->
@@ -4824,7 +4842,7 @@ private fun addWinRTCompilerPluginOptions(
     )
 }
 
-private fun withoutKotlinWinRTCompilerPluginOptions(args: List<String>): List<String> {
+internal fun withoutKotlinWinRTCompilerPluginOptions(args: List<String>): List<String> {
     val filtered = ArrayList<String>(args.size)
     var index = 0
     while (index < args.size) {

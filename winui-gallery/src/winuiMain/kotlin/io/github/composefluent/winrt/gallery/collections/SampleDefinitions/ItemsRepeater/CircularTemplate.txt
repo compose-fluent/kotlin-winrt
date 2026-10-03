@@ -1,0 +1,16 @@
+<DataTemplate x:Key="CircularTemplate" x:DataType="local:Bar">
+            <Grid>
+                <Ellipse
+                    Width="{x:Bind MaxDiameter}"
+                    Height="{x:Bind MaxDiameter}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Fill="{ThemeResource SystemChromeLowColor}" />
+                <Ellipse
+                    Width="{x:Bind Diameter}"
+                    Height="{x:Bind Diameter}"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Fill="{ThemeResource SystemAccentColor}" />
+            </Grid>
+        </DataTemplate>

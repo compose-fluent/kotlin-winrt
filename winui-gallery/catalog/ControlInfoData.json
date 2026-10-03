@@ -931,7 +931,7 @@
           ],
           "ApiNamespace": "Microsoft.UI.Xaml.Controls",
           "Subtitle": "A control that presents an inline list of items that the user can select from.",
-          "ImagePath": "",
+          "ImagePath": "ms-appx:///Assets/ControlImages/ListView.png",
           "Description": "Use a ListBox when you want the options to be visible all the time or when users can select more than one option at a time. ListBox controls are always open, which allows several items to be displayed to the user without user interaction.",
           "SourcePath": "/CommonStyles/ListBox_themeresources.xaml",
           "Docs": [
@@ -3617,7 +3617,7 @@
           "Title": "Multiple windows",
           "ApiNamespace": "Microsoft.UI.Xaml",
           "Subtitle": "An example showing the creation of single-threaded top level Xaml windows.",
-          "ImagePath": "",
+          "ImagePath": "ms-appx:///Assets/ControlImages/Windowing.png",
           "Description": "With Windows App SDK 1.0 we are allowing creation of single-threaded multiple top level Xaml windows in Desktop apps",
           "Docs": [
             {

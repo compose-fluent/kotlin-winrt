@@ -1,0 +1,8 @@
+<DataTemplate x:Key="TextTemplate" x:DataType="local:CustomDataObject">
+            <StackPanel Width="240" Orientation="Horizontal">
+                <TextBlock
+                    Margin="8,0,0,0"
+                    Style="{StaticResource TitleTextBlockStyle}"
+                    Text="{x:Bind Title}" />
+            </StackPanel>
+        </DataTemplate>

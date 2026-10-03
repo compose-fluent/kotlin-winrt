@@ -89,10 +89,17 @@ internal inline fun <R> PlatformWeakReferenceLock.withWeakReferenceLock(block: (
 }
 
 internal class NativeWeakReferenceHandle internal constructor(
-    internal val reference: WeakReferenceReference,
+    owner: IWinRTObject,
 ) : AutoCloseable {
+    // CsWinRT WeakReference stores a shared IWeakReference RCW. This handle owns only
+    // its managed reference; the RCW's ComPtr releases after its last managed owner dies.
+    private var sharedOwner: IWinRTObject? = owner
+
+    fun resolve(interfaceId: Guid): IUnknownReference? =
+        sharedOwner?.resolveProjectedWeakReference(interfaceId)
+
     override fun close() {
-        reference.close()
+        sharedOwner = null
     }
 }
 
@@ -101,7 +108,7 @@ internal object WeakReferenceInterop {
         val winrtObject = target as? IWinRTObject
         if (winrtObject?.hasUnwrappableNativeObject == true) {
             return try {
-                winrtObject.nativeObject.tryGetWeakReference()?.let(::NativeWeakReferenceHandle)
+                winrtObject.nativeObject.tryGetProjectedWeakReference()?.let(::NativeWeakReferenceHandle)
             } finally {
                 winRTKeepAlive(target)
             }
@@ -109,12 +116,12 @@ internal object WeakReferenceInterop {
 
         val unwrapped = ComWrappersSupport.tryUnwrapObject(target) ?: return null
         return unwrapped.use { reference ->
-            reference.tryGetWeakReference()?.let(::NativeWeakReferenceHandle)
+            reference.tryGetProjectedWeakReference()?.let(::NativeWeakReferenceHandle)
         }
     }
 
     fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? =
-        reference.reference.resolve(IID.IUnknown)?.use { resolved ->
+        reference.resolve(IID.IUnknown)?.use { resolved ->
             ComWrappersSupport.createRcwForComObject(resolved.pointer.asRawAddress())
         }
 }

@@ -4,6 +4,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
@@ -34,10 +35,25 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataIndex: RegularFileProperty
 
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val xamlDeclarations: RegularFileProperty
+
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compilationXamlDeclarations: ConfigurableFileCollection
+
+    @get:Input abstract val sourceRootOwners: MapProperty<String, String>
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceRoots: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val xamlSupportSources: ConfigurableFileCollection
 
     @get:Classpath
     abstract val scannerClasspath: ConfigurableFileCollection
@@ -50,6 +66,7 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
 
     init {
         scannerJvmArgs.convention(emptyList())
+        sourceRootOwners.convention(emptyMap())
     }
 
     @TaskAction
@@ -57,9 +74,8 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
         val output = outputFile.get().asFile.toPath().toAbsolutePath().normalize()
         Files.createDirectories(output.parent)
         val temporaryOutput = output.resolveSibling(".${output.fileName}.tmp")
-        val roots = sourceRoots.files
+        val roots = (sourceRoots.files.filterNot { isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it.toPath()) } + xamlSupportSources.files)
             .map { file -> file.toPath().toAbsolutePath().normalize() }
-            .filterNot(::isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot)
             .filter { path -> Files.exists(path) }
         if (roots.isEmpty()) {
             GradleFileOperations.writeStringIfChanged(output, "")
@@ -79,6 +95,13 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
                         add(metadataIndex.get().asFile.absolutePath)
                         add("--output")
                         add(temporaryOutput.toString())
+                        (listOfNotNull(xamlDeclarations.orNull?.asFile) + compilationXamlDeclarations.files).distinct().sortedBy { it.absolutePath }.forEach { declarations ->
+                            add("--xaml-declarations")
+                            add(declarations.absolutePath)
+                        }
+                        sourceRootOwners.get().toSortedMap().forEach { (root, owner) ->
+                            add("--source-root-owner"); add(root); add(owner)
+                        }
                         roots.forEach { root ->
                             add("--source-root")
                             add(root.toString())

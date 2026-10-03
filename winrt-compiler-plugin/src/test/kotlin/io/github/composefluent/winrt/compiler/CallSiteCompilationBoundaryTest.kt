@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.runtime.Guid
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.tree.ClassNode
 import org.jetbrains.org.objectweb.asm.tree.MethodInsnNode
@@ -95,6 +96,109 @@ class CallSiteCompilationBoundaryTest {
             """.trimIndent(), library, friend,
                 expected = if (friend) ExitCode.OK else ExitCode.COMPILATION_ERROR)
         }
+    }
+
+    @Test
+    fun jvm_runtime_class_outputs_keep_the_existing_owned_fallback() = inDirectory { root ->
+        // CsWinRT uses the declared class FromAbi. The new Native default-IID tag must not
+        // change JVM's existing owning output path, including nullable returns and OUT values.
+        val library = compile(root, "default-interface-library", """
+            package boundary.library
+            import io.github.composefluent.winrt.runtime.*
+            class Widget(override val nativeObject: ComObjectReference) : IWinRTObject {
+                companion object Metadata {
+                    val DEFAULT_INTERFACE_IID = Guid("11111111-2222-3333-4444-555555555555")
+                    val TYPE_HANDLE = WinRTTypeHandle("boundary.library.Widget", DEFAULT_INTERFACE_IID)
+                    fun wrap(reference: InspectableReference): Widget = Widget(reference)
+                }
+            }
+        """.trimIndent())
+        val consumer = compile(root, "default-interface-consumer", """
+            package boundary.consumer
+            import boundary.library.Widget
+            import io.github.composefluent.winrt.runtime.*
+            @WinRTProjectionCallSite
+            fun read(receiver: ComObjectReference, slot: Int): Widget? = TODO()
+            @WinRTProjectionCallSite
+            fun readOut(receiver: ComObjectReference, slot: Int,
+                @WinRTProjectionParameter(direction = WinRTCallSiteParameterDirection.OUT)
+                result: WinRTOut<Widget?>): Unit = TODO()
+        """.trimIndent(), library)
+        val methods = consumer.walkTopDown().filter { it.extension == "class" }.flatMap { file ->
+            val node = ClassNode().apply { ClassReader(file.readBytes()).accept(this, 0) }
+            node.methods.asSequence()
+        }.toList()
+        for (name in listOf("read", "readOut")) {
+            val calls = methods.single { it.name == name }.instructions.toArray()
+                .filterIsInstance<MethodInsnNode>()
+            val handle = calls.indexOfFirst {
+                it.owner == "boundary/library/Widget\$Metadata" && it.name == "getTYPE_HANDLE"
+            }
+            val iid = calls.indexOfFirst {
+                it.owner == "io/github/composefluent/winrt/runtime/WinRTTypeHandle" &&
+                    it.name == "getInterfaceId"
+            }
+            val owner = calls.indexOfFirst {
+                it.owner == "io/github/composefluent/winrt/runtime/InspectableReference" &&
+                    it.name == "<init>"
+            }
+            val wrap = calls.indexOfFirst {
+                it.owner == "boundary/library/Widget\$Metadata" && it.name == "wrap"
+            }
+            assertEquals(name, -1, handle)
+            assertEquals(name, -1, iid)
+            assertTrue(name, owner >= 0 && wrap > owner)
+            assertEquals(name, 1, calls.count {
+                it.owner == "io/github/composefluent/winrt/runtime/InspectableReference" &&
+                    it.name == "<init>"
+            })
+        }
+    }
+
+    @Test
+    fun specialized_output_codec_precedes_runtime_class_default_iid() = inDirectory { root ->
+        // CsWinRT keeps the type's registered marshaler ahead of ordinary class projection.
+        val library = compile(root, "specialized-default-library", """
+            package boundary.library
+            import io.github.composefluent.winrt.runtime.*
+            class Widget(override val nativeObject: ComObjectReference) : IWinRTObject {
+                companion object Metadata {
+                    val DEFAULT_INTERFACE_IID = Guid("11111111-2222-3333-4444-555555555555")
+                    val TYPE_HANDLE = WinRTTypeHandle("boundary.library.Widget", DEFAULT_INTERFACE_IID)
+                    fun wrap(reference: InspectableReference): Widget = Widget(reference)
+                }
+            }
+            @WinRTProjectionAbiType(name = "boundary.library.Widget",
+                kind = WinRTProjectionAbiTypeKind.PROJECTION,
+                reference = WinRTProjectionAbiReferenceKind.INSPECTABLE)
+            object Codec {
+                @WinRTProjectionAbiCodec(role = WinRTProjectionAbiCodecRole.FROM_ABI,
+                    type = "boundary.library.Widget", consumesOwnedAbi = true)
+                fun decode(pointer: RawAddress): Widget = Widget(
+                    InspectableReference(PlatformAbi.toRawComPtr(pointer), Widget.Metadata.DEFAULT_INTERFACE_IID))
+            }
+        """.trimIndent())
+        val consumer = compile(root, "specialized-default-consumer", """
+            package boundary.consumer
+            import boundary.library.Widget
+            import io.github.composefluent.winrt.runtime.*
+            @WinRTProjectionCallSite
+            fun read(receiver: ComObjectReference, slot: Int): Widget = TODO()
+        """.trimIndent(), library)
+        val methods = consumer.walkTopDown().filter { it.extension == "class" }.flatMap { file ->
+            val node = ClassNode().apply { ClassReader(file.readBytes()).accept(this, 0) }
+            node.methods.asSequence()
+        }.toList()
+        val calls = methods.single { it.name == "read" }.instructions.toArray()
+            .filterIsInstance<MethodInsnNode>()
+        assertEquals(1, calls.count { it.owner == "boundary/library/Codec" && it.name.startsWith("decode") })
+        assertEquals(0, calls.count {
+            it.owner == "boundary/library/Widget\$Metadata" &&
+                (it.name == "wrap" || it.name == "getTYPE_HANDLE")
+        })
+        assertEquals(0, calls.count {
+            it.owner == "io/github/composefluent/winrt/runtime/InspectableReference" && it.name == "<init>"
+        })
     }
 
     @Test

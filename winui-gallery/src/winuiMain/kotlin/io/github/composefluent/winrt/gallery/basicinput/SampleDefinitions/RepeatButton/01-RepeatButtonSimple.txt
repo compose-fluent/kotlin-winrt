@@ -1,0 +1,17 @@
+--- Header
+A simple RepeatButton.
+
+--- Xaml
+<RepeatButton x:Name="repeatButton" Content="Click and hold" Click="onRepeatClick" />
+
+
+--- Kotlin
+private var clicks = 0
+
+private fun onRepeatClick(sender: Any?, args: RoutedEventArgs) {
+    output.text = "Number of clicks: ${++clicks}"
+}
+
+private fun onDisableClick(sender: Any?, args: RoutedEventArgs) {
+    repeatButton.isEnabled = disableRepeat.isChecked != true
+}

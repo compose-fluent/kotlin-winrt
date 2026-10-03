@@ -1,0 +1,20 @@
+--- header
+BreadCrumbBar Control with Custom DataTemplate
+--- xaml
+<BreadcrumbBar x:Name="BreadcrumbBar2">
+    <BreadcrumbBar.ItemTemplate>
+        <DataTemplate x:DataType="l:Folder">
+            <BreadcrumbBarItem Content="{Binding}" AutomationProperties.Name="{Binding Name}">
+                <BreadcrumbBarItem.ContentTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Name}" />
+                    </DataTemplate>
+                </BreadcrumbBarItem.ContentTemplate>
+            </BreadcrumbBarItem>
+        </DataTemplate>
+    </BreadcrumbBar.ItemTemplate>
+</BreadcrumbBar>
+--- kotlin
+private fun BreadcrumbBar2_ItemClicked(sender: BreadcrumbBar, args: BreadcrumbBarItemClickedEventArgs) {
+        for (index in Folders.lastIndex downTo args.index.toInt() + 1) Folders.removeAt(index)
+    }

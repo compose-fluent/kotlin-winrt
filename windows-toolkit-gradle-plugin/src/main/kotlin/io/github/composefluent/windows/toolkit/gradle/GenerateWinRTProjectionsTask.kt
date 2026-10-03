@@ -80,6 +80,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val authoringTypeDetailsOutputDirectory: DirectoryProperty
 
+    @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NONE)
+    abstract val xamlRegistrars: RegularFileProperty
+
     @get:Internal
     abstract val legacyOutputDirectories: ConfigurableFileCollection
 
@@ -227,6 +230,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
         }.submit(GenerateWinRTProjectionsWorkAction::class.java) { parameters ->
             parameters.outputDirectory.set(outputDirectory)
             parameters.authoringTypeDetailsOutputDirectory.set(authoringTypeDetailsOutputDirectory)
+            parameters.xamlRegistrars.set(xamlRegistrars)
             parameters.legacyOutputDirectories.from(legacyOutputDirectories)
             parameters.metadataInputs.set(metadataInputs)
             parameters.metadataInputFiles.from(metadataInputFiles)
@@ -265,6 +269,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
 internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val outputDirectory: DirectoryProperty
     val authoringTypeDetailsOutputDirectory: DirectoryProperty
+    val xamlRegistrars: RegularFileProperty
     val legacyOutputDirectories: ConfigurableFileCollection
     val emitJvmAuthoringHostExports: Property<Boolean>
     val emitProjectionSources: Property<Boolean>
@@ -385,7 +390,10 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                 )
                 KotlinWinRTAuthoringCandidateFile.read(candidatesFile)
             }
-        val hasPreparedStaticSources = parameters.preparedStaticSourceDirectory.orNull
+        // Prepared metadata can cache SDK source blueprints even when this module
+        // imports metadata solely for XAML schemas. Only materialize declarations
+        // that this module will compile; otherwise its identity falsely owns them.
+        val hasPreparedStaticSources = parameters.emitProjectionSources.get() && parameters.preparedStaticSourceDirectory.orNull
             ?.asFile
             ?.toPath()
             ?.let { preparedRoot -> materializeCachedPreparedSources(preparedRoot, generatedRoot) } == true
@@ -484,20 +492,23 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         writeAuthoringTypeDetailsRegistrarSupport(
             generatedRoot = generatedRoot,
             assemblyName = parameters.authoringAssemblyName.get(),
+            candidates = authoringCandidates,
         )
     }
 
     private fun writeAuthoringTypeDetailsRegistrarSupport(
         generatedRoot: Path,
         assemblyName: String,
+        candidates: List<KotlinWinRTAuthoredTypeCandidate>,
     ) {
         val supportRoot = generatedRoot.resolve("kotlin-winrt-support")
         Files.createDirectories(supportRoot)
-        val registrarClassName = "io.github.composefluent.winrt.projections.support." +
-            authoringTypeDetailsRegistrarName(assemblyName)
+        val registrarClassNames = candidates.map { it.sourceSetName }.distinct().ifEmpty { listOf(null) }.map {
+            "io.github.composefluent.winrt.projections.support." + authoringTypeDetailsRegistrarName(assemblyName, it)
+        }.sorted()
         GradleFileOperations.writeStringIfChanged(
             supportRoot.resolve("authoring-type-details-registrars.tsv"),
-            "className\n$registrarClassName\n",
+            (listOf("className") + registrarClassNames).joinToString("\n", postfix = "\n"),
         )
         val manifest = supportRoot.resolve("compiler-support.tsv")
         val existing = if (Files.isRegularFile(manifest)) {
@@ -505,19 +516,23 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         } else {
             listOf("kind\tclassName\tsourceFile\tentries\towner")
         }
-        val row = listOf(
+        val newRows = registrarClassNames.map { registrarClassName -> listOf(
             "authoring-type-details-registrar",
             registrarClassName,
             "authoring-type-details-registrars.tsv",
-            "1",
+            registrarClassNames.size.toString(),
             "",
-        ).joinToString("\t")
-        val rows = (existing.drop(1) + row)
+        ).joinToString("\t") }
+        val rows = (existing.drop(1).filterNot { it.startsWith("authoring-type-details-registrar\t") } + newRows)
             .distinct()
             .sorted()
+        val xamlNames = parameters.xamlRegistrars.orNull?.asFile?.readLines()?.drop(1)?.filter(String::isNotBlank).orEmpty()
+        val xamlRows = xamlNames.map { listOf("xaml-type-registrar", it, "xaml-type-registrars.tsv", xamlNames.size.toString(), "").joinToString("\t") }
+        if (xamlNames.isNotEmpty()) GradleFileOperations.writeStringIfChanged(supportRoot.resolve("xaml-type-registrars.tsv"),
+            (listOf("className") + xamlNames).joinToString("\n", postfix = "\n"))
         GradleFileOperations.writeStringIfChanged(
             manifest,
-            (listOf(existing.firstOrNull() ?: "kind\tclassName\tsourceFile\tentries\towner") + rows)
+            (listOf(existing.firstOrNull() ?: "kind\tclassName\tsourceFile\tentries\towner") + rows.filterNot { it.startsWith("xaml-type-registrar\t") } + xamlRows)
                 .joinToString(separator = "\n", postfix = "\n"),
         )
     }
@@ -627,75 +642,9 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         GradleFileOperations.writeStringIfChanged(path, lines.joinToString(separator = "\n", postfix = "\n"))
     }
 
-    private fun readPreparedMetadataCache(path: Path): WinRTMetadataCache {
-        val lines = Files.readAllLines(path)
-        require(lines.firstOrNull() == PREPARED_METADATA_MANIFEST_HEADER) {
-            "Prepared WinRT metadata manifest $path has an unexpected header."
-        }
-        val resolvedFiles = mutableListOf<io.github.composefluent.winrt.metadata.WinRTResolvedMetadataFile>()
-        val sdkSelections = mutableListOf<io.github.composefluent.winrt.metadata.WinRTWindowsSdkSelection>()
-        lines.drop(1).filter(String::isNotBlank).forEachIndexed { index, line ->
-            val parts = line.split('\t')
-            when (parts.firstOrNull()) {
-                "file" -> {
-                    require(parts.size == 4) {
-                        "Prepared WinRT metadata manifest $path has malformed file row ${index + 2}."
-                    }
-                    val sourceKind = runCatching { WinRTMetadataSourceKind.valueOf(parts[1]) }.getOrElse {
-                        throw GradleException("Prepared WinRT metadata manifest $path has unknown source kind '${parts[1]}'.")
-                    }
-                    val sourceDescription = decodePreparedMetadataValue(parts[2])
-                    val file = Path.of(decodePreparedMetadataValue(parts[3])).toAbsolutePath().normalize()
-                    require(Files.isRegularFile(file)) {
-                        "Prepared WinRT metadata manifest $path references missing metadata file $file."
-                    }
-                    resolvedFiles += io.github.composefluent.winrt.metadata.WinRTResolvedMetadataFile(
-                        file = file,
-                        sourceKind = sourceKind,
-                        sourceDescription = sourceDescription,
-                    )
-                }
-                "sdk" -> {
-                    require(parts.size == 3) {
-                        "Prepared WinRT metadata manifest $path has malformed SDK row ${index + 2}."
-                    }
-                    val contracts = if (parts[2].isBlank()) {
-                        emptyList()
-                    } else {
-                        parts[2].split(';').map { encodedContract ->
-                            val separator = encodedContract.indexOf('=')
-                            require(separator > 0 && separator < encodedContract.lastIndex) {
-                                "Prepared WinRT metadata manifest $path has malformed SDK contract row ${index + 2}."
-                            }
-                            io.github.composefluent.winrt.metadata.WinRTWindowsSdkContract(
-                                name = decodePreparedMetadataValue(encodedContract.substring(0, separator)),
-                                version = decodePreparedMetadataValue(encodedContract.substring(separator + 1)),
-                            )
-                        }
-                    }
-                    sdkSelections += io.github.composefluent.winrt.metadata.WinRTWindowsSdkSelection(
-                        version = parts[1],
-                        contracts = contracts,
-                    ).normalized()
-                }
-                else -> throw GradleException(
-                    "Prepared WinRT metadata manifest $path has unknown row kind '${parts.firstOrNull()}'.",
-                )
-            }
-        }
-        val files = resolvedFiles.map { it.file }
-        return WinRTMetadataCache(
-            files = files,
-            resolvedFiles = resolvedFiles,
-            windowsSdkSelections = sdkSelections,
-        )
-    }
-
     private fun encodePreparedMetadataValue(value: String): String =
         Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(StandardCharsets.UTF_8))
 
-    private fun decodePreparedMetadataValue(value: String): String =
-        String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
 
     private fun containsKotlinSource(root: Path): Boolean {
         if (Files.isRegularFile(root)) {
@@ -773,11 +722,7 @@ internal fun dependencyProjectedTypeNames(
     identityFiles
         .flatMap { identityFile ->
             dependencyProjectedTypeNames(model, readProjectionSurfaceIdentity(identityFile)) +
-                readAuthoringMetadataIndexRows(identityFile).mapNotNull { row ->
-                    parseAuthoringMetadataIndexRows(listOf(row), identityFile.absolutePath).values
-                        .firstOrNull()
-                        ?.qualifiedName
-                } +
+                readDependencyAuthoredTypeNames(identityFile) +
                 readAuthoredHostManifestRecords(identityFile)
                     .flatMap { record -> record.activatableClasses + record.activatableClassTargets.keys }
         }
@@ -789,7 +734,7 @@ internal fun dependencyProjectionSurfaceTypeNames(
     identityFiles
         .flatMap { identityFile ->
             val identity = readProjectionSurfaceIdentity(identityFile)
-            identity.includeTypes + identity.currentShapeProjectedTypes()
+            identity.includeTypes + identity.currentShapeProjectedTypes() + readDependencyAuthoredTypeNames(identityFile)
         }
         .distinct()
         .sorted()

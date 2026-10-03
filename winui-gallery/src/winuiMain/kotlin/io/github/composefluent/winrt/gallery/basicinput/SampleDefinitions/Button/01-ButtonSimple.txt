@@ -1,0 +1,15 @@
+--- Header
+A simple Button with text content.
+
+--- Xaml
+<Button x:Name="standardButton" AutomationProperties.Name="Standard XAML" Content="Standard XAML button" Click="onStandardClick" />
+
+
+--- Kotlin
+private fun onStandardClick(sender: Any?, args: RoutedEventArgs) {
+    textOutput.text = "You clicked: Standard XAML button"
+}
+
+private fun onDisableClick(sender: Any?, args: RoutedEventArgs) {
+    standardButton.isEnabled = disableButton.isChecked != true
+}

@@ -1,0 +1,6 @@
+--- header
+Basic notification
+--- kotlin
+private fun ShowNotificationButton_Click(sender: Any?, args: RoutedEventArgs) {
+    checkNotNull(microsoft.windows.appnotifications.AppNotificationManager.default).show(microsoft.windows.appnotifications.builder.AppNotificationBuilder().addText("Welcome to WinUI 3 Gallery").addText("Explore interactive samples and discover the power of modern Windows UI.").buildNotification())
+}

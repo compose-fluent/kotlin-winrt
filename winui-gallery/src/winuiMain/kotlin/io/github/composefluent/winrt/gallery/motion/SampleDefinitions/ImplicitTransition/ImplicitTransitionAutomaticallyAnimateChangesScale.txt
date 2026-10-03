@@ -1,0 +1,22 @@
+--- header
+Automatically animate changes to Scale
+--- xaml
+<!-- Automatically animate changes to Scale -->
+<Rectangle x:Name="rectangle" Width="50" Height="50" Scale="1,1,1" >
+    <Rectangle.ScaleTransition>
+        <Vector3Transition />
+    </Rectangle.ScaleTransition>
+</Rectangle>
+--- kotlin
+ScaleRectangle.scaleTransition = Vector3Transition()
+
+private fun EnsureValueIsNumber(box: NumberBox): Float { if (box.value.isNaN()) box.value = 0.0; return box.value.toFloat() }
+
+private fun Components(x: CheckBox, y: CheckBox, z: CheckBox): Vector3TransitionComponents =
+    (if (x.isChecked == true) Vector3TransitionComponents.X else Vector3TransitionComponents(0u)) or
+    (if (y.isChecked == true) Vector3TransitionComponents.Y else Vector3TransitionComponents(0u)) or
+    (if (z.isChecked == true) Vector3TransitionComponents.Z else Vector3TransitionComponents(0u))
+
+private fun ApplyScale(value: Float) { checkNotNull(ScaleRectangle.scaleTransition).components = Components(ScaleX, ScaleY, ScaleZ); ScaleRectangle.scale = windows.foundation.numerics.Vector3(value, value, value); ScaleValue.Value = value; announce(ScaleBtn, "Rectangle scaled by $value points", "RectangleChangedNotificationActivityId") }
+
+private fun ScaleButton_Click(sender: Any?, args: RoutedEventArgs) { ApplyScale(sender?.asWinRT<Button>()?.tag?.toString()?.toFloatOrNull() ?: EnsureValueIsNumber(ScaleNumberBox)) }

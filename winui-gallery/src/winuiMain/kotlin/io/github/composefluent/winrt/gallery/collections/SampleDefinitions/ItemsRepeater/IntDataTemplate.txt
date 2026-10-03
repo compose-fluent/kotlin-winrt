@@ -1,0 +1,10 @@
+<DataTemplate x:Key="IntDataTemplate" x:DataType="x:Int32">
+            <Grid Margin="10" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
+                <TextBlock
+                    Padding="10"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource HeaderTextBlockStyle}"
+                    Text="{x:Bind}" />
+            </Grid>
+        </DataTemplate>

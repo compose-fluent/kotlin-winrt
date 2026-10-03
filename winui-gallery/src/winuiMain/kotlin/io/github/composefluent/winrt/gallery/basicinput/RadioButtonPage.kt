@@ -1,32 +1,32 @@
 package io.github.composefluent.winrt.gallery.basicinput
 
-import io.github.composefluent.winrt.gallery.*
-import microsoft.ui.xaml.*
-import microsoft.ui.xaml.controls.*
-import microsoft.ui.xaml.controls.primitives.*
-import microsoft.ui.xaml.media.SolidColorBrush
-import microsoft.ui.xaml.shapes.Rectangle
-import microsoft.ui.text.MarkerType
-import windows.foundation.Uri
+import io.github.composefluent.winrt.gallery.GalleryPage
+import io.github.composefluent.winrt.gallery.brush
+import io.github.composefluent.winrt.runtime.asWinRT
+import microsoft.ui.xaml.RoutedEventArgs
+import microsoft.ui.xaml.controls.Page
+import microsoft.ui.xaml.controls.RadioButton
 
 @GalleryPage(route = "RadioButton", title = "RadioButton", group = "BasicInput", order = 10)
-internal fun radioButtonPage() = ExamplePage {
-    val output = label("Select an option.")
-    example("A group of RadioButtons.", radioButtonGroupSample(output), output = output)
-    example("RadioButtons with string items.", radioButtonStringItemsSample())
-}
+internal class RadioButtonPage : Page() {
+    override fun initializeComponent() {
+        super.initializeComponent()
+    }
 
-@GallerySample(route = "RadioButton", title = "A group of RadioButtons.")
-internal fun radioButtonGroupSample(output: TextBlock) = RadioButtons().apply {
-    header = "Options:"
-    (1..3).forEach { number -> items.add(RadioButton().apply {
-        content = "Option $number"; named(this, "Option${number}RadioButton")
-        click.add { _, _ -> output.text = "You selected Option $number" }
-    }) }
-}
+    private fun RadioButton_Checked(sender: Any?, args: RoutedEventArgs) {
+        val selected = checkNotNull(sender).asWinRT<RadioButton>().content
+        Control1Output.text = "You selected $selected"
+    }
 
-@GallerySample(route = "RadioButton", title = "RadioButtons with string items.")
-internal fun radioButtonStringItemsSample() = StackPanel().apply { this.spacing = 8.0; val preview = Border().apply { height = 50.0; borderThickness = inset(10.0); background = brush(0x008000u); borderBrush = brush(0xFFD700u) }
-        children.add(RadioButtons().apply { this.header = "Background"; listOf("Green", "Yellow", "White").forEach { this.items.add(it) }; this.selectedIndex = 0 }.also { galleryRadioButtons -> galleryRadioButtons.selectionChanged.add { _, _ -> val gallerySelectedIndex = galleryRadioButtons.selectedIndex; if (gallerySelectedIndex in 0 until galleryRadioButtons.items.size) { val it = gallerySelectedIndex; preview.background = brush(listOf(0x008000u, 0xFFFF00u, 0xFFFFFFu)[it]) } } }.apply { maxColumns = 3 })
-        children.add(RadioButtons().apply { this.header = "Border"; listOf("Green", "Yellow", "White").forEach { this.items.add(it) }; this.selectedIndex = 1 }.also { galleryRadioButtons -> galleryRadioButtons.selectionChanged.add { _, _ -> val gallerySelectedIndex = galleryRadioButtons.selectedIndex; if (gallerySelectedIndex in 0 until galleryRadioButtons.items.size) { val it = gallerySelectedIndex; preview.borderBrush = brush(listOf(0x006400u, 0xFFD700u, 0xFFFFFFu)[it]) } } }.apply { maxColumns = 3 })
-        children.add(preview) }
+    private fun BackgroundColor_SelectionChanged(sender: Any?, args: microsoft.ui.xaml.controls.SelectionChangedEventArgs) {
+        val colors = listOf(0x008000u, 0xFFFF00u, 0xFFFFFFu)
+        val index = BackgroundRadioButtons.selectedIndex
+        if (index in colors.indices) ControlOutput.background = brush(colors[index])
+    }
+
+    private fun BorderBrush_SelectionChanged(sender: Any?, args: microsoft.ui.xaml.controls.SelectionChangedEventArgs) {
+        val colors = listOf(0x006400u, 0xFFD700u, 0xFFFFFFu)
+        val index = BorderRadioButtons.selectedIndex
+        if (index in colors.indices) ControlOutput.borderBrush = brush(colors[index])
+    }
+}

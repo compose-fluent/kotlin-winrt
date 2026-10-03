@@ -715,7 +715,7 @@ data class WinRTTypeDefinition(
             .values
             .map { duplicates -> duplicates.reduce(WinRTMethodDefinition::merge) }
             .sortedWith(compareBy<WinRTMethodDefinition>({ it.methodRowId ?: Int.MAX_VALUE }, { it.signatureKey() }))
-            .map { it.withNullableReturnContract(qualifiedName.trim()) }
+            .map { it.withNullableReturnContract(qualifiedName.trim()).withNullableParameterContract(qualifiedName.trim()) }
         val normalizedProperties = properties
             .map(WinRTPropertyDefinition::normalized)
             .groupBy(WinRTPropertyDefinition::signatureKey)

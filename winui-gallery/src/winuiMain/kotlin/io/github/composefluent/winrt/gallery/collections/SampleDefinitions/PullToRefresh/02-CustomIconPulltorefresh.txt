@@ -1,0 +1,56 @@
+--- header
+Custom Icon PullToRefresh
+--- xaml
+<RefreshContainer x:Name="rc" RefreshRequested="rc_RefreshRequested">
+    <RefreshContainer.Visualizer>
+        <RefreshVisualizer RefreshStateChanged="rv2_RefreshStateChanged">
+            <RefreshVisualizer.Content>
+                <SymbolIcon Symbol="AddFriend"/>
+            </RefreshVisualizer.Content>
+        </RefreshVisualizer>
+    </RefreshContainer.Visualizer>
+    <ListView x:Name="lv" Width="300" Height="300" BorderThickness="1" BorderBrush="Black"/>
+</RefreshContainer>
+--- Kotlin
+private fun initializeCustomRefresh() {
+    customList = ListView().apply {
+        width = 200.0; height = 200.0
+        borderThickness = Thickness(1.0, 1.0, 1.0, 1.0)
+        horizontalAlignment = HorizontalAlignment.Center
+        borderBrush = GalleryTheme.brush("TextControlBorderBrush")
+        "Mike Ben Barbra Claire Justin Shawn Drew Lili".split(' ').forEach { items.add(it) }
+    }
+    val sun = Image().apply { width = 35.0; height = 35.0 }
+    fun updateSun() {
+        val accessibility = AccessibilitySettings()
+        val black = (sun.actualTheme == ElementTheme.Light && !accessibility.highContrast) ||
+            (accessibility.highContrast && accessibility.highContrastScheme == "High Contrast Black")
+        sun.source = BitmapImage(Uri("ms-appx:///Assets/SampleMedia/Sun" + if (black) "Black.png" else "White.png"))
+    }
+    sun.loaded.add { _, _ -> updateSun() }
+    sun.actualThemeChanged.add { _, _ -> updateSun() }
+    val visualizer = RefreshVisualizer().apply {
+        content = sun
+        refreshStateChanged.add { _, _ -> ElementCompositionPreview.getElementVisual(sun).stopAnimation("RotationAngle") }
+    }
+    val container = RefreshContainer().apply {
+        content = customList
+        this.visualizer = visualizer
+        refreshRequested.add { sender, args -> rc2_RefreshRequested(sender, args) }
+    }
+    Grid.setRow(container, 1)
+    Ex2Grid.children.add(container)
+}
+
+private fun rc2_RefreshRequested(sender: RefreshContainer, args: RefreshRequestedEventArgs) {
+    val deferral = args.getDeferral()
+    tasks.launch {
+        try {
+            delay(800)
+            customList.items.add(0, "New Friend ${friendCount++}")
+        } finally {
+            deferral.complete()
+            deferral.close()
+        }
+    }
+}

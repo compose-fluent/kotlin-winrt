@@ -19,6 +19,8 @@ internal class RawComObjectReferenceSupport(
     private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
     private var referenceTrackerRegistrationKey: Long = 0L
     private var releaseTrackerSourceOnDispose: Boolean = false
+    // Retain the existing agility/FTM probe result; a null context alone does not prove agility.
+    private val callsAreFreeThreaded = trackContext && ComThreadingSupport.isFreeThreaded(pointer)
     private var objectContext =
         if (trackContext) {
             ObjectReferenceContext.capture(
@@ -26,10 +28,14 @@ internal class RawComObjectReferenceSupport(
                 interfaceIdLowBits = interfaceIdLowBits,
                 interfaceIdHighBits = interfaceIdHighBits,
                 knownInterfaceId = knownInterfaceId,
+                callsAreFreeThreaded = callsAreFreeThreaded,
             )
         } else {
             null
         }
+
+    internal val canUseScopedQueryInterfaceLease: Boolean
+        get() = callsAreFreeThreaded && objectContext == null && !hasReferenceTracker && !isAggregated
 
     val interfaceId: Guid
         get() = knownInterfaceId ?: Guid.fromAbiWords(interfaceIdLowBits, interfaceIdHighBits)
@@ -48,6 +54,7 @@ internal class RawComObjectReferenceSupport(
 
     fun attachReferenceTracker(
         trackerPointer: RawComPtr,
+        trackerSource: ReferenceTrackerSource,
         addRefForObjectReference: Boolean,
         releaseTrackerSourceOnDispose: Boolean,
         retainTrackerPointer: (RawComPtr) -> Unit,
@@ -64,7 +71,10 @@ internal class RawComObjectReferenceSupport(
                 knownInterfaceId = knownInterfaceId,
             )
         }
-        referenceTrackerRegistrationKey = ReferenceTrackerManager.attach(trackerPointer)
+        referenceTrackerRegistrationKey = ReferenceTrackerManager.attach(
+            trackerPointer,
+            trackerSource.weakReference,
+        )
         referenceTrackerPointer = trackerPointer
         retainTrackerPointer(trackerPointer)
         addRefFromTrackerSourceCallback(trackerPointer)
@@ -133,6 +143,7 @@ internal class RawComObjectReferenceSupport(
         }
 
     fun tryInitializeReferenceTracker(
+        trackerSourceOwner: ComPtr,
         addRefFromTrackerSource: Boolean,
         retainTrackerPointer: (RawComPtr) -> Unit,
         addRefFromTrackerSourceCallback: (RawComPtr) -> Unit,
@@ -150,6 +161,7 @@ internal class RawComObjectReferenceSupport(
         try {
             attachReferenceTracker(
                 trackerPointer = trackerPointer,
+                trackerSource = trackerSourceOwner.getOrCreateTrackerSource(),
                 addRefForObjectReference = addRefFromTrackerSource,
                 releaseTrackerSourceOnDispose = addRefFromTrackerSource,
                 retainTrackerPointer = retainTrackerPointer,
@@ -209,10 +221,15 @@ internal class RawComObjectReferenceSupport(
                     releaseReferencesAndContext()
                 }
             }
-            if (deferContextRelease && context != null) {
-                context.deferToOriginalContext(disconnectAndRelease)
-            } else {
-                context?.callInOriginalContext(disconnectAndRelease, disconnectAndRelease) ?: disconnectAndRelease()
+            val releaseInContext = {
+                if (deferContextRelease && context != null) {
+                    context.deferToOriginalContext(disconnectAndRelease)
+                } else {
+                    context?.callInOriginalContext(disconnectAndRelease, disconnectAndRelease) ?: disconnectAndRelease()
+                }
+            }
+            if (!ReferenceTrackerManager.deferFinalizerRelease(releaseInContext)) {
+                releaseInContext()
             }
         }
     }

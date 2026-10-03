@@ -1,0 +1,18 @@
+--- header
+DesktopAcrylicController
+--- kotlin
+private var acrylicController: microsoft.ui.composition.systembackdrops.DesktopAcrylicController? = null
+private var configuration: microsoft.ui.composition.systembackdrops.SystemBackdropConfiguration? = null
+
+activated.add { _, args -> configuration?.isInputActive = args.windowActivationState != WindowActivationState.Deactivated }
+closed.add { _, _ -> ResetControllers() }
+
+private fun SetConfigurationSourceTheme() {
+    configuration?.let { source -> source.isHighContrast = microsoft.ui.system.ThemeSettings.createForWindowId(checkNotNull(appWindow).id).highContrast; source.theme = if (root().actualTheme == ElementTheme.Dark) microsoft.ui.composition.systembackdrops.SystemBackdropTheme.Dark else microsoft.ui.composition.systembackdrops.SystemBackdropTheme.Light }
+}
+
+if (type == GalleryBackdropType.Acrylic || type == GalleryBackdropType.AcrylicThin) {
+    if (microsoft.ui.composition.systembackdrops.DesktopAcrylicController.isSupported()) {
+        acrylicController = microsoft.ui.composition.systembackdrops.DesktopAcrylicController().apply { kind = if (type == GalleryBackdropType.AcrylicThin) microsoft.ui.composition.systembackdrops.DesktopAcrylicKind.Thin else microsoft.ui.composition.systembackdrops.DesktopAcrylicKind.Base; addSystemBackdropTarget(this@SampleSystemBackdropsWindow.asWinRT<microsoft.ui.composition.ICompositionSupportsSystemBackdrop>()); setSystemBackdropConfiguration(config) }; currentBackdrop = type
+    } else tbChangeStatus.text += "  $type isn't supported. Switching to default color."
+}

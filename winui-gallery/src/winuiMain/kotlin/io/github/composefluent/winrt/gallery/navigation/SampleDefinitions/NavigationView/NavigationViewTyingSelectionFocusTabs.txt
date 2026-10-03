@@ -1,0 +1,19 @@
+--- header
+Tying selection and focus - Tabs
+--- xaml
+<NavigationView x:Name="nvSample" PaneDisplayMode="Top" 
+    SelectionFollowsFocus="Enabled" IsBackButtonVisible="Collapsed">
+    <NavigationView.MenuItems>
+        <NavigationViewItem Icon="Play" Content="Item1" x:Name="SamplePage1Item" />
+        <NavigationViewItem Icon="Save" Content="Item2" x:Name="SamplePage2Item" />
+        <NavigationViewItem Icon="Refresh" Content="Item3" x:Name="SamplePage3Item" />
+        <NavigationViewItem Icon="Download" Content="Item4" x:Name="SamplePage4Item" />
+    </NavigationView.MenuItems>
+    <Frame x:Name="contentFrame"/>
+</NavigationView>
+--- kotlin
+val Categories: MutableList<CategoryBase> = WinRTObservableList(listOf(
+        Category("Category 1", "This is category 1", Symbol.Home),
+        Category("Category 2", "This is category 2", Symbol.Keyboard),
+        Category("Category 3", "This is category 3", Symbol.Library),
+        Category("Category 4", "This is category 4", Symbol.Mail)))

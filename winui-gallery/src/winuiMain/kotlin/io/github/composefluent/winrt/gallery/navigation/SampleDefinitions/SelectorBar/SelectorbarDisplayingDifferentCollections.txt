@@ -1,0 +1,18 @@
+--- header
+SelectorBar Displaying Different Collections Using ItemsView
+--- xaml
+<SelectorBar x:Name="SelectorBar3" SelectionChanged="SelectorBar3_SelectionChanged" >
+    <SelectorBarItem x:Name="SelectorBarItemPink" Text="Pink" IsSelected="True" />
+    <SelectorBarItem x:Name="SelectorBarItemPlum" Text="Plum" />
+    <SelectorBarItem x:Name="SelectorBarItemPowderBlue" Text="PowderBlue" />
+</SelectorBar>
+
+<ItemsView x:Name="ItemsView3" ItemTemplate="{StaticResource ColorsTemplate}">
+    <ItemsView.Layout>
+        <UniformGridLayout />
+    </ItemsView.Layout>
+</ItemsView>
+--- kotlin
+private fun SelectorBar3_SelectionChanged(sender: SelectorBar, args: SelectorBarSelectionChangedEventArgs) {
+        if (ready) ItemsView3.itemsSource = when (sender.selectedItem) { SelectorBarItemPink -> PinkColorCollection; SelectorBarItemPlum -> PlumColorCollection; else -> PowderBlueColorCollection }
+    }

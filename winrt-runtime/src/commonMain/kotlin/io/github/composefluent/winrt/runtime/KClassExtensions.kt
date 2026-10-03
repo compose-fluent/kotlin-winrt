@@ -37,6 +37,9 @@ internal fun isExceptionType(type: KClass<*>): Boolean =
 internal fun arrayElementType(type: KClass<*>): KClass<*>? =
     WinRTTypeClassifier.arrayElementType(type)
 
+/** Builder capacity for the existing intrinsic class-key descriptor indexes. */
+internal expect fun intrinsicClassKeyMapInitialCapacity(keyCount: Int): Int
+
 /** Cross-platform assignability: target is a supertype of candidate if candidate is registered
  *  as an exception and target is the generic Exception marker, or falls back to identity. */
 internal fun isAssignableFrom(targetType: KClass<*>, candidateType: KClass<*>): Boolean =
@@ -52,7 +55,7 @@ internal fun isAssignableFrom(targetType: KClass<*>, candidateType: KClass<*>): 
 // ---------------------------------------------------------------------------
 
 internal fun isPrimitiveWinRTType(type: KClass<*>): Boolean =
-    type.registeredWinRTType()?.let { it.isWindowsRuntimeType && !it.isRuntimeClass && it.guid == null } == true
+    WinRTTypeClassifier.classify(type)?.isTypeNamePrimitive == true
 
 internal fun typeName(type: KClass<*>): String =
     type.qualifiedName ?: type.simpleName ?: "<anonymous>"

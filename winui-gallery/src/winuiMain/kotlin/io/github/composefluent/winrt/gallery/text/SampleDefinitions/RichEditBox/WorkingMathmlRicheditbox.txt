@@ -1,0 +1,26 @@
+--- header
+Working with MathML in RichEditBox
+--- xaml
+<RichEditBox x:Name="mathEditor2" FontSize="16" />
+--- kotlin
+private fun mathEditor2_TextChanged(sender: Any?, args: RoutedEventArgs) {
+        if (!ready) return
+        val mathML = WinRTOut<String>(); checkNotNull(mathEditor2.document).getMathML(mathML)
+        MathmlPresenter.Code = mathML.value.takeIf { it.isNotEmpty() }?.let(::FormatMathML) ?: "<!-- No MathML content -->"
+    }
+
+private fun SetMathmlFormulaBtn_Click(sender: Any?, args: RoutedEventArgs) {
+        val formula = checkNotNull(GalleryCodeCatalog.sourceDocument("RichEditBox/MathmlFormula.txt")).source
+        checkNotNull(mathEditor2.document).setMathML(if (mathEditor2.actualTheme == ElementTheme.Dark) formula.replace("#000000", "#FFFFFF") else formula)
+    }
+
+private fun FormatMathML(source: String): String = runCatching {
+        val document = windows.`data`.xml.dom.XmlDocument(); document.loadXml(source)
+        var indent = 0
+        document.getXml().split(Regex("(?<=>)(?=<)")).joinToString("\n") { token ->
+            if (token.startsWith("</")) indent--
+            val line = "  ".repeat(indent.coerceAtLeast(0)) + token
+            if (!token.startsWith("</") && !token.startsWith("<?") && !token.endsWith("/>") && !token.contains("</")) indent++
+            line
+        }
+    }

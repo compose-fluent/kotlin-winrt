@@ -1,0 +1,9 @@
+<DataTemplate x:Key="ImageTemplate" x:DataType="local:CustomDataObject">
+            <Image
+                Width="190"
+                Height="130"
+                AutomationProperties.AccessibilityView="Raw"
+                AutomationProperties.Name="{x:Bind Title}"
+                Source="{x:Bind ImageLocation}"
+                Stretch="UniformToFill" />
+        </DataTemplate>

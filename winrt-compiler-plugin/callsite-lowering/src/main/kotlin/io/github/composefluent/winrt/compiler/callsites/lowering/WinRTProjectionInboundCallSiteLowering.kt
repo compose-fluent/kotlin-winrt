@@ -258,7 +258,7 @@ private fun synthesizeDirectInboundEntry(
         endOffset = semantic.endOffset
         origin = IrDeclarationOrigin.DEFINED
         name = Name.identifier("kotlinWinRTInbound_${semantic.name.asString()}_${inboundSignatureId(semantic)}")
-        visibility = DescriptorVisibilities.PRIVATE
+        visibility = symbols.entryVisibility
         returnType = pluginContext.irBuiltIns.intType
     }.apply {
         parent = file
@@ -428,6 +428,13 @@ private class InboundRuntimeSymbols private constructor(
     private val nativeEntryPoint: IrSimpleFunctionSymbol?,
     private val nativeStaticCFunctionOverloads: Map<Int, IrSimpleFunctionSymbol>,
 ) {
+    // CsWinRT's Do_Abi_Invoke is private in its owning helper. Native staticCFunction
+    // bridges can live in another generated file, where a synthesized file-private
+    // entry gets a caller-file KLib signature and cannot be linked. Internal visibility
+    // gives the bridge a stable module symbol without adding a source-level API.
+    val entryVisibility
+        get() = if (nativeEntryPoint != null) DescriptorVisibilities.INTERNAL else DescriptorVisibilities.PRIVATE
+
     fun resultValueType(carrier: WinRTProjectionCallSiteAbiCarrier): IrType =
         resultWriters.getValue(carrier).owner.parameters.last { it.kind == IrParameterKind.Regular }.type
 

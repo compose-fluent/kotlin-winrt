@@ -1,0 +1,17 @@
+--- header
+Automatically animate changes to Opacity
+--- xaml
+<!-- Automatically animate changes to Opacity -->
+<Rectangle x:Name="rectangle" Width="50" Height="50" Opacity="0.5">
+    <Rectangle.OpacityTransition>
+        <ScalarTransition />
+    </Rectangle.OpacityTransition>
+</Rectangle>
+--- kotlin
+OpacityRectangle.opacityTransition = ScalarTransition()
+
+private fun EnsureValueIsNumber(box: NumberBox): Float { if (box.value.isNaN()) box.value = 0.0; return box.value.toFloat() }
+
+private fun ApplyOpacity(value: Float) { OpacityRectangle.opacity = value.toDouble(); OpacityValue.Value = value; announce(OpacityBtn, "Rectangle opacity changed by $value points", "RectangleChangedNotificationActivityId") }
+
+private fun OpacityButton_Click(sender: Any?, args: RoutedEventArgs) { ApplyOpacity(EnsureValueIsNumber(OpacityNumberBox)) }

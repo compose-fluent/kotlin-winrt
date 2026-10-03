@@ -28,6 +28,9 @@ internal class ManagedComInboundBinding(
     internal var strongValue = value.takeUnless { weak }
         private set
 
+    @kotlin.concurrent.Volatile
+    private var trackerValue: Any? = null
+
     private val platformHandle =
         platformCreateManagedComInboundBindingHandle(this, canonicalObjectMemory)
 
@@ -77,6 +80,16 @@ internal class ManagedComInboundBinding(
     override fun tryPin(knownManagedValue: Any?): Boolean =
         if (knownManagedValue == null) pin() else pinKnownValue(knownManagedValue)
 
+    override fun tryPinTracker(): Boolean {
+        if (!weak || trackerValue != null) return true
+        trackerValue = get() ?: return false
+        return true
+    }
+
+    override fun unpinTracker() {
+        trackerValue = null
+    }
+
     internal fun attach(
         objectMemory: RawAddress,
         objectMemoryView: NativeMemoryView? = null,
@@ -89,6 +102,22 @@ internal class ManagedComInboundBinding(
             )
         } else {
             PlatformAbi.writePointerAt(objectMemory, managedComInboundBindingSlot, platformHandle)
+        }
+    }
+
+    /** Initializes the binding slots of a private host before any interface pointer is published. */
+    internal fun attachInterfaces(
+        objectMemoryView: NativeMemoryView,
+        interfaceObjectCount: Int,
+        interfaceObjectStrideBytes: Long,
+    ) {
+        var index = 0
+        while (index < interfaceObjectCount) {
+            objectMemoryView.writePointer(
+                index * interfaceObjectStrideBytes + managedComInboundBindingSlot * Long.SIZE_BYTES.toLong(),
+                platformHandle,
+            )
+            index += 1
         }
     }
 

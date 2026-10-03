@@ -32,8 +32,11 @@ abstract class GenerateAppxResourcesArtifactTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val resourceInputs: ConfigurableFileCollection
 
+    @get:Input abstract val excludedSourcePaths: ListProperty<String>
+
     init {
         resourceRoots.convention(emptyList())
+        excludedSourcePaths.convention(emptyList())
     }
 
     @TaskAction
@@ -42,6 +45,7 @@ abstract class GenerateAppxResourcesArtifactTask : DefaultTask() {
         Files.createDirectories(output.parent)
         Files.deleteIfExists(output)
         val inputs = collectAppxResourceInputs(resourceRoots.get().map(Path::of))
+            .filterNot { it.source.toAbsolutePath().normalize().toString() in excludedSourcePaths.get() }
             .filterNot { input ->
                 input.relativePath.parent == null && input.relativePath.name.equals("AppxManifest.xml", ignoreCase = true)
             }

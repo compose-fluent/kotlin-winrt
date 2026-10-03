@@ -23,11 +23,10 @@ internal object RawAbiResultSupport {
     fun int32Result(
         invoke: (RawAddress) -> Int,
     ): Int =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateInt32Slot(scope)
-            val hResult = invoke(resultOut)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val hResult = invoke(frame.pointer)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            return PlatformAbi.readInt32(resultOut)
+            return frame.readInt32()
         }
 
     fun uint32Result(
@@ -37,20 +36,18 @@ internal object RawAbiResultSupport {
     fun booleanResult(
         invoke: (RawAddress) -> Int,
     ): Boolean =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateInt8Slot(scope)
-            val hResult = invoke(resultOut)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val hResult = invoke(frame.pointer)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            return PlatformAbi.readInt8(resultOut).toInt() != 0
+            return frame.readInt8().toInt() != 0
         }
 
     fun doubleResult(
         invoke: (RawAddress) -> Int,
     ): Double =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateDoubleSlot(scope)
-            val hResult = invoke(resultOut)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val hResult = invoke(frame.pointer)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            return PlatformAbi.readDouble(resultOut)
+            return frame.readDouble()
         }
 }

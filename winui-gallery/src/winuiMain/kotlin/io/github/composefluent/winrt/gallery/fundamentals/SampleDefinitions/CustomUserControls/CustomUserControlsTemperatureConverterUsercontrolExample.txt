@@ -1,0 +1,24 @@
+--- header
+Temperature Converter UserControl example
+--- xaml
+<!-- TemperatureConverterControl.xaml -->
+<UserControl ...>
+    <StackPanel Spacing="8">
+        <TextBox Header="Enter Temperature in Celsius" x:Name="InputTextBox" Width="200" PlaceholderText="Celsius" />
+        <Button Content="Convert to Fahrenheit" Width="200" Click="Button_Click" />
+        <TextBlock x:Name="ResultTextBlock" FontWeight="SemiBold" />
+    </StackPanel>
+</UserControl>
+
+<!-- Yourpage.xaml -->
+<Page ...
+      xmlns:local="using:YourNamesapce">
+    <Grid>
+        <local:TemperatureConverterControl />
+    </Grid>
+</Page>
+--- kotlin
+private fun Button_Click(sender: Any?, args: RoutedEventArgs) {
+        val formatter = windows.globalization.numberformatting.DecimalFormatter().apply { fractionDigits = 2; integerDigits = 1 }
+        ResultTextBlock.text = formatter.parseDouble(InputTextBox.text)?.let { "Fahrenheit: ${formatter.formatDouble(it * 9 / 5 + 32)}°F" } ?: "Invalid input!"
+    }

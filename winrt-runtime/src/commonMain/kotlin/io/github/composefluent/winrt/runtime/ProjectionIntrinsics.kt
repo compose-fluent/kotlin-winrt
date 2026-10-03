@@ -12,8 +12,11 @@ object WinRTProjectionIntrinsic {
     fun getNoExceptionBoolean(reference: ComObjectReference, slot: Int): Boolean =
         TODO("Lowered while building winrt-runtime")
 
+    // CsWinRT code_writers.h writes the default-interface call directly from the class member.
+    // Inline this fixed scalar contract before Native GC-frame lowering; keep the same ABI call.
+    @Suppress("NOTHING_TO_INLINE")
     @WinRTProjectionCallSite
-    fun getInt32(reference: ComObjectReference, slot: Int): Int = TODO("Lowered while building winrt-runtime")
+    inline fun getInt32(reference: ComObjectReference, slot: Int): Int = TODO("Lowered while building winrt-runtime")
 
     @WinRTProjectionCallSite(returnAbiType = "kotlin.UInt")
     fun getUInt32(reference: ComObjectReference, slot: Int): UInt = TODO("Lowered while building winrt-runtime")
