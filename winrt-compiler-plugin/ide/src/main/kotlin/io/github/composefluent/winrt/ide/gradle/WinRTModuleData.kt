@@ -23,6 +23,7 @@ data class WinRTModuleData(
     val nuGetConfigFile: String = "",
     val nuGetConfigDirectory: String = projectDirectory,
     val restoreLockFiles: List<String> = emptyList(),
+    val hotReloadLaunches: List<WinRTHotReloadLaunchData> = emptyList(),
 ) : AbstractExternalEntityData(GradleConstants.SYSTEM_ID) {
     companion object {
         val KEY: Key<WinRTModuleData> = Key.create(WinRTModuleData::class.java, ProjectKeys.MODULE.processingWeight + 1)
@@ -43,10 +44,13 @@ data class WinRTModuleData(
                 model.packageLayouts.map { WinRTPackageLayoutData(it.taskName, it.variant, it.packageDirectory,
                     it.resourceReportFile, it.minWindowsVersion, it.maxVersionTested) },
                 model.nuGetConfigFile, model.nuGetConfigDirectory, model.restoreLockFiles.toList(),
+                model.hotReloadLaunches.map { WinRTHotReloadLaunchData(it.taskName, it.executable, it.workingDirectory) },
             )
         }
     }
 }
+
+data class WinRTHotReloadLaunchData(val taskName: String, val executable: String, val workingDirectory: String) : Serializable
 
 data class WinRTSourceSetData(
     val name: String,

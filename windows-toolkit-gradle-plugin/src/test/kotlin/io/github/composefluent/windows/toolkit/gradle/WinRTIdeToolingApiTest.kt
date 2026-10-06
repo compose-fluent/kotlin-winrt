@@ -37,6 +37,7 @@ class WinRTIdeToolingApiTest {
             configure<io.github.composefluent.windows.toolkit.gradle.WindowsExtension> {
                 application {
                     mainClass = "sample.MainKt"
+                    packageType = io.github.composefluent.windows.toolkit.gradle.WindowsPackageType.None
                     minWindowsVersion = "10.0.19041.0"
                 }
                 packageReferences {
@@ -73,6 +74,10 @@ class WinRTIdeToolingApiTest {
                     assertEquals("10.0.26100.0", layout.maxVersionTested)
                     assertTrue(layout.resourceReportFile.endsWith("appx-resource-resolution.json"))
                     assertTrue(!File(layout.resourceReportFile).exists())
+                    val launch = model.hotReloadLaunches.first()
+                    assertTrue(launch.taskName.startsWith("runWinAppHost"))
+                    assertTrue(launch.executable.endsWith(".exe"))
+                    assertTrue(!File(launch.executable).exists())
                 }
         } finally {
             check(directory.canonicalFile.parentFile == File(System.getProperty("java.io.tmpdir")).canonicalFile)

@@ -741,6 +741,7 @@ private fun Project.registerWinAppHostRunTask(
             task.description = "Runs the native Kotlin/WinRT JVM application host."
             task.hostExecutable.set(applicationHostExecutable)
             task.workingDirectory.set(applicationHostTask.flatMap { it.outputDirectory })
+            task.supportsXamlHotReload.set(applicationHostTask.flatMap { it.packageType }.map { it == WindowsPackageType.None.name })
             task.dependsOn(applicationHostTask)
             task.onlyIf {
                 System.getProperty("os.name").contains("Windows", ignoreCase = true)
@@ -1468,6 +1469,9 @@ private fun configureWinAppTasks(
     )
     runApplicationHostTask.configure { task ->
         task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.Jvm }
+        task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+            packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.Jvm
+        })
     }
     if (bindRunTasks) {
         options.bindRunTasks { registration ->
@@ -1475,7 +1479,11 @@ private fun configureWinAppTasks(
                 registration.name,
                 applicationHostTask,
                 registration.action,
-            )
+            ).configure { task ->
+                task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+                    packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.Jvm
+                })
+            }
         }
     }
     val applicationPackageDirectory = project.provider {

@@ -74,6 +74,10 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             nuGetConfigDirectory = windows?.packageReferences?.nugetConfigDirectory?.orNull?.asFile?.absolutePath ?: project.projectDir.absolutePath,
             restoreLockFiles = if (windows == null) emptyList() else
                 project.tasks.withType(RestoreWinAppDependenciesTask::class.java).map { it.winmdLockFile.get().asFile.absolutePath }.distinct().sorted(),
+            hotReloadLaunches = if (windows == null) emptyList() else
+                project.tasks.withType(RunWinAppHostTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
+                    IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath)
+                }.sortedBy { it.taskName },
         )
     }
 }
@@ -94,10 +98,17 @@ private data class IdeModel(
     override val nuGetConfigFile: String,
     override val nuGetConfigDirectory: String,
     override val restoreLockFiles: List<String>,
+    override val hotReloadLaunches: List<WinRTIdeModel.HotReloadLaunch>,
 ) : WinRTIdeModel {
     override val schemaVersion get() = WinRTIdeModel.SCHEMA_VERSION
     override val isEnabled get() = enabled
 }
+
+private data class IdeHotReloadLaunch(
+    override val taskName: String,
+    override val executable: String,
+    override val workingDirectory: String,
+) : WinRTIdeModel.HotReloadLaunch
 
 private data class IdePackageLayout(
     override val taskName: String,

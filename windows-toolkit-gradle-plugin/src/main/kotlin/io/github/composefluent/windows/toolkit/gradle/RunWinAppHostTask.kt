@@ -8,6 +8,7 @@ import org.gradle.api.provider.MapProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -24,6 +25,7 @@ abstract class RunWinAppHostTask @Inject constructor(
         args.convention(emptyList())
         jvmArgs.convention(emptyList())
         environmentVariables.convention(emptyMap())
+        supportsXamlHotReload.convention(false)
     }
 
     @get:InputFile
@@ -41,6 +43,10 @@ abstract class RunWinAppHostTask @Inject constructor(
 
     @get:Input
     abstract val environmentVariables: MapProperty<String, String>
+
+    /** Configuration fact exported to the IDE; the runtime still requires an explicit development session. */
+    @get:Internal
+    abstract val supportsXamlHotReload: org.gradle.api.provider.Property<Boolean>
 
     @get:Optional
     @get:OutputFile

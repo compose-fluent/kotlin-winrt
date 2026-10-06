@@ -20,6 +20,14 @@ interface WinRTIdeModel : Serializable {
     val nuGetConfigFile: String
     val nuGetConfigDirectory: String
     val restoreLockFiles: List<String>
+    val hotReloadLaunches: List<HotReloadLaunch>
+
+    /** Existing unpackaged JVM launch tasks, including their configured host paths. */
+    interface HotReloadLaunch : Serializable {
+        val taskName: String
+        val executable: String
+        val workingDirectory: String
+    }
 
     /** Actual staging/restore outputs, which need not exist during synchronization. */
     interface PackageLayout : Serializable {
@@ -62,6 +70,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 3
+        const val SCHEMA_VERSION: Int = 4
     }
 }
