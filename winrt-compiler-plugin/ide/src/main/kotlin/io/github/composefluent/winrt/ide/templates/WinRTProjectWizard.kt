@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,6 +15,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
@@ -103,28 +108,28 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
                 snapshotFlow { listOf(checkout.text, packageName.text, jdk.text, sdk.text, appSdk.text, dependencies.text, buildRoot.text, projections.text, kind, packaged, includeWinUI) }
                     .collect { validate() }
             }
-            Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Template · Kotlin/JVM · JDK 25")
                 WinRTTemplateKind.entries.forEach { template ->
                     RadioButtonRow(template.title, selected = kind == template, onClick = { kind = template })
                 }
                 Text("Kotlin package")
-                TextField(packageName, modifier = Modifier.fillMaxWidth())
+                TextField(packageName, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Kotlin package" })
                 Text("JDK 25 installation")
-                TextField(jdk, modifier = Modifier.fillMaxWidth())
+                TextField(jdk, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "JDK 25 installation" })
                 Text("Windows SDK version")
-                TextField(sdk, modifier = Modifier.fillMaxWidth())
+                TextField(sdk, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Windows SDK version" })
                 if (kind == WinRTTemplateKind.ProjectionLibrary) {
                     CheckboxRow("Include WinUI projections", checked = includeWinUI, onCheckedChange = { includeWinUI = it })
                 }
                 if (kind.xaml || (kind == WinRTTemplateKind.ProjectionLibrary && includeWinUI)) {
                     Text("Windows App SDK version")
-                    TextField(appSdk, modifier = Modifier.fillMaxWidth())
+                    TextField(appSdk, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Windows App SDK version" })
                 }
                 if (context.isCreatingNewProject) {
                     Text("Kotlin WinRT toolchain checkout")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextField(checkout, modifier = Modifier.weight(1f))
+                        TextField(checkout, modifier = Modifier.weight(1f).semantics { contentDescription = "Kotlin WinRT toolchain checkout" })
                         DefaultButton(onClick = {
                             FileChooser.chooseFile(FileChooserDescriptorFactory.createSingleFolderDescriptor(), context.project, null)?.let { folder ->
                                 checkout.edit { replace(0, length, folder.path) }
@@ -133,15 +138,15 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
                     }
                 } else {
                     Text("Existing Gradle build root")
-                    TextField(buildRoot, modifier = Modifier.fillMaxWidth())
+                    TextField(buildRoot, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Existing Gradle build root" })
                 }
                 if (!context.isCreatingNewProject) {
                     if (kind != WinRTTemplateKind.ProjectionLibrary) {
                         Text("Shared SDK projection module")
-                        TextField(projections, modifier = Modifier.fillMaxWidth())
+                        TextField(projections, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Shared SDK projection module" })
                     }
                     Text("Module dependencies (comma-separated project paths)")
-                    TextField(dependencies, modifier = Modifier.fillMaxWidth())
+                    TextField(dependencies, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Module dependencies" })
                 }
                 if (kind.application) {
                     CheckboxRow("MSIX package identity", checked = packaged, onCheckedChange = { packaged = it })
@@ -155,7 +160,7 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
                 .validationRequestor { request -> validate = { request(); context.requestWizardButtonsUpdate() } }
                 .validationOnInput { error()?.let { ValidationInfo(it, component) } }
                 .validationOnApply { error()?.let { ValidationInfo(it, component) } }
-        }
+        }.resizableRow()
     }
 
     override fun setupProject(project: Project) {

@@ -1,6 +1,8 @@
 package io.github.composefluent.winrt.ide.hotreload
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
@@ -29,7 +31,7 @@ fun WinRTHotReloadPanel(project: Project) {
             Text("XAML Hot Reload")
             Text("Update properties, resources, local styles and child collections while keeping existing controls.")
             if (available.isEmpty()) Text("Synchronize a JVM WinUI application configured with packageType = None.")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { available.forEach { current ->
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { available.forEach { current ->
                 RadioButtonRow(current.projectPath, module == current, { directory = current.projectDirectory; task = null })
             } }
             module?.hotReloadLaunches?.forEach { current ->

@@ -13,6 +13,30 @@ bridge. Gradle sync requests `WinRTIdeModel`, materializes transport proxies int
 IDE data, and publishes module snapshots to the Compose tool window. Reimport
 replaces a build's models, including removal of previously configured modules.
 
+## Compatibility boundary
+
+| IDE / compiler combination | Compose/Jewel adaptation | FIR adaptation | Validation |
+| --- | --- | --- | --- |
+| Windows IDEA 2026.2.2 / 262, embedded Kotlin 2.4, runtime JDK 25 | IDE-provided Jewel bridge and Compose; no bundled UI runtime | Separate fir-adapter compiled from the owning frontend sources against the embedded compiler | Platform/editor/Analysis API tests, native Gradle import and persisted model recovery, real XAMLC document pass and JVM WinUI updates |
+| Other 262 distributions or patch releases | Reuse only after checking their bundled UI APIs | Check the embedded compiler and rebuild/verify the adapter | Not validated |
+| Other IDEA build lines and Android Studio | Select that distribution's Compose/Jewel SDK and validate its native host | Recompile and validate against that distribution's embedded Kotlin | Not validated; no compatibility claim |
+
+Plugin metadata accepts build 262 only. The JVM 17 ide-model transport stays
+independent of both adapters. Changes to the build compiler do not implicitly
+upgrade the IDE adapter; embedded Kotlin is selected by the IDE distribution.
+The current baseline is JVM first. Native development transport and Native
+application/template validation remain separate parity work.
+
+Forms use the IDE theme bridge, scroll long wizard/module/source lists, and expose
+text-field accessible names. Project services use IDE-injected scopes, UI requests
+use composition scopes, and listeners are registered with their disposable owner.
+Cancelled NuGet requests cannot clear a newer request's busy state. These API and
+lifecycle choices do not replace interactive acceptance: theme switching, 100/150/200%
+scaling, Tab/Shift-Tab and keyboard activation, dialog focus/return focus, a Windows
+screen reader, cancellation during real work and closing/reopening a full IDE must
+still be checked in the installed desktop distribution. Platform tests validate
+editor semantics and native import/cache recovery; they do not claim those UI checks.
+
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
 NuGet references, with navigation to the module build script and explicit
 application manifest. NuGet references describe configuration rather than

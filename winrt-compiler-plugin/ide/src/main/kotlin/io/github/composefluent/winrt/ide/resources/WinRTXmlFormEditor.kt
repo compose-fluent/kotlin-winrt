@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -98,7 +100,7 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(field.label)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextField(buffer, enabled = !governed, modifier = Modifier.weight(1f))
+                        TextField(buffer, enabled = !governed, modifier = Modifier.weight(1f).semantics { contentDescription = field.label })
                         DefaultButton(enabled = !governed, onClick = { command { WinRTXmlForms.set(project, virtualFile, field, buffer.text.toString()) } }) { Text("Apply") }
                         if (field.attribute in listOf("name", "Name", "Language") && field.path.last().name in
                             listOf("data", "Capability", "DeviceCapability", "Protocol", "FileTypeAssociation", "Resource")) {
@@ -109,9 +111,11 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
             }
             item {
                 Text(if (resw) "Add resource key/value" else "Add capability or application extension")
-                TextField(name, placeholder = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+                TextField(name, placeholder = { Text("Name") }, modifier = Modifier.fillMaxWidth().semantics {
+                    contentDescription = if (resw) "Resource key" else "Capability or extension name"
+                })
                 if (resw) {
-                    TextField(value, placeholder = { Text("Value") }, modifier = Modifier.fillMaxWidth())
+                    TextField(value, placeholder = { Text("Value") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Resource value" })
                     DefaultButton(onClick = { command { WinRTXmlForms.addResw(project, virtualFile, name.text.toString(), value.text.toString()) } }) { Text("Add key") }
                 } else {
                     CheckboxRow("Restricted capability", restricted, { restricted = it; if (it) device = false })
@@ -123,7 +127,7 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
                         }
                     }
                     DefaultButton(onClick = { command { WinRTXmlForms.addExtension(project, virtualFile, application, name.text.toString(), null) } }) { Text("Add protocol") }
-                    TextField(extension, placeholder = { Text("File extension") }, modifier = Modifier.fillMaxWidth())
+                    TextField(extension, placeholder = { Text("File extension") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "File extension" })
                     DefaultButton(onClick = { command { WinRTXmlForms.addExtension(project, virtualFile, application, name.text.toString(), extension.text.toString()) } }) { Text("Add file association") }
                 }
             }

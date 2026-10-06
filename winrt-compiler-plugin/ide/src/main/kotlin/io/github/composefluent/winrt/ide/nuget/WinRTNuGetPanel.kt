@@ -1,11 +1,15 @@
 package io.github.composefluent.winrt.ide.nuget
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -50,6 +54,7 @@ fun WinRTNuGetPanel(project: Project) {
     var versions by remember(module?.projectDirectory) { mutableStateOf<List<String>>(emptyList()) }
     var rid by remember { mutableStateOf("win-x64") }
     var request by remember { mutableStateOf<Job?>(null) }
+    var requestGeneration by remember { mutableLongStateOf(0) }
 
     LaunchedEffect(module, revision, dependencyRevision) {
         inventory = WinRTNuGetInventory(emptyList(), emptyList()); sources = emptyList(); selected = null
@@ -71,15 +76,16 @@ fun WinRTNuGetPanel(project: Project) {
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(module?.projectDirectory, source?.address) { request?.cancel(); busy = false; results = emptyList(); versions = emptyList() }
+    LaunchedEffect(module?.projectDirectory, source?.address) { ++requestGeneration; request?.cancel(); busy = false; results = emptyList(); versions = emptyList() }
     fun browse(action: suspend () -> Unit) {
+        val generation = ++requestGeneration
         request?.cancel()
         request = scope.launch {
             busy = true; failure = null
             try { action() }
             catch (error: CancellationException) { throw error }
             catch (error: Exception) { failure = error.message }
-            finally { busy = false }
+            finally { if (generation == requestGeneration) busy = false }
         }
     }
     fun restore(current: WinRTModuleData) {
@@ -115,7 +121,7 @@ fun WinRTNuGetPanel(project: Project) {
         item {
             Text("NuGet packages")
             if (modules.isEmpty()) Text("Synchronize a Kotlin WinRT project to manage its packages.")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { modules.forEach { current ->
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { modules.forEach { current ->
                 DefaultButton(onClick = { directory = current.projectDirectory }) { Text(current.projectPath) }
             } }
             module?.let { current ->
@@ -128,14 +134,14 @@ fun WinRTNuGetPanel(project: Project) {
             }
             (inventory.errors + listOfNotNull(failure)).forEach { Text(it) }
             Text("Package sources")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { sources.forEach { feed ->
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { sources.forEach { feed ->
                 RadioButtonRow(feed.name, source === feed, { sourceName = feed.name })
             } }
             source?.let { feed ->
                 Text(feed.address)
                 if (feed.requiresProvider) Text("This source uses encrypted credentials. Search needs a NuGet source credential environment variable; restore uses the configured NuGet provider.")
             }
-            TextField(query, placeholder = { Text("Search packages") }, modifier = Modifier.fillMaxWidth())
+            TextField(query, placeholder = { Text("Search packages") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search packages" })
             CheckboxRow("Include prerelease versions", prerelease, { prerelease = it })
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DefaultButton(enabled = source != null && !busy, onClick = {
@@ -144,8 +150,8 @@ fun WinRTNuGetPanel(project: Project) {
                 }) { Text("Search") }
                 if (busy) DefaultButton(onClick = { request?.cancel() }) { Text("Cancel") }
             }
-            TextField(id, placeholder = { Text("Package ID") }, modifier = Modifier.fillMaxWidth())
-            TextField(version, placeholder = { Text("Exact version") }, modifier = Modifier.fillMaxWidth())
+            TextField(id, placeholder = { Text("Package ID") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Package ID" })
+            TextField(version, placeholder = { Text("Exact version") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Exact version" })
             val declared = module?.packages?.firstOrNull { it.id.equals(id.text.toString(), true) }
             CheckboxRow("Generate projection for a new package", projection, { projection = it }, enabled = declared == null)
             if (declared != null) Text("Existing projection options are preserved (${declared.generateProjection}).")
