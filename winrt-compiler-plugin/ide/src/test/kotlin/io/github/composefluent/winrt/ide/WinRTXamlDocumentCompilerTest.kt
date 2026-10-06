@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.idea.facet.KotlinFacetType
+import org.jetbrains.kotlin.idea.facet.KotlinFacet
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
 import java.util.jar.JarOutputStream
@@ -53,6 +54,7 @@ class WinRTXamlDocumentCompilerTest : BasePlatformTestCase() {
         }.first()
         val original = Files.readString(Path.of(candidate.second))
         val root = Files.createTempDirectory("winrt-ide-document-")
+        var fixtureFacet: KotlinFacet? = null
         try {
             val source = root.resolve("Page.xaml")
             Files.writeString(source, original)
@@ -66,7 +68,7 @@ class WinRTXamlDocumentCompilerTest : BasePlatformTestCase() {
             JarOutputStream(Files.newOutputStream(originalPlugin)).close()
             ApplicationManager.getApplication().runWriteAction {
                 val manager = FacetManager.getInstance(module)
-                val facet = manager.createFacet(KotlinFacetType.INSTANCE, "Kotlin", null)
+                val facet = manager.createFacet(KotlinFacetType.INSTANCE, "Kotlin", null).also { fixtureFacet = it }
                 facet.configuration.settings.useProjectSettings = false
                 facet.configuration.settings.compilerArguments = K2JVMCompilerArguments().apply {
                     pluginClasspaths = arrayOf(originalPlugin.toString())
@@ -148,6 +150,10 @@ class WinRTXamlDocumentCompilerTest : BasePlatformTestCase() {
             FileDocumentManager.getInstance().reloadFromDisk(document)
             Files.list(PathManager.getSystemDir().resolve("kotlin-winrt/xaml/${project.locationHash}")).use { assertEquals(0L, it.count()) }
         } finally {
+            fixtureFacet?.let { facet -> ApplicationManager.getApplication().runWriteAction {
+                val manager = FacetManager.getInstance(module)
+                if (manager.allFacets.any { it === facet }) manager.createModifiableModel().apply { removeFacet(facet); commit() }
+            } }
             project.service<WinRTProjectService>().replaceBuildModels(root.toString(), emptyList())
             check(root.toRealPath().parent == Path.of(System.getProperty("java.io.tmpdir")).toRealPath())
             check(root.fileName.toString().startsWith("winrt-ide-document-"))

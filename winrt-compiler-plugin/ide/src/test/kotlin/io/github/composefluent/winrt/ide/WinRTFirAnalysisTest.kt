@@ -30,6 +30,7 @@ import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.idea.facet.KotlinFacetType
+import org.jetbrains.kotlin.idea.facet.KotlinFacet
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
@@ -41,6 +42,7 @@ import java.util.jar.JarOutputStream
 @OptIn(KaExperimentalApi::class, KaAllowAnalysisOnEdt::class)
 class WinRTFirAnalysisTest : BasePlatformTestCase() {
     private var fixtureDirectory: Path? = null
+    private var fixtureFacet: KotlinFacet? = null
 
     fun testGeneratedNamesAndSupertypesUpdateAfterDeclarationSnapshotChanges() {
         val root = Files.createTempDirectory("winrt-ide-fir-").also { fixtureDirectory = it }
@@ -50,7 +52,7 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         JarOutputStream(Files.newOutputStream(originalPlugin)).close()
         ApplicationManager.getApplication().runWriteAction {
             val manager = FacetManager.getInstance(module)
-            val facet = manager.createFacet(KotlinFacetType.INSTANCE, "Kotlin", null)
+            val facet = manager.createFacet(KotlinFacetType.INSTANCE, "Kotlin", null).also { fixtureFacet = it }
             facet.configuration.settings.useProjectSettings = false
             facet.configuration.settings.compilerArguments = K2JVMCompilerArguments().apply {
                 pluginClasspaths = arrayOf(originalPlugin.toString())
@@ -154,6 +156,12 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
 
     override fun tearDown() {
         try {
+            // Light fixtures reuse their project/module between test classes.
+            // Remove only this fixture's facet before deleting its plugin/index.
+            fixtureFacet?.let { facet -> ApplicationManager.getApplication().runWriteAction {
+                val manager = FacetManager.getInstance(module)
+                if (manager.allFacets.any { it === facet }) manager.createModifiableModel().apply { removeFacet(facet); commit() }
+            } }
             fixtureDirectory?.let { path ->
                 project.service<WinRTProjectService>().replaceBuildModels(path.toString(), emptyList())
                 LocalFileSystem.getInstance().findFileByNioFile(path)?.let { PsiTestUtil.removeContentEntry(module, it) }
