@@ -43,6 +43,8 @@ tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
 }
 
 tasks.withType<Test>().configureEach {
+    systemProperty("winrt.ide.toolchain", rootProject.projectDir.resolve("../..").canonicalPath)
+    providers.gradleProperty("winrt.ide.templateOutput").orNull?.let { systemProperty("winrt.ide.templateOutput", it) }
     providers.gradleProperty("winrt.ide.xamlInput").orNull?.let { systemProperty("winrt.ide.xamlInput", it) }
     providers.gradleProperty("winrt.ide.xamlCompiler").orNull?.let { systemProperty("winrt.ide.xamlCompiler", it) }
 }

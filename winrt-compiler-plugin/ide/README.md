@@ -2,7 +2,7 @@
 
 This is a standalone IDE build beneath the compiler tooling owner. It does not
 add IntelliJ dependencies to the WinRT runtime, metadata, generator or main
-application build. The shared Java 17 Tooling API contract is imported from
+application build. The shared Kotlin/JVM 17 Tooling API contract is imported from
 `windows-toolkit-gradle-plugin/ide-model`; plugin code targets Java 25, matching
 the 262 IDE runtime and the metadata toolchain.
 
@@ -96,7 +96,35 @@ source navigation. Rich binding-path completion, resource dictionary lookup,
 cross-language rename coverage and event-signature diagnostics still need
 additional implementation/validation.
 
-Project/module templates, editing NuGet dependencies,
+## Project and module wizard
+
+The IDE's New Project / New Module host exposes **Kotlin WinRT**. Its configuration
+page uses the platform Compose/Jewel bridge. JVM templates cover console and WinUI
+XAML applications, a WinRT library, a WinUI control library and an AppX resource
+library and a shared SDK projection library. A new project's `winrt-projections`
+module owns SDK generation; all consumer modules reference it, following
+the shared projection ownership in `.cswinrt/src/Projections`. Consumers exclude
+SDK interop additions from local generation as well as using metadata-only SDK
+references. New projects
+reference a local Kotlin WinRT toolchain checkout, reuse its Gradle wrapper and
+composite build, and select a full JDK 25. New modules add a
+literal Gradle include to the existing settings document through an IDE command;
+existing files are rejected. Module references use explicit Gradle project paths.
+Application run configurations invoke the existing `runWindows` Gradle task.
+Unpackaged WinUI applications explicitly select SelfContained deployment so
+their activation manifest and local runtime DLLs form a complete launch layout.
+Optional preparation runs after the first successful model import.
+
+Both application templates carry the supplied 122 PNG assets, including all
+scale, target-size and theme variants. The manifest uses their base resource
+names; the launcher ICO wraps six original PNGs without resizing or re-encoding.
+Library templates do not include application icons or package manifests.
+Tests cover original icon payloads, manifest references, file protection and
+module undo/redo. Generated standalone consumers are also compiled on Windows;
+the console consumer is launched through the actual Windows host. The combined
+WinUI application/control/resource/library consumer also creates a real window.
+
+Editing NuGet dependencies,
 resource provenance, visual manifest editing and Hot Reload are not implemented
 by this initial project-import slice. Hot Reload additionally requires XAMLC
 update artifacts and application-side lifecycle/UI-thread support. Native

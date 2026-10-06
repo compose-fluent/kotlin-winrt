@@ -17,6 +17,7 @@ class WinRTProjectService(private val project: Project) {
     private val imported = MutableStateFlow<List<WinRTModuleData>>(emptyList())
     val modules: StateFlow<List<WinRTModuleData>> = imported
     private val builds = linkedMapOf<String, List<WinRTModuleData>>()
+    private val preparationRequests = mutableSetOf<String>()
     private var restored = false
 
     @Synchronized
@@ -43,6 +44,16 @@ class WinRTProjectService(private val project: Project) {
         imported.value = builds.values.flatten()
             .distinctBy { it.projectDirectory }
             .sortedBy { it.projectDirectory }
+        imported.value.filter { preparationRequests.remove(it.projectDirectory.replace('\\', '/').lowercase()) }.forEach { module ->
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) WinRTGradleTasks.prepareXaml(project, module)
+            }
+        }
+    }
+
+    @Synchronized
+    fun prepareAfterImport(moduleDirectory: String) {
+        preparationRequests += moduleDirectory.replace('\\', '/').lowercase()
     }
 
     @Synchronized

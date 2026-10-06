@@ -13,6 +13,7 @@
         <module name="intellij.platform.jewel.ideLafBridge"/>
     </dependencies>
     <extensions defaultExtensionNs="com.intellij">
+        <newProjectWizard.generator implementation="io.github.composefluent.winrt.ide.templates.WinRTProjectWizard"/>
         <fileType name="WinRT XAML" language="XML" extensions="xaml"
                   implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlFileType" fieldName="INSTANCE"/>
         <xml.elementDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlDescriptorProvider"/>

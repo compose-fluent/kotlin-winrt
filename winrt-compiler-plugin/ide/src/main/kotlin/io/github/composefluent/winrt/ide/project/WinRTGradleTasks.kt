@@ -18,7 +18,10 @@ object WinRTGradleTasks {
             externalSystemIdString = GradleConstants.SYSTEM_ID.id
             executionName = "Prepare Kotlin WinRT XAML analysis"
             val prefix = module.projectPath.trimEnd(':')
-            taskNames = listOf("$prefix:analyzeWinRTXaml", "$prefix:generateWinRTProjections")
+            taskNames = buildList {
+                if (module.xamlCompilations.isNotEmpty()) add("$prefix:analyzeWinRTXaml")
+                add("$prefix:generateWinRTProjections")
+            }
         }
         ExternalSystemUtil.runTask(settings, DefaultRunExecutor.EXECUTOR_ID, project, GradleConstants.SYSTEM_ID,
             object : TaskCallback {
