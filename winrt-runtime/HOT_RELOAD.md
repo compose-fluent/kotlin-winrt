@@ -7,6 +7,13 @@ corresponding to CsWinRT's generated `ICustomProperty` implementation in
 Literal conversion reuses `convertWinRTXamlLiteral` and the generated SDK converter.
 There is no reflection fallback or separate WinRT type classification table.
 
+For SDK controls, the compiler's existing typed member emitter supplies development
+getters/setters for referenced presentation types and their bases. These entries
+are registered only in the member lookup by Kotlin type; they do not advertise SDK
+classes as authored XAML types or replace the SDK's native type provider. SDK member
+discovery and inherited-member ownership remain in the metadata owner. Applications
+without the development environment variable do not register these accessors.
+
 Generated application metadata supplies a factory that captures the current
 `DispatcherQueue` on the component's UI thread. Updates use `TryEnqueue`, following
 `.cswinrt/src/Projections/WinAppSDK/Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext.cs`.

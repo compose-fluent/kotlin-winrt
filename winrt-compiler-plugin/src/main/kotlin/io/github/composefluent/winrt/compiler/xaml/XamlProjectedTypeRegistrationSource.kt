@@ -19,12 +19,21 @@ internal fun writeXamlProjectedTypeRegistrationSource(
     if (names.isEmpty()) return null
     val model = WinRTMetadataLoader.loadSources(references.map(WinRTMetadataSource::path))
     val semantics = model.semanticHelpers()
+    val specialTypes = model.specialTypeResolver()
+    val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
+    val sdkNamespaces = WinRTXamlNamespaces.namespaces(WinRTXamlNamespaces.PRESENTATION).toSet()
+    fun sdk(type: WinRTTypeDefinition) = type.qualifiedName.substringBeforeLast('.') in sdkNamespaces
+    val requested = names.toMutableSet()
+    names.mapNotNull(definitions::get).filter(::sdk).forEach { original ->
+        var type: WinRTTypeDefinition? = original
+        while (type != null && requested.add(type.baseTypeName.orEmpty())) type = definitions[type.baseTypeName]
+    }
     val types = model.namespaces.flatMap { it.types }.filter { type ->
-        type.qualifiedName in names && type.kind == WinRTTypeKind.RuntimeClass &&
+        type.qualifiedName in requested && type.kind == WinRTTypeKind.RuntimeClass &&
             // The projection emits the parameterless ActivationFactory constructor
             // from WinMD activation metadata, rather than a physical .ctor method.
-            !type.isStaticType && type.genericParameterCount == 0 && type.activation.isActivatable &&
-            type.customAttributes.none { it.typeName.substringAfterLast('.') == "BindableAttribute" }
+            !type.isStaticType && type.genericParameterCount == 0 && (sdk(type) ||
+                type.activation.isActivatable && type.customAttributes.none { it.typeName.substringAfterLast('.') == "BindableAttribute" })
     }.sortedBy { it.qualifiedName }
     if (types.isEmpty()) return null
     val suffix = assemblyName.orEmpty().replace(Regex("[^A-Za-z0-9_]"), "_")
@@ -34,40 +43,53 @@ internal fun writeXamlProjectedTypeRegistrationSource(
     Files.createDirectories(file.parent)
     fun literal(value: String) = JsonPrimitive(value).toString()
     fun sourceType(ref: WinRTTypeRef): String {
-        val reference = model.specialTypeResolver().resolveType(ref, "") as? WinRTReferenceTypeDescriptor
+        val descriptor = specialTypes.resolveType(ref, "")
+        val reference = descriptor as? WinRTReferenceTypeDescriptor
         if (reference?.kind == WinRTReferenceInterfaceKind.Reference)
             return sourceType(ref.typeArguments.single()).removeSuffix("?") + "?"
         val name = ref.qualifiedName ?: ref.typeName
-        val source = xamlTypeClassId(name).asSingleFqName().asString()
+        val source = (descriptor as? WinRTCollectionTypeDescriptor)?.kind?.kotlinProjectedName
+            ?: xamlTypeClassId(name).asSingleFqName().asString()
         val args = ref.typeArguments.takeIf { it.isNotEmpty() }?.joinToString(", ", "<", ">", transform = ::sourceType).orEmpty()
-        val value = winRTFundamentalTypeForName(name) != null || isWinRTGuidTypeName(name) ||
-            semantics.resolveType(ref, "")?.kind in setOf(WinRTTypeKind.Enum, WinRTTypeKind.Struct)
-        return source + args + if (value) "" else "?"
+        return source + args + if (isWinRTObjectTypeName(name)) "?" else ""
     }
     file.writeText(buildString {
         appendLine("@file:Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\")")
         appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
         appendLine("package $packageName")
         appendLine("internal fun $register() {")
-        for (type in types) {
+        fun emit(type: WinRTTypeDefinition, development: Boolean) {
             val name = type.qualifiedName
             val owner = xamlTypeClassId(name).asSingleFqName().asString()
             val baseName = type.baseTypeName ?: "System.Object"
             val base = xamlTypeClassId(baseName).asSingleFqName().asString()
-            appendLine("  io.github.composefluent.winrt.runtime.registerWinRTXamlProjectedTypeDefinition(io.github.composefluent.winrt.runtime.WinRTXamlTypeDefinition(")
+            val registration = if (development) "registerWinRTXamlHotReloadAccessors" else "registerWinRTXamlProjectedTypeDefinition"
+            appendLine("  io.github.composefluent.winrt.runtime.$registration(io.github.composefluent.winrt.runtime.WinRTXamlTypeDefinition(")
             appendLine("    type = $owner::class, name = ${literal(name)},")
-            appendLine("    baseName = ${literal(baseName)}, baseType = $base::class, activate = { $owner() },")
+            appendLine("    baseName = ${literal(baseName)}, baseType = $base::class,")
+            if (!development) appendLine("    activate = { $owner() },")
+            else appendLine("    isWinRTComponent = false,")
             appendLine("    isBindable = false,")
             appendLine("    members = listOf(")
             val convert: (String, String) -> String = { value, target -> "kotlinWinRTXamlMemberValue<$target>($value)" }
             for (member in semantics.classMemberMergeDescriptor(type).mergedProperties.filter { it.isPublic && !it.isPrivate && it.getterTarget != null }) {
                 val ref = WinRTTypeRef.fromDisplayName(member.propertyTypeName)
                 val property = WinRTXamlApplicationProperty(member.propertyName, ref, isReadOnly = member.setterTarget == null)
-                appendLine(xamlPropertyRegistrationSource(owner, property, sourceType(ref), convert,
+                // Match the projection's shared property nullability and collection mappings.
+                val nullable = WinRTPropertyDefinition(member.propertyName, member.propertyTypeName)
+                    .isNullablePropertyProjection(name, definitions)
+                val kotlinType = sourceType(ref).let { if (nullable && !it.endsWith('?')) "$it?" else it }
+                appendLine(xamlPropertyRegistrationSource(owner, property, kotlinType, convert,
                     accessorName = member.propertyName.replaceFirstChar(Char::lowercase)).prependIndent("      ") + ",")
             }
             appendLine("    )," )
             appendLine("  ))")
+        }
+        types.filterNot(::sdk).forEach { emit(it, false) }
+        if (types.any(::sdk)) {
+            appendLine("  if (io.github.composefluent.winrt.runtime.isWinRTXamlHotReloadEnabled()) {")
+            types.filter(::sdk).forEach { emit(it, true) }
+            appendLine("  }")
         }
         appendLine("}")
     })

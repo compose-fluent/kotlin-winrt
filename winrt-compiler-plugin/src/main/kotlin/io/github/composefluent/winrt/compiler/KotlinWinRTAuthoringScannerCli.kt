@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.metadata.WinRTXamlNamespaces
+
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.KotlinImports
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredRuntimeClassAnnotation
@@ -247,10 +249,9 @@ object KotlinWinRTAuthoringScannerCli {
                 try { while (xml.hasNext()) {
                     if (xml.next() != XMLStreamConstants.START_ELEMENT) continue
                     fun include(namespace: String?, local: String) {
-                        if (namespace?.startsWith("using:") == true) {
-                            val name = "${namespace.removePrefix("using:")}.${local.substringBefore('.')}"
-                            if (name in names) add(name)
-                        }
+                        WinRTXamlNamespaces.namespaces(namespace.orEmpty()).firstNotNullOfOrNull { ns ->
+                            "$ns.${local.substringBefore('.')}".takeIf { it in names }
+                        }?.let(::add)
                     }
                     include(xml.namespaceURI, xml.localName)
                     // Conditional namespaces refer to condition types in the URI query.
@@ -406,6 +407,16 @@ object KotlinWinRTAuthoringScannerCli {
                     appendLine("package io.github.composefluent.winrt.generated.xaml")
                     appendLine("object $registryName {")
                     appendLine("  private val registration: Unit = run {")
+                    appendLine("    io.github.composefluent.winrt.runtime.configureWinRTXamlHotReload(")
+                    appendLine("      dispatcherFactory = {")
+                    appendLine("        val queue = microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()")
+                    appendLine("        val enqueue: (() -> Unit) -> Boolean = { action ->")
+                    appendLine("          queue.tryEnqueue(microsoft.ui.dispatching.DispatcherQueueHandler { action() })")
+                    appendLine("        }")
+                    appendLine("        enqueue")
+                    appendLine("      },")
+                    appendLine("      sdkConvert = { type, text -> microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text) },")
+                    appendLine("    )")
                     entries.forEach { appendLine("    ${it.second}()") }
                     appendLine("  }")
                     appendLine("  fun registerAll() { registration }")
