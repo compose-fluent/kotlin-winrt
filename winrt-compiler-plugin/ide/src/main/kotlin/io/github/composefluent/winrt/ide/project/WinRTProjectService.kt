@@ -64,7 +64,8 @@ class WinRTProjectService(private val project: Project) {
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) {
                 LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/'))?.let { file ->
-                    FileEditorManager.getInstance(project).openFile(file, true)
+                    if (file.isDirectory) com.intellij.ide.projectView.ProjectView.getInstance(project).select(null, file, true)
+                    else FileEditorManager.getInstance(project).openFile(file, true)
                 }
             }
         }

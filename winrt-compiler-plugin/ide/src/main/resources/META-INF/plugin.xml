@@ -13,6 +13,9 @@
         <module name="intellij.platform.jewel.ideLafBridge"/>
     </dependencies>
     <extensions defaultExtensionNs="com.intellij">
+        <fileType name="WinRT AppX XML" language="XML" extensions="resw;appxmanifest"
+                  implementationClass="io.github.composefluent.winrt.ide.resources.WinRTAppxXmlFileType" fieldName="INSTANCE"/>
+        <fileEditorProvider implementation="io.github.composefluent.winrt.ide.resources.WinRTXmlFormEditorProvider"/>
         <newProjectWizard.generator implementation="io.github.composefluent.winrt.ide.templates.WinRTProjectWizard"/>
         <fileType name="WinRT XAML" language="XML" extensions="xaml"
                   implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlFileType" fieldName="INSTANCE"/>

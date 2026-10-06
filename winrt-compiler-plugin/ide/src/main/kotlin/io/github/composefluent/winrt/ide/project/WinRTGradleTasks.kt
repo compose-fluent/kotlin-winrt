@@ -13,19 +13,27 @@ import org.jetbrains.plugins.gradle.util.GradleConstants
 
 object WinRTGradleTasks {
     fun prepareXaml(project: Project, module: WinRTModuleData) {
+        run(project, module, buildList {
+            if (module.xamlCompilations.isNotEmpty()) add("analyzeWinRTXaml")
+            add("generateWinRTProjections")
+        }, "Prepare Kotlin WinRT XAML analysis") { project.service<WinRTXamlSnapshotService>().refresh() }
+    }
+
+    fun run(project: Project, module: WinRTModuleData, tasks: List<String>, title: String, onSuccess: () -> Unit = {}) {
         val settings = ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory
             externalSystemIdString = GradleConstants.SYSTEM_ID.id
-            executionName = "Prepare Kotlin WinRT XAML analysis"
+            executionName = title
             val prefix = module.projectPath.trimEnd(':')
-            taskNames = buildList {
-                if (module.xamlCompilations.isNotEmpty()) add("$prefix:analyzeWinRTXaml")
-                add("$prefix:generateWinRTProjections")
-            }
+            taskNames = tasks.map { "$prefix:$it" }
         }
         ExternalSystemUtil.runTask(settings, DefaultRunExecutor.EXECUTOR_ID, project, GradleConstants.SYSTEM_ID,
             object : TaskCallback {
-                override fun onSuccess() { if (!project.isDisposed) project.service<WinRTXamlSnapshotService>().refresh() }
+                override fun onSuccess() {
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                        if (!project.isDisposed) onSuccess()
+                    }
+                }
                 override fun onFailure() = Unit
             }, ProgressExecutionMode.IN_BACKGROUND_ASYNC)
     }

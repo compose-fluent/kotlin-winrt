@@ -30,6 +30,15 @@ dependencies {
 
 kotlin {
     jvmToolchain(25)
+    sourceSets.named("main") {
+        // Compile the packaging owner's pure Kotlin sources, as with the FIR adapter.
+        // Selection, package-path checks and manifest validation have one source of truth.
+        kotlin.srcDir("../../windows-toolkit-gradle-plugin/src/main/kotlin")
+        kotlin.include("io/github/composefluent/winrt/ide/**",
+            "io/github/composefluent/windows/toolkit/gradle/AppxResourceLayout.kt",
+            "io/github/composefluent/windows/toolkit/gradle/PackageResourcePaths.kt",
+            "io/github/composefluent/windows/toolkit/gradle/ProjectPriManifestSupport.kt")
+    }
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
         freeCompilerArgs.add("-Xcontext-parameters")

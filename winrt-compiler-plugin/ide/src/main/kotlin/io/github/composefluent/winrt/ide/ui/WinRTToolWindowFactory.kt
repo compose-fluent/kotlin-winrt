@@ -27,6 +27,9 @@ class WinRTToolWindowFactory : ToolWindowFactory {
         val service = project.service<WinRTProjectService>()
         val analysis = project.service<WinRTXamlSnapshotService>()
         service.refreshFromGradleCache()
+        toolWindow.addComposeTab("Resources", focusOnClickInside = true) {
+            io.github.composefluent.winrt.ide.resources.WinRTResourcesPanel(project)
+        }
         toolWindow.addComposeTab("Projects", focusOnClickInside = true) {
             val modules by service.modules.collectAsState()
             val snapshots by analysis.state.collectAsState()

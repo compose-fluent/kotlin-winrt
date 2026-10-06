@@ -124,9 +124,28 @@ module undo/redo. Generated standalone consumers are also compiled on Windows;
 the console consumer is launched through the actual Windows host. The combined
 WinUI application/control/resource/library consumer also creates a real window.
 
-Editing NuGet dependencies,
-resource provenance, visual manifest editing and Hot Reload are not implemented
-by this initial project-import slice. Hot Reload additionally requires XAMLC
+## Resources and package manifest
+
+The Compose **Resources** tab switches between source sets and actual staged
+application variants. It recompiles the packaging owner's `AppxResourceLayout`,
+package-path checks and manifest validation source, so file override selection
+has no IDE-specific copy. Staging reports retain source-set override chains and
+dependency resource archives. Final package entries and actual language/scale
+PRI candidates come from those reports; file grouping never predicts runtime
+candidate selection. Images have bounded previews and can be imported without
+overwriting existing resources. Resource roots navigate to the native project view.
+
+AppxManifest XML and `.resw` files gain a Compose/Jewel form beside their native
+XML editor. The form edits PSI in document commands, preserving unknown nodes,
+namespaces, extensions, comments and processing instructions. Fields cover package
+identity, applications, visual assets, languages, device families, capabilities,
+protocols and file associations. Imported Windows minimum/tested versions remain
+owned by Gradle and link to that configuration. `.resw` keys/values and translator
+comments share the same document; duplicate keys and missing translations include
+unsaved edits. Tests verify XML preservation, source undo/redo, stale edit protection,
+resource provenance and actual PRI qualifier reading.
+
+NuGet dependency management and Hot Reload still need implementation. Hot Reload requires XAMLC
 update artifacts and application-side lifecycle/UI-thread support. Native
 targets are represented in the imported model; no Native or Android Studio
 editing/runtime parity is claimed by this IDE baseline.
