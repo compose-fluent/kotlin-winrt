@@ -90,11 +90,19 @@ to their XAML documents. Generated FIR named-element usages navigate back to
 The generated declarations remain compiler-owned. Native XML editing and
 reference renaming use IDE command/undo machinery.
 
+Event references, completion and diagnostics share Kotlin Analysis API results.
+The actual projected `add<Event>` parameter supplies a closed delegate `invoke`
+signature, including generic substitution and nullability. Handler validation
+follows `XamlSemanticExport` and `XamlPageBodies`: one ordinary instance method,
+Unit return, no suspend, generic, context, extension or vararg parameters, and
+parameters accepting the delegate inputs. Missing dependencies defer the
+parameter check; the IDE does not guess a control-specific signature.
+
 `WinRTXamlEditorTest` covers the real XML pipeline with a WinMD written and read
-by the metadata owner. `WinRTFirAnalysisTest` also covers generated-member
-source navigation. Rich binding-path completion,
-cross-language rename coverage and event-signature diagnostics still need
-additional implementation/validation.
+by the metadata owner, closed generic event signatures, inherited handlers,
+completion filtering and native diagnostic ranges. `WinRTFirAnalysisTest` also
+covers generated-member source navigation. Rich binding-path completion and
+cross-language rename coverage still need additional implementation/validation.
 
 ## Project and module wizard
 

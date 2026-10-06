@@ -16,10 +16,13 @@ import io.github.composefluent.winrt.metadata.*
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
+import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import java.nio.file.Files
 import java.nio.file.Path
 
 /** Uses the real XML completion/PSI pipeline and the existing WinMD writer/loader. */
+@OptIn(KaAllowAnalysisOnEdt::class)
 class WinRTXamlEditorTest : BasePlatformTestCase() {
     private var root: Path? = null
 
@@ -58,6 +61,11 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         ))
         val catalogs = project.service<WinRTXamlCatalogService>()
         PlatformTestUtil.waitWithEventsDispatching("WinMD catalog", { catalogs.forFile(file.originalFile.virtualFile.path) != null }, 10)
+        val resources = project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceIndex>()
+        PlatformTestUtil.waitWithEventsDispatching("Resource index initialized", {
+            resources.forFile(file.originalFile.virtualFile.path)?.module?.projectDirectory == directory.toString()
+        }, 10)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         return file
     }
 
@@ -89,11 +97,77 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         val classReferences = PsiReferenceService.getService().getReferences(classValue, PsiReferenceService.Hints.NO_HINTS)
         assertTrue(classReferences.toString(), classReferences.any { (it.resolve() as? KtClass)?.name == "Shell" })
         val handler = PsiReferenceService.getService().getReferences(handlerValue, PsiReferenceService.Hints.NO_HINTS)
-            .first { it.resolve() is KtNamedFunction }
-        assertEquals("onClick", (handler.resolve() as KtNamedFunction).name)
+            .first { allowAnalysisOnEdt { it.resolve() } is KtNamedFunction }
+        assertEquals("onClick", (allowAnalysisOnEdt { handler.resolve() } as KtNamedFunction).name)
         WriteCommandAction.runWriteCommandAction(project) { handler.handleElementRename("onPressed") }
         assertEquals("onPressed", handlerValue.value)
         assertTrue(file.text.contains("x:Class=\"sample.Shell\""))
+    }
+
+    fun testEventSignaturesUseTheClosedProjectedDelegateAndInheritedHandlers() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.EventPage" Click="inherited"/>""")
+        myFixture.addFileToProject("Events.kt", """
+            package sample
+            open class Args
+            class SpecificArgs : Args()
+            fun interface ClickHandler<T> { fun invoke(sender: Any?, args: T) }
+            open class EventBase { fun inherited(sender: Any?, args: Args) {} }
+            class EventPage : EventBase() {
+                fun good(sender: Any?, args: SpecificArgs) {}
+                fun nonNullableSender(sender: Any, args: Args) {}
+                fun wrongArgs(sender: Any?, args: String) {}
+                fun wrongCount(sender: Any?) {}
+                fun wrongReturn(sender: Any?, args: Args): Int = 1
+                suspend fun suspending(sender: Any?, args: Args) {}
+                fun <T> generic(sender: Any?, args: Args) {}
+                fun overloaded(sender: Any?, args: Args) {}
+                fun overloaded(sender: Any?) {}
+            }
+        """.trimIndent())
+        myFixture.addFileToProject("Button.kt", """
+            package microsoft.ui.xaml.controls
+            class Button { fun addClick(handler: sample.ClickHandler<sample.SpecificArgs>) {} }
+        """.trimIndent())
+        val result = allowAnalysisOnEdt { WinRTXamlEventAnalysis.forAttribute(file.rootTag!!.getAttribute("Click")!!) }!!
+        assertTrue(result.delegateAvailable)
+        assertNull(result.problem("inherited"))
+        assertNull(result.problem("good"))
+        assertEquals("inherited", (result.target("inherited") as KtNamedFunction).name)
+        for (name in listOf("nonNullableSender", "wrongArgs", "wrongCount", "wrongReturn", "suspending", "generic", "overloaded", "missing"))
+            assertNotNull(name, result.problem(name))
+        val reference = PsiReferenceService.getService().getReferences(file.rootTag!!.getAttribute("Click")!!.valueElement!!, PsiReferenceService.Hints.NO_HINTS)
+            .first { allowAnalysisOnEdt { it.resolve() } is KtNamedFunction }
+        assertEquals("inherited", (allowAnalysisOnEdt { reference.resolve() } as KtNamedFunction).name)
+    }
+
+    fun testEventCompletionOmitsIncompatibleAndOverloadedMethods() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.Page" Click="<caret>"/>""")
+        myFixture.addFileToProject("Page.kt", """
+            package sample
+            fun interface ClickHandler { fun invoke(sender: Any?, args: String) }
+            class Page {
+                fun valid(sender: Any?, args: Any) {}
+                fun invalid(sender: Any, args: String) {}
+                fun overloaded(sender: Any?, args: String) {}
+                fun overloaded(sender: Any?) {}
+            }
+        """.trimIndent())
+        myFixture.addFileToProject("Button.kt", "package microsoft.ui.xaml.controls\nclass Button { fun addClick(handler: sample.ClickHandler) {} }")
+        allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }
+        val variants = myFixture.lookupElementStrings.orEmpty()
+        // IntelliJ auto-inserts a sole candidate; both outcomes exercise native completion.
+        assertTrue(variants.toString(), "valid" in variants || file.text.contains("Click=\"valid\""))
+        assertFalse(variants.toString(), variants.any { it == "invalid" || it == "overloaded" })
+    }
+
+    fun testNativeHighlightingReportsTheEventContractAtTheAttributeValue() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.BadPage" Click="bad"/>""")
+        myFixture.addFileToProject("BadPage.kt", "package sample\nclass BadPage { fun bad(sender: Any?, args: Any?): Int = 1 }")
+        val diagnostics = allowAnalysisOnEdt { myFixture.doHighlighting() }
+            .filter { it.description?.contains("must return Unit") == true }
+        assertEquals(diagnostics.toString(), 1, diagnostics.size)
+        assertEquals(file.rootTag!!.getAttribute("Click")!!.valueElement!!.valueTextRange,
+            com.intellij.openapi.util.TextRange(diagnostics.single().startOffset, diagnostics.single().endOffset))
     }
 
     override fun tearDown() {

@@ -8,8 +8,6 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.*
 import com.intellij.util.ProcessingContext
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
-import org.jetbrains.kotlin.psi.KtNamedDeclaration
-import org.jetbrains.kotlin.psi.KtNamedFunction
 
 class WinRTXamlReferenceContributor : PsiReferenceContributor() {
     override fun registerReferenceProviders(registrar: PsiReferenceRegistrar) {
@@ -29,7 +27,7 @@ class WinRTXamlReferenceContributor : PsiReferenceContributor() {
                         WinRTXamlReferences.namedElements(tag).firstOrNull { it.first == value.value }?.second
                     }
                     WinRTXamlSymbols.members(tag).any { it.name == attribute.localName && it.isEvent } -> ValueReference(value, range) {
-                        WinRTXamlSymbols.ownerClass(tag)?.declarations?.filterIsInstance<KtNamedFunction>()?.firstOrNull { it.name == value.value }
+                        WinRTXamlEventAnalysis.forAttribute(attribute)?.target(value.value)
                     }
                     else -> null
                 }

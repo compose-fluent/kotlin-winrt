@@ -10,7 +10,6 @@ import com.intellij.psi.xml.XmlTag
 import com.intellij.util.ProcessingContext
 import io.github.composefluent.winrt.metadata.WinRTFundamentalType
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
-import org.jetbrains.kotlin.psi.KtNamedFunction
 
 class WinRTXamlCompletionContributor : CompletionContributor() {
     init {
@@ -33,7 +32,8 @@ class WinRTXamlCompletionContributor : CompletionContributor() {
                             WinRTXamlReferences.namedElements(tag).map { it.first }
                     }
                     WinRTXamlSymbols.member(tag, attribute.localName)?.isEvent == true ->
-                        WinRTXamlSymbols.ownerClass(tag)?.declarations.orEmpty().filterIsInstance<KtNamedFunction>().mapNotNull { it.name }
+                        WinRTXamlEventAnalysis.forAttribute(attribute)?.candidates.orEmpty()
+                            .groupBy { it.name }.filterValues { it.size == 1 && it.single().problem == null }.keys.toList()
                     attribute.localName == "ElementName" -> WinRTXamlReferences.namedElements(tag).map { it.first }
                     else -> {
                         val member = WinRTXamlSymbols.member(tag, attribute.name)
