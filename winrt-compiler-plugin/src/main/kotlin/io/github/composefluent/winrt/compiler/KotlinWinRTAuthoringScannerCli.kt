@@ -405,6 +405,7 @@ object KotlinWinRTAuthoringScannerCli {
                 Files.createDirectories(registry.parent)
                 registry.writeText(buildString {
                     appendLine("package io.github.composefluent.winrt.generated.xaml")
+                    appendLine("import io.github.composefluent.winrt.runtime.asWinRT")
                     appendLine("object $registryName {")
                     appendLine("  private val registration: Unit = run {")
                     appendLine("    io.github.composefluent.winrt.runtime.configureWinRTXamlHotReload(")
@@ -416,6 +417,10 @@ object KotlinWinRTAuthoringScannerCli {
                     appendLine("        enqueue")
                     appendLine("      },")
                     appendLine("      sdkConvert = { type, text -> microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text) },")
+                    appendLine("      loadResources = { markup ->")
+                    appendLine("        requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(markup))")
+                    appendLine("          .asWinRT<microsoft.ui.xaml.ResourceDictionary>()")
+                    appendLine("      },")
                     appendLine("    )")
                     entries.forEach { appendLine("    ${it.second}()") }
                     appendLine("  }")

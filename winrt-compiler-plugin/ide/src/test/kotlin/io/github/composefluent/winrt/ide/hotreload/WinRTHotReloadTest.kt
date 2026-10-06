@@ -46,6 +46,65 @@ class WinRTHotReloadTest {
         assertTrue(runCatching { WinRTHotReloadMarkup.parse("<!DOCTYPE Window [<!ENTITY x SYSTEM 'file:///secret'>]>$source") }.isFailure)
     }
 
+    private val resourceSource = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window">
+        <StackPanel x:Name="Layout"><StackPanel.Resources><ResourceDictionary>
+            <SolidColorBrush x:Key="Accent" Color="#FF0067C0"/>
+            <Style x:Key="GreetingStyle" TargetType="TextBlock"><Setter Property="FontSize" Value="28"/><Setter Property="Foreground" Value="{StaticResource Accent}"/></Style>
+        </ResourceDictionary></StackPanel.Resources>
+        <TextBlock x:Name="Greeting" Text="Hello" Style="{StaticResource GreetingStyle}" Foreground="{StaticResource Accent}"/>
+        <TextBlock x:Name="Second" Style="{StaticResource ResourceKey=GreetingStyle}"/>
+        </StackPanel></Window>"""
+
+    private fun resourceRoot(text: String = resourceSource) = root(text).copy(elements = listOf("Layout", "Greeting", "Second"))
+
+    @Test fun mutable_resources_use_projected_paths_and_preserve_resource_expressions() {
+        val before = WinRTHotReloadMarkup.parse(resourceSource)
+        val after = WinRTHotReloadMarkup.parse(resourceSource.replace("#FF0067C0", "#FF00AA44"))
+        val patch = after.patch(before, resourceRoot())
+        assertTrue(patch.resources.isEmpty())
+        assertEquals(WinRTXamlHotReloadChange("Layout", "Color", "#FF00AA44", listOf(
+            WinRTXamlHotReloadStep.Property("Resources"), WinRTXamlHotReloadStep.Key("Accent"))), patch.changes.single())
+        val themed = resourceSource.replace("Foreground=\"{StaticResource Accent}\"", "Foreground=\"{ThemeResource Accent}\"")
+        assertEquals(1, WinRTHotReloadMarkup.parse(themed.replace("#FF0067C0", "#FF00AA44"))
+            .patch(WinRTHotReloadMarkup.parse(themed), resourceRoot(themed)).changes.size)
+    }
+
+    @Test fun sealed_styles_reload_the_local_dictionary_and_its_explicit_consumers() {
+        val before = WinRTHotReloadMarkup.parse(resourceSource)
+        val patch = WinRTHotReloadMarkup.parse(resourceSource.replace("Value=\"28\"", "Value=\"36\""))
+            .patch(before, resourceRoot())
+        assertTrue(patch.changes.isEmpty())
+        val replacement = patch.resources.single()
+        assertEquals(WinRTXamlHotReloadTarget("Layout", listOf(WinRTXamlHotReloadStep.Property("Resources"))), replacement.target)
+        assertEquals(listOf("Accent", "GreetingStyle"), replacement.expectedKeys)
+        assertEquals(setOf("Greeting" to "Style", "Greeting" to "Foreground", "Second" to "Style"),
+            replacement.references.map { it.target.element to it.property }.toSet())
+        assertTrue(replacement.xaml, replacement.xaml.startsWith("<ResourceDictionary"))
+        assertTrue(replacement.xaml.contains("xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\""))
+        assertTrue(replacement.xaml.contains("Value=\"36\""))
+        assertTrue(replacement.xaml.contains("{StaticResource Accent}"))
+        // Implicit Resources syntax uses the same runtime dictionary contract.
+        val implicit = resourceSource.replace("<ResourceDictionary>", "").replace("</ResourceDictionary>", "")
+        assertEquals(1, WinRTHotReloadMarkup.parse(implicit.replace("Value=\"28\"", "Value=\"36\""))
+            .patch(WinRTHotReloadMarkup.parse(implicit), resourceRoot(implicit)).resources.size)
+    }
+
+    @Test fun style_replacement_rejects_theme_implicit_keys_and_unresolved_connection_lifetimes() {
+        val unsupported = listOf(
+            resourceSource.replace("{StaticResource GreetingStyle}", "{ThemeResource GreetingStyle}"),
+            resourceSource.replace(" x:Key=\"GreetingStyle\"", ""),
+            resourceSource.replace(" x:Name=\"Second\"", ""),
+            resourceSource.replace("Value=\"{StaticResource Accent}\"", "Value=\"{StaticResource Outside}\""),
+            resourceSource.replace("<Style x:Key", "<Style x:Name=\"NamedStyle\" x:Key"),
+        )
+        unsupported.forEach { text ->
+            assertTrue(text, runCatching { WinRTHotReloadMarkup.parse(text.replace("Value=\"28\"", "Value=\"36\""))
+                .patch(WinRTHotReloadMarkup.parse(text), resourceRoot(text)) }.isFailure)
+        }
+        val added = resourceSource.replace("</ResourceDictionary>", "<SolidColorBrush x:Key=\"Extra\"/></ResourceDictionary>")
+        assertTrue(runCatching { WinRTHotReloadMarkup.parse(added).patch(WinRTHotReloadMarkup.parse(resourceSource), resourceRoot()) }.isFailure)
+    }
+
     @Test fun loopback_client_authenticates_and_does_not_expose_credentials() {
         val folder = Files.createTempDirectory("winrt-hot-client-")
         val server = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
@@ -54,7 +113,7 @@ class WinRTHotReloadTest {
         val file = folder.resolve("probe.session")
         try {
             Files.newOutputStream(file).use { Properties().apply {
-                setProperty("protocol", "1"); setProperty("pid", ProcessHandle.current().pid().toString())
+                setProperty("protocol", WinRTXamlHotReloadProtocol.VERSION.toString()); setProperty("pid", ProcessHandle.current().pid().toString())
                 setProperty("port", server.localPort.toString()); setProperty("token", token)
             }.store(it, "probe") }
             val response = executor.submit {
@@ -104,6 +163,79 @@ class WinRTHotReloadTest {
             val rejected = client.request(invalid)
             assertEquals(rejected.message, WinRTXamlHotReloadProtocol.REJECTED, rejected.status)
             assertEquals(updated.sourceHash, client.request().roots.single { it.className == loaded.className }.sourceHash)
+        }
+    }
+
+    /** Actual XBF, shared native brushes and sealed native Style objects, with
+     * the normal compiler-generated SDK getters and WinUI XamlReader loader. */
+    @Test fun real_winui_host_reloads_shared_resources_and_sealed_styles() {
+        val directory = System.getProperty("winrt.ide.hotReloadResourcesSession")
+        val sourcePath = System.getProperty("winrt.ide.hotReloadResourcesSource")
+        assumeTrue(directory != null && sourcePath != null)
+        val text = Files.readString(Path.of(sourcePath))
+        val clients = WinRTHotReloadClient.discover(Path.of(directory))
+        assertEquals(1, clients.size)
+        clients.single().use { client ->
+            fun current() = client.request().roots.single { it.className.endsWith(".MainWindow") && "Second" in it.elements }
+            val resourcePath = listOf(WinRTXamlHotReloadStep.Property("Resources"), WinRTXamlHotReloadStep.Key("Accent"))
+            val stylePath = listOf(WinRTXamlHotReloadStep.Property("Resources"), WinRTXamlHotReloadStep.Key("GreetingStyle"))
+            val reads = listOf(
+                WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Greeting"), "FontSize"),
+                WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Second"), "FontSize"),
+                WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Layout", resourcePath), "Color"),
+                WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Greeting", listOf(WinRTXamlHotReloadStep.Property("Foreground"))), "Color"),
+                WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Second", listOf(WinRTXamlHotReloadStep.Property("Foreground"))), "Color"),
+                WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Layout", stylePath), "IsSealed"),
+            )
+            fun inspect(): WinRTXamlHotReloadReply {
+                val root = current()
+                return client.request(WinRTXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash,
+                    root.sourceHash, root.version + 1, emptyList(), reads = reads)).also {
+                    assertEquals(it.message, WinRTXamlHotReloadProtocol.APPLIED, it.status)
+                }
+            }
+            fun assertState(reply: WinRTXamlHotReloadReply, font: Double): String {
+                listOf("Greeting", "Second").forEach { element ->
+                    assertEquals(font, reply.values.single { it.element == element && it.property == "FontSize" }.value.toDouble(), 0.0)
+                }
+                // Readbacks follow mutation echoes; Color has both for an
+                // in-place recolor, using the same resource address.
+                val color = reply.values.last { it.element == "Layout" && it.property == "Color" }.value
+                assertEquals(listOf(color, color), reply.values.filter { it.element != "Layout" && it.property == "Color" }.map { it.value })
+                assertEquals("true", reply.values.single { it.property == "IsSealed" }.value)
+                return color
+            }
+            val originalColor = assertState(inspect(), 28.0)
+            val before = WinRTHotReloadMarkup.parse(text)
+            val blue = WinRTHotReloadMarkup.parse(text.replace("#FF0067C0", "#FF008844"))
+            val recolor = blue.patch(before, current()).copy(reads = reads)
+            val recolored = client.request(recolor)
+            assertEquals(recolored.message, WinRTXamlHotReloadProtocol.APPLIED, recolored.status)
+            val changedColor = assertState(recolored, 28.0)
+            assertNotEquals(originalColor, changedColor)
+            val restyled = WinRTHotReloadMarkup.parse(blue.text.replace("Value=\"28\"", "Value=\"36\""))
+            val style = restyled.patch(blue, current()).copy(reads = reads)
+            assertEquals(1, style.resources.size)
+            val replaced = client.request(style)
+            assertEquals(replaced.message, WinRTXamlHotReloadProtocol.APPLIED, replaced.status)
+            assertEquals(changedColor, assertState(replaced, 36.0))
+            val latest = current()
+            val rejectedStyle = style.copy(expectedHash = latest.sourceHash, sourceHash = "c".repeat(64), version = latest.version + 1,
+                changes = listOf(WinRTXamlHotReloadChange("Greeting", "Width", "-1")),
+                resources = style.resources.map { it.copy(xaml = it.xaml.replace("Value=\"36\"", "Value=\"48\"")) })
+            val rejected = client.request(rejectedStyle)
+            assertEquals(rejected.message, WinRTXamlHotReloadProtocol.REJECTED, rejected.status)
+            assertEquals(latest.sourceHash, current().sourceHash)
+            assertEquals(changedColor, assertState(inspect(), 36.0))
+            // A subsequent in-place brush update reaches both reloaded styles,
+            // demonstrating that they use the current live dictionary object.
+            val finalRoot = current()
+            val final = client.request(WinRTXamlHotReloadPatch(finalRoot.className, finalRoot.resourcePath,
+                finalRoot.sourceHash, "d".repeat(64), finalRoot.version + 1,
+                listOf(WinRTXamlHotReloadChange("Layout", "Color", "#FFCC4400", resourcePath)), reads = reads))
+            assertEquals(final.message, WinRTXamlHotReloadProtocol.APPLIED, final.status)
+            assertNotEquals(changedColor, assertState(final, 36.0))
+            assertTrue(client.alive)
         }
     }
 }

@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadStep
 import org.jetbrains.jewel.ui.component.*
 
 @Composable
@@ -26,7 +27,7 @@ fun WinRTHotReloadPanel(project: Project) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Text("XAML Hot Reload")
-            Text("Update literal properties on the root and named elements while keeping the current objects.")
+            Text("Update properties, mutable resources and local styles while keeping the current controls.")
             if (available.isEmpty()) Text("Synchronize a JVM WinUI application configured with packageType = None.")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { available.forEach { current ->
                 RadioButtonRow(current.projectPath, module == current, { directory = current.projectDirectory; task = null })
@@ -49,7 +50,7 @@ fun WinRTHotReloadPanel(project: Project) {
             }
             Text(state.message)
             state.pid?.let { Text("Application process: $it") }
-            Text("Element, template, event, binding and resource changes require rebuilding. Kotlin code changes require restarting.")
+            Text("Style replacements refresh explicit StaticResource consumers in this page. Theme expressions, implicit styles, external dictionaries, element structure and compiled connections require rebuilding.")
         }
         items(state.roots, key = { "${it.className}:${it.resourcePath}" }) { root ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -58,8 +59,13 @@ fun WinRTHotReloadPanel(project: Project) {
                 Text("Named elements: ${root.elements.joinToString().ifEmpty { "none" }}")
             }
         }
-        items(state.values, key = { "${it.element}.${it.property}" }) { value ->
-            Text("${value.element.ifEmpty { "root" }}.${value.property} = ${value.value}")
+        items(state.values) { value ->
+            val path = value.path.joinToString("") { step -> when (step) {
+                is WinRTXamlHotReloadStep.Property -> ".${step.name}"
+                is WinRTXamlHotReloadStep.Key -> "[${step.name}]"
+                is WinRTXamlHotReloadStep.Index -> "[${step.index}]"
+            } }
+            Text("${value.element.ifEmpty { "root" }}$path.${value.property} = ${value.value}")
         }
     }
 }

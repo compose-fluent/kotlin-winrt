@@ -247,17 +247,31 @@ and successful overrides apply to subsequently created instances.
 
 The transport uses an authenticated, bounded loopback protocol and an owner-restricted
 session file. It starts only when the development environment variable is present.
-There is no Kotlin reflection or visual-tree replacement. Root and connected named
-elements support ordinary writable literal properties. Element/type/name changes,
-templates, events, bindings, resources, attached properties and Kotlin changes require
-rebuilding and restarting. Resource/style invalidation and object-graph replacement
-remain separate lifecycle work. See `winrt-runtime/HOT_RELOAD.md` for the owning runtime
-contract and Native parity requirements.
+There is no Kotlin reflection. Root and connected named elements support ordinary
+writable literal properties. Mutable keyed resources update through the existing
+projected dictionaries, preserving shared brush identity and resource expressions.
+For a sealed Style, the SDK loads a self-contained replacement dictionary; the
+transaction keeps the live dictionary and controls and refreshes this page's explicit
+StaticResource consumers. Readbacks show effective setter properties after applying
+the style. Failure restores dictionary values and consumers together. New components
+receive both current resources and subsequent literal overrides.
+
+Style replacement currently requires the same explicit string keys and named/root
+owners and consumers. ThemeResource consumers, implicit keys, external/merged/theme
+dictionaries, captures in other dictionaries/templates, element/type/name changes,
+compiled events/bindings, attached properties and Kotlin changes require rebuilding
+and restarting. Object-graph changes remain separate lifecycle work. See
+`winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and Native parity gaps.
 
 `WinRTHotReloadTest` covers markup classification, the compiler's source fingerprint
 and a real authenticated loopback client. Its optional actual-host test accepts
 `-Pwinrt.ide.hotReloadSession=<session directory>` and checks native text, dimensions,
 brush conversion and failed-setter rollback through compiler-generated accessors.
+Its resource-host test accepts `-Pwinrt.ide.hotReloadResourcesSession=<fresh session>`
+and `-Pwinrt.ide.hotReloadResourcesSource=<MainWindow.xaml>` for a template with a
+named Layout, local Accent brush/GreetingStyle and Greeting/Second TextBlocks. It
+checks native shared colors, sealed styles, effective font sizes, transactional
+rollback and subsequent brush changes through the SDK loader/accessors.
 The common runtime engine compiles for `mingwX64`, but its development transport and
 end-to-end IDE support currently target JVM. Android Studio and other IDEA/Kotlin
 versions require their own adapter and UI validation.

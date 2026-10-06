@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.ide.hotreload
 
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlResourceExpression
 import io.github.composefluent.winrt.metadata.WinRTXamlDeclarations
 import io.github.composefluent.winrt.runtime.*
 import org.w3c.dom.Element
@@ -9,18 +10,27 @@ import org.xml.sax.InputSource
 import org.xml.sax.SAXParseException
 import org.xml.sax.helpers.DefaultHandler
 import java.io.StringReader
+import java.io.StringWriter
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
 
-/** Compare markup, then use the compiler-owned accessors; no visual-tree replacement or reflection. */
+/** Compare markup, then use the compiler-owned accessors and WinUI's resource parser. */
 internal class WinRTHotReloadMarkup private constructor(val text: String, private val root: XamlElement) {
     val className: String = root.attributes[Name(WinRTXamlCatalog.XAML, "Class")].orEmpty()
     val hash: String = WinRTXamlDeclarations.sourceFingerprint(text)
 
     private data class Name(val uri: String, val local: String)
-    private data class XamlElement(val type: Name, val attributes: Map<Name, String>, val content: List<Any>) {
+    private class XamlElement(val type: Name, val attributes: Map<Name, String>, val content: List<Any>, val node: Element) {
         val elementName get() = attributes[Name(WinRTXamlCatalog.XAML, "Name")] ?: attributes[Name("", "Name")].orEmpty()
         val template get() = type.uri == WinRTXamlCatalog.PRESENTATION && type.local in setOf("DataTemplate", "ControlTemplate", "ItemsPanelTemplate")
+        fun matches(other: XamlElement): Boolean = type == other.type && attributes == other.attributes &&
+            content.size == other.content.size && content.zip(other.content).all { (a, b) ->
+                if (a is XamlElement && b is XamlElement) a.matches(b) else a == b
+            }
     }
 
     fun patch(previous: WinRTHotReloadMarkup, loaded: WinRTXamlHotReloadRoot,
@@ -28,11 +38,85 @@ internal class WinRTHotReloadMarkup private constructor(val text: String, privat
         require(className == loaded.className && previous.className == className) { "Changing x:Class requires rebuilding and restarting." }
         require(previous.hash == loaded.sourceHash) { "The loaded component does not match the previous source. Reconnect or rebuild." }
         val changes = mutableListOf<WinRTXamlHotReloadChange>()
+        val resources = mutableListOf<WinRTXamlHotReloadResources>()
+        val reads = mutableListOf<WinRTXamlHotReloadRead>()
+        fun XamlElement.address(parent: WinRTXamlHotReloadTarget?, owner: Boolean = false) = when {
+            owner -> WinRTXamlHotReloadTarget()
+            elementName in loaded.elements -> WinRTXamlHotReloadTarget(elementName)
+            else -> parent
+        }
         fun literal(value: String): String {
             require(!value.startsWith('{') || value.startsWith("{}")) { "Binding and resource expressions require rebuilding and restarting." }
             return if (value.startsWith("{}")) value.drop(2) else value
         }
-        fun compare(old: XamlElement, next: XamlElement, owner: Boolean, inTemplate: Boolean) {
+        fun resourceEntries(container: XamlElement): List<XamlElement> {
+            require(container.content.all { it is XamlElement }) { "Resource text changes require rebuilding." }
+            val children = container.content.filterIsInstance<XamlElement>()
+            val entries = if (children.singleOrNull()?.type == Name(WinRTXamlCatalog.PRESENTATION, "ResourceDictionary")) {
+                val dictionary = children.single()
+                require(dictionary.attributes.keys.all { it.uri == XMLConstants.XMLNS_ATTRIBUTE_NS_URI }) {
+                    "External or named dictionaries require rebuilding."
+                }
+                require(dictionary.content.all { it is XamlElement }) { "Resource text changes require rebuilding." }
+                dictionary.content.filterIsInstance<XamlElement>()
+            } else children
+            require(entries.all { it.attributes[Name(WinRTXamlCatalog.XAML, "Key")]?.isNotEmpty() == true }) {
+                "Implicit keys, merged and theme dictionaries require rebuilding for a style update."
+            }
+            require(entries.map { it.attributes[Name(WinRTXamlCatalog.XAML, "Key")] }.distinct().size == entries.size) {
+                "Duplicate resource keys require fixing XAML before updating."
+            }
+            return entries
+        }
+        fun key(entry: XamlElement) = entry.attributes.getValue(Name(WinRTXamlCatalog.XAML, "Key"))
+        fun styleChanged(old: XamlElement, next: XamlElement): Boolean = !old.matches(next) &&
+            (old.type == Name(WinRTXamlCatalog.PRESENTATION, "Style") || next.type == Name(WinRTXamlCatalog.PRESENTATION, "Style") ||
+                old.content.filterIsInstance<XamlElement>().zip(next.content.filterIsInstance<XamlElement>()).any { (a, b) -> styleChanged(a, b) })
+        fun validateFragment(element: XamlElement, keys: Set<String>) {
+            require(element.elementName.isEmpty()) { "Named resources require rebuilding to reconnect generated fields." }
+            element.attributes.forEach { (name, value) ->
+                require(name.uri != WinRTXamlCatalog.XAML || name.local == "Key") {
+                    "Compiled directives in resources require rebuilding."
+                }
+                if (name.uri.isEmpty()) propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
+                if (value.startsWith('{') && !value.startsWith("{}")) {
+                    val reference = WinRTXamlResourceExpression.parse(value)
+                    require(reference != null && !reference.theme && reference.key in keys) {
+                        "The replacement dictionary must resolve its resource expressions locally; bindings and theme expressions require rebuilding."
+                    }
+                }
+            }
+            element.content.filterIsInstance<XamlElement>().forEach { validateFragment(it, keys) }
+        }
+        fun references(owner: XamlElement, dictionary: XamlElement, target: WinRTXamlHotReloadTarget, keys: Set<String>): List<WinRTXamlHotReloadResourceReference> {
+            val result = mutableListOf<WinRTXamlHotReloadResourceReference>()
+            fun visit(element: XamlElement, ownerElement: Boolean, available: Set<String>, inDictionary: Boolean = false, inTemplate: Boolean = false) {
+                if (element === dictionary) return
+                val localKeys = element.content.filterIsInstance<XamlElement>().filter { it.type.local.endsWith(".Resources") && it !== dictionary }
+                    .flatMap { block -> runCatching { resourceEntries(block).map(::key) }.getOrElse {
+                        error("A nested opaque dictionary prevents resolving the resource consumers; rebuild.")
+                    } }.toSet()
+                val visible = available - localKeys
+                element.attributes.forEach { (name, value) ->
+                    val reference = WinRTXamlResourceExpression.parse(value) ?: return@forEach
+                    if (reference.key !in visible) return@forEach
+                    require(!reference.theme) { "Replacing a resource used by ThemeResource requires rebuilding to preserve its theme expression." }
+                    require(!inDictionary && !inTemplate && !element.template) { "A resource captured by another dictionary or template requires rebuilding." }
+                    require(name.uri.isEmpty() && '.' !in name.local) { "Attached resource consumers require rebuilding." }
+                    propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
+                    val address = if (ownerElement) target else element.address(null)
+                    require(address != null) { "Add x:Name and rebuild before refreshing this resource consumer." }
+                    result += WinRTXamlHotReloadResourceReference(address, name.local, reference.key)
+                }
+                element.content.filterIsInstance<XamlElement>().forEach { child ->
+                    visit(child, false, visible, inDictionary || child.type.local.endsWith(".Resources"), inTemplate || element.template)
+                }
+            }
+            visit(owner, true, keys)
+            return result.distinct()
+        }
+        fun compare(old: XamlElement, next: XamlElement, target: WinRTXamlHotReloadTarget?, inTemplate: Boolean, resourceObject: Boolean = false) {
+            if (old.matches(next)) return
             require(old.type == next.type && old.elementName == next.elementName) { "Changing element types or names requires rebuilding and restarting." }
             require(next.attributes.keys.containsAll(old.attributes.keys)) { "Removing a property requires rebuilding to restore its default value." }
             val template = inTemplate || next.template
@@ -42,20 +126,86 @@ internal class WinRTHotReloadMarkup private constructor(val text: String, privat
                 require(!template) { "Template changes require rebuilding and restarting." }
                 require(name.uri.isEmpty() && '.' !in name.local) { "Directives, namespaces and attached properties require rebuilding and restarting." }
                 require(name.local != "Name") { "Changing element names requires rebuilding and restarting." }
-                require(owner || next.elementName in loaded.elements) { "Add x:Name and rebuild before updating this element's properties." }
+                require(target != null) { "Add x:Name and rebuild before updating this element's properties." }
                 propertyProblem(next.type.uri, next.type.local, name.local)?.let { error(it) }
                 before?.let(::literal)
-                changes += WinRTXamlHotReloadChange(if (owner) "" else next.elementName, name.local, literal(value))
+                changes += WinRTXamlHotReloadChange(target.element, name.local, literal(value), target.path)
             }
             require(old.content.size == next.content.size) { "Adding or removing elements requires rebuilding and restarting." }
             old.content.zip(next.content).forEach { (a, b) ->
-                if (a is XamlElement && b is XamlElement) compare(a, b, false, template)
+                if (a is XamlElement && b is XamlElement) {
+                    if (b.type.uri == WinRTXamlCatalog.PRESENTATION && b.type.local.endsWith(".Resources")) {
+                        if (a.matches(b)) return@forEach
+                        require(!template && target != null && a.type == b.type && a.attributes == b.attributes) {
+                            "The resource owner must be root or named; rebuild to establish its identity."
+                        }
+                        val oldEntries = resourceEntries(a)
+                        val nextEntries = resourceEntries(b)
+                        val oldByKey = oldEntries.associateBy(::key)
+                        val nextByKey = nextEntries.associateBy(::key)
+                        require(oldByKey.keys == nextByKey.keys) { "Adding or removing resource keys requires rebuilding." }
+                        val resourceTarget = target.copy(path = target.path + WinRTXamlHotReloadStep.Property("Resources"))
+                        if (nextEntries.any { styleChanged(oldByKey.getValue(key(it)), it) }) {
+                            nextEntries.forEach { validateFragment(it, nextByKey.keys) }
+                            val consumers = references(next, b, target, nextByKey.keys)
+                            resources += WinRTXamlHotReloadResources(resourceTarget, dictionaryMarkup(b), nextEntries.map(::key), consumers)
+                            consumers.filter { it.property == "Style" }.forEach { consumer ->
+                                fun setterProperties(element: XamlElement): List<String> =
+                                    element.content.filterIsInstance<XamlElement>().flatMap { child ->
+                                        if (child.type == Name(WinRTXamlCatalog.PRESENTATION, "Setter"))
+                                            listOfNotNull(child.attributes[Name("", "Property")]?.takeIf { '.' !in it })
+                                        else setterProperties(child)
+                                    }
+                                setterProperties(nextByKey.getValue(consumer.key)).distinct().forEach { property ->
+                                    reads += WinRTXamlHotReloadRead(consumer.target, property)
+                                }
+                            }
+                        } else nextEntries.forEach { entry ->
+                            compare(oldByKey.getValue(key(entry)), entry,
+                                resourceTarget.copy(path = resourceTarget.path + WinRTXamlHotReloadStep.Key(key(entry))), false, true)
+                        }
+                    } else compare(a, b, if (resourceObject) null else b.address(null), template)
+                }
                 else require(a == b) { "Changing element content requires rebuilding and restarting." }
             }
         }
-        compare(previous.root, root, true, false)
-        require(changes.size <= 512) { "Too many changed properties; rebuild the application." }
-        return WinRTXamlHotReloadPatch(className, loaded.resourcePath, previous.hash, hash, loaded.version + 1, changes)
+        compare(previous.root, root, WinRTXamlHotReloadTarget(), false)
+        val readbacks = reads.distinct()
+        require(changes.size + resources.sumOf { 1 + it.references.size } + readbacks.size <= 512 && resources.size <= 64) { "Too many changes; rebuild the application." }
+        return WinRTXamlHotReloadPatch(className, loaded.resourcePath, previous.hash, hash, loaded.version + 1, changes, resources, readbacks)
+    }
+
+    private fun dictionaryMarkup(container: XamlElement): String {
+        val document = container.node.ownerDocument
+        val original = container.content.filterIsInstance<XamlElement>().singleOrNull()
+            ?.takeIf { it.type == Name(WinRTXamlCatalog.PRESENTATION, "ResourceDictionary") }?.node
+        val dictionary = original?.cloneNode(true) as? Element
+            ?: document.createElementNS(WinRTXamlCatalog.PRESENTATION, "ResourceDictionary").apply {
+                container.content.filterIsInstance<XamlElement>().forEach { appendChild(it.node.cloneNode(true)) }
+            }
+        // A fragment must carry the namespaces it inherited from the page.
+        val ancestors = generateSequence(container.node as Node?) { it.parentNode }.filterIsInstance<Element>().toList().asReversed()
+        ancestors.forEach { element ->
+            for (i in 0 until element.attributes.length) {
+                val attribute = element.attributes.item(i)
+                if (attribute.namespaceURI == XMLConstants.XMLNS_ATTRIBUTE_NS_URI) dictionary.setAttributeNS(attribute.namespaceURI, attribute.nodeName, attribute.nodeValue)
+            }
+        }
+        original?.let { element ->
+            for (i in 0 until element.attributes.length) {
+                val attribute = element.attributes.item(i)
+                if (attribute.namespaceURI == XMLConstants.XMLNS_ATTRIBUTE_NS_URI) dictionary.setAttributeNS(attribute.namespaceURI, attribute.nodeName, attribute.nodeValue)
+            }
+        }
+        dictionary.setAttributeNS(XMLConstants.XMLNS_ATTRIBUTE_NS_URI, "xmlns", WinRTXamlCatalog.PRESENTATION)
+        val transformer = TransformerFactory.newInstance().apply {
+            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+            setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "")
+        }.newTransformer().apply { setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes") }
+        return StringWriter().also { transformer.transform(DOMSource(dictionary), StreamResult(it)) }.toString().also {
+            require(it.length <= 128 * 1024) { "The dictionary is too large for a live replacement; rebuild." }
+        }
     }
 
     companion object {
@@ -94,7 +244,7 @@ internal class WinRTHotReloadMarkup private constructor(val text: String, privat
                         } else if (child.nodeType == Node.PROCESSING_INSTRUCTION_NODE) add(child.nodeName to child.nodeValue)
                     }
                 }
-                return XamlElement(type, attributes, content)
+                return XamlElement(type, attributes, content, value)
             }
             return WinRTHotReloadMarkup(text, element(xml.documentElement, 0, false))
         }

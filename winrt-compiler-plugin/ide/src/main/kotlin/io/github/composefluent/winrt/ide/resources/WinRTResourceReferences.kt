@@ -11,6 +11,7 @@ import com.intellij.psi.*
 import com.intellij.psi.xml.*
 import com.intellij.util.ProcessingContext
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlResourceExpression
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlSymbols
 import java.net.URI
 
@@ -35,7 +36,6 @@ class WinRTResourceReferenceAnnotator : Annotator {
 }
 
 internal object WinRTResourceReferences {
-    private val resource = Regex("^\\{(?:StaticResource|ThemeResource)\\s+(?:ResourceKey\\s*=\\s*)?([^,}]+)\\s*}")
     private enum class Kind { File, String, Uid, Key }
 
     internal fun reference(element: PsiElement): PsiPolyVariantReference? {
@@ -44,7 +44,7 @@ internal object WinRTResourceReferences {
         val lookup = file.project.service<WinRTResourceIndex>().forFile(file.virtualFile?.path ?: return null) ?: return null
         val attribute = (element as? XmlAttributeValue)?.parent as? XmlAttribute
         val value = when (element) { is XmlAttributeValue -> element.value; is XmlText -> element.value.trim(); else -> return null }
-        val key = resource.find(value)?.groups?.get(1)?.value?.trim()?.trim('\'', '"')
+        val key = WinRTXamlResourceExpression.parse(value)?.key
         val kind = when {
             key != null && file.virtualFile.extension.equals("xaml", true) -> Kind.Key
             attribute?.localName == "Uid" && attribute.namespace == WinRTXamlCatalog.XAML -> Kind.Uid

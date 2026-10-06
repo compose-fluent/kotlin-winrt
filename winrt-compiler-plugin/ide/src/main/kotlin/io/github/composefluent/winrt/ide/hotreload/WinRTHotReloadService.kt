@@ -196,7 +196,8 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                             if (member?.isEvent == true) "Changing event connections requires rebuilding and restarting." else null
                         }
                         attempted[key] = after
-                        display.value = display.value.copy(message = "Applying ${patch.changes.size} property changes…", busy = true)
+                        val count = patch.changes.size + patch.resources.size
+                        display.value = display.value.copy(message = "Applying $count property and resource updates…", busy = true)
                         val reply = connection.request(patch)
                         if (reply.status != WinRTXamlHotReloadProtocol.APPLIED) {
                             uncertain = reply.status == WinRTXamlHotReloadProtocol.UNAVAILABLE
@@ -205,13 +206,13 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                             return@withLock
                         }
                         baselines[key] = after; attempted.remove(key)
-                        results += reply.values; updated += patch.changes.size
+                        results += reply.values; updated += count
                         display.value = display.value.copy(roots = reply.roots)
                     }
                     val missing = display.value.roots.count { baselines[it.className to it.resourcePath]?.markup?.hash != it.sourceHash }
-                    display.value = display.value.copy(message = if (missing != 0) "$updated properties updated; $missing classes have no matching source. Rebuild to update them."
-                        else if (updated == 0) "XAML matches the running components." else "$updated properties updated in place.",
-                        busy = false, values = results)
+                    display.value = display.value.copy(message = if (missing != 0) "$updated updates applied; $missing classes have no matching source. Rebuild to update them."
+                        else if (updated == 0) "XAML matches the running components." else "$updated property and resource updates applied.",
+                        busy = false, values = results.distinct())
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
                     // A lost response may have committed on the UI thread. Handshake reconciles hashes before another request.

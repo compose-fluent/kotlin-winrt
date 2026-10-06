@@ -1,4 +1,4 @@
-# XAML development property updates
+# XAML development property and resource updates
 
 The common property engine uses the compiler's existing XAML type/member
 registrations. Property discovery reuses `WinUiAuthoredTypeMetadata.customProperty`,
@@ -29,6 +29,34 @@ restarting. Subsequent instances receive successful literal property overrides w
 their original XBF finishes loading. The engine preserves the existing object graph,
 events and compiled bindings; graph/binding/name changes require their own compiler
 and lifecycle contract and are not handled by this protocol.
+
+Protocol version 2 adds bounded object paths through generated property getters,
+projected dictionary keys and collection indices. An index includes the expected
+collection size; a changed live shape rejects the update. Mutable resource values,
+such as a shared SolidColorBrush, receive literal property updates in place,
+preserving StaticResource and ThemeResource consumers' references.
+
+Applied WinUI Styles are sealed. Their update constructs a fresh local dictionary
+with the SDK's `XamlReader.Load`, as used by CsWinRT's resource tests in
+`src/Tests/ObjectLifetimeTests/CustomGroupedItemPages.cs`. Generated application
+glue supplies that typed SDK loader; the common runtime never parses XAML or
+implements another projection model. The transaction keeps the original live
+dictionary and controls, replaces values with the same explicit string keys and
+reassigns this page's explicit StaticResource consumers. Readbacks inspect effective
+style properties on the UI thread. Prepared replacements also supply subsequent
+literal overrides when a new component finishes loading its original XBF.
+
+The IDE currently recognizes resources on root or connected named owners. Style
+replacement requires a self-contained local dictionary and resolvable named/root
+consumers. Implicit keys, merged/external/theme dictionaries, references captured
+by another dictionary/template, new names, events and binding expressions require
+rebuilding. A ThemeResource consumer cannot be reassigned as a local value without
+losing its theme expression, so it rejects replacement rather than claiming theme
+invalidation. References held outside this page's XAML/connected objects do not
+participate in the update. Changing dictionary keys also requires rebuilding.
+Parser, key-shape, getter, conversion or setter failure preserves the previous
+version; attempted mutations roll back dictionary values and consumer properties
+together. Rollback failure still requires restarting.
 
 The JVM transport starts only when `KOTLIN_WINRT_HOT_RELOAD_DIRECTORY` is supplied
 to a development process. It uses an ephemeral loopback port, a random 256-bit token,

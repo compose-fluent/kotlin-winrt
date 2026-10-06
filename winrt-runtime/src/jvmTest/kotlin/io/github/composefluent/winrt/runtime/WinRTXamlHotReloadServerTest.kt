@@ -34,4 +34,22 @@ class WinRTXamlHotReloadServerTest {
         val valid = ByteArrayOutputStream().also { WinRTXamlHotReloadWire.writeRequest(it, "test", null) }.toByteArray()
         assertFailsWith<EOFException> { WinRTXamlHotReloadWire.readRequest(ByteArrayInputStream(valid.copyOf(valid.size - 1))) }
     }
+    @Test fun resource_transactions_and_object_paths_round_trip_in_bounded_frames() {
+        val target = WinRTXamlHotReloadTarget("Container", listOf(WinRTXamlHotReloadStep.Property("Resources"),
+            WinRTXamlHotReloadStep.Key("Light"), WinRTXamlHotReloadStep.Index(0, 1)))
+        val patch = WinRTXamlHotReloadPatch("probe.Page", "Page.xaml", "a".repeat(64), "b".repeat(64), 1,
+            listOf(WinRTXamlHotReloadChange("Container", "Color", "blue", target.path)),
+            listOf(WinRTXamlHotReloadResources(target, "<ResourceDictionary/>", listOf("Style"),
+                listOf(WinRTXamlHotReloadResourceReference(WinRTXamlHotReloadTarget("Heading"), "Style", "Style")))),
+            listOf(WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Heading"), "FontSize")))
+        val bytes = ByteArrayOutputStream().also { WinRTXamlHotReloadWire.writeRequest(it, "token", patch) }.toByteArray()
+        assertEquals("token" to patch, WinRTXamlHotReloadWire.readRequest(ByteArrayInputStream(bytes)))
+        val reply = WinRTXamlHotReloadReply(0, "updated", values = listOf(WinRTXamlHotReloadValue(target.element, "Color", "blue", target.path)))
+        val response = ByteArrayOutputStream().also { WinRTXamlHotReloadWire.writeReply(it, reply) }.toByteArray()
+        assertEquals(reply, WinRTXamlHotReloadWire.readReply(ByteArrayInputStream(response)))
+        assertFailsWith<IllegalArgumentException> {
+            WinRTXamlHotReloadWire.writeRequest(ByteArrayOutputStream(), "token", patch.copy(changes =
+                listOf(patch.changes.single().copy(path = List(65) { WinRTXamlHotReloadStep.Property("Next") }))))
+        }
+    }
 }

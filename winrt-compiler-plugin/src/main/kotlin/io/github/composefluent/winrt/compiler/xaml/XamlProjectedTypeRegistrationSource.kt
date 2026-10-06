@@ -42,17 +42,6 @@ internal fun writeXamlProjectedTypeRegistrationSource(
     val file = root.resolve("${packageName.replace('.', '/')}/KotlinXamlProjectedTypes_$suffix.kt")
     Files.createDirectories(file.parent)
     fun literal(value: String) = JsonPrimitive(value).toString()
-    fun sourceType(ref: WinRTTypeRef): String {
-        val descriptor = specialTypes.resolveType(ref, "")
-        val reference = descriptor as? WinRTReferenceTypeDescriptor
-        if (reference?.kind == WinRTReferenceInterfaceKind.Reference)
-            return sourceType(ref.typeArguments.single()).removeSuffix("?") + "?"
-        val name = ref.qualifiedName ?: ref.typeName
-        val source = (descriptor as? WinRTCollectionTypeDescriptor)?.kind?.kotlinProjectedName
-            ?: xamlTypeClassId(name).asSingleFqName().asString()
-        val args = ref.typeArguments.takeIf { it.isNotEmpty() }?.joinToString(", ", "<", ">", transform = ::sourceType).orEmpty()
-        return source + args + if (isWinRTObjectTypeName(name)) "?" else ""
-    }
     file.writeText(buildString {
         appendLine("@file:Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\")")
         appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
@@ -78,7 +67,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(
                 // Match the projection's shared property nullability and collection mappings.
                 val nullable = WinRTPropertyDefinition(member.propertyName, member.propertyTypeName)
                     .isNullablePropertyProjection(name, definitions)
-                val kotlinType = sourceType(ref).let { if (nullable && !it.endsWith('?')) "$it?" else it }
+                val kotlinType = xamlProjectedPropertySourceType(ref, specialTypes).let { if (nullable && !it.endsWith('?')) "$it?" else it }
                 appendLine(xamlPropertyRegistrationSource(owner, property, kotlinType, convert,
                     accessorName = member.propertyName.replaceFirstChar(Char::lowercase)).prependIndent("      ") + ",")
             }
@@ -94,4 +83,21 @@ internal fun writeXamlProjectedTypeRegistrationSource(
         appendLine("}")
     })
     return "$packageName.$register"
+}
+
+/** Render the same mapped property shape as KotlinProjectionTypeResolver. */
+internal fun xamlProjectedPropertySourceType(ref: WinRTTypeRef, specialTypes: WinRTMetadataSpecialTypeResolver): String {
+    val descriptor = specialTypes.resolveType(ref, "")
+    val reference = descriptor as? WinRTReferenceTypeDescriptor
+    if (reference?.kind == WinRTReferenceInterfaceKind.Reference)
+        return xamlProjectedPropertySourceType(ref.typeArguments.single(), specialTypes).removeSuffix("?") + "?"
+    val name = ref.qualifiedName ?: ref.typeName
+    val source = (descriptor as? WinRTCollectionTypeDescriptor)?.kind?.kotlinProjectedName
+        ?: xamlTypeClassId(name).asSingleFqName().asString()
+    // CsWinRT maps TypeName to System.Type; the Kotlin projection owns
+    // KClass<*>?, including nullable native TypeName values (Style.TargetType).
+    val projectedType = isWinRTTypeTypeName(name)
+    val args = if (projectedType) "<*>" else
+        ref.typeArguments.takeIf { it.isNotEmpty() }?.joinToString(", ", "<", ">") { xamlProjectedPropertySourceType(it, specialTypes) }.orEmpty()
+    return source + args + if (isWinRTObjectTypeName(name) || projectedType) "?" else ""
 }

@@ -16,6 +16,25 @@ object WinRTXamlHotReloadWire {
         return ByteArray(length).also(::readFully).toString(Charsets.UTF_8)
     }
     private fun DataInputStream.count(max: Int): Int = readInt().also { require(it in 0..max) { "Invalid Hot Reload item count." } }
+    private fun DataOutputStream.path(steps: List<WinRTXamlHotReloadStep>) {
+        require(steps.size <= 64) { "Hot Reload object path is too long." }
+        writeInt(steps.size)
+        steps.forEach { step -> when (step) {
+            is WinRTXamlHotReloadStep.Property -> { writeByte(0); string(step.name) }
+            is WinRTXamlHotReloadStep.Key -> { writeByte(1); string(step.name) }
+            is WinRTXamlHotReloadStep.Index -> { writeByte(2); writeInt(step.index); writeInt(step.expectedSize) }
+        } }
+    }
+    private fun DataInputStream.path(): List<WinRTXamlHotReloadStep> = List(count(64)) {
+        when (readUnsignedByte()) {
+            0 -> WinRTXamlHotReloadStep.Property(string())
+            1 -> WinRTXamlHotReloadStep.Key(string())
+            2 -> WinRTXamlHotReloadStep.Index(count(4096), count(4096))
+            else -> error("Invalid Hot Reload object path step.")
+        }
+    }
+    private fun DataOutputStream.target(target: WinRTXamlHotReloadTarget) { string(target.element); path(target.path) }
+    private fun DataInputStream.target() = WinRTXamlHotReloadTarget(string(), path())
     private fun write(stream: OutputStream, body: DataOutputStream.() -> Unit) {
         val bytes = ByteArrayOutputStream().also { DataOutputStream(it).use(body) }.toByteArray()
         require(bytes.size <= MAX_FRAME) { "Hot Reload frame exceeds its protocol limit." }
@@ -33,25 +52,42 @@ object WinRTXamlHotReloadWire {
     fun writeRequest(stream: OutputStream, token: String, patch: WinRTXamlHotReloadPatch?) = write(stream) {
         string(token); writeBoolean(patch != null)
         patch?.let { string(it.className); string(it.resourcePath); string(it.expectedHash); string(it.sourceHash); writeLong(it.version)
-            writeInt(it.changes.size); it.changes.forEach { change -> string(change.element); string(change.property); string(change.literal) } }
+            writeInt(it.changes.size); it.changes.forEach { change -> string(change.element); string(change.property); string(change.literal); path(change.path) }
+            writeInt(it.resources.size); it.resources.forEach { resources ->
+                target(resources.target); string(resources.xaml)
+                writeInt(resources.expectedKeys.size); resources.expectedKeys.forEach { key -> string(key) }
+                writeInt(resources.references.size); resources.references.forEach { reference ->
+                    target(reference.target); string(reference.property); string(reference.key)
+                }
+            }
+            writeInt(it.reads.size); it.reads.forEach { read -> target(read.target); string(read.property) }
+        }
     }
     fun readRequest(stream: InputStream): Pair<String, WinRTXamlHotReloadPatch?> = read(stream) {
         val token = string()
         token to if (!readBoolean()) null else {
             val name = string(); val path = string(); val expected = string(); val hash = string(); val version = readLong()
-            WinRTXamlHotReloadPatch(name, path, expected, hash, version, List(count(512)) { WinRTXamlHotReloadChange(string(), string(), string()) })
+            val changes = List(count(512)) { WinRTXamlHotReloadChange(string(), string(), string(), path()) }
+            val resources = List(count(64)) {
+                val target = target(); val xaml = string(); val keys = List(count(4096)) { string() }
+                WinRTXamlHotReloadResources(target, xaml, keys, List(count(512)) {
+                    WinRTXamlHotReloadResourceReference(target(), string(), string())
+                })
+            }
+            val reads = List(count(512)) { WinRTXamlHotReloadRead(target(), string()) }
+            WinRTXamlHotReloadPatch(name, path, expected, hash, version, changes, resources, reads)
         }
     }
     fun writeReply(stream: OutputStream, reply: WinRTXamlHotReloadReply) = write(stream) {
         writeInt(reply.status); string(reply.message); writeInt(reply.roots.size)
         reply.roots.forEach { string(it.className); string(it.resourcePath); string(it.sourceHash); writeLong(it.version)
             writeInt(it.elements.size); it.elements.forEach { name -> string(name) } }
-        writeInt(reply.values.size); reply.values.forEach { string(it.element); string(it.property); string(it.value) }
+        writeInt(reply.values.size); reply.values.forEach { string(it.element); string(it.property); string(it.value); path(it.path) }
     }
     fun readReply(stream: InputStream): WinRTXamlHotReloadReply = read(stream) {
         val status = readInt(); val message = string()
         val roots = List(count(1024)) { val name = string(); val path = string(); val hash = string(); val version = readLong()
             WinRTXamlHotReloadRoot(name, path, hash, version, List(count(4096)) { string() }) }
-        WinRTXamlHotReloadReply(status, message, roots, List(count(512)) { WinRTXamlHotReloadValue(string(), string(), string()) })
+        WinRTXamlHotReloadReply(status, message, roots, List(count(512)) { WinRTXamlHotReloadValue(string(), string(), string(), path()) })
     }
 }
