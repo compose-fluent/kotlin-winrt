@@ -19,12 +19,13 @@ class WinRTResourceChanges(project: Project) {
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
                 val file = FileDocumentManager.getInstance().getFile(event.document) ?: return
-                if (file.extension.equals("resw", true) || file.name.equals("AppxManifest.xml", true)) revision.update { it + 1 }
+                if (file.extension.equals("resw", true) || file.extension.equals("xaml", true) ||
+                    file.extension.equals("appxmanifest", true) || file.name.equals("AppxManifest.xml", true)) revision.update { it + 1 }
             }
         }, project)
         project.messageBus.connect().subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
             override fun after(events: List<VFileEvent>) {
-                if (events.any { "appxResources" in it.path || it.path.endsWith("appx-resource-resolution.json") }) revision.update { it + 1 }
+                if (events.any { "appxResources" in it.path || it.path.endsWith("appx-resource-resolution.json") || it.path.endsWith(".xaml", true) }) revision.update { it + 1 }
             }
         })
     }

@@ -23,6 +23,9 @@
         <xml.implicitNamespaceDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNamespaceProvider"/>
         <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlCompletionContributor"/>
         <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlReferenceContributor"/>
+        <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceContributor"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceAnnotator"/>
+        <completion.contributor language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceCompletion"/>
         <codeInsight.lineMarkerProvider language="kotlin" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlRelatedMarker"/>
         <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation"/>
         <toolWindow id="Kotlin WinRT" anchor="right"

@@ -177,6 +177,16 @@ and variant staging actions. Tests exercise native Kotlin script PSI/undo, compu
 expression protection, source hierarchy/credential isolation, V3 service discovery,
 the real IDE HTTP client and authoritative lock inventory.
 
+Resource references use native XML PSI. Manifest logos and `ms-appx` paths navigate
+to source file candidates; `ms-resource` and `x:Uid` navigate to localized `.resw`
+names, including unsaved edits. XAML resource keys resolve local, merged, theme and
+application dictionaries and participate in completion. The index enumerates files
+and reads the toolkit's staging reports in the background. Qualifier variants are
+navigation candidates, not a claim about MRT's selected runtime value. References
+are soft and unresolved sources have a diagnostic describing dependency/runtime
+limits. Foreign package authorities and opaque compiled dictionaries require their
+own source mapping; they are not resolved to unrelated local files.
+
 Hot Reload still needs implementation. Hot Reload requires XAMLC
 update artifacts and application-side lifecycle/UI-thread support. Native
 targets are represented in the imported model; no Native or Android Studio
