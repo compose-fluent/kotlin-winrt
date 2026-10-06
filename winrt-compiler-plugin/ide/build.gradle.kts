@@ -58,6 +58,11 @@ tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
 }
 
 tasks.withType<Test>().configureEach {
+    // BasePlatformTestCase is JUnit 3; its runner reports JUnit 4 assumptions
+    // as failures. Keep optional real-toolchain fixtures out until configured.
+    if (!providers.gradleProperty("winrt.ide.importProject").isPresent) exclude("**/WinRTGradleImportTest.class")
+    if (!providers.gradleProperty("winrt.ide.xamlInput").isPresent || !providers.gradleProperty("winrt.ide.xamlCompiler").isPresent)
+        exclude("**/WinRTXamlDocumentCompilerTest.class")
     systemProperty("winrt.ide.toolchain", rootProject.projectDir.resolve("../..").canonicalPath)
     providers.gradleProperty("winrt.ide.templateOutput").orNull?.let { systemProperty("winrt.ide.templateOutput", it) }
     providers.gradleProperty("winrt.ide.xamlInput").orNull?.let { systemProperty("winrt.ide.xamlInput", it) }
