@@ -12,6 +12,14 @@ import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 
 class WinRTProjectServiceTest : BasePlatformTestCase() {
+    override fun tearDown() {
+        try {
+            val service = project.service<WinRTProjectService>()
+            service.replaceBuildModels("/first", emptyList())
+            service.replaceBuildModels("/other", emptyList())
+        } finally { super.tearDown() }
+    }
+
     fun testReimportRemovesOldModulesAndPreservesOtherBuilds() {
         val service = project.service<WinRTProjectService>()
         val first = module("/first", ":app")

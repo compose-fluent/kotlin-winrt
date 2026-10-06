@@ -6,16 +6,25 @@ import com.intellij.openapi.components.service
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiReferenceService
 import com.intellij.psi.xml.*
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.github.composefluent.winrt.ide.gradle.*
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.resources.*
 
 class WinRTResourceReferencesTest : BasePlatformTestCase() {
+    private var importedRoot: String? = null
     override fun createTempDirTestFixture() = com.intellij.testFramework.fixtures.impl.TempDirTestFixtureImpl()
+
+    override fun tearDown() {
+        try {
+            importedRoot?.let { project.service<WinRTProjectService>().replaceBuildModels(it, emptyList()) }
+        } finally { super.tearDown() }
+    }
     private fun configure(text: String, name: String = "View.xaml"): XmlFile {
         val file = myFixture.addFileToProject(name, text) as XmlFile
         val directory = file.virtualFile.parent.path
+        importedRoot = directory
         myFixture.addFileToProject("assets/Assets/Logo.scale-100.png", "probe")
         myFixture.addFileToProject("assets/Assets/Logo.scale-200.png", "probe")
         myFixture.addFileToProject("assets/Strings/en-US/Resources.resw", """<root><data name="AppName"><value>Application</value></data><data name="Greeting.Text"><value>Hello</value></data></root>""")
@@ -25,7 +34,10 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
             emptyList(), emptyList(), emptyList(), listOf(WinRTXamlCompilationData("analyze", listOf(directory), "", "", "", "")))
         val index = project.service<WinRTResourceIndex>()
         project.service<WinRTProjectService>().replaceBuildModels(directory, listOf(module))
-        index.publish(listOf(index.read(module, listOf(module))))
+        PlatformTestUtil.waitWithEventsDispatching("Resource files indexed", {
+            index.forFile(file.virtualFile.path)?.entries?.size == 4
+        }, 10)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         myFixture.configureFromExistingVirtualFile(file.virtualFile)
         return file
     }

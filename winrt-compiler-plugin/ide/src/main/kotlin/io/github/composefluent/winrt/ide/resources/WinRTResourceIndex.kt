@@ -26,16 +26,19 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
         scope.launch(Dispatchers.IO) {
             val projects = project.service<WinRTProjectService>()
             projects.refreshFromGradleCache()
-            combine(projects.modules, project.service<WinRTResourceChanges>().revision, projects.dependencyRevision) { modules, _, _ -> modules }
-                .collectLatest { modules ->
-                    delay(250)
-                    val next = modules.mapNotNull { module ->
-                        coroutineContext.ensureActive()
-                        runCatching { read(module, modules) }.getOrNull()
-                    }
+            val changes = project.service<WinRTResourceChanges>()
+            combine(projects.modules, changes.revision, projects.dependencyRevision) { modules, revision, dependencyRevision ->
+                Triple(modules, revision, dependencyRevision)
+            }.collectLatest { (modules, revision, dependencyRevision) ->
+                delay(250)
+                val next = modules.mapNotNull { module ->
                     coroutineContext.ensureActive()
-                    publish(next)
+                    runCatching { read(module, modules) }.getOrNull()
                 }
+                coroutineContext.ensureActive()
+                if (modules == projects.modules.value && revision == changes.revision.value &&
+                    dependencyRevision == projects.dependencyRevision.value) publish(next)
+            }
         }
     }
 
@@ -45,6 +48,7 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
     }.maxByOrNull { it.module.projectDirectory.length }
 
     internal fun publish(next: List<WinRTResourceLookup>) {
+        if (lookups == next) return
         lookups = next.toList()
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) DaemonCodeAnalyzer.getInstance(project).restart("WinRT resource candidates changed")
