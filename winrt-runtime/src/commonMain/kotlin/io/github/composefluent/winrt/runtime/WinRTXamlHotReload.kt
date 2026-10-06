@@ -61,8 +61,12 @@ internal class WinRTXamlHotReloadRegistry(
                 page.roots.filter { it.ready }.flatMap { it.elements.keys }.distinct().sorted())
         }
         val error = pages.values.firstNotNullOfOrNull { it.restart }
-        WinRTXamlHotReloadReply(if (error == null) WinRTXamlHotReloadProtocol.APPLIED else WinRTXamlHotReloadProtocol.RESTART_REQUIRED,
-            error ?: "${roots.size} loaded XAML classes", roots)
+        val pending = pages.values.any { it.pending }
+        WinRTXamlHotReloadReply(when {
+            error != null -> WinRTXamlHotReloadProtocol.RESTART_REQUIRED
+            pending -> WinRTXamlHotReloadProtocol.UNAVAILABLE
+            else -> WinRTXamlHotReloadProtocol.APPLIED
+        }, error ?: if (pending) "A UI-thread update is pending. Wait before sending another version." else "${roots.size} loaded XAML classes", roots)
     }
 
     fun submit(patch: WinRTXamlHotReloadPatch, complete: (WinRTXamlHotReloadReply) -> Unit) {

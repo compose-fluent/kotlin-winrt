@@ -30,6 +30,7 @@ class WinRTXamlHotReloadTest {
         val update = patch(WinRTXamlHotReloadChange("Greeting", "Text", "changed"), WinRTXamlHotReloadChange("Greeting", "Size", "8"))
         registry.submit(update) { result = it }
         assertEquals("original", element.text); assertNull(result)
+        assertEquals(WinRTXamlHotReloadProtocol.UNAVAILABLE, registry.snapshot().status)
         queue.removeAt(0).invoke()
         assertEquals("changed", element.text); assertEquals(8, element.size)
         assertEquals(WinRTXamlHotReloadProtocol.APPLIED, result?.status)
