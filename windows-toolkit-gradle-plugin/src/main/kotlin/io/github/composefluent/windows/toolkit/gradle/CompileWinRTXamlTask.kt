@@ -105,6 +105,7 @@ abstract class CompileWinRTXamlTask @Inject constructor(
             require(existing == null || sources[existing] == file) { "Duplicate XAML resource path: $relative" }
             sources[relative] = file
         } }
+        val sourceHashes = sources.mapValues { WinRTXamlDeclarations.sourceFingerprint(it.value.readText()) }
         val refs = inputReferenceFiles.files.sortedBy { it.absolutePath }
         GradleFileOperations.writeStringIfChanged(File(output, "references.txt").toPath(),
             refs.map { it.absolutePath }.sorted().joinToString("\n"))
@@ -163,6 +164,10 @@ abstract class CompileWinRTXamlTask @Inject constructor(
                 "${page.resourcePath} declares ${page.className} but has no same-directory ${xaml.nameWithoutExtension}.kt."
             }
         }
-        GradleFileOperations.writeStringIfChanged(declarationsFile.get().asFile.toPath(), WinRTXamlDeclarations.canonicalText(plan))
+        require(sources.all { (path, file) -> WinRTXamlDeclarations.sourceFingerprint(file.readText()) == sourceHashes.getValue(path) }) {
+            "XAML source changed while the compiler was running. Run the compilation again."
+        }
+        val fingerprinted = plan.copy(pages = plan.pages.map { it.copy(sourceHash = sourceHashes.getValue(it.resourcePath)) })
+        GradleFileOperations.writeStringIfChanged(declarationsFile.get().asFile.toPath(), WinRTXamlDeclarations.canonicalText(fingerprinted))
     }
 }
