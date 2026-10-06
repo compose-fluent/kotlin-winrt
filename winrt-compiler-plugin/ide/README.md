@@ -72,7 +72,31 @@ files and changes requiring a new Kotlin application schema still require
 Gradle synchronization and preparation. The producer does not run an application
 build on each keystroke.
 
-XAML language features, project/module templates, editing NuGet dependencies,
+## XAML editor
+
+`.xaml` files use the platform XML parser, highlighting and completion handlers.
+The IDE loads prepared XAML inputs' reference WinMD in the background through
+`WinRTMetadataLoader`. XML descriptors obtain inherited properties/events from
+that model and its existing interface closure. Presentation namespace aliases
+follow XAMLC's `DirectUISchemaContext`; `using:` namespaces also query Kotlin's
+class index within the module's dependency scope. There is no separate list of
+WinUI controls. Enum/Boolean values, namespaces, classes and event handlers are
+completion candidates; matching static accessor pairs resolve attached values.
+
+PSI references resolve `x:Class` and event handlers to Kotlin, and descriptors
+navigate custom controls and projected types. Kotlin class gutter markers link
+to their XAML documents. Generated FIR named-element usages navigate back to
+`x:Name`, using the resolved callable owner rather than matching source text.
+The generated declarations remain compiler-owned. Native XML editing and
+reference renaming use IDE command/undo machinery.
+
+`WinRTXamlEditorTest` covers the real XML pipeline with a WinMD written and read
+by the metadata owner. `WinRTFirAnalysisTest` also covers generated-member
+source navigation. Rich binding-path completion, resource dictionary lookup,
+cross-language rename coverage and event-signature diagnostics still need
+additional implementation/validation.
+
+Project/module templates, editing NuGet dependencies,
 resource provenance, visual manifest editing and Hot Reload are not implemented
 by this initial project-import slice. Hot Reload additionally requires XAMLC
 update artifacts and application-side lifecycle/UI-thread support. Native

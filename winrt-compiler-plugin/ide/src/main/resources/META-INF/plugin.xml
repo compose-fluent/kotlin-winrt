@@ -5,6 +5,7 @@
     <description><![CDATA[Kotlin WinRT project integration and XAML tooling.]]></description>
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.java</depends>
+    <depends>com.intellij.modules.xml</depends>
     <depends>org.jetbrains.kotlin</depends>
     <depends>com.intellij.gradle</depends>
     <dependencies>
@@ -12,6 +13,14 @@
         <module name="intellij.platform.jewel.ideLafBridge"/>
     </dependencies>
     <extensions defaultExtensionNs="com.intellij">
+        <fileType name="WinRT XAML" language="XML" extensions="xaml"
+                  implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlFileType" fieldName="INSTANCE"/>
+        <xml.elementDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlDescriptorProvider"/>
+        <xml.implicitNamespaceDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNamespaceProvider"/>
+        <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlCompletionContributor"/>
+        <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlReferenceContributor"/>
+        <codeInsight.lineMarkerProvider language="kotlin" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlRelatedMarker"/>
+        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation"/>
         <toolWindow id="Kotlin WinRT" anchor="right"
                     factoryClass="io.github.composefluent.winrt.ide.ui.WinRTToolWindowFactory"/>
         <externalProjectDataService implementation="io.github.composefluent.winrt.ide.gradle.WinRTProjectDataService"/>

@@ -4,12 +4,16 @@ import com.intellij.facet.FacetManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.xml.XmlAttributeValue
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.gradle.WinRTXamlCompilationData
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
@@ -20,6 +24,7 @@ import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.idea.facet.KotlinFacetType
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarOutputStream
@@ -49,7 +54,10 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         myFixture.addFileToProject("Page.kt", "package microsoft.ui.xaml.controls\nopen class Page { val Launch: Button? = null }")
         myFixture.addFileToProject("Connector.kt", "package microsoft.ui.xaml.markup\ninterface IComponentConnector")
         myFixture.addFileToProject("Component.kt", "package io.github.composefluent.winrt.runtime\ninterface WinRTXamlComponent\nclass WinRTXamlLoadState")
-        val file = myFixture.configureByText("Shell.kt", "package sample\nclass Shell : microsoft.ui.xaml.controls.Page()") as KtFile
+        val file = myFixture.configureByText("Shell.kt", "package sample\nclass Shell : microsoft.ui.xaml.controls.Page() { fun element() = Open }") as KtFile
+        val markup = root.resolve("Shell.xaml")
+        Files.writeString(markup, """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Shell"><Button x:Name="Open"/></Page>""")
+        LocalFileSystem.getInstance().refreshAndFindFileByIoFile(markup.toFile())!!
         project.service<WinRTProjectService>().replaceBuildModels(root.toString(), listOf(
             WinRTModuleData(":", root.toString(), root.resolve("build").toString(), "2.4.0", "",
                 emptyList(), emptyList(), emptyList(), emptyList(), listOf(
@@ -67,6 +75,11 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         assertFalse(updated.contains("Launch"))
         assertTrue(updated.contains("Open"))
         assertTrue(nameConflictDiagnostics(file).isEmpty())
+        val reference = PsiTreeUtil.findChildrenOfType(file, KtNameReferenceExpression::class.java).first { it.getReferencedName() == "Open" }
+        val target = allowAnalysisOnEdt {
+            WinRTXamlGeneratedNavigation().getGotoDeclarationTargets(reference, reference.textOffset, myFixture.editor)
+        }!!.single() as XmlAttributeValue
+        assertEquals("Open", target.value)
         snapshots.publish(declarations.toString(), WinRTXamlSnapshotService.EMPTY_DECLARATIONS)
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
         assertFalse(memberNames(file).contains("Open"))
