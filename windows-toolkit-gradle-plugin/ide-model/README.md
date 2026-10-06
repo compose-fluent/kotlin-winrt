@@ -1,9 +1,10 @@
 # IDE project model
 
-`WinRTIdeModel` is the Java 17 Tooling API boundary between the Windows toolkit
+`WinRTIdeModel` is a Kotlin interface targeting JVM 17, providing the Tooling API boundary between the Windows toolkit
 Gradle plugin and the IntelliJ integration under `winrt-compiler-plugin/ide`.
 It is deliberately independent of Gradle, the IDE SDK, compiler classes and the
-Java 25 WinRT runtime. The IDE consumes ordinary configuration facts rather than
+JVM 25 WinRT runtime. Its JVM getter signatures remain compatible with Gradle's
+model proxies. The IDE consumes ordinary configuration facts rather than
 loading the projection runtime or generator in its process.
 
 The toolkit registers the model builder when its plugin is applied. Request the

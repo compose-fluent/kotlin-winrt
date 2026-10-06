@@ -32,7 +32,7 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                 sourceSet.dependsOn.map { it.name }.sorted(),
                 appxResourceRoots(project, listOf(sourceSet.name)).map { it.toAbsolutePath().normalize().toString() },
             )
-        }.sortedBy { it.getName() }
+        }.sortedBy { it.name }
         return IdeModel(
             enabled = windows != null,
             projectPath = project.path,
@@ -47,10 +47,10 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                     target.platformType.name,
                     target.compilations.flatMap { it.allKotlinSourceSets }.map { it.name }.distinct().sorted(),
                 )
-            }.sortedBy { it.getName() },
-            nugetPackages = windows?.packageReferences?.nugetPackages.orEmpty().map { pkg ->
+            }.sortedBy { it.name },
+            nuGetPackages = windows?.packageReferences?.nugetPackages.orEmpty().map { pkg ->
                 IdeNuGetPackage(pkg.packageId, pkg.version.orNull.orEmpty(), pkg.generateProjection)
-            }.sortedBy { it.getId().lowercase(java.util.Locale.ROOT) },
+            }.sortedBy { it.id.lowercase(java.util.Locale.ROOT) },
             manifestFiles = windows?.application?.appxManifestFiles?.files.orEmpty()
                 .map { it.absoluteFile.normalize().path }.sorted(),
             xamlCompilations = if (windows == null) emptyList() else
@@ -64,82 +64,54 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                         project.tasks.withType(GenerateWinRTAuthoringCandidatesTask::class.java)
                             .firstOrNull()?.metadataIndex?.orNull?.asFile?.absolutePath.orEmpty(),
                     )
-                }.sortedBy { it.getTaskName() },
+                }.sortedBy { it.taskName },
         )
     }
 }
 
 private data class IdeModel(
     private val enabled: Boolean,
-    private val projectPath: String,
-    private val projectDirectory: String,
-    private val buildDirectory: String,
-    private val kotlinVersion: String,
-    private val windowsSdkVersion: String,
-    private val sourceSets: List<WinRTIdeModel.SourceSet>,
-    private val targets: List<WinRTIdeModel.Target>,
-    private val nugetPackages: List<WinRTIdeModel.NuGetPackage>,
-    private val manifestFiles: List<String>,
-    private val xamlCompilations: List<WinRTIdeModel.XamlCompilation>,
+    override val projectPath: String,
+    override val projectDirectory: String,
+    override val buildDirectory: String,
+    override val kotlinVersion: String,
+    override val windowsSdkVersion: String,
+    override val sourceSets: List<WinRTIdeModel.SourceSet>,
+    override val targets: List<WinRTIdeModel.Target>,
+    override val nuGetPackages: List<WinRTIdeModel.NuGetPackage>,
+    override val manifestFiles: List<String>,
+    override val xamlCompilations: List<WinRTIdeModel.XamlCompilation>,
 ) : WinRTIdeModel {
-    override fun getSchemaVersion() = WinRTIdeModel.SCHEMA_VERSION
-    override fun isEnabled() = enabled
-    override fun getProjectPath() = projectPath
-    override fun getProjectDirectory() = projectDirectory
-    override fun getBuildDirectory() = buildDirectory
-    override fun getKotlinVersion() = kotlinVersion
-    override fun getWindowsSdkVersion() = windowsSdkVersion
-    override fun getSourceSets() = sourceSets
-    override fun getTargets() = targets
-    override fun getNuGetPackages() = nugetPackages
-    override fun getManifestFiles() = manifestFiles
-    override fun getXamlCompilations() = xamlCompilations
+    override val schemaVersion get() = WinRTIdeModel.SCHEMA_VERSION
+    override val isEnabled get() = enabled
 }
 
 private data class IdeXamlCompilation(
-    private val taskName: String,
-    private val sourceRoots: List<String>,
-    private val declarationsFile: String,
-    private val inputFile: String,
-    private val compilerDirectory: String,
-    private val metadataIndexFile: String,
-) : WinRTIdeModel.XamlCompilation {
-    override fun getTaskName() = taskName
-    override fun getSourceRoots() = sourceRoots
-    override fun getDeclarationsFile() = declarationsFile
-    override fun getInputFile() = inputFile
-    override fun getCompilerDirectory() = compilerDirectory
-    override fun getMetadataIndexFile() = metadataIndexFile
-}
+    override val taskName: String,
+    override val sourceRoots: List<String>,
+    override val declarationsFile: String,
+    override val inputFile: String,
+    override val compilerDirectory: String,
+    override val metadataIndexFile: String,
+) : WinRTIdeModel.XamlCompilation
 
 private data class IdeSourceSet(
-    private val name: String,
-    private val kotlinRoots: List<String>,
-    private val dependsOn: List<String>,
-    private val appxResourceRoots: List<String>,
-) : WinRTIdeModel.SourceSet {
-    override fun getName() = name
-    override fun getKotlinRoots() = kotlinRoots
-    override fun getDependsOn() = dependsOn
-    override fun getAppxResourceRoots() = appxResourceRoots
-}
+    override val name: String,
+    override val kotlinRoots: List<String>,
+    override val dependsOn: List<String>,
+    override val appxResourceRoots: List<String>,
+) : WinRTIdeModel.SourceSet
 
 private data class IdeTarget(
-    private val name: String,
-    private val platform: String,
-    private val sourceSets: List<String>,
-) : WinRTIdeModel.Target {
-    override fun getName() = name
-    override fun getPlatform() = platform
-    override fun getSourceSets() = sourceSets
-}
+    override val name: String,
+    override val platform: String,
+    override val sourceSets: List<String>,
+) : WinRTIdeModel.Target
 
 private data class IdeNuGetPackage(
-    private val id: String,
-    private val version: String,
+    override val id: String,
+    override val version: String,
     private val generateProjection: Boolean,
 ) : WinRTIdeModel.NuGetPackage {
-    override fun getId() = id
-    override fun getVersion() = version
-    override fun isGenerateProjection() = generateProjection
+    override val isGenerateProjection get() = generateProjection
 }
