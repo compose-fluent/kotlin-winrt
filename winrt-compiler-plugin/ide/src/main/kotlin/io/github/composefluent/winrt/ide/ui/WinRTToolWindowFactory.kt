@@ -16,6 +16,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.ide.project.WinRTGradleTasks
+import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import org.jetbrains.jewel.bridge.addComposeTab
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Text
@@ -23,9 +25,11 @@ import org.jetbrains.jewel.ui.component.Text
 class WinRTToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val service = project.service<WinRTProjectService>()
+        val analysis = project.service<WinRTXamlSnapshotService>()
         service.refreshFromGradleCache()
         toolWindow.addComposeTab("Projects", focusOnClickInside = true) {
             val modules by service.modules.collectAsState()
+            val snapshots by analysis.state.collectAsState()
             LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
                     Text("Kotlin WinRT")
@@ -44,6 +48,13 @@ class WinRTToolWindowFactory : ToolWindowFactory {
                         }
                         module.sourceSets.forEach { sourceSet ->
                             Text("${sourceSet.name}: ${sourceSet.dependsOn.joinToString().ifEmpty { "no source set dependencies" }}")
+                        }
+                        if (module.xamlCompilations.isNotEmpty()) {
+                            DefaultButton(onClick = { WinRTGradleTasks.prepareXaml(project, module) }) { Text("Prepare XAML analysis") }
+                            module.xamlCompilations.forEach { compilation ->
+                                val snapshot = snapshots[WinRTXamlSnapshotService.key(compilation.declarationsFile)]
+                                Text(snapshot?.error ?: "${snapshot?.declarations?.pages?.size ?: 0} XAML classes available")
+                            }
                         }
                         module.packages.forEach { pkg -> Text("${pkg.id} ${pkg.version}") }
                     }

@@ -54,7 +54,25 @@ supertype appear, a name replacement removes the old member, and an empty index
 removes the replacement. The adapter is coupled to build 262 APIs and must be
 rebuilt/validated for another embedded compiler.
 
-Unsaved XAML harvesting, XAML language features, project/module templates, editing NuGet dependencies,
+The tool window's **Prepare XAML analysis** action runs the existing declaration
+and projection preparation tasks through the IDE's Gradle runner. Once their
+input/header and compiler artifacts are available, local XAML document edits
+are debounced and compiled in a cancellable background pass. Short-lived copies
+contain unsaved text; the prepared references and MSBuild resource identities
+are retained. XAMLC's existing DOM/harvester produces the declaration index,
+with diagnostic paths mapped back to the original files. Source files and build
+outputs are never overwritten by this producer. Invalid markup clears generated
+symbols; revisions prevent an older result from replacing a newer edit.
+
+`WinRTXamlDocumentCompilerTest` optionally exercises real document events and
+the Windows compiler, including renaming an unsaved element, invalid markup and
+temporary-file cleanup. Supply `-Pwinrt.ide.xamlInput=<prepared input.json>` and
+`-Pwinrt.ide.xamlCompiler=<compiler directory>` to enable it. Newly added XAML
+files and changes requiring a new Kotlin application schema still require
+Gradle synchronization and preparation. The producer does not run an application
+build on each keystroke.
+
+XAML language features, project/module templates, editing NuGet dependencies,
 resource provenance, visual manifest editing and Hot Reload are not implemented
 by this initial project-import slice. Hot Reload additionally requires XAMLC
 update artifacts and application-side lifecycle/UI-thread support. Native

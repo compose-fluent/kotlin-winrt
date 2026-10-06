@@ -45,6 +45,10 @@ class WinRTProjectService(private val project: Project) {
             .sortedBy { it.projectDirectory }
     }
 
+    @Synchronized
+    fun buildRootFor(module: WinRTModuleData): String? =
+        builds.entries.firstOrNull { (_, models) -> models.any { it.projectDirectory == module.projectDirectory } }?.key
+
     fun openFile(path: String) {
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) {

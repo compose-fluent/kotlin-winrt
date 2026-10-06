@@ -42,6 +42,11 @@ tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
     disabledPlugins.add("com.intellij.modules.ultimate")
 }
 
+tasks.withType<Test>().configureEach {
+    providers.gradleProperty("winrt.ide.xamlInput").orNull?.let { systemProperty("winrt.ide.xamlInput", it) }
+    providers.gradleProperty("winrt.ide.xamlCompiler").orNull?.let { systemProperty("winrt.ide.xamlCompiler", it) }
+}
+
 intellijPlatform {
     // Compose owns the UI; there are no IntelliJ .form files or Java classes.
     instrumentCode = false
