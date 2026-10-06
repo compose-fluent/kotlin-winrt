@@ -90,6 +90,55 @@ restores the tree and properties; it cannot undo arbitrary user event side effec
 Protocol v3 carries no executable code, connection IDs, generated fields or
 subscription replacements. Compiled-connection changes require rebuilding.
 
+## Compiled-connection contract
+
+This is the responsibility boundary for a future connection-update artifact, not
+an implemented protocol extension. The existing compiler must remain the owner of
+generated fields, handler signatures and binding bodies. The IDE must not compile
+its own interpreted binding language or substitute reflection for private Kotlin
+member access.
+
+| Input / operation | Existing owner and reference | Update requirement |
+| --- | --- | --- |
+| Names and connection IDs | XAMLC pass 2, WinRTXamlPageDeclaration and XamlPageBodies | Pair XBF and connection declarations from the same compiler generation; map retained slots within their original name scope. |
+| Generated fields and binding calls | XamlFirRegistrar, XamlPageBodies and XamlCompiledBindingBodies | Match the loaded Kotlin class shape and typed accessor/handler signatures. |
+| Event lifetime | Generated projected add/remove methods and WinRT event sources; CsWinRT Interop/EventSource{TDelegate}.cs | Capture each add result and its typed remover; own subscriptions by component, connection ID and generation. |
+| Binding lifetime | WinRTXamlBindingState and WinRTXamlBindingScope; XAMLC CSharpPagePass2 StopTracking / DisconnectUnloadedObject | Release listeners and deferred targets before disconnecting; initialize the newly connected scope once after commit. |
+
+An artifact must include the expected source/version, the loaded Kotlin class ABI
+fingerprint, projection/toolchain identities, an old-to-new connection map, paired
+XBF/declarations, and compiler-generated typed reconnect operations. Template
+realizations need their own generation and name-scope identity; a page-wide numeric
+connection ID is insufficient. Any ABI, projection or name-scope mismatch rejects
+the artifact before touching live objects.
+
+On the owning UI thread, prepare new objects and typed operations first. Suspend
+updates, stop the affected binding scopes, and remove every old event subscription
+using its original target/token before detaching objects or clearing generated
+fields. Commit the tree, fields and name-scope registrations together; then attach
+new events and initialize bindings once. A failed attach must remove newly added
+tokens, restore the old tree/fields, recreate old subscriptions and reinitialize
+old bindings. Cleanup failure requires restart; arbitrary handler side effects
+cannot be rolled back. Future instances must receive the same complete artifact
+generation instead of mixing old connector IDs with new XBF.
+
+The current XamlPageBodies event emitter calls typed add methods but does not keep
+their EventRegistrationToken results for a reconnect/disconnect transaction. Its
+binding state does release owned binding listeners, but that does not remove plain
+XAML event handlers or make generated fields dynamically extensible. Subscription
+ownership and a compiler-emitted reconnect surface are prerequisites for such an
+extension; neither is synthesized inside the IDE or hidden in samples.
+
+Adding, removing or renaming x:Name can change generated fields/accessors. A changed
+x:Bind path can change private typed calls, generated callbacks and tracking state.
+Standard JVM [class redefinition](https://docs.oracle.com/en/java/javase/25/docs/specs/jvmti.html#RedefineClasses)
+does not allow arbitrary field/method schema changes, and Kotlin/Native cannot use
+that JVM mechanism. Therefore the shared baseline rebuilds/restarts for these
+changes. Retargeting an event to an already compiled compatible handler could be a
+future ABI-preserving artifact, after subscription ownership exists. Supporting
+new field/binding shapes would require a separately designed code-loading boundary;
+Kotlin code Hot Reload and page recreation are outside the current support scope.
+
 The JVM transport starts only when `KOTLIN_WINRT_HOT_RELOAD_DIRECTORY` is supplied
 to a development process. It uses an ephemeral loopback port, a random 256-bit token,
 bounded binary framing and a session file restricted to its owner. Tokens are not
