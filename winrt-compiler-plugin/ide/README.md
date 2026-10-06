@@ -145,7 +145,39 @@ comments share the same document; duplicate keys and missing translations includ
 unsaved edits. Tests verify XML preservation, source undo/redo, stale edit protection,
 resource provenance and actual PRI qualifier reading.
 
-NuGet dependency management and Hot Reload still need implementation. Hot Reload requires XAMLC
+## NuGet package management
+
+The Compose **NuGet** tab selects an imported module and a configured source,
+searches the NuGet V3 index, shows descriptions and versions, and installs,
+updates or removes direct Kotlin DSL package declarations. Source browsing
+applies machine/user/project sources, `clear`/`remove`, disabled sources and
+environment expansion. Requests use the IDE HTTP client/proxy, bounded responses
+and timeouts. Plaintext source credentials or NuGet source credential environment
+variables remain in memory and are sent only to the source's HTTPS origin;
+redirects do not forward them. Encrypted credentials and external credential
+providers remain supported by WinApp restore; private-source browsing may require
+a credential environment variable. V2/local feeds can still use exact ID/version
+declarations and restored-package browsing.
+
+PSI edits preserve existing option lambdas and comments, participate in native undo,
+and reject computed/conditional/ambiguous declarations. A selectable declaration
+and source navigation let the user handle those configurations. Dependency changes
+save that build document, synchronize Gradle, then queue the existing
+`restoreWinAppDependencies` and `generateWinRTProjections` tasks after model import.
+New dependencies default to metadata/runtime consumption; projection generation
+is explicit, to preserve shared SDK projection ownership.
+
+The inventory compiles the toolkit's pure WinApp schema-3 lock reader and package
+path checks. It shows direct versus transitive/tooling entries, cache provenance,
+missing files and stale/conflicting versions. Package contributions show available
+WinMD, native candidates and the toolkit's actual CopyLocal evaluation for the
+selected RID; arbitrary MSBuild targets are not run. Restored status does not claim
+successful projection compilation or packaging, which have explicit preparation
+and variant staging actions. Tests exercise native Kotlin script PSI/undo, computed
+expression protection, source hierarchy/credential isolation, V3 service discovery,
+the real IDE HTTP client and authoritative lock inventory.
+
+Hot Reload still needs implementation. Hot Reload requires XAMLC
 update artifacts and application-side lifecycle/UI-thread support. Native
 targets are represented in the imported model; no Native or Android Studio
 editing/runtime parity is claimed by this IDE baseline.

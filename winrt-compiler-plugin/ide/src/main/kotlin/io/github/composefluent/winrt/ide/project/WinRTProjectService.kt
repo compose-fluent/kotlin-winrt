@@ -18,6 +18,8 @@ class WinRTProjectService(private val project: Project) {
     val modules: StateFlow<List<WinRTModuleData>> = imported
     private val builds = linkedMapOf<String, List<WinRTModuleData>>()
     private val preparationRequests = mutableSetOf<String>()
+    private val dependencyRequests = mutableSetOf<String>()
+    val dependencyRevision = MutableStateFlow(0L)
     private var restored = false
 
     @Synchronized
@@ -49,11 +51,25 @@ class WinRTProjectService(private val project: Project) {
                 if (!project.isDisposed) WinRTGradleTasks.prepareXaml(project, module)
             }
         }
+        imported.value.filter { dependencyRequests.remove(it.projectDirectory.replace('\\', '/').lowercase()) }.forEach { module ->
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) WinRTGradleTasks.run(project, module,
+                    listOf("restoreWinAppDependencies", "generateWinRTProjections"), "Restore WinRT NuGet dependencies") {
+                    dependencyRevision.value += 1
+                    project.getService(io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService::class.java).refresh()
+                }
+            }
+        }
     }
 
     @Synchronized
     fun prepareAfterImport(moduleDirectory: String) {
         preparationRequests += moduleDirectory.replace('\\', '/').lowercase()
+    }
+
+    @Synchronized
+    fun restoreDependenciesAfterImport(moduleDirectory: String) {
+        dependencyRequests += moduleDirectory.replace('\\', '/').lowercase()
     }
 
     @Synchronized

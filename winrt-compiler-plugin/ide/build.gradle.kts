@@ -37,7 +37,9 @@ kotlin {
         kotlin.include("io/github/composefluent/winrt/ide/**",
             "io/github/composefluent/windows/toolkit/gradle/AppxResourceLayout.kt",
             "io/github/composefluent/windows/toolkit/gradle/PackageResourcePaths.kt",
-            "io/github/composefluent/windows/toolkit/gradle/ProjectPriManifestSupport.kt")
+            "io/github/composefluent/windows/toolkit/gradle/ProjectPriManifestSupport.kt",
+            "io/github/composefluent/windows/toolkit/gradle/WinAppRestoreLockfileModel.kt",
+            "io/github/composefluent/windows/toolkit/gradle/WinRTNuGetMsBuildPayloadResolver.kt")
     }
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
