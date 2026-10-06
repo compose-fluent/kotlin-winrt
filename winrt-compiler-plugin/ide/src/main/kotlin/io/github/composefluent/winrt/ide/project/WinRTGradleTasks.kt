@@ -22,7 +22,8 @@ object WinRTGradleTasks {
     fun run(project: Project, module: WinRTModuleData, tasks: List<String>, title: String,
         environment: Map<String, String> = emptyMap(), onFailure: () -> Unit = {}, onSuccess: () -> Unit = {}) {
         val settings = ExternalSystemTaskExecutionSettings().apply {
-            externalProjectPath = project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory
+            externalProjectPath = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(
+                project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory)
             externalSystemIdString = GradleConstants.SYSTEM_ID.id
             executionName = title
             env = environment

@@ -86,7 +86,8 @@ fun WinRTNuGetPanel(project: Project) {
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) {
                 service.restoreDependenciesAfterImport(current.projectDirectory)
-                ExternalSystemUtil.refreshProject(service.buildRootFor(current) ?: current.projectDirectory,
+                ExternalSystemUtil.refreshProject(com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(
+                    service.buildRootFor(current) ?: current.projectDirectory),
                     ImportSpecBuilder(project, GradleConstants.SYSTEM_ID).use(ProgressExecutionMode.IN_BACKGROUND_ASYNC))
             }
         }

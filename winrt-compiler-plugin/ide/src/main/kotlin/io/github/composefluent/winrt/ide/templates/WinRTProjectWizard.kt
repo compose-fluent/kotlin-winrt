@@ -182,7 +182,7 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
         PropertiesComponent.getInstance().setValue("kotlin.winrt.jdk", jdkHome)
         if (kind.application) {
             val execution = ExternalSystemTaskExecutionSettings().apply {
-                externalProjectPath = root.toString()
+                externalProjectPath = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(root.toString())
                 externalSystemIdString = GradleConstants.SYSTEM_ID.id
                 executionName = "Run $moduleName"
                 taskNames = listOf(":$moduleName:runWindows")
@@ -198,16 +198,17 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
             com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByNioFile(root.resolve("settings.gradle.kts"))
                 ?.let(documents::getDocument)?.let(documents::saveDocument)
         }
+        val externalRoot = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(root.toString())
         val linked = GradleProjectSettings().apply {
-            externalProjectPath = root.toString()
+            externalProjectPath = externalRoot
             distributionType = DistributionType.DEFAULT_WRAPPED
             gradleJvm = javaSdk.name
         }
         if (prepare) project.service<WinRTProjectService>().prepareAfterImport(root.resolve(moduleName).toString())
-        if (GradleSettings.getInstance(project).getLinkedProjectSettings(root.toString()) == null) {
+        if (GradleSettings.getInstance(project).getLinkedProjectSettings(externalRoot) == null) {
             ExternalSystemUtil.linkExternalProject(linked, ImportSpecBuilder(project, GradleConstants.SYSTEM_ID).use(ProgressExecutionMode.IN_BACKGROUND_ASYNC))
         } else {
-            ExternalSystemUtil.refreshProject(root.toString(), ImportSpecBuilder(project, GradleConstants.SYSTEM_ID).use(ProgressExecutionMode.IN_BACKGROUND_ASYNC))
+            ExternalSystemUtil.refreshProject(externalRoot, ImportSpecBuilder(project, GradleConstants.SYSTEM_ID).use(ProgressExecutionMode.IN_BACKGROUND_ASYNC))
         }
     }
 

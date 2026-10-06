@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.ide.project
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.externalSystem.service.project.ProjectDataManager
+import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManager
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -22,13 +23,26 @@ class WinRTProjectService(private val project: Project) {
     val dependencyRevision = MutableStateFlow(0L)
     private var restored = false
 
+    init {
+        // Editor services may request the model before the platform has loaded
+        // its external-project cache. Retry after that lifecycle boundary.
+        ExternalProjectsManager.getInstance(project).runWhenInitializedInBackground {
+            synchronized(this) { restored = false; refreshFromGradleCache() }
+        }
+    }
+
     @Synchronized
     fun refreshFromGradleCache() {
         if (project.isDisposed || restored) return
-        ProjectDataManager.getInstance().getExternalProjectsData(project, GradleConstants.SYSTEM_ID).forEach { data ->
+        val manager = ProjectDataManager.getInstance()
+        manager.getExternalProjectsData(project, GradleConstants.SYSTEM_ID).forEach { data ->
             val structure = data.externalProjectStructure ?: return@forEach
-            builds.putIfAbsent(structure.data.linkedExternalProjectPath,
-                ExternalSystemApiUtil.findAllRecursively(structure, WinRTModuleData.KEY).map { it.data })
+            manager.ensureTheDataIsReadyToUse(structure)
+            val models = ExternalSystemApiUtil.findAllRecursively(structure, WinRTModuleData.KEY).map { it.data }
+            // The platform can expose a skeletal graph from Gradle settings
+            // before its persisted custom nodes are loaded. Do not retain that
+            // empty placeholder over the later complete graph.
+            if (models.isNotEmpty()) builds.putIfAbsent(structure.data.linkedExternalProjectPath, models)
         }
         restored = true
         publish()

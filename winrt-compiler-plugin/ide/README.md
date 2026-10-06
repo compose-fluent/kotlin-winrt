@@ -75,6 +75,18 @@ files and changes requiring a new Kotlin application schema still require
 Gradle synchronization and preparation. The producer does not run an application
 build on each keystroke.
 
+`WinRTGradleImportTest` optionally opens a standalone template through the real
+Gradle resolver, imports generated SDK sources and Kotlin compiler options, then
+checks SDK and XAML FIR members before an application build. It repeats native
+synchronization and recovers the model after saving, closing and reopening the
+project. Supply `-Pwinrt.ide.importProject=<prepared template under .gradle>`;
+prepare only `analyzeWinRTXaml` and `generateWinRTProjections` first. Platform unit
+tests disable automatic workspace-model persistence, so the reopen analysis
+check reapplies the actually deserialized Gradle graph through its native
+importer without resolving Gradle again. Interactive IDE restart remains separate
+validation. Windows external-project paths use the platform's forward-slash
+representation consistently, required by its persisted-cache validation.
+
 ## XAML editor
 
 `.xaml` files use the platform XML parser, highlighting and completion handlers.
