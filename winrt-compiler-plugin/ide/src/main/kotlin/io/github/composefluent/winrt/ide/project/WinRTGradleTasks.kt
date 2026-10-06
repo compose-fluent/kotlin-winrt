@@ -19,11 +19,14 @@ object WinRTGradleTasks {
         }, "Prepare Kotlin WinRT XAML analysis") { project.service<WinRTXamlSnapshotService>().refresh() }
     }
 
-    fun run(project: Project, module: WinRTModuleData, tasks: List<String>, title: String, onSuccess: () -> Unit = {}) {
+    fun run(project: Project, module: WinRTModuleData, tasks: List<String>, title: String,
+        environment: Map<String, String> = emptyMap(), onFailure: () -> Unit = {}, onSuccess: () -> Unit = {}) {
         val settings = ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory
             externalSystemIdString = GradleConstants.SYSTEM_ID.id
             executionName = title
+            env = environment
+            isPassParentEnvs = true
             val prefix = module.projectPath.trimEnd(':')
             taskNames = tasks.map { "$prefix:$it" }
         }
@@ -34,7 +37,11 @@ object WinRTGradleTasks {
                         if (!project.isDisposed) onSuccess()
                     }
                 }
-                override fun onFailure() = Unit
+                override fun onFailure() {
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                        if (!project.isDisposed) onFailure()
+                    }
+                }
             }, ProgressExecutionMode.IN_BACKGROUND_ASYNC)
     }
 }

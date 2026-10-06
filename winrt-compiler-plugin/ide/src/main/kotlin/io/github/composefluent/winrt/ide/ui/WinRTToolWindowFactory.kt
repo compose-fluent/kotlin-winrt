@@ -27,6 +27,9 @@ class WinRTToolWindowFactory : ToolWindowFactory {
         val service = project.service<WinRTProjectService>()
         val analysis = project.service<WinRTXamlSnapshotService>()
         service.refreshFromGradleCache()
+        toolWindow.addComposeTab("Hot Reload", focusOnClickInside = true) {
+            io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadPanel(project)
+        }
         toolWindow.addComposeTab("NuGet", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.nuget.WinRTNuGetPanel(project)
         }

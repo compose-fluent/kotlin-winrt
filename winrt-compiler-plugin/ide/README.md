@@ -22,7 +22,7 @@ reopening the IDE.
 Build and test on Windows from the repository root:
 
 ```powershell
-./gradlew.bat -p winrt-compiler-plugin/ide test buildPlugin verifyPluginStructure
+./gradlew.bat -p winrt-compiler-plugin/ide :test buildPlugin verifyPluginStructure
 ./gradlew.bat -p winrt-compiler-plugin/ide runIde
 ```
 
@@ -92,7 +92,7 @@ reference renaming use IDE command/undo machinery.
 
 `WinRTXamlEditorTest` covers the real XML pipeline with a WinMD written and read
 by the metadata owner. `WinRTFirAnalysisTest` also covers generated-member
-source navigation. Rich binding-path completion, resource dictionary lookup,
+source navigation. Rich binding-path completion,
 cross-language rename coverage and event-signature diagnostics still need
 additional implementation/validation.
 
@@ -187,10 +187,42 @@ are soft and unresolved sources have a diagnostic describing dependency/runtime
 limits. Foreign package authorities and opaque compiled dictionaries require their
 own source mapping; they are not resolved to unrelated local files.
 
-Hot Reload still needs implementation. Hot Reload requires XAMLC
-update artifacts and application-side lifecycle/UI-thread support. Native
-targets are represented in the imported model; no Native or Android Studio
-editing/runtime parity is claimed by this IDE baseline.
+## XAML Hot Reload
+
+The Compose **Hot Reload** tab starts an imported unpackaged JVM application's
+actual Gradle launch task with a fresh development session. Gradle owns the build,
+Run output and build cancellation. The panel applies unsaved XAML document changes
+automatically or on request, reports property results and source versions, and
+provides reconnect, disconnect, stop and rebuild/restart actions. Disconnect keeps
+the application running; stopping verifies the lifetime of the process launched
+by this session. A disconnected build can be cancelled in its Gradle Run window.
+
+The compiler records source fingerprints and named objects through XAMLC's existing
+connection path. Its existing typed member emitter supplies SDK property accessors
+only when development is enabled; SDK type-provider behavior remains unchanged.
+The runtime captures each component's DispatcherQueue and applies literal property
+changes on that UI thread. Getters and conversions finish before mutation; setter
+failure rolls back prior values, and rollback failure requires restarting. Hashes
+and monotonic versions reject stale requests; reconnect reconciles an uncertain
+response before another update. Managed weak references preserve component lifetime
+and successful overrides apply to subsequently created instances.
+
+The transport uses an authenticated, bounded loopback protocol and an owner-restricted
+session file. It starts only when the development environment variable is present.
+There is no Kotlin reflection or visual-tree replacement. Root and connected named
+elements support ordinary writable literal properties. Element/type/name changes,
+templates, events, bindings, resources, attached properties and Kotlin changes require
+rebuilding and restarting. Resource/style invalidation and object-graph replacement
+remain separate lifecycle work. See `winrt-runtime/HOT_RELOAD.md` for the owning runtime
+contract and Native parity requirements.
+
+`WinRTHotReloadTest` covers markup classification, the compiler's source fingerprint
+and a real authenticated loopback client. Its optional actual-host test accepts
+`-Pwinrt.ide.hotReloadSession=<session directory>` and checks native text, dimensions,
+brush conversion and failed-setter rollback through compiler-generated accessors.
+The common runtime engine compiles for `mingwX64`, but its development transport and
+end-to-end IDE support currently target JVM. Android Studio and other IDEA/Kotlin
+versions require their own adapter and UI validation.
 
 The implementation queue remains in the local, uncommitted
 `IDE_SUPPORT_LOCAL_PLAN.md`; this README records module boundaries and supported

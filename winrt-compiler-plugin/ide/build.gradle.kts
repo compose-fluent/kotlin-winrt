@@ -34,7 +34,11 @@ kotlin {
         // Compile the packaging owner's pure Kotlin sources, as with the FIR adapter.
         // Selection, package-path checks and manifest validation have one source of truth.
         kotlin.srcDir("../../windows-toolkit-gradle-plugin/src/main/kotlin")
+        kotlin.srcDir("../../winrt-runtime/src/commonMain/kotlin")
+        kotlin.srcDir("../../winrt-runtime/src/jvmMain/kotlin")
         kotlin.include("io/github/composefluent/winrt/ide/**",
+            "io/github/composefluent/winrt/runtime/WinRTXamlHotReloadProtocol.kt",
+            "io/github/composefluent/winrt/runtime/WinRTXamlHotReloadWire.kt",
             "io/github/composefluent/windows/toolkit/gradle/AppxResourceLayout.kt",
             "io/github/composefluent/windows/toolkit/gradle/PackageResourcePaths.kt",
             "io/github/composefluent/windows/toolkit/gradle/ProjectPriManifestSupport.kt",
@@ -58,6 +62,7 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.templateOutput").orNull?.let { systemProperty("winrt.ide.templateOutput", it) }
     providers.gradleProperty("winrt.ide.xamlInput").orNull?.let { systemProperty("winrt.ide.xamlInput", it) }
     providers.gradleProperty("winrt.ide.xamlCompiler").orNull?.let { systemProperty("winrt.ide.xamlCompiler", it) }
+    providers.gradleProperty("winrt.ide.hotReloadSession").orNull?.let { systemProperty("winrt.ide.hotReloadSession", it) }
 }
 
 intellijPlatform {
