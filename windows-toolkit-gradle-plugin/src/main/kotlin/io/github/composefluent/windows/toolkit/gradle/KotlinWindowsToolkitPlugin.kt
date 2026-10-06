@@ -72,8 +72,12 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.relativeTo
 
-class KotlinWindowsToolkitPlugin : Plugin<Project> {
+abstract class KotlinWindowsToolkitPlugin : Plugin<Project> {
+    @get:javax.inject.Inject
+    abstract val toolingModelRegistry: org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
+
     override fun apply(project: Project) {
+        toolingModelRegistry.register(WinRTIdeModelBuilder())
         val extension = project.extensions.create("windows", WindowsExtension::class.java, project)
         val windowsSdkRegistryRoots = windowsSdkRegistryRootsProvider(project)
         extension.windowsSdkVersion.convention(project.providers.of(WindowsSdkVersionValueSource::class.java) {
