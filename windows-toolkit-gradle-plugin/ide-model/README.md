@@ -24,8 +24,10 @@ WinMD ingestion and projection rules continue to belong to `winrt-metadata` and
 transport boundary, not a second projection model. Schema 2 also exports XAML
 declaration-pass task names, source roots, compiler directories and configured
 input/declaration/metadata-index paths. These are producer locations; sync does
-not require their outputs to exist. Resolved metadata, resource provenance and
-variant-specific application manifests still require further contract additions.
+not require their outputs to exist. Schema 3 adds configured NuGet config/restore
+lock locations and per-variant package staging task, layout, resolution report
+and Gradle-owned Windows version values. Actual package selection and PRI
+qualifiers come from those existing build reports, never a resolved import.
 
 Validate on Windows with:
 

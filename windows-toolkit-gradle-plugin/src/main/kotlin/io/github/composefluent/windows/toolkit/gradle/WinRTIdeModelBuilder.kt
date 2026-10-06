@@ -65,6 +65,15 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                             .firstOrNull()?.metadataIndex?.orNull?.asFile?.absolutePath.orEmpty(),
                     )
                 }.sortedBy { it.taskName },
+            packageLayouts = if (windows == null) emptyList() else
+                project.tasks.withType(StageWinAppPackageTask::class.java).map { task ->
+                    IdePackageLayout(task.name, task.applicationVariant.get(), task.outputDirectory.get().asFile.absolutePath,
+                        task.resourceResolutionReport.get().asFile.absolutePath, task.minWindowsVersion.get(), task.maxVersionTested.get())
+                }.sortedBy { it.taskName },
+            nuGetConfigFile = windows?.packageReferences?.nugetConfigFile?.orNull?.asFile?.absolutePath.orEmpty(),
+            nuGetConfigDirectory = windows?.packageReferences?.nugetConfigDirectory?.orNull?.asFile?.absolutePath ?: project.projectDir.absolutePath,
+            restoreLockFiles = if (windows == null) emptyList() else
+                project.tasks.withType(RestoreWinAppDependenciesTask::class.java).map { it.winmdLockFile.get().asFile.absolutePath }.distinct().sorted(),
         )
     }
 }
@@ -81,10 +90,23 @@ private data class IdeModel(
     override val nuGetPackages: List<WinRTIdeModel.NuGetPackage>,
     override val manifestFiles: List<String>,
     override val xamlCompilations: List<WinRTIdeModel.XamlCompilation>,
+    override val packageLayouts: List<WinRTIdeModel.PackageLayout>,
+    override val nuGetConfigFile: String,
+    override val nuGetConfigDirectory: String,
+    override val restoreLockFiles: List<String>,
 ) : WinRTIdeModel {
     override val schemaVersion get() = WinRTIdeModel.SCHEMA_VERSION
     override val isEnabled get() = enabled
 }
+
+private data class IdePackageLayout(
+    override val taskName: String,
+    override val variant: String,
+    override val packageDirectory: String,
+    override val resourceReportFile: String,
+    override val minWindowsVersion: String,
+    override val maxVersionTested: String,
+) : WinRTIdeModel.PackageLayout
 
 private data class IdeXamlCompilation(
     override val taskName: String,

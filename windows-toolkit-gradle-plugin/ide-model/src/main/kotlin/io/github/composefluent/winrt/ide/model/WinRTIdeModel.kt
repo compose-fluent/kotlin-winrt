@@ -16,6 +16,20 @@ interface WinRTIdeModel : Serializable {
     val nuGetPackages: List<NuGetPackage>
     val manifestFiles: List<String>
     val xamlCompilations: List<XamlCompilation>
+    val packageLayouts: List<PackageLayout>
+    val nuGetConfigFile: String
+    val nuGetConfigDirectory: String
+    val restoreLockFiles: List<String>
+
+    /** Actual staging/restore outputs, which need not exist during synchronization. */
+    interface PackageLayout : Serializable {
+        val taskName: String
+        val variant: String
+        val packageDirectory: String
+        val resourceReportFile: String
+        val minWindowsVersion: String
+        val maxVersionTested: String
+    }
 
     /** Paths to declaration-pass tasks; their outputs need not exist at sync time. */
     interface XamlCompilation : Serializable {
@@ -48,6 +62,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 2
+        const val SCHEMA_VERSION: Int = 3
     }
 }

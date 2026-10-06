@@ -35,6 +35,10 @@ class WinRTIdeToolingApiTest {
             apply(plugin = "org.jetbrains.kotlin.jvm")
             apply(plugin = "io.github.compose-fluent.windows-toolkit")
             configure<io.github.composefluent.windows.toolkit.gradle.WindowsExtension> {
+                application {
+                    mainClass = "sample.MainKt"
+                    minWindowsVersion = "10.0.19041.0"
+                }
                 packageReferences {
                     windowsSdk("10.0.26100.0")
                     nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
@@ -63,6 +67,12 @@ class WinRTIdeToolingApiTest {
                     assertTrue(xaml.sourceRoots.contains(directory.resolve("src/main/kotlin").path))
                     assertTrue(xaml.declarationsFile.endsWith("declarations.json"))
                     assertTrue(!File(xaml.declarationsFile).exists())
+                    assertTrue(model.restoreLockFiles.isNotEmpty())
+                    val layout = model.packageLayouts.first { it.taskName.startsWith("stageWinAppPackage") }
+                    assertEquals("10.0.19041.0", layout.minWindowsVersion)
+                    assertEquals("10.0.26100.0", layout.maxVersionTested)
+                    assertTrue(layout.resourceReportFile.endsWith("appx-resource-resolution.json"))
+                    assertTrue(!File(layout.resourceReportFile).exists())
                 }
         } finally {
             check(directory.canonicalFile.parentFile == File(System.getProperty("java.io.tmpdir")).canonicalFile)

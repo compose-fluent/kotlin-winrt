@@ -56,6 +56,18 @@ internal object ProjectPriManifestSupport {
             return listOf("manifest file does not exist: $manifest")
         }
         val document = readXmlDocument(manifest) ?: return listOf("manifest XML could not be parsed: $manifest")
+        return validatePackageManifestDocument(document)
+    }
+
+    /** Same validation for an unsaved IDE document; no temporary source overwrite. */
+    fun validatePackageManifestText(text: String): List<String> {
+        val document = runCatching {
+            secureDocumentBuilderFactory().newDocumentBuilder().parse(org.xml.sax.InputSource(java.io.StringReader(text)))
+        }.getOrNull() ?: return listOf("manifest XML could not be parsed")
+        return validatePackageManifestDocument(document)
+    }
+
+    private fun validatePackageManifestDocument(document: org.w3c.dom.Document): List<String> {
         val errors = mutableListOf<String>()
         val root = document.documentElement
         if (root == null || !root.localName.equals("Package", ignoreCase = true)) {
@@ -202,13 +214,15 @@ internal object ProjectPriManifestSupport {
     }
 
     private fun readXmlDocument(path: Path) = runCatching {
-        DocumentBuilderFactory.newInstance().apply {
+        secureDocumentBuilderFactory().newDocumentBuilder().parse(path.toFile())
+    }.getOrNull()
+
+    private fun secureDocumentBuilderFactory() = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
             setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
             runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
             runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
-        }.newDocumentBuilder().parse(path.toFile())
-    }.getOrNull()
+        }
 
     private fun org.w3c.dom.Node.childElements(localName: String): List<Element> =
         (0 until childNodes.length)

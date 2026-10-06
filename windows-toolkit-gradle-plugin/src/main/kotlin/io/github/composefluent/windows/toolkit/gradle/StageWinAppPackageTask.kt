@@ -410,7 +410,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
                     }
                     Files.createDirectories(target.parent)
                     zip.getInputStream(entry).use { input -> Files.newOutputStream(target).use(input::copyTo) }
-                    AppxResourceInput(target, Path.of(normalizedEntryName.replace('/', java.io.File.separatorChar)))
+                    AppxResourceInput(target, Path.of(normalizedEntryName.replace('/', java.io.File.separatorChar)), sourceArchive = archive.toPath())
                 }.toList()
             }
         }
@@ -567,11 +567,15 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             ?.forEach { item ->
                 val target = item.target.relativeTo(generatedPri.projectPriRoot)
                 val key = target.toNormalizedPackagePathKey()
+                val previous = finalDecisions[key]
                 finalDecisions[key] = PackagePayloadDecision(
                     source = item.source,
                     target = target,
                     origin = "project PRI ${item.kind.name.lowercase()}",
                     overriddenSource = finalDecisions[key]?.source,
+                    sourceArchive = previous?.sourceArchive,
+                    overriddenSources = previous?.overriddenSources.orEmpty() +
+                        listOfNotNull(previous?.source?.takeIf { it != item.source }),
                 )
             }
         return finalDecisions.values.toList()

@@ -19,6 +19,10 @@ data class WinRTModuleData(
     val packages: List<WinRTNuGetData>,
     val manifestFiles: List<String>,
     val xamlCompilations: List<WinRTXamlCompilationData> = emptyList(),
+    val packageLayouts: List<WinRTPackageLayoutData> = emptyList(),
+    val nuGetConfigFile: String = "",
+    val nuGetConfigDirectory: String = projectDirectory,
+    val restoreLockFiles: List<String> = emptyList(),
 ) : AbstractExternalEntityData(GradleConstants.SYSTEM_ID) {
     companion object {
         val KEY: Key<WinRTModuleData> = Key.create(WinRTModuleData::class.java, ProjectKeys.MODULE.processingWeight + 1)
@@ -36,6 +40,9 @@ data class WinRTModuleData(
                 model.manifestFiles.toList(),
                 model.xamlCompilations.map { WinRTXamlCompilationData(it.taskName, it.sourceRoots.toList(),
                     it.declarationsFile, it.inputFile, it.compilerDirectory, it.metadataIndexFile) },
+                model.packageLayouts.map { WinRTPackageLayoutData(it.taskName, it.variant, it.packageDirectory,
+                    it.resourceReportFile, it.minWindowsVersion, it.maxVersionTested) },
+                model.nuGetConfigFile, model.nuGetConfigDirectory, model.restoreLockFiles.toList(),
             )
         }
     }
@@ -50,6 +57,9 @@ data class WinRTSourceSetData(
 
 data class WinRTTargetData(val name: String, val platform: String, val sourceSets: List<String>) : Serializable
 data class WinRTNuGetData(val id: String, val version: String, val generateProjection: Boolean) : Serializable
+
+data class WinRTPackageLayoutData(val taskName: String, val variant: String, val packageDirectory: String,
+    val resourceReportFile: String, val minWindowsVersion: String, val maxVersionTested: String) : Serializable
 
 data class WinRTXamlCompilationData(
     val taskName: String,
