@@ -64,9 +64,12 @@ with diagnostic paths mapped back to the original files. Source files and build
 outputs are never overwritten by this producer. Invalid markup clears generated
 symbols; revisions prevent an older result from replacing a newer edit.
 
-`WinRTXamlDocumentCompilerTest` optionally exercises real document events and
-the Windows compiler, including renaming an unsaved element, invalid markup and
-temporary-file cleanup. Supply `-Pwinrt.ide.xamlInput=<prepared input.json>` and
+`WinRTXamlDocumentCompilerTest` optionally exercises real document events,
+the Windows compiler and the IDE FIR adapter together. It validates unsaved
+name addition/removal/rename, generated members and unresolved-reference
+diagnostics, preservation across model reimport, invalid markup and temporary
+cleanup. Only SDK contracts are fixture sources; named properties come from FIR.
+Supply `-Pwinrt.ide.xamlInput=<prepared input.json>` and
 `-Pwinrt.ide.xamlCompiler=<compiler directory>` to enable it. Newly added XAML
 files and changes requiring a new Kotlin application schema still require
 Gradle synchronization and preparation. The producer does not run an application
