@@ -20,9 +20,11 @@ are not exported.
 
 WinMD ingestion and projection rules continue to belong to `winrt-metadata` and
 `winrt-generator`, corresponding to `.cswinrt/src/cswinrt`. This model adds an IDE
-transport boundary, not a second projection model. Resolved metadata, XAML
-compiler inputs, resource provenance and named application manifests require
-further contract additions before their IDE features can be supported.
+transport boundary, not a second projection model. Schema 2 also exports XAML
+declaration-pass task names, source roots, compiler directories and configured
+input/declaration/metadata-index paths. These are producer locations; sync does
+not require their outputs to exist. Resolved metadata, resource provenance and
+variant-specific application manifests still require further contract additions.
 
 Validate on Windows with:
 

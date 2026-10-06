@@ -17,6 +17,7 @@ repositories {
 
 dependencies {
     implementation(project(":ide-model"))
+    implementation(project(":fir-adapter")) { isTransitive = false }
     intellijPlatform {
         val localIde = providers.gradleProperty("kotlinWinRT.ide.path")
         if (localIde.isPresent) local(localIde.get()) else intellijIdea("2026.2.2")
@@ -28,9 +29,9 @@ dependencies {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(25)
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
         freeCompilerArgs.add("-Xcontext-parameters")
     }
 }

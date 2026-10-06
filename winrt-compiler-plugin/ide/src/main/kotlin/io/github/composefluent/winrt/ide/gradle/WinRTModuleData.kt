@@ -18,6 +18,7 @@ data class WinRTModuleData(
     val targets: List<WinRTTargetData>,
     val packages: List<WinRTNuGetData>,
     val manifestFiles: List<String>,
+    val xamlCompilations: List<WinRTXamlCompilationData> = emptyList(),
 ) : AbstractExternalEntityData(GradleConstants.SYSTEM_ID) {
     companion object {
         val KEY: Key<WinRTModuleData> = Key.create(WinRTModuleData::class.java, ProjectKeys.MODULE.processingWeight + 1)
@@ -33,6 +34,8 @@ data class WinRTModuleData(
                 model.targets.map { WinRTTargetData(it.name, it.platform, it.sourceSets.toList()) },
                 model.nuGetPackages.map { WinRTNuGetData(it.id, it.version, it.isGenerateProjection) },
                 model.manifestFiles.toList(),
+                model.xamlCompilations.map { WinRTXamlCompilationData(it.taskName, it.sourceRoots.toList(),
+                    it.declarationsFile, it.inputFile, it.compilerDirectory, it.metadataIndexFile) },
             )
         }
     }
@@ -47,3 +50,12 @@ data class WinRTSourceSetData(
 
 data class WinRTTargetData(val name: String, val platform: String, val sourceSets: List<String>) : Serializable
 data class WinRTNuGetData(val id: String, val version: String, val generateProjection: Boolean) : Serializable
+
+data class WinRTXamlCompilationData(
+    val taskName: String,
+    val sourceRoots: List<String>,
+    val declarationsFile: String,
+    val inputFile: String,
+    val compilerDirectory: String,
+    val metadataIndexFile: String,
+) : Serializable
