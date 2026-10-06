@@ -101,8 +101,23 @@ parameter check; the IDE does not guess a control-specific signature.
 `WinRTXamlEditorTest` covers the real XML pipeline with a WinMD written and read
 by the metadata owner, closed generic event signatures, inherited handlers,
 completion filtering and native diagnostic ranges. `WinRTFirAnalysisTest` also
-covers generated-member source navigation. Rich binding-path completion and
-cross-language rename coverage still need additional implementation/validation.
+covers generated-member source navigation and native x:Name renaming across
+Kotlin and XML usages. Binding paths use source spans from the XAMLC
+`BindingPath.g4` grammar and Kotlin type scopes for inherited and generic
+receivers, calls, casts, indexers, static members and attached getters. Template
+boundaries follow WinMD inheritance; source-matched harvester connections supply
+their data types. A stale declaration location is never matched by line alone.
+Incomplete expressions retain completion. Ordinary Binding has no assumed data
+type, but explicit ElementName sources resolve within their name scope.
+
+Native references/usage search connect x:Class, handlers, typed binding paths
+and element names. The native Kotlin rename processor updates resolved XML
+usages; class rename also adds its required same-basename XAML file to the
+transaction. A Compose/Jewel x:Name form delegates to the native rename/usage
+preview machinery. Identical names in other templates and shadowing Kotlin
+variables are excluded by resolution, not a text replacement. Dynamic Binding
+paths with an unknown source remain unchanged. `WinRTXamlBindingTest` validates
+these paths, completion insertion and native refactoring scope boundaries.
 
 ## Project and module wizard
 

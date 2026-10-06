@@ -23,13 +23,19 @@ class WinRTXamlGeneratedNavigation : GotoDeclarationHandler {
     @OptIn(KaExperimentalApi::class, KtExperimentalApi::class)
     override fun getGotoDeclarationTargets(sourceElement: PsiElement?, offset: Int, editor: Editor): Array<PsiElement>? {
         val expression = PsiTreeUtil.getParentOfType(sourceElement, KtNameReferenceExpression::class.java, false) ?: return null
-        if (DumbService.isDumb(expression.project)) return null
+        return targets(expression).takeIf { it.isNotEmpty() }?.toTypedArray()
+    }
+
+    companion object {
+    @OptIn(KaExperimentalApi::class, KtExperimentalApi::class)
+    internal fun targets(expression: KtNameReferenceExpression): List<PsiElement> {
+        if (DumbService.isDumb(expression.project)) return emptyList()
         val owner = analyze(expression) {
             val symbol = expression.resolveSymbol() as? KaCallableSymbol ?: return@analyze null
             // A user property with the same name keeps normal Kotlin navigation.
             if (symbol.psi != null && symbol.psi !is org.jetbrains.kotlin.psi.KtClassOrObject) return@analyze null
             symbol.callableId?.classId?.asSingleFqName()?.asString()
-        } ?: return null
+        } ?: return emptyList()
         val project = expression.project
         val name = expression.getReferencedName()
         val pages = project.service<WinRTXamlSnapshotService>().state.value.values.flatMap { it.declarations.pages }
@@ -42,6 +48,7 @@ class WinRTXamlGeneratedNavigation : GotoDeclarationHandler {
                 WinRTXamlSymbols.isDirective(it, "Name") && it.value == name
             }?.valueElement
         } }.distinct()
-        return targets.takeIf { it.isNotEmpty() }?.toTypedArray()
+        return targets
+    }
     }
 }

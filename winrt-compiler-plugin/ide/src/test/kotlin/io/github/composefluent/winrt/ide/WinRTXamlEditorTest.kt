@@ -18,6 +18,8 @@ import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
+import com.intellij.psi.search.searches.ReferencesSearch
+import com.intellij.refactoring.rename.RenameProcessor
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -168,6 +170,21 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         assertEquals(diagnostics.toString(), 1, diagnostics.size)
         assertEquals(file.rootTag!!.getAttribute("Click")!!.valueElement!!.valueTextRange,
             com.intellij.openapi.util.TextRange(diagnostics.single().startOffset, diagnostics.single().endOffset))
+    }
+
+    fun testNativeHandlerAndClassRenameUpdateXamlAndItsRequiredFilePair() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.Shell" Click="onClick"/>""")
+        val handlerValue = file.rootTag!!.getAttribute("Click")!!.valueElement!!
+        val handler = allowAnalysisOnEdt { WinRTXamlEventAnalysis.forAttribute(file.rootTag!!.getAttribute("Click")!!)!!.target("onClick") }!!
+        val usages = allowAnalysisOnEdt { ReferencesSearch.search(handler).findAll() }
+        assertTrue(usages.toString(), usages.any { it.element == handlerValue })
+        allowAnalysisOnEdt { RenameProcessor(project, handler, "onPressed", false, false).run() }
+        assertEquals("onPressed", file.rootTag!!.getAttributeValue("Click"))
+        val owner = WinRTXamlSymbols.ownerClass(file.rootTag!!)!!
+        allowAnalysisOnEdt { RenameProcessor(project, owner, "RenamedShell", false, false).run() }
+        assertEquals("sample.RenamedShell", file.rootTag!!.getAttributeValue("Class", WinRTXamlCatalog.XAML))
+        assertEquals("RenamedShell.kt", owner.containingFile.name)
+        assertEquals("RenamedShell.xaml", file.name)
     }
 
     override fun tearDown() {

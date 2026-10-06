@@ -24,11 +24,16 @@
         <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlCompletionContributor"/>
         <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlReferenceContributor"/>
         <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlEventAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlBindingAnnotator"/>
         <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceContributor"/>
         <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceAnnotator"/>
         <completion.contributor language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceCompletion"/>
         <codeInsight.lineMarkerProvider language="kotlin" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlRelatedMarker"/>
         <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation"/>
+        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameReferencesSearch"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameProcessor"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlClassRenameProcessor" order="last"/>
+        <renameHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameHandler" order="first"/>
         <toolWindow id="Kotlin WinRT" anchor="right"
                     factoryClass="io.github.composefluent.winrt.ide.ui.WinRTToolWindowFactory"/>
         <externalProjectDataService implementation="io.github.composefluent.winrt.ide.gradle.WinRTProjectDataService"/>

@@ -44,12 +44,14 @@ data class WinRTXamlSnapshot(val text: String, val declarations: WinRTXamlDeclar
 /** Owns analysis inputs, not generated Kotlin declarations or application ABI code. */
 @Service(Service.Level.PROJECT)
 @OptIn(FlowPreview::class)
-class WinRTXamlSnapshotService(private val project: Project, private val scope: CoroutineScope) : Disposable {
+class WinRTXamlSnapshotService(private val project: Project, private val scope: CoroutineScope) : Disposable, com.intellij.openapi.util.ModificationTracker {
     private val snapshots = MutableStateFlow<Map<String, WinRTXamlSnapshot>>(emptyMap())
     val state: StateFlow<Map<String, WinRTXamlSnapshot>> = snapshots
     private val documents = ConcurrentHashMap<String, WinRTXamlDocument>()
     private val edits = MutableSharedFlow<Boolean>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private val generation = AtomicLong()
+    private val publishedGeneration = AtomicLong()
+    override fun getModificationCount(): Long = publishedGeneration.get()
 
     init {
         project.messageBus.connect(this).subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
@@ -162,6 +164,7 @@ class WinRTXamlSnapshotService(private val project: Project, private val scope: 
 
     @OptIn(KaPlatformInterface::class)
     private fun invalidate(before: Any, after: Any) {
+        publishedGeneration.incrementAndGet()
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             ApplicationManager.getApplication().runWriteAction {

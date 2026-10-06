@@ -1,13 +1,10 @@
 package io.github.composefluent.winrt.ide.xaml
 
-import com.intellij.openapi.components.service
 import com.intellij.openapi.util.TextRange
 import com.intellij.patterns.PlatformPatterns
 import com.intellij.psi.*
-import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.*
 import com.intellij.util.ProcessingContext
-import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 
 class WinRTXamlReferenceContributor : PsiReferenceContributor() {
     override fun registerReferenceProviders(registrar: PsiReferenceRegistrar) {
@@ -32,10 +29,15 @@ class WinRTXamlReferenceContributor : PsiReferenceContributor() {
                     else -> null
                 }
                 val extra = mutableListOf<PsiReference>()
-                Regex("\\bElementName\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)").findAll(value.value).forEach { match ->
-                    val token = match.groups[1]!!
-                    extra += ValueReference(value, TextRange(range.startOffset + token.range.first, range.startOffset + token.range.last + 1)) {
-                        WinRTXamlReferences.namedElements(tag).firstOrNull { it.first == token.value }?.second
+                WinRTXamlBindingSyntax.parse(value)?.let { syntax ->
+                    fun tokens(expression: WinRTXamlBindingSyntax.Expr?): List<WinRTXamlBindingSyntax.Token> = expression?.let {
+                        listOfNotNull(it.token.takeIf { _ -> it.kind != "literal" }) + tokens(it.receiver) + it.arguments.flatMap(::tokens)
+                    }.orEmpty()
+                    val sites = (tokens(syntax.expression) + tokens(syntax.bindBack) + listOfNotNull(syntax.elementName)).distinctBy { it.range }
+                    sites.filter { !it.range.isEmpty }.forEach { token ->
+                        extra += ValueReference(value, token.range, binding = true) {
+                            WinRTXamlBindingAnalysis.forValue(value)?.sites?.firstOrNull { it.range == token.range }?.target
+                        }
                     }
                 }
                 return (listOfNotNull(reference) + extra).toTypedArray()
@@ -43,33 +45,28 @@ class WinRTXamlReferenceContributor : PsiReferenceContributor() {
         })
     }
 
-    private class ValueReference(value: XmlAttributeValue, range: TextRange, private val qualifiedClass: Boolean = false, private val target: () -> PsiElement?) :
+    private class ValueReference(value: XmlAttributeValue, range: TextRange, private val qualifiedClass: Boolean = false,
+        private val binding: Boolean = false, private val target: () -> PsiElement?) :
         PsiReferenceBase<XmlAttributeValue>(value, range, true) {
-        override fun resolve(): PsiElement? = target()
+        private var projectedCase = false
+        override fun resolve(): PsiElement? = target()?.also { resolved ->
+            val original = element.text.substring(rangeInElement.startOffset, rangeInElement.endOffset)
+            projectedCase = binding && original.firstOrNull()?.isUpperCase() == true &&
+                (resolved as? org.jetbrains.kotlin.psi.KtNamedDeclaration)?.name?.firstOrNull()?.isLowerCase() == true
+        }
         override fun handleElementRename(newElementName: String): PsiElement {
-            val replacement = if (qualifiedClass && !newElementName.contains('.') && element.value.contains('.'))
-                element.value.substringBeforeLast('.') + "." + newElementName else newElementName
+            val old = element.text.substring(rangeInElement.startOffset, rangeInElement.endOffset)
+            val replacement = when {
+                qualifiedClass && !newElementName.contains('.') && old.contains('.') -> old.substringBeforeLast('.') + "." + newElementName
+                binding && old.contains(':') -> old.substringBeforeLast(':') + ":" + newElementName
+                projectedCase -> newElementName.replaceFirstChar(Char::uppercase)
+                else -> newElementName
+            }
             return ElementManipulators.handleContentChange(element, rangeInElement, replacement)
         }
     }
 }
 
 internal object WinRTXamlReferences {
-    fun namedElements(tag: XmlTag): List<Pair<String, XmlAttributeValue>> {
-        val file = tag.containingFile as? XmlFile ?: return emptyList()
-        val root = file.rootTag ?: return emptyList()
-        val className = root.getAttributeValue("Class", WinRTXamlCatalog.XAML) ?: return emptyList()
-        val page = file.project.service<WinRTXamlSnapshotService>().state.value.values
-            .firstNotNullOfOrNull { it.declarations.pages.firstOrNull { page -> page.className == className } } ?: return emptyList()
-        val document = PsiDocumentManager.getInstance(file.project).getDocument(file) ?: return emptyList()
-        val ancestors = generateSequence(tag) { it.parentTag }
-        val scopeId = ancestors.firstNotNullOfOrNull { ancestor ->
-            val line = document.getLineNumber(ancestor.textOffset) + 1
-            page.connections.firstOrNull { it.location.line == line }?.scopeId
-        } ?: 0
-        val names = page.connections.filter { it.scopeId == scopeId }.mapNotNull { it.elementName ?: it.fieldName }.toSet()
-        return PsiTreeUtil.findChildrenOfType(root, XmlAttribute::class.java).filter {
-            WinRTXamlSymbols.isDirective(it, "Name") && it.value in names
-        }.mapNotNull { attribute -> attribute.valueElement?.let { attribute.value!! to it } }
-    }
+    fun namedElements(tag: XmlTag) = WinRTXamlScopes.namedElements(tag)
 }

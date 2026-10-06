@@ -4,6 +4,8 @@ import com.intellij.lang.annotation.Annotator
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.project.DumbService
+import com.intellij.openapi.components.service
+import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
@@ -51,7 +53,7 @@ internal object WinRTXamlEventAnalysis {
         return CachedValuesManager.getCachedValue(attribute) {
             val result = inspect(attribute.parent, member)
             CachedValueProvider.Result.create(result, PsiModificationTracker.MODIFICATION_COUNT,
-                ProjectRootModificationTracker.getInstance(attribute.project))
+                ProjectRootModificationTracker.getInstance(attribute.project), attribute.project.service<WinRTXamlSnapshotService>())
         }
     }
 

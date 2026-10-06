@@ -20,17 +20,23 @@ class WinRTXamlCompletionContributor : CompletionContributor() {
                 val value = PsiTreeUtil.getParentOfType(parameters.position, XmlAttributeValue::class.java, false) ?: return
                 val attribute = value.parent as? XmlAttribute ?: return
                 val tag = attribute.parent
+                val binding = WinRTXamlBindingAnalysis.forValue(value)
+                if (binding != null) {
+                    val offset = parameters.offset - value.textRange.startOffset
+                    val site = binding.sites.firstOrNull { offset >= it.range.startOffset && offset <= it.range.endOffset }
+                    if (site != null) {
+                        val prefix = value.text.substring(site.range.startOffset, offset.coerceAtMost(site.range.endOffset))
+                        val matching = result.withPrefixMatcher(prefix)
+                        site.candidates.forEach { matching.addElement(LookupElementBuilder.create(it)) }
+                    }
+                    return
+                }
                 val catalog = WinRTXamlSymbols.catalog(file)
                 val values = when {
                     attribute.isNamespaceDeclaration -> listOf(WinRTXamlCatalog.PRESENTATION, WinRTXamlCatalog.XAML) +
                         catalog?.model?.namespaces.orEmpty().map { "using:${it.name}" } +
                         WinRTXamlSymbols.classNames(file).map { "using:${it.substringBeforeLast('.', "")}" }.filter { it != "using:" }
                     WinRTXamlSymbols.isDirective(attribute, "Class") -> WinRTXamlSymbols.classNames(file)
-                    value.value.trimStart().startsWith("{x:Bind ") -> {
-                        val owner = WinRTXamlSymbols.ownerClass(tag)
-                        owner?.declarations.orEmpty().filterIsInstance<org.jetbrains.kotlin.psi.KtNamedDeclaration>().mapNotNull { it.name } +
-                            WinRTXamlReferences.namedElements(tag).map { it.first }
-                    }
                     WinRTXamlSymbols.member(tag, attribute.localName)?.isEvent == true ->
                         WinRTXamlEventAnalysis.forAttribute(attribute)?.candidates.orEmpty()
                             .groupBy { it.name }.filterValues { it.size == 1 && it.single().problem == null }.keys.toList()
