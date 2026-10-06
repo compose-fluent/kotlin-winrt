@@ -168,6 +168,16 @@ abstract class CompileWinRTXamlTask @Inject constructor(
             "XAML source changed while the compiler was running. Run the compilation again."
         }
         val fingerprinted = plan.copy(pages = plan.pages.map { it.copy(sourceHash = sourceHashes.getValue(it.resourcePath)) })
-        GradleFileOperations.writeStringIfChanged(declarationsFile.get().asFile.toPath(), WinRTXamlDeclarations.canonicalText(fingerprinted))
+        val declarations = WinRTXamlDeclarations.canonicalText(fingerprinted)
+        val compilerOutput = Json.parseToJsonElement(implementationFile.get().asFile.readText()).jsonObject
+        if (finalPass) require(compilerOutput.getValue("KotlinImplementation").jsonObject
+            .getValue("DeclarationFingerprint").jsonPrimitive.content == WinRTXamlDeclarations.fingerprint(fingerprinted)) {
+            "XAML source or declarations changed between semantic and final compilation. Rebuild the XAML semantic symbols."
+        }
+        // XAMLC preserves the Kotlin semantic fingerprint but does not own source hashing.
+        // Keep both output artifacts identical, retaining all compiler logs and implementation fields.
+        val enriched = JsonObject(compilerOutput + ("KotlinDeclarations" to Json.parseToJsonElement(declarations)))
+        GradleFileOperations.writeStringIfChanged(implementationFile.get().asFile.toPath(), enriched.toString())
+        GradleFileOperations.writeStringIfChanged(declarationsFile.get().asFile.toPath(), declarations)
     }
 }

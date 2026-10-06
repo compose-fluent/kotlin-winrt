@@ -80,6 +80,7 @@ class CompileWinRTXamlTaskTest {
         val index = WinRTXamlDeclarations.parse(task.declarationsFile.get().asFile.readText())
         assertEquals("pages/MainPage.xaml", index.pages.single().resourcePath)
         assertEquals(WinRTXamlDeclarations.sourceFingerprint(page.readText()), index.pages.single().sourceHash)
+        assertEquals(index, WinRTXamlDeclarations.readCompilerOutput(task.implementationFile.get().asFile.toPath()))
         val originalMarkup = page.readText()
         page.writeText(originalMarkup.replace("x:Name=\"checked\"", "x:Name=\"renamedControl\""))
         task.compile()
