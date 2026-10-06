@@ -41,7 +41,9 @@ class WinRTXamlHotReloadServerTest {
             listOf(WinRTXamlHotReloadChange("Container", "Color", "blue", target.path)),
             listOf(WinRTXamlHotReloadResources(target, "<ResourceDictionary/>", listOf("Style"),
                 listOf(WinRTXamlHotReloadResourceReference(WinRTXamlHotReloadTarget("Heading"), "Style", "Style")))),
-            listOf(WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Heading"), "FontSize")))
+            listOf(WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Heading"), "FontSize")),
+            listOf(WinRTXamlHotReloadChildren(WinRTXamlHotReloadTarget("Container", listOf(WinRTXamlHotReloadStep.Property("Children"))), 1,
+                listOf(WinRTXamlHotReloadItem.Markup("<TextBlock Text=\"new\"/>"), WinRTXamlHotReloadItem.Existing(0)))))
         val bytes = ByteArrayOutputStream().also { WinRTXamlHotReloadWire.writeRequest(it, "token", patch) }.toByteArray()
         assertEquals("token" to patch, WinRTXamlHotReloadWire.readRequest(ByteArrayInputStream(bytes)))
         val reply = WinRTXamlHotReloadReply(0, "updated", values = listOf(WinRTXamlHotReloadValue(target.element, "Color", "blue", target.path)))

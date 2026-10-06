@@ -1,6 +1,10 @@
 package io.github.composefluent.winrt.ide.hotreload
 
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlContentMember
+import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.runtime.*
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -103,6 +107,77 @@ class WinRTHotReloadTest {
         }
         val added = resourceSource.replace("</ResourceDictionary>", "<SolidColorBrush x:Key=\"Extra\"/></ResourceDictionary>")
         assertTrue(runCatching { WinRTHotReloadMarkup.parse(added).patch(WinRTHotReloadMarkup.parse(resourceSource), resourceRoot()) }.isFailure)
+    }
+
+    private fun content(uri: String, type: String, property: String?): WinRTXamlContentMember? =
+        if (uri != WinRTXamlCatalog.PRESENTATION) null else when (property ?: type) {
+            "Window" -> WinRTXamlContentMember("Content", false)
+            "StackPanel", "Children" -> WinRTXamlContentMember("Children", true)
+            "Text", "FontSize", "Width" -> WinRTXamlContentMember(property!!, false)
+            else -> null
+        }
+
+    @Test fun child_collections_reuse_connected_objects_and_load_only_unconnected_subtrees() {
+        val first = "<TextBlock x:Name=\"Greeting\" Text=\"Hello\" Style=\"{StaticResource GreetingStyle}\" Foreground=\"{StaticResource Accent}\"/>"
+        val second = "<TextBlock x:Name=\"Second\" Style=\"{StaticResource ResourceKey=GreetingStyle}\"/>"
+        val next = resourceSource.replace(first, "").replace(second, "$second<TextBlock Text=\"New\"/>$first")
+        val patch = WinRTHotReloadMarkup.parse(next).patch(WinRTHotReloadMarkup.parse(resourceSource), resourceRoot(), contentMember = ::content)
+        val update = patch.children.single()
+        assertEquals(WinRTXamlHotReloadTarget("Layout", listOf(WinRTXamlHotReloadStep.Property("Children"))), update.target)
+        assertEquals(2, update.expectedSize)
+        assertEquals(WinRTXamlHotReloadItem.Existing(1), update.items[0]); assertEquals(WinRTXamlHotReloadItem.Existing(0), update.items[2])
+        val fragment = (update.items[1] as WinRTXamlHotReloadItem.Markup).xaml
+        assertTrue(fragment, fragment.contains("Text=\"New\"")); assertTrue(fragment.contains("xmlns=\"${WinRTXamlCatalog.PRESENTATION}\""))
+        assertTrue(patch.changes.isEmpty()); assertTrue(patch.resources.isEmpty())
+        val removed = next.replace("<TextBlock Text=\"New\"/>", "")
+        val deletion = WinRTHotReloadMarkup.parse(removed).patch(WinRTHotReloadMarkup.parse(next), resourceRoot(next), contentMember = ::content)
+        assertEquals(listOf(WinRTXamlHotReloadItem.Existing(0), WinRTXamlHotReloadItem.Existing(2)), deletion.children.single().items)
+        // Unnamed members are addressed through the compiler-owned getter and
+        // checked list index, rather than an invented native name scope.
+        val unnamed = source.replace(" x:Name=\"Greeting\"", "")
+        val edited = WinRTHotReloadMarkup.parse(unnamed.replace("Hello", "changed"))
+            .patch(WinRTHotReloadMarkup.parse(unnamed), root(unnamed), contentMember = ::content)
+        assertEquals(listOf(WinRTXamlHotReloadStep.Property("Content"), WinRTXamlHotReloadStep.Property("Children"),
+            WinRTXamlHotReloadStep.Index(0, 1)), edited.changes.single().path)
+    }
+
+    @Test fun child_changes_reject_compiled_connections_and_authored_component_lifetimes() {
+        val before = WinRTHotReloadMarkup.parse(source)
+        val unsupported = listOf(
+            source.replace("<StackPanel>", "<StackPanel><TextBlock x:Name=\"Added\"/>"),
+            source.replace("<StackPanel>", "<StackPanel><TextBlock Text=\"{Binding Title}\"/>"),
+            source.replace("<StackPanel>", "<StackPanel><TextBlock Text=\"{x:Bind Title}\"/>"),
+            source.replace("<StackPanel>", "<StackPanel><Button Click=\"onClick\"/>"),
+            source.replace("<StackPanel>", "<StackPanel><DataTemplate><TextBlock/></DataTemplate>"),
+            source.replace("<StackPanel>", "<StackPanel><c:Widget xmlns:c=\"using:probe\"/>"),
+            source.replace("<TextBlock x:Name=\"Greeting\" Text=\"Hello\" Width=\"100\"/>", ""),
+        )
+        unsupported.forEach { text -> assertTrue(text, runCatching {
+            WinRTHotReloadMarkup.parse(text).patch(before, root(), propertyProblem = { _, _, property ->
+                if (property == "Click") "Event connections require rebuilding." else null
+            }, contentMember = ::content)
+        }.isFailure) }
+        val eventSource = source.replace("<StackPanel>", "<StackPanel><Button Click=\"onClick\"/>")
+        assertTrue("Missing event metadata must reject removal, not leave a compiled subscription alive", runCatching {
+            WinRTHotReloadMarkup.parse(source).patch(WinRTHotReloadMarkup.parse(eventSource), root(eventSource), contentMember = ::content)
+        }.isFailure)
+    }
+
+    private fun sdkCatalog(): WinRTXamlCatalog {
+        val input = Path.of(requireNotNull(System.getProperty("winrt.ide.xamlInput")))
+        val paths = Json.parseToJsonElement(Files.readString(input)).jsonObject.getValue("ReferenceAssemblies").jsonArray.map {
+            Path.of(it.jsonObject.getValue("FullPath").jsonPrimitive.content)
+        }.filter(Files::isRegularFile)
+        return WinRTXamlCatalog(WinRTMetadataLoader.load(paths))
+    }
+
+    @Test fun real_sdk_content_properties_and_vector_interfaces_drive_collection_updates() {
+        assumeTrue(System.getProperty("winrt.ide.xamlInput") != null)
+        val catalog = sdkCatalog()
+        val stack = requireNotNull(catalog.resolve(WinRTXamlCatalog.PRESENTATION, "StackPanel"))
+        assertEquals(WinRTXamlContentMember("Children", true), catalog.contentMember(stack))
+        assertEquals(WinRTXamlContentMember("Children", true), catalog.propertyContent(stack, "Children"))
+        assertEquals(WinRTXamlContentMember("Content", false), catalog.contentMember(requireNotNull(catalog.resolve(WinRTXamlCatalog.PRESENTATION, "Window"))))
     }
 
     @Test fun loopback_client_authenticates_and_does_not_expose_credentials() {
@@ -235,6 +310,72 @@ class WinRTHotReloadTest {
                 listOf(WinRTXamlHotReloadChange("Layout", "Color", "#FFCC4400", resourcePath)), reads = reads))
             assertEquals(final.message, WinRTXamlHotReloadProtocol.APPLIED, final.status)
             assertNotEquals(changedColor, assertState(final, 36.0))
+            assertTrue(client.alive)
+        }
+    }
+
+    /** Native UIElementCollection, SDK parser and compiler-generated accessors.
+     * The expected text/order and restored style expose detached/replaced-object
+     * bugs that an echo-only transport test cannot observe. */
+    @Test fun real_winui_host_reorders_adds_removes_children_and_rolls_back_failed_transactions() {
+        val directory = System.getProperty("winrt.ide.hotReloadGraphSession")
+        val sourcePath = System.getProperty("winrt.ide.hotReloadGraphSource")
+        assumeTrue(directory != null && sourcePath != null && System.getProperty("winrt.ide.xamlInput") != null)
+        val catalog = sdkCatalog()
+        val text = Files.readString(Path.of(sourcePath))
+        val first = Regex("<TextBlock[^>]*x:Name=\"Greeting\"[^>]*/>").find(text)!!.value
+        val second = Regex("<TextBlock[^>]*x:Name=\"Second\"[^>]*/>").find(text)!!.value
+        val clients = WinRTHotReloadClient.discover(Path.of(directory))
+        assertEquals(1, clients.size)
+        clients.single().use { client ->
+            fun current() = client.request().roots.single { it.className.endsWith(".MainWindow") && "Second" in it.elements }
+            fun address(index: Int, size: Int) = WinRTXamlHotReloadTarget("Layout", listOf(
+                WinRTXamlHotReloadStep.Property("Children"), WinRTXamlHotReloadStep.Index(index, size)))
+            fun inspect(size: Int, indices: List<Int>): WinRTXamlHotReloadReply {
+                val root = current()
+                return client.request(WinRTXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash, root.sourceHash,
+                    root.version + 1, emptyList(), reads = indices.map { WinRTXamlHotReloadRead(address(it, size), "Text") } +
+                        WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Greeting"), "Width"))).also {
+                    assertEquals(it.message, WinRTXamlHotReloadProtocol.APPLIED, it.status)
+                }
+            }
+            fun patch(before: String, after: String) = WinRTHotReloadMarkup.parse(after).patch(WinRTHotReloadMarkup.parse(before), current(),
+                propertyProblem = { uri, type, property ->
+                    if (catalog.resolve(uri, type)?.let { catalog.members(it).any { m -> m.name == property && m.isEvent } } == true)
+                        "Events require rebuilding." else null
+                }, contentMember = { uri, type, property -> catalog.resolve(uri, type)?.let {
+                    if (property == null) catalog.contentMember(it) else catalog.propertyContent(it, property)
+                } })
+            fun texts(reply: WinRTXamlHotReloadReply) = reply.values.filter { it.property == "Text" }.map { it.value }
+            assertEquals(listOf("Hello from Kotlin WinRT", "Shared style and brush"), texts(inspect(3, listOf(0, 1))))
+            // A live value absent from XAML must survive the reorder.
+            val root = current()
+            val state = client.request(WinRTXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash, root.sourceHash,
+                root.version + 1, listOf(WinRTXamlHotReloadChange("Greeting", "Width", "271"))))
+            assertEquals(state.message, WinRTXamlHotReloadProtocol.APPLIED, state.status)
+            val added = "<TextBlock Text=\"Added at runtime\" FontSize=\"19\"/>"
+            val reordered = text.replace(first, "").replace(second, "$second$added$first")
+            val update = patch(text, reordered).copy(reads = listOf(WinRTXamlHotReloadRead(address(1, 4), "Text")))
+            assertEquals(1, update.children.size)
+            val applied = client.request(update)
+            assertEquals(applied.message, WinRTXamlHotReloadProtocol.APPLIED, applied.status)
+            val live = inspect(4, listOf(0, 1, 2))
+            assertEquals(listOf("Shared style and brush", "Added at runtime", "Hello from Kotlin WinRT"), texts(live))
+            assertEquals(271.0, live.values.single { it.property == "Width" }.value.toDouble(), 0.0)
+            val invalidText = reordered.replace(added, "<TextBlock Text=\"Must roll back\"/>$added")
+            val invalid = patch(reordered, invalidText).copy(changes = listOf(WinRTXamlHotReloadChange("Greeting", "Width", "-1")))
+            assertEquals(1, invalid.children.size)
+            val fingerprint = current().sourceHash
+            val rejected = client.request(invalid)
+            assertEquals(rejected.message, WinRTXamlHotReloadProtocol.REJECTED, rejected.status)
+            assertEquals(fingerprint, current().sourceHash)
+            assertEquals(texts(live), texts(inspect(4, listOf(0, 1, 2))))
+            val deleted = reordered.replace(added, "")
+            val removal = client.request(patch(reordered, deleted))
+            assertEquals(removal.message, WinRTXamlHotReloadProtocol.APPLIED, removal.status)
+            val final = inspect(3, listOf(0, 1))
+            assertEquals(listOf("Shared style and brush", "Hello from Kotlin WinRT"), texts(final))
+            assertEquals(271.0, final.values.single { it.property == "Width" }.value.toDouble(), 0.0)
             assertTrue(client.alive)
         }
     }

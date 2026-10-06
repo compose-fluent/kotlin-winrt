@@ -191,13 +191,17 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                         val after = before.copy(markup = WinRTHotReloadMarkup.parse(documentText(before.path)))
                         if (after.markup.hash == root.sourceHash) continue
                         val catalog = project.service<WinRTXamlCatalogService>().forFile(before.path)
-                        val patch = after.markup.patch(before.markup, root) { uri, type, property ->
+                        val patch = after.markup.patch(before.markup, root, propertyProblem = { uri, type, property ->
                             val member = catalog?.resolve(uri, type)?.let { catalog.members(it).firstOrNull { m -> m.name == property } }
                             if (member?.isEvent == true) "Changing event connections requires rebuilding and restarting." else null
-                        }
+                        }, contentMember = { uri, type, property ->
+                            catalog?.resolve(uri, type)?.let {
+                                if (property == null) catalog.contentMember(it) else catalog.propertyContent(it, property)
+                            }
+                        })
                         attempted[key] = after
-                        val count = patch.changes.size + patch.resources.size
-                        display.value = display.value.copy(message = "Applying $count property and resource updates…", busy = true)
+                        val count = patch.changes.size + patch.resources.size + patch.children.size
+                        display.value = display.value.copy(message = "Applying $count XAML updates…", busy = true)
                         val reply = connection.request(patch)
                         if (reply.status != WinRTXamlHotReloadProtocol.APPLIED) {
                             uncertain = reply.status == WinRTXamlHotReloadProtocol.UNAVAILABLE
@@ -211,7 +215,7 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                     }
                     val missing = display.value.roots.count { baselines[it.className to it.resourcePath]?.markup?.hash != it.sourceHash }
                     display.value = display.value.copy(message = if (missing != 0) "$updated updates applied; $missing classes have no matching source. Rebuild to update them."
-                        else if (updated == 0) "XAML matches the running components." else "$updated property and resource updates applied.",
+                        else if (updated == 0) "XAML matches the running components." else "$updated XAML updates applied.",
                         busy = false, values = results.distinct())
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error

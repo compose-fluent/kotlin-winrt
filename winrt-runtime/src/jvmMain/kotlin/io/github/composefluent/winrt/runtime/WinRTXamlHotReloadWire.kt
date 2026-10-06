@@ -61,6 +61,13 @@ object WinRTXamlHotReloadWire {
                 }
             }
             writeInt(it.reads.size); it.reads.forEach { read -> target(read.target); string(read.property) }
+            writeInt(it.children.size); it.children.forEach { children ->
+                target(children.target); writeInt(children.expectedSize); writeInt(children.items.size)
+                children.items.forEach { item -> when (item) {
+                    is WinRTXamlHotReloadItem.Existing -> { writeByte(0); writeInt(item.index) }
+                    is WinRTXamlHotReloadItem.Markup -> { writeByte(1); string(item.xaml) }
+                } }
+            }
         }
     }
     fun readRequest(stream: InputStream): Pair<String, WinRTXamlHotReloadPatch?> = read(stream) {
@@ -75,7 +82,17 @@ object WinRTXamlHotReloadWire {
                 })
             }
             val reads = List(count(512)) { WinRTXamlHotReloadRead(target(), string()) }
-            WinRTXamlHotReloadPatch(name, path, expected, hash, version, changes, resources, reads)
+            val children = List(count(64)) {
+                val target = target(); val size = count(4096)
+                WinRTXamlHotReloadChildren(target, size, List(count(512)) {
+                    when (readUnsignedByte()) {
+                        0 -> WinRTXamlHotReloadItem.Existing(count(4096))
+                        1 -> WinRTXamlHotReloadItem.Markup(string())
+                        else -> error("Invalid Hot Reload child operation.")
+                    }
+                })
+            }
+            WinRTXamlHotReloadPatch(name, path, expected, hash, version, changes, resources, reads, children)
         }
     }
     fun writeReply(stream: OutputStream, reply: WinRTXamlHotReloadReply) = write(stream) {

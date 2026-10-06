@@ -256,12 +256,30 @@ StaticResource consumers. Readbacks show effective setter properties after apply
 the style. Failure restores dictionary values and consumers together. New components
 receive both current resources and subsequent literal overrides.
 
+WinMD content properties and mutable-vector interfaces drive child-collection
+updates. Existing children can reorder within the same collection. The SDK loads
+new unnamed presentation subtrees with literal properties; unnamed disconnected
+subtrees can be removed. The transaction preserves retained native objects, checks
+the live collection size and rolls back changes on failure. New/reordered unnamed
+children use checked property/index paths. Future component instances replay graph
+and subsequent property/resource updates in order (64 entries / 8 MiB). Moving
+controls can trigger Loaded/Unloaded and affect focus; transient lifecycle state is
+not guaranteed. Application changes to collection order are outside this contract.
+
 Style replacement currently requires the same explicit string keys and named/root
 owners and consumers. ThemeResource consumers, implicit keys, external/merged/theme
-dictionaries, captures in other dictionaries/templates, element/type/name changes,
+dictionaries, captures in other dictionaries/templates, connected-element removal,
+type/name/parent changes, new names or authored controls,
 compiled events/bindings, attached properties and Kotlin changes require rebuilding
-and restarting. Object-graph changes remain separate lifecycle work. See
+and restarting. There is no page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and Native parity gaps.
+
+The optional graph-host test uses `-Pwinrt.ide.hotReloadGraphSession=<fresh session>`,
+`-Pwinrt.ide.hotReloadGraphSource=<MainWindow.xaml>` and `-Pwinrt.ide.xamlInput=<input.json>`.
+It exercises actual native UIElementCollection reorder/add/remove, retains a Width
+value absent from XAML, and verifies failed-setter rollback after a collection edit.
+The baseline fixture has Layout with Greeting/Second TextBlocks and one unchanged
+authored control. Run resource and graph host tests in separate fresh processes.
 
 `WinRTHotReloadTest` covers markup classification, the compiler's source fingerprint
 and a real authenticated loopback client. Its optional actual-host test accepts

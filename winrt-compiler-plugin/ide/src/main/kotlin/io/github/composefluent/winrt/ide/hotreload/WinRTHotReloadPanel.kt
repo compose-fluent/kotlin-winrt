@@ -27,7 +27,7 @@ fun WinRTHotReloadPanel(project: Project) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Text("XAML Hot Reload")
-            Text("Update properties, mutable resources and local styles while keeping the current controls.")
+            Text("Update properties, resources, local styles and child collections while keeping existing controls.")
             if (available.isEmpty()) Text("Synchronize a JVM WinUI application configured with packageType = None.")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { available.forEach { current ->
                 RadioButtonRow(current.projectPath, module == current, { directory = current.projectDirectory; task = null })
@@ -50,7 +50,8 @@ fun WinRTHotReloadPanel(project: Project) {
             }
             Text(state.message)
             state.pid?.let { Text("Application process: $it") }
-            Text("Style replacements refresh explicit StaticResource consumers in this page. Theme expressions, implicit styles, external dictionaries, element structure and compiled connections require rebuilding.")
+            Text("Reorder existing children, or add and remove unnamed SDK subtrees with literal properties. Names, events, bindings, templates and parent changes require rebuilding. Moving controls keeps their objects; focus and Loaded/Unloaded state may change.")
+            Text("Style replacements refresh explicit StaticResource consumers in this page. Theme expressions, implicit styles and external dictionaries require rebuilding.")
         }
         items(state.roots, key = { "${it.className}:${it.resourcePath}" }) { root ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

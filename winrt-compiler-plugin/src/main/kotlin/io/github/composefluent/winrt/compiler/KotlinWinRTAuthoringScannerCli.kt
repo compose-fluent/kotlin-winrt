@@ -421,6 +421,10 @@ object KotlinWinRTAuthoringScannerCli {
                     appendLine("        requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(markup))")
                     appendLine("          .asWinRT<microsoft.ui.xaml.ResourceDictionary>()")
                     appendLine("      },")
+                    appendLine("      loadElement = { markup ->")
+                    appendLine("        requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(markup))")
+                    appendLine("          .asWinRT<microsoft.ui.xaml.UIElement>()")
+                    appendLine("      },")
                     appendLine("    )")
                     entries.forEach { appendLine("    ${it.second}()") }
                     appendLine("  }")

@@ -1,4 +1,4 @@
-# XAML development property and resource updates
+# XAML development updates
 
 The common property engine uses the compiler's existing XAML type/member
 registrations. Property discovery reuses `WinUiAuthoredTypeMetadata.customProperty`,
@@ -25,10 +25,9 @@ Each page records its compilation fingerprint and current update version. A requ
 must match the current fingerprint and advance the version by one. Every target,
 getter and value conversion is prepared before setters run. Setter failures restore
 the previous values; rollback failure or a component created during mutation requires
-restarting. Subsequent instances receive successful literal property overrides when
-their original XBF finishes loading. The engine preserves the existing object graph,
-events and compiled bindings; graph/binding/name changes require their own compiler
-and lifecycle contract and are not handled by this protocol.
+restarting. Subsequent instances receive successful updates when their original XBF
+finishes loading. Connected object identity, events and compiled bindings stay with
+retained elements; changed connections require their own compiler contract.
 
 Protocol version 2 adds bounded object paths through generated property getters,
 projected dictionary keys and collection indices. An index includes the expected
@@ -57,6 +56,39 @@ participate in the update. Changing dictionary keys also requires rebuilding.
 Parser, key-shape, getter, conversion or setter failure preserves the previous
 version; attempted mutations roll back dictionary values and consumer properties
 together. Rollback failure still requires restarting.
+
+Protocol version 3 adds child-collection transactions. The IDE obtains the content
+property from WinMD ContentPropertyAttribute, and mutable-vector shape from the
+metadata owner's existing collection descriptor and interface closure. It does not
+maintain a list of container controls. A collection update carries its expected live
+size and a new sequence of original indices or bounded SDK markup fragments. Each
+original child may occur only once. Generated SDK glue loads new UIElements through
+XamlReader.Load; common code uses the existing projected MutableList contract.
+IndexOf, RemoveAt and indexed insertion correspond to CsWinRT's IList.net5.cs and
+retain native instances rather than recreating controls. Native IndexOf supplies
+identity comparison even when Kotlin wrappers differ. Overlapping collection paths
+require separate updates. No page-recreation path is provided.
+
+All fragment parsing, live-size checks and subsequent property accessors are
+prepared before mutation. Prepared collection overlays address new/reordered
+unnamed children by their new index; setters and readbacks participate in the same
+transaction. Failure restores the original sequence and property values. Graph
+updates and later property/resource updates are replayed in order for new instances
+after their compiled XBF connects, with a 64-entry / 8 MiB history limit. Rebuild
+and restart clears the history. The size guard detects application-added/removed
+children; same-size application reordering is outside the supported contract.
+
+Existing connected children may move within the same collection. New or removed
+subtrees must use unnamed SDK presentation elements with literal properties and no
+events, bindings, templates, property elements or authored controls. Removing a
+connected child, changing its type/name/parent, or changing a content property to a
+different object requires rebuilding. SDK Loaded/Unloaded callbacks can run during
+remove/insert, so object identity and explicit values are retained but keyboard
+focus, selection, animation and transient lifecycle state are not promised. Rollback
+restores the tree and properties; it cannot undo arbitrary user event side effects.
+
+Protocol v3 carries no executable code, connection IDs, generated fields or
+subscription replacements. Compiled-connection changes require rebuilding.
 
 The JVM transport starts only when `KOTLIN_WINRT_HOT_RELOAD_DIRECTORY` is supplied
 to a development process. It uses an ephemeral loopback port, a random 256-bit token,

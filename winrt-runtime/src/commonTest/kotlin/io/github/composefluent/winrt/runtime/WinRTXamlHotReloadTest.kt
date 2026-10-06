@@ -7,7 +7,8 @@ class WinRTXamlHotReloadTest {
     private class Page(val resources: MutableMap<Any?, Any?>, val children: MutableList<Element> = mutableListOf())
     private val hash = "a".repeat(64)
     private val next = "b".repeat(64)
-    private fun registry(queue: MutableList<() -> Unit>, load: (String) -> Map<Any?, Any?> = { emptyMap() }): WinRTXamlHotReloadRegistry {
+    private fun registry(queue: MutableList<() -> Unit>, element: (String) -> Any = { Element(it) },
+        load: (String) -> Map<Any?, Any?> = { emptyMap() }): WinRTXamlHotReloadRegistry {
         ComWrappersSupport.clearRegistriesForTests()
         // The source-generated ICustomProperty strategy is owned by .cswinrt's net5 projection;
         // these accessors stand in for CSharpTypeInfoPass2's generated property delegates.
@@ -28,7 +29,7 @@ class WinRTXamlHotReloadTest {
                 WinRTXamlMemberDefinition("Resources", "Map", MutableMap::class, { (it as Page).resources }),
                 WinRTXamlMemberDefinition("Children", "List", MutableList::class, { (it as Page).children }),
             )))
-        return WinRTXamlHotReloadRegistry({ { task -> queue += task; true } }, { type, text -> if (type == Int::class) text.toInt() else text }, load)
+        return WinRTXamlHotReloadRegistry({ { task -> queue += task; true } }, { type, text -> if (type == Int::class) text.toInt() else text }, load, element)
     }
     private fun patch(vararg changes: WinRTXamlHotReloadChange) = WinRTXamlHotReloadPatch("probe.Page", "Page.xaml", hash, next, 1, changes.toList())
 
@@ -134,5 +135,81 @@ class WinRTXamlHotReloadTest {
         assertEquals("latest resource", laterFirst.style?.text)
         assertSame(laterOwner.resources["TitleStyle"], laterFirst.style); assertSame(laterFirst.style, laterSecond.style)
         assertNotSame(first.style, laterFirst.style)
+    }
+
+    /** IList.net5.cs owns IndexOf/Insert/RemoveAt. The loader is supplied by the
+     * SDK, and existing indices describe retained instances, never new controls. */
+    @Test fun child_updates_keep_objects_and_replay_ordered_history_for_later_components() {
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        val first = Element("first"); val second = Element("second")
+        val owner = Page(mutableMapOf(), mutableListOf(first, second))
+        fun connect(page: Page) {
+            registry.observe(page, "probe.Page", "Page.xaml", hash, "First", page.children[0])
+            registry.observe(page, "probe.Page", "Page.xaml", hash, null, null)
+        }
+        connect(owner)
+        fun send(update: WinRTXamlHotReloadPatch): WinRTXamlHotReloadReply {
+            var reply: WinRTXamlHotReloadReply? = null
+            registry.submit(update) { reply = it }; queue.removeAt(0).invoke()
+            return requireNotNull(reply).also { assertEquals(WinRTXamlHotReloadProtocol.APPLIED, it.status, it.message) }
+        }
+        send(patch(WinRTXamlHotReloadChange("First", "Text", "before graph")))
+        val collection = WinRTXamlHotReloadTarget(path = listOf(WinRTXamlHotReloadStep.Property("Children")))
+        val added = collection.copy(path = collection.path + WinRTXamlHotReloadStep.Index(1, 3))
+        val updated = send(patch(WinRTXamlHotReloadChange("", "Text", "new child edited", added.path))
+            .copy(expectedHash = next, sourceHash = "c".repeat(64), version = 2,
+                children = listOf(WinRTXamlHotReloadChildren(collection, 2, listOf(
+                    WinRTXamlHotReloadItem.Existing(1), WinRTXamlHotReloadItem.Markup("new child"), WinRTXamlHotReloadItem.Existing(0)))),
+                reads = listOf(WinRTXamlHotReloadRead(added, "Text"))))
+        assertSame(second, owner.children[0]); assertSame(first, owner.children[2])
+        assertEquals("new child edited", updated.values.last().value)
+        send(patch().copy(expectedHash = "c".repeat(64), sourceHash = "d".repeat(64), version = 3,
+            children = listOf(WinRTXamlHotReloadChildren(collection, 3, listOf(
+                WinRTXamlHotReloadItem.Existing(2), WinRTXamlHotReloadItem.Existing(1))))))
+        send(patch(WinRTXamlHotReloadChange("First", "Text", "after graph"))
+            .copy(expectedHash = "d".repeat(64), sourceHash = "e".repeat(64), version = 4))
+        assertSame(first, owner.children[0]); assertEquals("after graph", first.text)
+        val laterFirst = Element("first"); val later = Page(mutableMapOf(), mutableListOf(laterFirst, Element("second")))
+        connect(later)
+        assertEquals(WinRTXamlHotReloadProtocol.APPLIED, registry.snapshot().status)
+        assertSame(laterFirst, later.children[0]); assertEquals("after graph", laterFirst.text)
+        assertEquals("new child edited", later.children[1].text); assertNotSame(owner.children[1], later.children[1])
+    }
+
+    @Test fun child_updates_prepare_every_root_and_roll_back_order_when_a_setter_fails() {
+        var loads = 0
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue, element = {
+            require(it != "bad markup" && (it != "second-root-failure" || ++loads != 2)); Element(it)
+        })
+        val first = Element("first"); val second = Element("second")
+        val owner = Page(mutableMapOf(), mutableListOf(first, second))
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "First", first)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        val otherFirst = Element("other first"); val otherSecond = Element("other second")
+        val other = Page(mutableMapOf(), mutableListOf(otherFirst, otherSecond))
+        registry.observe(other, "probe.Page", "Page.xaml", hash, "First", otherFirst)
+        registry.observe(other, "probe.Page", "Page.xaml", hash, null, null)
+        val collection = WinRTXamlHotReloadTarget(path = listOf(WinRTXamlHotReloadStep.Property("Children")))
+        val children = WinRTXamlHotReloadChildren(collection, 2, listOf(
+            WinRTXamlHotReloadItem.Existing(1), WinRTXamlHotReloadItem.Markup("added"), WinRTXamlHotReloadItem.Existing(0)))
+        val candidates = listOf(
+            patch(WinRTXamlHotReloadChange("First", "Size", "13")).copy(children = listOf(children)),
+            patch().copy(children = listOf(children.copy(expectedSize = 3))),
+            patch().copy(children = listOf(children.copy(items = listOf(WinRTXamlHotReloadItem.Existing(0), WinRTXamlHotReloadItem.Existing(0))))),
+            patch().copy(children = listOf(children.copy(items = listOf(WinRTXamlHotReloadItem.Markup("bad markup"))))),
+            patch().copy(children = listOf(children.copy(items = listOf(WinRTXamlHotReloadItem.Markup("second-root-failure"))))),
+        )
+        candidates.forEach { update ->
+            var reply: WinRTXamlHotReloadReply? = null
+            registry.submit(update) { reply = it }; queue.removeAt(0).invoke()
+            assertEquals(WinRTXamlHotReloadProtocol.REJECTED, reply?.status)
+            assertEquals(2, owner.children.size); assertSame(first, owner.children[0]); assertSame(second, owner.children[1])
+            assertEquals(2, other.children.size); assertSame(otherFirst, other.children[0]); assertSame(otherSecond, other.children[1])
+            assertEquals(1, first.size); assertEquals(hash, registry.snapshot().roots.single().sourceHash)
+        }
+        // A failed update must not become part of the future-instance history.
+        val later = Page(mutableMapOf(), mutableListOf(Element("first"), Element("second")))
+        registry.observe(later, "probe.Page", "Page.xaml", hash, null, null)
+        assertEquals(listOf("first", "second"), later.children.map { it.text })
     }
 }
