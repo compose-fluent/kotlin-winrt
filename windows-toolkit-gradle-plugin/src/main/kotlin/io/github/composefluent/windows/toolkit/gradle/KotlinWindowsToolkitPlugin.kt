@@ -2526,7 +2526,9 @@ private fun configureWinRTGeneration(
             project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"),
             generateTask,
         )
-        project.tasks.matching { task -> task.name == "compileWinuiMainKotlinMetadata" }.configureEach(Action<Task> { task ->
+        // The generated authoring sources are added to every main source set of the WinRT
+        // targets, so the metadata compilation of each shared one reads them as well.
+        project.tasks.matching { task -> isKotlinMetadataCompileTask(task.name) }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)
             task.dependsOn(kotlinWinRTLocalCompilerSupportDependencies(project, mergeCompilerSupportTask))
         })
@@ -2993,10 +2995,12 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
             // edge to a source-set dependency makes IDE metadata import compile the projection.
             // Metadata transforms still inspect the file during a regular build, so establish an
             // ordering edge without pulling the producer into sync-only task graphs.
-            project.tasks.matching { task ->
-                task.name.startsWith("transform") && task.name.endsWith("DependenciesMetadata")
-            }.configureEach { task ->
-                task.mustRunAfter(projection.compileTaskProvider)
+            // The metadata transforms of the other projects inspect the KLIB as well, once it
+            // reaches them through the published variant below; they need not apply this plugin.
+            project.rootProject.allprojects { other ->
+                other.tasks.matching { task -> isKotlinMetadataTransformTask(task.name) }.configureEach { task ->
+                    task.mustRunAfter(projection.compileTaskProvider)
+                }
             }
             // cinterop passes the same business dependency files to its own compiler, so
             // Gradle rejects the undeclared read of the projection KLIB without this ordering.
@@ -3037,6 +3041,12 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
         }
     }
 }
+
+internal fun isKotlinMetadataCompileTask(taskName: String): Boolean =
+    taskName.startsWith("compile") && taskName.endsWith("KotlinMetadata")
+
+internal fun isKotlinMetadataTransformTask(taskName: String): Boolean =
+    taskName.startsWith("transform") && taskName.endsWith("DependenciesMetadata")
 
 private fun configureWinRTAuthoredCandidateValidation(
     project: Project,
