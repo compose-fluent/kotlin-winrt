@@ -2,12 +2,15 @@ package io.github.composefluent.winrt.ide
 
 import com.intellij.facet.FacetManager
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.rename.RenameProcessor
+import com.intellij.refactoring.rename.RenameHandlerRegistry
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.XmlAttributeValue
@@ -18,6 +21,7 @@ import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.gradle.WinRTXamlCompilationData
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameHandler
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
@@ -58,7 +62,7 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         myFixture.addFileToProject("Page.kt", "package microsoft.ui.xaml.controls\nopen class Page { val Launch: Button? = null }")
         myFixture.addFileToProject("Connector.kt", "package microsoft.ui.xaml.markup\ninterface IComponentConnector")
         myFixture.addFileToProject("Component.kt", "package io.github.composefluent.winrt.runtime\ninterface WinRTXamlComponent\nclass WinRTXamlLoadState")
-        val file = myFixture.configureByText("Shell.kt", "package sample\nclass Shell : microsoft.ui.xaml.controls.Page() { fun element() = Open }") as KtFile
+        val file = myFixture.configureByText("Shell.kt", "package sample\nclass Shell : microsoft.ui.xaml.controls.Page() { fun element() = Open; fun parameter(Open: Int) = Open; fun local(): Int { val Open = 2; return Open } }") as KtFile
         val markup = root.resolve("Shell.xaml")
         Files.writeString(markup, """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Shell"><Button x:Name="Open"/><Button Content="{Binding ElementName=Open}"/></Page>""")
         val markupFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(markup.toFile())!!
@@ -88,8 +92,29 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         val usages = allowAnalysisOnEdt { ReferencesSearch.search(target).findAll() }
         assertTrue(usages.toString(), usages.any { it.element.containingFile == file })
         assertTrue(usages.toString(), usages.any { it.element.containingFile.virtualFile == markupFile })
+        val shadowed = PsiTreeUtil.findChildrenOfType(file, KtNameReferenceExpression::class.java)
+            .filter { it.getReferencedName() == "Open" && it != reference }
+        assertEquals(2, shadowed.size)
+        shadowed.forEach { shadow ->
+            assertTrue(allowAnalysisOnEdt { WinRTXamlGeneratedNavigation.targets(shadow) }.isEmpty())
+            myFixture.editor.caretModel.moveToOffset(shadow.textOffset)
+            val context = SimpleDataContext.builder().add(CommonDataKeys.PROJECT, project)
+                .add(CommonDataKeys.PSI_FILE, file).add(CommonDataKeys.EDITOR, myFixture.editor).add(CommonDataKeys.PSI_ELEMENT, shadow).build()
+            val handler = WinRTXamlNameRenameHandler()
+            // The quick availability check cannot resolve Kotlin scope. Its
+            // off-thread FIR result must return control to native rename.
+            assertTrue(handler.isAvailableOnDataContext(context))
+            val native = WinRTXamlNameRenameHandler.nativeContext(context)
+            assertFalse(handler.isAvailableOnDataContext(native))
+            val handlers = allowAnalysisOnEdt { RenameHandlerRegistry.getInstance().getRenameHandlers(native) }
+            assertTrue(handlers.toString(), handlers.isNotEmpty())
+            assertFalse(handlers.any { it is WinRTXamlNameRenameHandler })
+            assertFalse(usages.any { it.element == shadow })
+        }
         allowAnalysisOnEdt { RenameProcessor(project, target, "Run", false, false).run() }
         assertTrue(file.text, file.text.contains("element() = Run"))
+        assertTrue(file.text, file.text.contains("parameter(Open: Int) = Open"))
+        assertTrue(file.text, file.text.contains("val Open = 2; return Open"))
         val renamedMarkup = PsiManager.getInstance(project).findFile(markupFile)!!
         assertTrue(renamedMarkup.text, renamedMarkup.text.contains("x:Name=\"Run\""))
         assertTrue(renamedMarkup.text, renamedMarkup.text.contains("ElementName=Run"))

@@ -9,6 +9,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.DataKey
+import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -24,6 +26,7 @@ import com.intellij.psi.xml.XmlAttribute
 import com.intellij.psi.xml.XmlAttributeValue
 import com.intellij.refactoring.listeners.RefactoringElementListener
 import com.intellij.refactoring.rename.RenameHandler
+import com.intellij.refactoring.rename.RenameHandlerRegistry
 import com.intellij.refactoring.rename.RenameProcessor
 import com.intellij.refactoring.rename.RenamePsiElementProcessor
 import com.intellij.usageView.UsageInfo
@@ -116,6 +119,7 @@ class WinRTXamlNameRenameProcessor : RenamePsiElementProcessor() {
 /** Native rename action/usage preview with a Compose/Jewel name form. */
 class WinRTXamlNameRenameHandler : RenameHandler {
     override fun isAvailableOnDataContext(dataContext: DataContext): Boolean {
+        if (nativeRename.getData(dataContext) == true) return false
         val element = CommonDataKeys.PSI_ELEMENT.getData(dataContext)
         if (nameDefinition(element) != null) return true
         val editor = CommonDataKeys.EDITOR.getData(dataContext) ?: return false
@@ -138,10 +142,29 @@ class WinRTXamlNameRenameHandler : RenameHandler {
         nameDefinition(element)?.let { RenameNameDialog(project, it).show(); return }
         val reference = PsiTreeUtil.getParentOfType(element, KtNameReferenceExpression::class.java, false) ?: return
         val pointer = SmartPointerManager.createPointer(reference)
+        val editor = CommonDataKeys.EDITOR.getData(dataContext)
+        val offset = editor?.caretModel?.offset
         ReadAction.nonBlocking<XmlAttributeValue?> { pointer.element?.let { WinRTXamlGeneratedNavigation.targets(it).singleOrNull() as? XmlAttributeValue } }
             .inSmartMode(project).expireWith(project).finishOnUiThread(ModalityState.nonModal()) { target ->
+                if (pointer.element == null || editor?.isDisposed == true || editor?.caretModel?.offset != offset) return@finishOnUiThread
                 if (target != null && target.isValid) RenameNameDialog(project, target).show()
+                else {
+                    // The inexpensive PSI/snapshot availability check can also
+                    // see a local or parameter shadowing a generated x:Name.
+                    // FIR resolves it off the UI thread; let the native registry
+                    // choose the normal handler when it is not our declaration.
+                    val context = nativeContext(dataContext)
+                    val handler = RenameHandlerRegistry.getInstance().getRenameHandler(context) ?: return@finishOnUiThread
+                    val file = CommonDataKeys.PSI_FILE.getData(context)
+                    if (editor != null && file != null) handler.invoke(project, editor, file, context)
+                    else handler.invoke(project, arrayOf(requireNotNull(pointer.element)), context)
+                }
             }.submit(AppExecutorUtil.getAppExecutorService())
+    }
+
+    companion object {
+        private val nativeRename = DataKey.create<Boolean>("winrt.xaml.native.rename")
+        internal fun nativeContext(context: DataContext): DataContext = SimpleDataContext.getSimpleContext(nativeRename, true, context)
     }
 }
 
