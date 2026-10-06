@@ -53,6 +53,18 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             }.sortedBy { it.getId().lowercase(java.util.Locale.ROOT) },
             manifestFiles = windows?.application?.appxManifestFiles?.files.orEmpty()
                 .map { it.absoluteFile.normalize().path }.sorted(),
+            xamlCompilations = if (windows == null) emptyList() else
+                project.tasks.withType(CompileWinRTXamlTask::class.java).filter { !it.semanticSymbols.isPresent }.map { task ->
+                    IdeXamlCompilation(
+                        task.name,
+                        task.sourceRoots.files.map { it.absoluteFile.normalize().path }.sorted(),
+                        task.declarationsFile.get().asFile.absolutePath,
+                        task.outputDirectory.file("input.json").get().asFile.absolutePath,
+                        task.compilerDirectory.orNull?.asFile?.absolutePath.orEmpty(),
+                        project.tasks.withType(GenerateWinRTAuthoringCandidatesTask::class.java)
+                            .firstOrNull()?.metadataIndex?.orNull?.asFile?.absolutePath.orEmpty(),
+                    )
+                }.sortedBy { it.getTaskName() },
         )
     }
 }
@@ -68,6 +80,7 @@ private data class IdeModel(
     private val targets: List<WinRTIdeModel.Target>,
     private val nugetPackages: List<WinRTIdeModel.NuGetPackage>,
     private val manifestFiles: List<String>,
+    private val xamlCompilations: List<WinRTIdeModel.XamlCompilation>,
 ) : WinRTIdeModel {
     override fun getSchemaVersion() = WinRTIdeModel.SCHEMA_VERSION
     override fun isEnabled() = enabled
@@ -80,6 +93,23 @@ private data class IdeModel(
     override fun getTargets() = targets
     override fun getNuGetPackages() = nugetPackages
     override fun getManifestFiles() = manifestFiles
+    override fun getXamlCompilations() = xamlCompilations
+}
+
+private data class IdeXamlCompilation(
+    private val taskName: String,
+    private val sourceRoots: List<String>,
+    private val declarationsFile: String,
+    private val inputFile: String,
+    private val compilerDirectory: String,
+    private val metadataIndexFile: String,
+) : WinRTIdeModel.XamlCompilation {
+    override fun getTaskName() = taskName
+    override fun getSourceRoots() = sourceRoots
+    override fun getDeclarationsFile() = declarationsFile
+    override fun getInputFile() = inputFile
+    override fun getCompilerDirectory() = compilerDirectory
+    override fun getMetadataIndexFile() = metadataIndexFile
 }
 
 private data class IdeSourceSet(

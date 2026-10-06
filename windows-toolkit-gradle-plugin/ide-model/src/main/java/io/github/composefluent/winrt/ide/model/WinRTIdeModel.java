@@ -5,7 +5,7 @@ import java.util.List;
 
 /** Gradle Tooling API contract. Contains configuration facts, never resolved build outputs or secrets. */
 public interface WinRTIdeModel extends Serializable {
-    int SCHEMA_VERSION = 1;
+    int SCHEMA_VERSION = 2;
 
     int getSchemaVersion();
     boolean isEnabled();
@@ -18,6 +18,17 @@ public interface WinRTIdeModel extends Serializable {
     List<Target> getTargets();
     List<NuGetPackage> getNuGetPackages();
     List<String> getManifestFiles();
+    List<XamlCompilation> getXamlCompilations();
+
+    /** Configuration paths to declaration-pass tasks; none of these outputs must exist at sync time. */
+    interface XamlCompilation extends Serializable {
+        String getTaskName();
+        List<String> getSourceRoots();
+        String getDeclarationsFile();
+        String getInputFile();
+        String getCompilerDirectory();
+        String getMetadataIndexFile();
+    }
 
     interface SourceSet extends Serializable {
         String getName();

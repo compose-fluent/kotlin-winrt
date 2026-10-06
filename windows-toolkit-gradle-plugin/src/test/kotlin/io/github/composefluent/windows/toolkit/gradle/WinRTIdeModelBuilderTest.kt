@@ -27,6 +27,11 @@ class WinRTIdeModelBuilderTest {
         windows.packageReferences.windowsSdk("10.0.26100.0")
         windows.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
         windows.application.appxManifest("src/desktopMain/appxResources/AppxManifest.xml")
+        project.tasks.register("analyzeWinRTXamlFixture", CompileWinRTXamlTask::class.java) { task ->
+            task.sourceRoots.from(project.file("src/desktopMain/kotlin"))
+            task.outputDirectory.set(project.layout.buildDirectory.dir("ide-fixture/declarations"))
+            task.compilerDirectory.set(project.layout.projectDirectory.dir("tools/xamlc"))
+        }
         project.configurations.configureEach { configuration ->
             configuration.incoming.beforeResolve { error("IDE import resolved ${configuration.name}") }
         }
@@ -46,11 +51,18 @@ class WinRTIdeModelBuilderTest {
             desktop.appxResourceRoots.map { java.io.File(it).parentFile.name },
         )
         assertEquals(project.file("src/desktopMain/appxResources/AppxManifest.xml").path, model.manifestFiles.single())
+        val xaml = model.xamlCompilations.single()
+        assertEquals("analyzeWinRTXamlFixture", xaml.taskName)
+        assertEquals(project.file("src/desktopMain/kotlin").path, xaml.sourceRoots.single())
+        assertEquals(project.layout.buildDirectory.file("ide-fixture/declarations/declarations.json").get().asFile.path,
+            xaml.declarationsFile)
+        assertFalse(java.io.File(xaml.declarationsFile).exists())
 
         val bytes = ByteArrayOutputStream().also { output -> ObjectOutputStream(output).use { it.writeObject(model) } }
         val restored = ObjectInputStream(ByteArrayInputStream(bytes.toByteArray())).use { it.readObject() as WinRTIdeModel }
         assertEquals(model.projectDirectory, restored.projectDirectory)
         assertEquals(desktop.appxResourceRoots, restored.sourceSets.single { it.name == "desktopMain" }.appxResourceRoots)
+        assertEquals(xaml.compilerDirectory, restored.xamlCompilations.single().compilerDirectory)
     }
 
     @Test

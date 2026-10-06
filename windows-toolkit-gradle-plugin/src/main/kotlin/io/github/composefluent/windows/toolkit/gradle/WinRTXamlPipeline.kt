@@ -204,7 +204,9 @@ internal fun configureWinRTXamlPipeline(
             !it.name.contains("Test", true) && !it.name.startsWith("compileKotlinWinRT") && it.name !in nonJvmTargetTasks
         }
         businessTasks.forEach { business ->
-            val suffix = business.name.removePrefix("compileKotlin")
+            // kotlin.jvm calls its business task compileKotlin. Reserve the unsuffixed
+            // names for the aggregate analysis/header tasks, as in the KMP pipeline.
+            val suffix = business.name.removePrefix("compileKotlin").ifEmpty { "Main" }
             val compilation = kmp?.targets?.withType(KotlinJvmTarget::class.java)?.flatMap { it.compilations }
                 ?.singleOrNull { it.compileTaskProvider.name == business.name }
             val roots = if (compilation != null) project.provider { winRTXamlCompilationSourceRoots(project, compilation) } else xamlSourceRoots

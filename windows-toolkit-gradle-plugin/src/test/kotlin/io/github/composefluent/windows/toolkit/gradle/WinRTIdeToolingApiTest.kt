@@ -24,6 +24,11 @@ class WinRTIdeToolingApiTest {
         directory.resolve("gradle.properties").writeText(
             "org.gradle.jvmargs=-Xmx512m -Dfile.encoding=UTF-8\norg.gradle.workers.max=1\n",
         )
+        directory.resolve("src/main/kotlin/Shell.xaml").apply {
+            parentFile.mkdirs()
+            writeText("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Shell"/>""")
+        }
+        directory.resolve("src/main/kotlin/Shell.kt").writeText("package sample\nclass Shell\n")
         directory.resolve("build.gradle.kts").writeText(
             """
             buildscript { dependencies { classpath(files($classpath)) } }
@@ -52,6 +57,12 @@ class WinRTIdeToolingApiTest {
                     assertTrue(model.sourceSets.any { it.name == "main" })
                     assertEquals("Microsoft.WindowsAppSDK", model.nuGetPackages.single().id)
                     assertEquals("2.2.0", model.nuGetPackages.single().version)
+                    assertTrue(model.xamlCompilations.isNotEmpty())
+                    val xaml = model.xamlCompilations.first()
+                    assertTrue(xaml.taskName.startsWith("analyzeWinRTXaml"))
+                    assertTrue(xaml.sourceRoots.contains(directory.resolve("src/main/kotlin").path))
+                    assertTrue(xaml.declarationsFile.endsWith("declarations.json"))
+                    assertTrue(!File(xaml.declarationsFile).exists())
                 }
         } finally {
             check(directory.canonicalFile.parentFile == File(System.getProperty("java.io.tmpdir")).canonicalFile)
