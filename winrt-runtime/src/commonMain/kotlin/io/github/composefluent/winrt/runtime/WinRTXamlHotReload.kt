@@ -178,6 +178,15 @@ fun registerWinRTXamlHotReloadElement(owner: Any, className: String, path: Strin
     WinRTXamlHotReloadConfiguration.lock.withLock { WinRTXamlHotReloadConfiguration.registry }
         ?.observe(owner, className, path, sourceHash, name, target)
 }
+
+/** Compiler-generated SDK getters/setters supplement the existing member registry in development only. */
+fun registerWinRTXamlHotReloadAccessors(definition: WinRTXamlTypeDefinition) {
+    if (isWinRTXamlHotReloadEnabled()) WinUiAuthoredTypeMetadata.registerPropertyAccessors(definition)
+}
+
+fun isWinRTXamlHotReloadEnabled(): Boolean = WinRTXamlHotReloadConfiguration.lock.withLock {
+    WinRTXamlHotReloadConfiguration.registry != null
+}
 fun completeWinRTXamlHotReloadComponent(owner: Any, className: String, path: String, sourceHash: String) {
     WinRTXamlHotReloadConfiguration.lock.withLock { WinRTXamlHotReloadConfiguration.registry }
         ?.observe(owner, className, path, sourceHash, null, null)

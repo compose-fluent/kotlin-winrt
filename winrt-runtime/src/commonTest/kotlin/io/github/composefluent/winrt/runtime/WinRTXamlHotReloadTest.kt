@@ -10,7 +10,7 @@ class WinRTXamlHotReloadTest {
         ComWrappersSupport.clearRegistriesForTests()
         // The source-generated ICustomProperty strategy is owned by .cswinrt's net5 projection;
         // these accessors stand in for CSharpTypeInfoPass2's generated property delegates.
-        registerWinRTXamlTypeDefinition(WinRTXamlTypeDefinition(Element::class, "probe.Element", "System.Object", isWinRTComponent = false,
+        WinUiAuthoredTypeMetadata.registerPropertyAccessors(WinRTXamlTypeDefinition(Element::class, "probe.Element", "System.Object", isWinRTComponent = false,
             members = listOf(
                 WinRTXamlMemberDefinition("Text", "String", String::class, { (it as Element).text }, { target, value -> (target as Element).text = value as String }),
                 WinRTXamlMemberDefinition("Size", "Int32", Int::class, { (it as Element).size }, { target, value ->
@@ -24,6 +24,7 @@ class WinRTXamlHotReloadTest {
     @Test fun updates_wait_for_the_ui_dispatcher_and_keep_identity_and_version() {
         val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
         val owner = Any(); val element = Element()
+        assertEquals(PlatformAbi.nullPointer, WinUiAuthoredTypeMetadata.tryCreate("probe.Element") { PlatformAbi.nullPointer })
         registry.observe(owner, "probe.Page", "Page.xaml", hash, "Greeting", element)
         registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
         var result: WinRTXamlHotReloadReply? = null
