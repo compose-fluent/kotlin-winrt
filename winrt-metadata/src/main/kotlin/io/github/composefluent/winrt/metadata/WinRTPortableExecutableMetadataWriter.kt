@@ -33,8 +33,10 @@ object WinRTPortableExecutableMetadataWriter {
         require(members.keys.all { name -> runtimeClasses.any { it.runtimeClassName == name } })
         Files.createDirectories(outputFile.parent)
         writeIfChanged(outputFile, WinmdBuilder(assemblyName, runtimeClasses.map {
-            WinmdClass(it.runtimeClassName, it.baseRuntimeClassName, it.interfaceNames,
-                isActivatable = it.isActivatable, isSealed = it.isSealed, enumEntries = it.enumEntries)
+            // WinRTTypeWriter.AddComponentType uses the declared enum symbol's
+            // System.Enum base. value__/literal fields alone do not make a CLR enum.
+            WinmdClass(it.runtimeClassName, if (it.enumEntries != null) "System.Enum" else it.baseRuntimeClassName, it.interfaceNames,
+                isActivatable = it.enumEntries == null && it.isActivatable, isSealed = it.enumEntries != null || it.isSealed, enumEntries = it.enumEntries)
         },
             externalTypeAssemblies = externalTypeAssemblies, applicationMembers = members, isApplicationSchema = true,
             valueTypeNames = valueTypeNames + runtimeClasses.filter { it.enumEntries != null }.map { it.runtimeClassName }).build())
