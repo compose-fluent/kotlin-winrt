@@ -5,6 +5,9 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.module.Module
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiFileFactory
+import com.intellij.lang.xml.XMLLanguage
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.impl.source.xml.XmlElementDescriptorProvider
 import com.intellij.psi.xml.*
 import com.intellij.xml.*
@@ -18,8 +21,33 @@ class WinRTXamlDescriptorProvider : XmlElementDescriptorProvider {
 
 class WinRTXamlNamespaceProvider : ImplicitNamespaceDescriptorProvider {
     override fun getNamespaceDescriptor(module: Module?, ns: String, file: PsiFile?): XmlNSDescriptor? =
-        if (file != null && WinRTXamlSymbols.isXaml(file) && WinRTXamlCatalog.namespaces(ns).isNotEmpty())
+        if (file != null && WinRTXamlSymbols.isXaml(file) && isXamlNamespace(ns))
             WinRTXamlNamespaceDescriptor(file, ns) else null
+}
+
+/** Namespace URIs identify a language, not an external XSD to download. Like
+ * IDEA's JavaFX schema provider, resolve them only in this XML dialect. The
+ * actual element/member vocabulary continues to come from WinMD and Kotlin. */
+class WinRTXamlSchemaProvider : XmlSchemaProvider() {
+    override fun isAvailable(file: XmlFile) = WinRTXamlSymbols.isXaml(file)
+    override fun getSchema(url: String, module: Module?, baseFile: PsiFile): XmlFile? {
+        if (!WinRTXamlSymbols.isXaml(baseFile) || !isXamlNamespace(url)) return null
+        return PsiFileFactory.getInstance(baseFile.project).createFileFromText("WinRTXamlNamespace.xsd", XMLLanguage.INSTANCE,
+            """<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="${StringUtil.escapeXmlEntities(url)}"/>""") as XmlFile
+    }
+}
+
+private fun isXamlNamespace(uri: String) = uri.substringBefore('?') == WinRTXamlCatalog.XAML ||
+    WinRTXamlCatalog.namespaces(uri).isNotEmpty()
+
+/** XAMLC DirectUISchemaContext.GetProxyType and DirectUIXamlLanguage.LookupXamlObjects.
+ * These language objects do not exist as WinRT runtime classes in WinMD. */
+private fun isXamlLanguageElement(namespace: String, name: String): Boolean = when {
+    namespace.substringBefore('?') == WinRTXamlCatalog.XAML -> name in setOf(
+        "Null", "NullExtension", "String", "Double", "Int32", "Boolean", "Bind", "Object", "Properties", "Property")
+    namespace.substringBefore('?') in setOf(WinRTXamlCatalog.PRESENTATION, "http://schemas.microsoft.com/windows/2010/directui") ->
+        name.removeSuffix("Extension") in setOf("StaticResource", "ThemeResource", "CustomResource", "TemplateBinding")
+    else -> false
 }
 
 private class WinRTXamlNamespaceDescriptor(private val file: PsiFile, private val namespace: String) : XmlNSDescriptor {
@@ -47,7 +75,18 @@ private class WinRTXamlElementDescriptor(private val tag: XmlTag, private val el
     override fun getName() = elementName
     override fun getName(context: PsiElement?) = elementName
     override fun init(element: PsiElement?) = Unit
-    override fun getDeclaration(): PsiElement? = WinRTXamlSymbols.tagClass(tag, elementName)
+    override fun getDeclaration(): PsiElement? {
+        WinRTXamlSymbols.tagClass(tag, elementName)?.let { return it }
+        val name = elementName.substringAfter(':')
+        val namespace = tag.getNamespaceByPrefix(elementName.substringBefore(':', ""))
+        if (isXamlLanguageElement(namespace, name)) return tag
+        // WinMD can be ready before its Kotlin projection has been indexed. A
+        // known SDK element remains valid during that boundary; unknown names
+        // still produce the native XML unresolved-reference diagnostic.
+        val catalog = WinRTXamlSymbols.catalog(tag.containingFile) ?: return null
+        val owner = catalog.resolve(namespace, name.substringBefore('.')) ?: return null
+        return tag.takeIf { !name.contains('.') || catalog.members(owner).any { it.name == name.substringAfter('.') } }
+    }
     override fun getDependencies(): Array<Any> = arrayOf(tag.project.service<WinRTXamlCatalogService>().modificationTracker, tag.containingFile)
     override fun getElementsDescriptors(context: XmlTag?): Array<XmlElementDescriptor> = (context ?: tag).knownNamespaces()
         .flatMap { WinRTXamlNamespaceDescriptor(tag.containingFile, it).getRootElementsDescriptors(null).toList() }.toTypedArray()

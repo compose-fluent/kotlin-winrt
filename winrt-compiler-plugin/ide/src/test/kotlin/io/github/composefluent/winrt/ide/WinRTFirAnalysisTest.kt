@@ -29,6 +29,9 @@ import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
+import org.jetbrains.kotlin.cli.common.arguments.K2MetadataCompilerArguments
+import org.jetbrains.kotlin.platform.CommonPlatforms
+import io.github.composefluent.winrt.ide.analysis.WinRTFirModuleConfiguration
 import org.jetbrains.kotlin.idea.facet.KotlinFacetType
 import org.jetbrains.kotlin.idea.facet.KotlinFacet
 import org.jetbrains.kotlin.psi.KtClass
@@ -43,6 +46,56 @@ import java.util.jar.JarOutputStream
 class WinRTFirAnalysisTest : BasePlatformTestCase() {
     private var fixtureDirectory: Path? = null
     private var fixtureFacet: KotlinFacet? = null
+
+    fun testSharedWinuiMainFacetReceivesFirAndResolvesInitializeComponentOverride() {
+        val root = Files.createTempDirectory("winrt-ide-fir-").also { fixtureDirectory = it }
+        val declarations = root.resolve("declarations.json")
+        Files.writeString(declarations, declaration("Open"))
+        ApplicationManager.getApplication().runWriteAction {
+            val manager = FacetManager.getInstance(module)
+            val facet = manager.createFacet(KotlinFacetType.INSTANCE, "Kotlin", null).also { fixtureFacet = it }
+            facet.configuration.settings.apply {
+                useProjectSettings = false
+                targetPlatform = CommonPlatforms.defaultCommonPlatform
+                sourceSetNames = listOf("winuiMain")
+                isHmppEnabled = true
+                compilerArguments = K2MetadataCompilerArguments().apply { optIn = arrayOf("kotlin.ExperimentalStdlibApi") }
+            }
+            manager.createModifiableModel().apply { addFacet(facet); commit() }
+        }
+        myFixture.addFileToProject("Button.kt", "package microsoft.ui.xaml.controls\nclass Button")
+        myFixture.addFileToProject("Page.kt", "package microsoft.ui.xaml.controls\nopen class Page")
+        myFixture.addFileToProject("Connector.kt", "package microsoft.ui.xaml.markup\ninterface IComponentConnector")
+        myFixture.addFileToProject("Component.kt", """
+            package io.github.composefluent.winrt.runtime
+            interface WinRTXamlComponent { fun initializeComponent() { _kotlinXamlInitialize() }; fun _kotlinXamlInitialize(); fun _kotlinXamlCompleteConstruction() }
+            class WinRTXamlLoadState
+        """.trimIndent())
+        val file = myFixture.configureByText("Shell.kt", """
+            package sample
+            class Shell : microsoft.ui.xaml.controls.Page() {
+                override fun initializeComponent() { super.initializeComponent(); consume(Open) }
+                private fun consume(button: microsoft.ui.xaml.controls.Button) {}
+            }
+        """.trimIndent()) as KtFile
+        val models = listOf(WinRTModuleData(":gallery", root.toString(), root.resolve("build").toString(), "2.4.0", "",
+            emptyList(), emptyList(), emptyList(), emptyList(), listOf(WinRTXamlCompilationData("analyzeWinRTXamlWinuiJvmMain",
+                listOf(file.originalFile.virtualFile.parent.path), declarations.toString(), "", "", ""))))
+        ApplicationManager.getApplication().runWriteAction { WinRTFirModuleConfiguration.configure(project, models) }
+        PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+        val arguments = fixtureFacet!!.configuration.settings.compilerArguments!!
+        assertTrue(arguments is K2MetadataCompilerArguments)
+        assertEquals(listOf("kotlin.ExperimentalStdlibApi"), arguments.optIn!!.toList())
+        assertTrue(arguments.pluginClasspaths.toString(), arguments.pluginClasspaths!!.single().endsWith("kotlin-winrt-ide-fir.jar"))
+        assertTrue(memberNames(file).contains("Open"))
+        val errors = allowAnalysisOnEdt { analyze(file) {
+            file.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS)
+                .filter { it.severity == org.jetbrains.kotlin.analysis.api.diagnostics.KaSeverity.ERROR }.map { it.defaultMessage }
+        } }
+        assertEmpty(errors)
+        ApplicationManager.getApplication().runWriteAction { WinRTFirModuleConfiguration.configure(project, models) }
+        assertEquals(1, fixtureFacet!!.configuration.settings.compilerArguments!!.pluginClasspaths!!.size)
+    }
 
     fun testGeneratedNamesAndSupertypesUpdateAfterDeclarationSnapshotChanges() {
         val root = Files.createTempDirectory("winrt-ide-fir-").also { fixtureDirectory = it }
@@ -164,7 +217,9 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
             } }
             fixtureDirectory?.let { path ->
                 project.service<WinRTProjectService>().replaceBuildModels(path.toString(), emptyList())
-                LocalFileSystem.getInstance().findFileByNioFile(path)?.let { PsiTestUtil.removeContentEntry(module, it) }
+                LocalFileSystem.getInstance().findFileByNioFile(path)?.takeIf { file ->
+                    com.intellij.openapi.roots.ModuleRootManager.getInstance(module).contentRoots.any { it == file }
+                }?.let { PsiTestUtil.removeContentEntry(module, it) }
                 check(path.toRealPath().parent == Path.of(System.getProperty("java.io.tmpdir")).toRealPath())
                 check(path.fileName.toString().startsWith("winrt-ide-fir-"))
                 FileUtil.delete(path.toFile())

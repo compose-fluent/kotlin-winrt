@@ -60,6 +60,7 @@ class WinRTProjectService(private val project: Project) {
         imported.value = builds.values.flatten()
             .distinctBy { it.projectDirectory }
             .sortedBy { it.projectDirectory }
+        io.github.composefluent.winrt.ide.analysis.WinRTFirModuleConfiguration.restore(project, imported.value)
         imported.value.filter { preparationRequests.remove(it.projectDirectory.replace('\\', '/').lowercase()) }.forEach { module ->
             ApplicationManager.getApplication().invokeLater {
                 if (!project.isDisposed) WinRTGradleTasks.prepareXaml(project, module)

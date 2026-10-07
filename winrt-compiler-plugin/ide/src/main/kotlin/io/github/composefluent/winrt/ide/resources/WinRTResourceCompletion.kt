@@ -17,9 +17,13 @@ class WinRTResourceCompletion : CompletionContributor() {
         val attribute = value.parent as? XmlAttribute ?: return
         val start = value.textRange.startOffset + 1
         val before = value.text.take((parameters.offset - start + 1).coerceIn(0, value.textLength)).drop(1)
-        val match = Regex("^\\{(?:StaticResource|ThemeResource)\\s+(?:ResourceKey\\s*=\\s*)?([^,}]*)$").find(before) ?: return
+        val prefix = if (attribute.localName == "ResourceKey" && attribute.parent.localName.removeSuffix("Extension") in
+            setOf("StaticResource", "ThemeResource")) before else {
+            val match = Regex("^\\{(?:StaticResource|ThemeResource)\\s+(?:ResourceKey\\s*=\\s*)?([^,}]*)$").find(before) ?: return
+            match.groupValues[1].trim().trim('\'', '"')
+        }
         val candidates = WinRTResourceReferences.resourceKeys(file, lookup, attribute.parent, null).distinctBy { it.value }
-        val completion = result.withPrefixMatcher(match.groupValues[1].trim().trim('\'', '"'))
+        val completion = result.withPrefixMatcher(prefix)
         candidates.forEach { key -> completion.addElement(LookupElementBuilder.create(key, key.value)
             .withTypeText(key.containingFile.name, true)) }
     }

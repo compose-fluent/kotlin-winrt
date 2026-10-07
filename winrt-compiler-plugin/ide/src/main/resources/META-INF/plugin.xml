@@ -21,6 +21,7 @@
                   implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlFileType" fieldName="INSTANCE"/>
         <xml.elementDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlDescriptorProvider"/>
         <xml.implicitNamespaceDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNamespaceProvider"/>
+        <xml.schemaProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlSchemaProvider"/>
         <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlCompletionContributor"/>
         <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlReferenceContributor"/>
         <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlEventAnnotator"/>

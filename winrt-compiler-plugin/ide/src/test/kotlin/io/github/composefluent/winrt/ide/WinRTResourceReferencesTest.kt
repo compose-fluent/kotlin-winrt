@@ -84,4 +84,46 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         val localized = file.rootTag!!.subTags[1].getAttribute("Text")!!.valueElement!!
         assertEquals(1, WinRTResourceReferences.reference(localized)!!.multiResolve(false).size)
     }
+
+    fun testFrameworkKeysAndXamlCompilerLinksResolveWithoutStaging() {
+        val dictionary = myFixture.addFileToProject("physical/Styles.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="LinkedAccent"/></ResourceDictionary>""")
+        val generic = myFixture.addFileToProject("winui/lib/native/Microsoft.UI/Themes/generic.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Style x:Key="TitleTextBlockStyle"/><ResourceDictionary.ThemeDictionaries><ResourceDictionary x:Key="Default"><SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush"/></ResourceDictionary></ResourceDictionary.ThemeDictionaries></ResourceDictionary>""")
+        val winmd = myFixture.addFileToProject("winui/metadata/Microsoft.UI.Xaml.winmd", "")
+        val system = myFixture.addFileToProject("sdk/DesignTime/CommonConfiguration/Neutral/UAP/10.0.26100.0/Generic/themeresources.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Color x:Key="SystemColorWindowColor">Black</Color></ResourceDictionary>""")
+        val contract = myFixture.addFileToProject("sdk/References/10.0.26100.0/Windows.Foundation/1.0.0.0/Windows.Foundation.winmd", "")
+        val app = myFixture.addFileToProject("App.xaml", """<Application xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="ms-appx:///Logical/Theme.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources></Application>""")
+        val input = myFixture.addFileToProject("input.json", kotlinx.serialization.json.buildJsonObject {
+            put("ReferenceAssemblies", kotlinx.serialization.json.buildJsonArray {
+                listOf(winmd, contract).forEach { reference -> add(kotlinx.serialization.json.buildJsonObject { put("FullPath", kotlinx.serialization.json.JsonPrimitive(reference.virtualFile.path)) }) }
+            })
+            put("XamlPages", kotlinx.serialization.json.buildJsonArray {
+                add(kotlinx.serialization.json.buildJsonObject {
+                    put("FullPath", kotlinx.serialization.json.JsonPrimitive(dictionary.virtualFile.path)); put("MSBuild_Link", kotlinx.serialization.json.JsonPrimitive("Logical/Theme.xaml"))
+                })
+            })
+        }.toString())
+        val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Page.Resources><ResourceDictionary><StaticResource x:Key="Alias" ResourceKey="SolidBackgroundFillColorBaseBrush"/></ResourceDictionary></Page.Resources><TextBlock Style="{StaticResource TitleTextBlockStyle}" Foreground="{ThemeResource SystemColorWindowColor}" Tag="{StaticResource LinkedAccent}"/></Page>""")
+        val projects = project.service<WinRTProjectService>()
+        val module = projects.modules.value.single().let { original -> original.copy(xamlCompilations = original.xamlCompilations.map { it.copy(inputFile = input.virtualFile.path) }) }
+        val index = project.service<WinRTResourceIndex>()
+        val lookup = index.read(module, listOf(module))
+        assertEquals(setOf(generic.virtualFile.path, system.virtualFile.path), lookup.frameworkDictionaries.map { it.replace('\\', '/') }.toSet())
+        index.publish(listOf(lookup))
+        val text = file.rootTag!!.findFirstSubTag("TextBlock")!!
+        fun target(value: XmlAttributeValue) = WinRTResourceReferences.reference(value)!!.multiResolve(false).single().element!!
+        assertEquals(generic, target(text.getAttribute("Style")!!.valueElement!!).containingFile)
+        assertEquals(system, target(text.getAttribute("Foreground")!!.valueElement!!).containingFile)
+        assertEquals(dictionary, target(text.getAttribute("Tag")!!.valueElement!!).containingFile)
+        val alias = file.rootTag!!.findFirstSubTag("Page.Resources")!!.subTags.single().subTags.single()
+        assertEquals(generic, target(alias.getAttribute("ResourceKey")!!.valueElement!!).containingFile)
+        val source = (app as XmlFile).rootTag!!.subTags.single().subTags.single().subTags.single().subTags.single().getAttribute("Source")!!.valueElement!!
+        assertEquals(dictionary, target(source))
+        val document = myFixture.editor.document
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(document.text.replace("TitleTextBlockStyle}", "}")) }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        myFixture.editor.caretModel.moveToOffset(document.text.indexOf("{StaticResource ") + "{StaticResource ".length)
+        myFixture.complete(CompletionType.BASIC)
+        assertTrue(myFixture.lookupElementStrings.toString(), myFixture.lookupElementStrings.orEmpty().containsAll(
+            listOf("TitleTextBlockStyle", "SolidBackgroundFillColorBaseBrush", "SystemColorWindowColor", "LinkedAccent")))
+    }
 }

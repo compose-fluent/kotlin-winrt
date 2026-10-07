@@ -44,7 +44,10 @@ internal object WinRTResourceReferences {
         val lookup = file.project.service<WinRTResourceIndex>().forFile(file.virtualFile?.path ?: return null) ?: return null
         val attribute = (element as? XmlAttributeValue)?.parent as? XmlAttribute
         val value = when (element) { is XmlAttributeValue -> element.value; is XmlText -> element.value.trim(); else -> return null }
-        val key = WinRTXamlResourceExpression.parse(value)?.key
+        val key = WinRTXamlResourceExpression.parse(value)?.key ?: value.takeIf {
+            attribute?.localName == "ResourceKey" && attribute.parent.localName.removeSuffix("Extension") in
+                setOf("StaticResource", "ThemeResource")
+        }
         val kind = when {
             key != null && file.virtualFile.extension.equals("xaml", true) -> Kind.Key
             attribute?.localName == "Uid" && attribute.namespace == WinRTXamlCatalog.XAML -> Kind.Uid
@@ -144,6 +147,10 @@ internal object WinRTResourceReferences {
         val application = lookup.xamlFiles.mapNotNull { xml(file, it) }.filter { it.rootTag?.localName == "Application" }
             .flatMap { app -> app.rootTag!!.subTags.filter { it.localName.endsWith(".Resources") }
                 .flatMap { dictionary(app, lookup, it, key, visited) } }
-        return (local + application).distinct()
+        if (key != null && application.isNotEmpty()) return application.distinct()
+        val framework = lookup.frameworkDictionaries.mapNotNull { xml(file, it) }.flatMap { dictionary ->
+            dictionary.rootTag?.let { dictionary(dictionary, lookup, it, key, visited) }.orEmpty()
+        }
+        return (local + application + framework).distinct()
     }
 }

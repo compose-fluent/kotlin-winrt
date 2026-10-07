@@ -81,6 +81,25 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         assertTrue(variants.toString(), variants.containsAll(listOf("Content", "Width", "Click")))
     }
 
+    fun testNativeXmlHighlightingAcceptsXamlNamespacesSdkTypesAndLanguageObjects() {
+        configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" xmlns:local="using:sample"><local:Widget/><StaticResource x:Key="Alias" ResourceKey="Accent"/><x:String x:Key="Caption">Hello</x:String></Button>""")
+        myFixture.enableInspections(com.intellij.codeInsight.daemon.impl.analysis.XmlUnresolvedReferenceInspection())
+        val errors = allowAnalysisOnEdt { myFixture.doHighlighting() }.filter {
+            it.severity == com.intellij.lang.annotation.HighlightSeverity.ERROR
+        }
+        assertEmpty(errors.map { it.description })
+    }
+
+    fun testUnknownXmlNamespaceAndSdkTagAreStillReported() {
+        configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:foreign="urn:unknown-language"><DoesNotExist/><foreign:Missing/></Button>""")
+        myFixture.enableInspections(com.intellij.codeInsight.daemon.impl.analysis.XmlUnresolvedReferenceInspection())
+        val errors = allowAnalysisOnEdt { myFixture.doHighlighting() }.filter {
+            it.severity == com.intellij.lang.annotation.HighlightSeverity.ERROR
+        }
+        assertTrue(errors.toString(), errors.any { it.description?.contains("DoesNotExist") == true })
+        assertTrue(errors.toString(), errors.any { myFixture.file.text.substring(it.startOffset, it.endOffset) == "urn:unknown-language" })
+    }
+
     fun testTagAndEnumCompletionAndCustomTypeNavigation() {
         val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:local="using:sample" Visibility="<caret>"><local:Widget/></Button>""")
         assertEquals(listOf("Visible", "Collapsed"), file.rootTag!!.descriptor!!.getAttributeDescriptor("Visibility", file.rootTag)!!.enumeratedValues!!.toList())

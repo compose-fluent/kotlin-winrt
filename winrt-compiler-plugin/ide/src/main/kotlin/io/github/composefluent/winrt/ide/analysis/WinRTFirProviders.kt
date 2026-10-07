@@ -13,13 +13,15 @@ import org.jetbrains.kotlin.idea.fir.extensions.KotlinFirCompilerPluginConfigura
 import java.nio.file.Path
 
 private const val ADAPTER_CLASS = "io.github.composefluent.winrt.ide.fir.WinRTIdeCompilerPlugin"
+internal fun winRTFirAdapterJar(): Path? = PluginManagerCore.getPlugin(PluginId.getId("io.github.composefluent.winrt.ide"))
+    ?.pluginPath?.resolve("lib/kotlin-winrt-ide-fir.jar")
 
 /** A constant-time path substitution; the IDE never loads the user's IR plugin. */
 class WinRTBundledFirProvider : KotlinBundledFirCompilerPluginProvider {
     override fun provideBundledPluginJar(project: Project, userSuppliedPluginJar: Path): Path? {
-        if (!COMPILER_JAR.matches(userSuppliedPluginJar.fileName.toString())) return null
-        return PluginManagerCore.getPlugin(PluginId.getId("io.github.composefluent.winrt.ide"))
-            ?.pluginPath?.resolve("lib/kotlin-winrt-ide-fir.jar")
+        if (!COMPILER_JAR.matches(userSuppliedPluginJar.fileName.toString()) &&
+            userSuppliedPluginJar.fileName.toString() != "kotlin-winrt-ide-fir.jar") return null
+        return winRTFirAdapterJar()
     }
 
     companion object {

@@ -7,6 +7,7 @@ import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsPr
 import com.intellij.openapi.externalSystem.service.project.manage.AbstractProjectDataService
 import com.intellij.openapi.project.Project
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.ide.analysis.WinRTFirModuleConfiguration
 
 class WinRTProjectDataService : AbstractProjectDataService<WinRTModuleData, Void>() {
     override fun getTargetDataKey() = WinRTModuleData.KEY
@@ -20,5 +21,14 @@ class WinRTProjectDataService : AbstractProjectDataService<WinRTModuleData, Void
         projectData?.let { data ->
             project.service<WinRTProjectService>().replaceBuildModels(data.linkedExternalProjectPath, toImport.map { it.data })
         }
+    }
+
+    override fun postProcess(
+        toImport: Collection<DataNode<WinRTModuleData>>,
+        projectData: ProjectData?,
+        project: Project,
+        modelsProvider: IdeModifiableModelsProvider,
+    ) {
+        WinRTFirModuleConfiguration.configure(project, toImport.map { it.data }, modelsProvider)
     }
 }
