@@ -63,10 +63,11 @@ class WinRTProjectWizard : GeneratorNewProjectWizard {
     override fun createStep(context: WizardContext): NewProjectWizardStep =
         NewProjectWizardChainStep(RootNewProjectWizardStep(context))
             .nextStep(::NewProjectWizardBaseStep)
-            .nextStep(::WinRTWizardStep)
+            .nextStep { WinRTWizardStep(it) }
 }
 
-private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : AbstractNewProjectWizardStep(base) {
+internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
+    initialKind: WinRTTemplateKind = WinRTTemplateKind.WinUIApplication) : AbstractNewProjectWizardStep(base) {
     private val checkout = TextFieldState(PropertiesComponent.getInstance().getValue("kotlin.winrt.toolchain.checkout", ""))
     private val packageName = TextFieldState("io.github.composefluent.winrt.app")
     private val sdk = TextFieldState("10.0.26100.0")
@@ -76,11 +77,14 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
     private val dependencies = TextFieldState()
     private val projections = TextFieldState(":winrt-projections")
     private val buildRoot = TextFieldState(context.project?.let { GradleSettings.getInstance(it).linkedProjectsSettings.firstOrNull()?.externalProjectPath }.orEmpty())
-    private var kind by mutableStateOf(WinRTTemplateKind.WinUIApplication)
+    private var kind by mutableStateOf(initialKind)
     private var packaged by mutableStateOf(true)
     private var prepare by mutableStateOf(true)
     private var includeWinUI by mutableStateOf(true)
     private var validate: () -> Unit = {}
+    var validationChanged: () -> Unit = {}
+    fun validationMessage(): String? = error()
+    fun targetDirectory(): Path = target()
 
     private fun options() = WinRTTemplateOptions(base.name, packageName.text.toString().trim(), kind,
         sdk.text.toString().trim(), appSdk.text.toString().trim(), packaged,
@@ -106,7 +110,7 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
         val component = compose(focusOnClickInside = true) {
             LaunchedEffect(Unit) {
                 snapshotFlow { listOf(checkout.text, packageName.text, jdk.text, sdk.text, appSdk.text, dependencies.text, buildRoot.text, projections.text, kind, packaged, includeWinUI) }
-                    .collect { validate() }
+                    .collect { validate(); validationChanged() }
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Template · Kotlin/JVM · JDK 25")
@@ -189,10 +193,11 @@ private class WinRTWizardStep(private val base: NewProjectWizardBaseStep) : Abst
             val execution = ExternalSystemTaskExecutionSettings().apply {
                 externalProjectPath = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(root.toString())
                 externalSystemIdString = GradleConstants.SYSTEM_ID.id
-                executionName = "Run $moduleName"
-                taskNames = listOf(":$moduleName:runWindows")
+                executionName = io.github.composefluent.winrt.ide.project.WinRTRunConfigurationNames.displayName(moduleName, "jvm", selected.packaged)
+                taskNames = listOf(":$moduleName:${if (selected.packaged) "runWinAppPackage" else "runWindows"}")
             }
             ExternalSystemUtil.createExternalSystemRunnerAndConfigurationSettings(execution, project, GradleConstants.SYSTEM_ID)?.let {
+                it.configuration.name = requireNotNull(execution.executionName)
                 RunManager.getInstance(project).addConfiguration(it)
                 RunManager.getInstance(project).selectedConfiguration = it
             }

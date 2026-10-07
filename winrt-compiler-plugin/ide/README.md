@@ -18,8 +18,8 @@ replaces a build's models, including removal of previously configured modules.
 | IDE / compiler combination | Compose/Jewel adaptation | FIR adaptation | Validation |
 | --- | --- | --- | --- |
 | Windows IDEA 2026.2.2 / IU-262.10315.125, analysis compiler 2.4.20-ij262-52, JBR 25 | Bundled Compose/Jewel bridge | Separate fir-adapter compiled from the owning frontend sources | Platform/editor/Analysis API tests, native Gradle import and cold workspace recovery, real XAMLC and JVM WinUI updates |
-| Android Studio / AI-261.26222.65.2614.16204760, analysis compiler 2.4.255-dev-255, JBR 25 | That distribution's bundled Compose/Jewel bridge | Recompiled against its analysis compiler; native Kotlin reference resolution shared with 262 | Platform/editor/Analysis API tests, native Gradle import/cache recovery and real XAMLC |
-| Android Studio Canary / AI-262.10315.125.2622.16434108, analysis compiler 2.4.255-dev-255, JBR 25 | That distribution's bundled Compose/Jewel bridge | Recompiled against its analysis compiler | Platform/editor/Analysis API tests, native Gradle import/cache recovery and real XAMLC |
+| Android Studio / AI-261.26222.65.2614.16204760, analysis compiler 2.4.255-dev-255, JBR 25 | That distribution's bundled Compose/Jewel bridge | Recompiled against its analysis compiler; native Kotlin reference resolution shared with 262 | Platform/editor/Analysis API tests, native project/module gallery registration, native Gradle import/cache recovery and real XAMLC |
+| Android Studio Canary / AI-262.10315.125.2622.16434108, analysis compiler 2.4.255-dev-255, JBR 25 | That distribution's bundled Compose/Jewel bridge | Recompiled against its analysis compiler | Platform/editor/Analysis API tests, native project/module gallery registration, native Gradle import/cache recovery and real XAMLC |
 | Other distributions or patch releases | Check their bundled UI APIs | Rebuild and validate against their analysis compiler | No compatibility claim |
 
 Each package's metadata accepts only its SDK's build line (261 or 262). Packages
@@ -68,6 +68,11 @@ even with distinct output directories. Both layers are isolated so packages and
 running native tests retain the selected distribution's adapters.
 Run SDK builds sequentially: included toolchain producers are shared, and Windows
 can lock their JARs while native Gradle import uses them.
+
+The `as-` variants also compile the Android Studio gallery adapter against
+`org.jetbrains.android` and include its optional extension descriptor. The IDEA
+package omits that adapter and dependency; Android's replaced project/module
+galleries are not the IDEA generator extension points.
 
 The baseline distribution is produced under `build/distributions`; named SDK
 variants use `build/variants/<name>/distributions`. Application
@@ -195,7 +200,14 @@ these paths, completion insertion and native refactoring scope boundaries.
 
 ## Project and module wizard
 
-The IDE's New Project / New Module host exposes **Kotlin WinRT**. Its configuration
+The IDE's New Project / New Module host exposes **Kotlin WinRT**. In Android
+Studio, select that entry in the native gallery. New Project presents the six
+templates and **Create Kotlin WinRT project…**, which opens the common wizard;
+Studio's Android Next chain has no extension hook for replacing its SDK/activity
+steps. New Module uses Studio's normal Next/Finish flow with the same form and
+template writer. WinRT creation does not require an Android SDK or activity.
+
+Its configuration
 page uses the platform Compose/Jewel bridge. JVM templates cover console and WinUI
 XAML applications, a WinRT library, a WinUI control library and an AppX resource
 library and a shared SDK projection library. A new project's `winrt-projections`
