@@ -291,13 +291,24 @@ own source mapping; they are not resolved to unrelated local files.
 
 ## XAML Hot Reload
 
-The Compose **Hot Reload** tab starts an imported unpackaged JVM application's
+The Compose **Hot Reload** tab starts an imported JVM application's
 actual Gradle launch task with a fresh development session. Gradle owns the build,
 Run output and build cancellation. The panel applies unsaved XAML document changes
 automatically or on request, reports property results and source versions, and
 provides reconnect, disconnect, stop and rebuild/restart actions. Disconnect keeps
 the application running; stopping verifies the lifetime of the process launched
 by this session. A disconnected build can be cancelled in its Gradle Run window.
+
+Both unpackaged JVM hosts and framework-dependent packaged JVM development runs
+are supported. Packaged launches use `runWinAppPackage...`, preserving package
+identity through WinApp CLI registration and activation. The broker does not inherit
+the IDE's environment, so a reserved startup argument carries the fresh session
+directory. The native JVM host consumes it before VM creation and does not pass it
+to application `main`. No token or development configuration is staged in the
+package. The imported launch points to the registered AppX layout's executable,
+which remains subject to the same process and lifetime checks. WinApp 0.6's
+self-contained folder-run limitation and Native's missing development transport
+remain explicit; neither is a general packaged XAML Hot Reload limitation.
 
 The IDE workspace saves the confirmed launch's module, task, session directory,
 process ID and start time, without its authentication token. After reopening a

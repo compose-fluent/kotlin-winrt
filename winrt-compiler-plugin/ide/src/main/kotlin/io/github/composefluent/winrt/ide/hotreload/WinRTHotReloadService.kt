@@ -32,7 +32,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-data class WinRTHotReloadState(val message: String = "Start an unpackaged JVM application to update XAML properties.",
+data class WinRTHotReloadState(val message: String = "Start a JVM application with XAML Hot Reload to update its properties.",
     val connected: Boolean = false, val busy: Boolean = false, val pid: Long? = null,
     val roots: List<WinRTXamlHotReloadRoot> = emptyList(), val values: List<WinRTXamlHotReloadValue> = emptyList())
 

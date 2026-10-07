@@ -1531,6 +1531,12 @@ private fun configureWinAppTasks(
                 it == WindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
+            task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+                packageType == WindowsPackageType.Packaged && variant.kind == WinAppVariantKind.Jvm
+            }.zip(options.windowsAppSdkDeployment) { jvmPackage, deployment ->
+                jvmPackage && deployment != WindowsAppSdkDeployment.SelfContained
+            })
+            task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
             task.winAppCliCacheDirectory.set(
                 project.layout.dir(project.provider {

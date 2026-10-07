@@ -2,6 +2,7 @@ package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.ide.model.WinRTIdeModel
 import org.gradle.testfixtures.ProjectBuilder
+import org.gradle.api.internal.project.ProjectInternal
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.junit.Assert.*
 import org.junit.Test
@@ -12,6 +13,38 @@ import java.io.ObjectOutputStream
 
 /** Validates the IDE boundary, not WinMD/projection policy owned by .cswinrt/src/cswinrt. */
 class WinRTIdeModelBuilderTest {
+    @Test
+    fun packaged_hot_reload_uses_the_deployed_jvm_executable_and_excludes_native_transport() {
+        val project = ProjectBuilder.builder().withName("packaged-app").build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("desktop")
+            mingwX64 { binaries { executable() } }
+        }
+        val application = project.extensions.getByType(WindowsExtension::class.java).application
+        project.extensions.getByType(WindowsExtension::class.java).application {
+            it.mainClass.set("sample.MainKt")
+            it.packageType.set(WindowsPackageType.Packaged)
+        }
+        (project as ProjectInternal).evaluate()
+        project.configurations.configureEach { configuration ->
+            configuration.incoming.beforeResolve { error("IDE import resolved ${configuration.name}") }
+        }
+        val builder = WinRTIdeModelBuilder()
+        val run = project.tasks.named("runWinAppPackageDesktopMain", RunWinAppPackageTask::class.java).get()
+        assertTrue("Configured packaged JVM run must support Hot Reload", run.supportsXamlHotReload.get())
+        val launch = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single()
+        assertEquals(run.name, launch.taskName)
+        assertEquals(run.deploymentDirectory.file("packaged-app.exe").get().asFile.absolutePath, launch.executable)
+        assertEquals(run.deploymentDirectory.get().asFile.absolutePath, launch.workingDirectory)
+        application.selfContained()
+        assertTrue(builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.isEmpty())
+        application.packageType.set(WindowsPackageType.None)
+        assertEquals(listOf("runWinAppHostDesktopMain"),
+            builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.map { it.taskName })
+    }
+
     @Test
     fun exports_multiplatform_configuration_without_resolving_dependencies() {
         val project = ProjectBuilder.builder().build()

@@ -74,10 +74,12 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             nuGetConfigDirectory = windows?.packageReferences?.nugetConfigDirectory?.orNull?.asFile?.absolutePath ?: project.projectDir.absolutePath,
             restoreLockFiles = if (windows == null) emptyList() else
                 project.tasks.withType(RestoreWinAppDependenciesTask::class.java).map { it.winmdLockFile.get().asFile.absolutePath }.distinct().sorted(),
-            hotReloadLaunches = if (windows == null) emptyList() else
+            hotReloadLaunches = if (windows == null) emptyList() else (
                 project.tasks.withType(RunWinAppHostTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath)
-                }.sortedBy { it.taskName },
+                } + project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
+                    IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath)
+                }).sortedBy { it.taskName },
         )
     }
 }

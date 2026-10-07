@@ -1,5 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
@@ -7,6 +8,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -71,6 +73,17 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Input
     abstract val offline: Property<Boolean>
 
+    @get:Input
+    @get:Optional
+    abstract val developmentSessionDirectory: Property<String>
+
+    @get:Internal
+    abstract val supportsXamlHotReload: Property<Boolean>
+
+    /** Actual deployed executable, rather than the pre-registration input layout. */
+    @get:Internal
+    abstract val hostExecutable: org.gradle.api.file.RegularFileProperty
+
     init {
         packageType.convention(WindowsPackageType.Packaged.name)
         selfContained.convention(false)
@@ -83,6 +96,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
         winAppCliVersion.convention(WinAppCliDefaults.VERSION)
         winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
         offline.convention(false)
+        developmentSessionDirectory.convention(project.providers.environmentVariable(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY))
+        supportsXamlHotReload.convention(false)
         outputs.upToDateWhen { false }
     }
 
@@ -125,6 +140,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
             offline = offline.get(),
             logger = logger,
         ).resolve()
+        val applicationArguments = winAppDevelopmentArguments(args.get(),
+            developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
         val arguments = buildList {
             add("run")
             add(input.toString())
@@ -135,8 +152,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
             if (detach.get()) add("--detach")
             if (debugOutput.get()) add("--debug-output")
             if (noLaunch.get()) add("--no-launch")
-            if (args.get().isNotEmpty()) {
-                add("--args=${args.get()}")
+            if (applicationArguments.isNotEmpty()) {
+                add(winAppRunArgumentsOption(applicationArguments))
             }
         }
         logger.lifecycle("Running packaged WinApp ${applicationVariant.get()}")
@@ -144,6 +161,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         execOperations.exec { spec ->
             spec.commandLine(winAppCliCommandLine(cli.command, arguments))
             spec.workingDir = winAppWorkspace.get().asFile
+            spec.environment.remove(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY)
         }
     }
 }
