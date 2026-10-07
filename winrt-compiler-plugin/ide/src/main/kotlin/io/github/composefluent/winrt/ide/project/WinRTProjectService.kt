@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.ide.project
 
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.externalSystem.service.project.ProjectDataManager
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManager
@@ -62,6 +63,7 @@ class WinRTProjectService(private val project: Project) {
             .distinctBy { it.projectDirectory }
             .sortedBy { it.projectDirectory }
         io.github.composefluent.winrt.ide.analysis.WinRTFirModuleConfiguration.restore(project, imported.value)
+        project.service<WinRTRunConfigurationNames>().refresh()
         imported.value.filter { preparationRequests.remove(it.projectDirectory.replace('\\', '/').lowercase()) }.forEach { module ->
             ApplicationManager.getApplication().invokeLater {
                 if (!project.isDisposed) WinRTGradleTasks.prepareXaml(project, module)
