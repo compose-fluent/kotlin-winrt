@@ -101,7 +101,12 @@ object WinRTNuGetSources {
     private fun Element.children(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
 }
 
-data class WinRTNuGetSearchResult(val id: String, val version: String, val description: String, val authors: String, val versions: List<String>)
+data class WinRTNuGetSearchResult(val id: String, val version: String, val description: String, val authors: String, val versions: List<String>,
+    val downloads: Long = 0, val projectUrl: String = "")
+data class WinRTNuGetSearchPage(val packages: List<WinRTNuGetSearchResult>, val total: Int)
+data class WinRTNuGetDependencyGroup(val framework: String, val dependencies: List<Pair<String, String>>)
+data class WinRTNuGetPackageDetails(val description: String, val authors: String, val projectUrl: String, val license: String,
+    val published: String, val dependencies: List<WinRTNuGetDependencyGroup>, val deprecation: String = "")
 
 class WinRTNuGetBrowser(private val source: WinRTNuGetSource, private val load: (URI) -> JsonObject = { endpoint ->
     require(endpoint.scheme in listOf("https", "http")) { "This source requires the NuGet CLI. Enter an exact package ID/version to add it." }
@@ -115,28 +120,56 @@ class WinRTNuGetBrowser(private val source: WinRTNuGetSource, private val load: 
         }
 }) {
     private val index by lazy { load(URI(source.address)) }
-    private fun resource(name: String): URI = index["resources"].asJsonArray.firstOrNull { value ->
+    private fun resource(name: String): URI = index["resources"].asJsonArray.filter { value ->
         val type = value.asJsonObject["@type"]
         (if (type.isJsonArray) type.asJsonArray.map { it.asString } else listOf(type.asString)).any { it.substringBefore('/') == name }
-    }?.asJsonObject?.get("@id")?.asString?.let { URI(source.address).resolve(it) }
+    }.maxByOrNull { it.asJsonObject["@type"].toString().contains("3.6.0") }?.asJsonObject?.get("@id")?.asString?.let { URI(source.address).resolve(it) }
         ?: error("Source '${source.name}' does not expose the NuGet V3 $name service.")
 
-    fun search(query: String, prerelease: Boolean, skip: Int = 0): List<WinRTNuGetSearchResult> {
+    fun search(query: String, prerelease: Boolean, skip: Int = 0): List<WinRTNuGetSearchResult> = searchPage(query, prerelease, skip).packages
+
+    fun searchPage(query: String, prerelease: Boolean, skip: Int = 0): WinRTNuGetSearchPage {
+        require(skip >= 0)
         val endpoint = resource("SearchQueryService").toString()
         val separator = if ('?' in endpoint) '&' else '?'
         val result = load(URI("$endpoint${separator}q=${URLEncoder.encode(query, Charsets.UTF_8)}&prerelease=$prerelease&semVerLevel=2.0.0&skip=$skip&take=40"))
-        return result["data"].asJsonArray.map { value ->
+        val packages = result["data"].asJsonArray.map { value ->
             val item = value.asJsonObject
             val versions = item["versions"]?.takeUnless { it.isJsonNull }?.asJsonArray?.map { it.asJsonObject["version"].asString }.orEmpty()
             val authors = item["authors"]?.takeUnless { it.isJsonNull }?.let { if (it.isJsonArray) it.asJsonArray.joinToString { it.asString } else it.asString }.orEmpty()
-            WinRTNuGetSearchResult(item["id"].asString, item["version"].asString, item["description"]?.takeUnless { it.isJsonNull }?.asString.orEmpty(), authors, versions)
+            WinRTNuGetSearchResult(item["id"].asString, item["version"].asString, item.text("description"), authors, versions,
+                item["totalDownloads"]?.takeUnless { it.isJsonNull }?.asLong ?: 0, item.text("projectUrl"))
         }
+        return WinRTNuGetSearchPage(packages, result["totalHits"]?.asInt ?: skip + packages.size)
     }
 
     fun versions(id: String, prerelease: Boolean): List<String> {
         require(Regex("[A-Za-z0-9_.-]+").matches(id)) { "Enter a valid package ID." }
         val root = resource("PackageBaseAddress").toString().trimEnd('/')
         return load(URI("$root/${id.lowercase()}/index.json"))["versions"].asJsonArray.map { it.asString }
-            .filter { prerelease || '-' !in it }.asReversed()
+            .filter { prerelease || '-' !in it }.sortedWith { a, b -> WinRTNuGetVersion.compare(b, a) }
     }
+
+    /** Registration leaf -> catalog entry, including feeds that publish the entry as a URL. */
+    fun details(id: String, version: String): WinRTNuGetPackageDetails {
+        require(Regex("[A-Za-z0-9_.-]+").matches(id)) { "Enter a valid package ID." }
+        val normalized = WinRTNuGetVersion.normalized(version)
+        val root = resource("RegistrationsBaseUrl").toString().trimEnd('/')
+        val leaf = load(URI("$root/${id.lowercase()}/${normalized.lowercase()}.json"))
+        val entry = leaf["catalogEntry"]?.let { if (it.isJsonObject) it.asJsonObject else load(URI(it.asString)) }
+            ?: error("The package source did not return version metadata.")
+        val groups = entry["dependencyGroups"]?.takeUnless { it.isJsonNull }?.asJsonArray?.toList().orEmpty().map { group ->
+            val value = group.asJsonObject
+            WinRTNuGetDependencyGroup(value.text("targetFramework"), value["dependencies"]?.takeUnless { it.isJsonNull }?.asJsonArray?.toList().orEmpty().map {
+                it.asJsonObject.text("id") to it.asJsonObject.text("range")
+            })
+        }
+        return WinRTNuGetPackageDetails(entry.text("description"), entry.text("authors"), entry.text("projectUrl"),
+            entry.text("licenseExpression").ifEmpty { entry.text("licenseUrl") }, entry.text("published"), groups,
+            entry["deprecation"]?.takeUnless { it.isJsonNull }?.asJsonObject?.text("message").orEmpty())
+    }
+
+    private fun JsonObject.text(name: String): String = get(name)?.takeUnless { it.isJsonNull }?.let {
+        if (it.isJsonArray) it.asJsonArray.joinToString { part -> part.asString } else it.asString
+    }.orEmpty()
 }

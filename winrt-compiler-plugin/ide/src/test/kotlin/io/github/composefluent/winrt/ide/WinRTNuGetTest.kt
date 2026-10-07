@@ -90,6 +90,27 @@ class WinRTNuGetTest : BasePlatformTestCase() {
         } finally { root.toFile().deleteRecursively() }
     }
 
+    fun testVersionDetailsUseRegistrationCatalogAndNormalizeVersions() {
+        val requested = mutableListOf<URI>()
+        val browser = WinRTNuGetBrowser(WinRTNuGetSource("test", "https://feed.test/index.json", null)) { uri ->
+            requested += uri
+            JsonParser.parseString(when (uri.path) {
+                "/index.json" -> """{"resources":[{"@type":"RegistrationsBaseUrl/3.6.0","@id":"https://feed.test/registrations/"}]}"""
+                "/registrations/sample/2.0.0.json" -> """{"catalogEntry":"https://feed.test/catalog/sample.json"}"""
+                else -> """{"description":"Controls","authors":"Author","licenseExpression":"MIT","dependencyGroups":[{"targetFramework":"native","dependencies":[{"id":"Dependency","range":"[1.0.0, 2.0.0)"}]}]}"""
+            }).asJsonObject
+        }
+        val details = browser.details("Sample", "2.0.0.0+build")
+        assertEquals("/registrations/sample/2.0.0.json", requested[1].path)
+        assertEquals("Author", details.authors)
+        assertEquals("MIT", details.license)
+        assertEquals(listOf("Dependency" to "[1.0.0, 2.0.0)"), details.dependencies.single().dependencies)
+        assertTrue(WinRTNuGetVersion.compare("2.10.0", "2.9.0") > 0)
+        assertTrue(WinRTNuGetVersion.compare("2.0.0-preview.10", "2.0.0-preview.9") > 0)
+        assertTrue(WinRTNuGetVersion.compare("2.0.0", "2.0.0-rc.1") > 0)
+        assertEquals(0, WinRTNuGetVersion.compare("2.0.0.0+one", "2.0+two"))
+    }
+
     fun testBrowserUsesTheIdeHttpClientWithoutFollowingCredentialRedirects() {
         val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0), 0)
         val address = "http://localhost:${server.address.port}"
