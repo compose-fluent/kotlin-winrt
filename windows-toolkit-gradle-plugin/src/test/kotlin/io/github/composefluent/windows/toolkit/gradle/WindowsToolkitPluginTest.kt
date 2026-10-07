@@ -911,6 +911,35 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun metadata_only_xaml_compilation_reads_fragment_and_dependency_registrars() {
+        val root = Files.createTempDirectory("kotlin-winrt-xaml-consumer-")
+        val page = root.resolve("src/winuiMain/kotlin/sample/Page.xaml")
+        Files.createDirectories(page.parent)
+        Files.writeString(page, """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Page"/>""")
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("winuiJvm")
+            mingwX64("winuiMingw")
+        }
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        assertEquals(false, (project.extensions.extraProperties.get("kotlinWinRTLocalGenerationRequired") as org.gradle.api.provider.Provider<*>).get())
+        listOf("compileKotlinWinuiJvm", "compileKotlinWinuiMingw").forEach { name ->
+            val compile = project.tasks.named(name).get()
+            val args = when (compile) {
+                is KotlinJvmCompile -> compile.compilerOptions.freeCompilerArgs.get()
+                is KotlinNativeCompile -> compile.compilerOptions.freeCompilerArgs.get()
+                else -> error("Unexpected compiler task")
+            }
+            assertTrue(args.toString(), args.any { it.contains(":compilerSupportManifest=") })
+            assertTrue(args.toString(), args.any { it.endsWith("projectionSupportMode=external") })
+            assertFalse(args.toString(), args.any { it.contains(":compilerSupportClassOutputDirectory=") })
+            assertTrue(taskDependencyNames(compile).toString(), "mergeWinRTCompilerSupport" in taskDependencyNames(compile))
+        }
+        assertFalse(project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get().emitProjectionSources.get())
+    }
+
+    @Test
     fun runtime_only_multiplatform_native_compilation_keeps_authoring_options_without_projection_support() {
         val project = ProjectBuilder.builder().build()
 

@@ -41,6 +41,7 @@ internal fun configureWinRTXamlPipeline(
     val hasXaml = project.provider {
         xamlSourceRoots.get().any { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }
     }
+    project.extensions.extraProperties.set("kotlinWinRTXamlSourcesPresent", hasXaml)
     val exportsLibrarySchema = project.provider { !extension.applicationEnabled.get() && !hasXaml.get() &&
         extension.xaml.exportLibrarySchema.get() &&
         sourceRoots.get().filterNot { isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it.toPath()) }

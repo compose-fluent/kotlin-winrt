@@ -3953,6 +3953,10 @@ private fun kotlinWinRTLocalGenerationRequired(project: Project): Provider<Boole
     project.extensions.extraProperties.properties["kotlinWinRTLocalGenerationRequired"] as? Provider<Boolean>
         ?: project.provider { false }
 
+@Suppress("UNCHECKED_CAST")
+private fun kotlinWinRTXamlSourcesPresent(project: Project): Boolean =
+    (project.extensions.extraProperties.properties["kotlinWinRTXamlSourcesPresent"] as? Provider<Boolean>)?.get() == true
+
 private fun windowsSdkRegistryRootsProvider(project: Project): Provider<List<String>> =
     project.providers.of(WindowsSdkRegistryRootsValueSource::class.java) {}
 
@@ -4098,7 +4102,7 @@ private fun kotlinWinRTLocalCompilerSupportDependencies(
     mergeCompilerSupportTask: TaskProvider<MergeWinRTCompilerSupportTask>,
 ): Provider<List<TaskProvider<MergeWinRTCompilerSupportTask>>> =
     project.provider {
-        if (kotlinWinRTLocalGenerationRequired(project).get()) {
+        if (kotlinWinRTLocalGenerationRequired(project).get() || kotlinWinRTXamlSourcesPresent(project)) {
             listOf(mergeCompilerSupportTask)
         } else {
             emptyList()
@@ -5067,6 +5071,14 @@ private fun addWinRTCompilerPluginOptions(
                     "compilerSupportClassOutputDirectory=${outputs.outputDirectory.get().asFile.absolutePath}",
                     "projectionSupportOwnerArtifactName=${projectionSupportOwnerArtifactName.get()}",
                     "projectionSupportMode=$supportMode",
+                )
+            } else if (kotlinWinRTXamlSourcesPresent(project)) {
+                // Metadata-only consumers still own authored/XAML classes. Their
+                // registrars and dependency support belong to the merged manifest
+                // even when SDK projection emission is owned by another module.
+                listOf(
+                    "compilerSupportManifest=${compilerSupportManifest.get().asFile.absolutePath}",
+                    "projectionSupportMode=external",
                 )
             } else {
                 emptyList()
