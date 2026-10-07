@@ -50,6 +50,8 @@ import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadClient
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadService
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadLaunchState
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeAnalysis
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeNavigation
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadMarkup
 import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadPatch
 import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
@@ -63,6 +65,8 @@ import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
 import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
 import org.jetbrains.kotlin.idea.stubindex.KotlinFullClassNameIndex
+import org.jetbrains.kotlin.idea.facet.KotlinFacet
+import org.jetbrains.kotlin.cli.common.arguments.K2MetadataCompilerArguments
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.plugins.gradle.settings.DistributionType
@@ -270,7 +274,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
     private fun assertRunningTemplate(project: Project, root: Path) {
         val session = System.getProperty("winrt.ide.recoveredHotReloadSession") ?: return
         val model = project.service<WinRTProjectService>().modules.value.single { it.projectPath == ":app" }
-        val source = root.resolve("app/src/main/kotlin/sample/hello/MainWindow.xaml")
+        val source = source(root, "app", "sample/hello/MainWindow.xaml")
         val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
         val xml = PsiManager.getInstance(project).findFile(file) as XmlFile
         val greeting = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).single { it.getAttributeValue("x:Name") == "Greeting" }
@@ -297,11 +301,14 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         }
     }
 
+    private fun source(root: Path, module: String, relative: String): Path = sequenceOf("main", "winuiMain")
+        .map { root.resolve("$module/src/$it/kotlin/$relative") }.single(Files::isRegularFile)
+
     private fun kotlinFile(project: Project, root: Path): KtFile = PsiManager.getInstance(project).findFile(
-        LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root.resolve("app/src/main/kotlin/sample/hello/MainWindow.kt"))!!) as KtFile
+        LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source(root, "app", "sample/hello/MainWindow.kt"))!!) as KtFile
 
     private fun assertLiveEditing(project: Project, root: Path, saveEdit: Boolean) {
-        val source = root.resolve("app/src/main/kotlin/sample/hello/MainWindow.xaml")
+        val source = source(root, "app", "sample/hello/MainWindow.xaml")
         val xamlFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
         val documents = FileDocumentManager.getInstance()
         val xaml = documents.getDocument(xamlFile)!!
@@ -311,19 +318,31 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         var expectedDiskXaml = Files.readString(source)
         val beforeKotlin = kotlin.text
         var saved = false
-        val probe = beforeKotlin.substringBefore(" {").trimEnd() + " {\n    fun ideElement() = Greeting\n}\n"
+        val declarationFiles = project.service<WinRTProjectService>().modules.value.single { it.projectPath == ":app" }
+            .xamlCompilations.filter { compilation -> compilation.sourceRoots.any { source.startsWith(Path.of(it)) } }
+            .map { WinRTXamlSnapshotService.key(it.declarationsFile) }
+        assertTrue(declarationFiles.toString(), declarationFiles.isNotEmpty())
+        val probe = beforeKotlin.substringBefore(" {").trimEnd() + " {\n" +
+            "    override fun initializeComponent() { super.initializeComponent() }\n" +
+            "    fun ideElement() = Greeting\n}\n"
         try {
             WriteCommandAction.runWriteCommandAction(project) { kotlin.setText(probe) }
             PsiDocumentManager.getInstance(project).commitAllDocuments()
             assertNavigation(project, root, "Greeting")
             assertCompletion(project, root, "Greeting")
+            assertTrue(resolutionDiagnostics(file).toString(), resolutionDiagnostics(file).isEmpty())
             fun edit(text: String, name: String, exists: Boolean) {
                 WriteCommandAction.runWriteCommandAction(project) { xaml.setText(text) }
                 val snapshots = project.service<WinRTXamlSnapshotService>()
                 PlatformTestUtil.waitWithEventsDispatching("Live imported XAMLC name $name", {
-                    snapshots.state.value.values.any { snapshot -> snapshot.error != null ||
-                        snapshot.declarations.pages.any { page -> page.className == "sample.hello.MainWindow" &&
-                            page.connections.any { it.fieldName == name } == exists } }
+                    // A shared source is compiled for both JVM and Native. Wait
+                    // for every owning input, rather than observing the target
+                    // that finishes first while the shared facet uses another.
+                    declarationFiles.all { declarations -> snapshots.state.value[declarations]?.let { snapshot ->
+                        snapshot.error != null || snapshot.declarations.pages.any { page ->
+                            page.className == "sample.hello.MainWindow" && page.connections.any { it.fieldName == name } == exists
+                        }
+                    } == true }
                 }, 60)
                 snapshots.state.value.values.forEach { assertNull(it.error, it.error) }
                 PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
@@ -335,10 +354,10 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             val renamed = beforeXaml.replace("x:Name=\"Greeting\"", "x:Name=\"RevisedGreeting\"")
             edit(renamed, "RevisedGreeting", true)
             assertFalse("Greeting" in memberNames(file))
-            assertTrue(unresolvedDiagnostics(file).any { it.contains("Greeting") })
+            assertTrue(resolutionDiagnostics(file).any { it.contains("Greeting") })
             WriteCommandAction.runWriteCommandAction(project) { kotlin.setText(probe.replace("= Greeting", "= RevisedGreeting")) }
             PsiDocumentManager.getInstance(project).commitAllDocuments()
-            assertTrue(unresolvedDiagnostics(file).isEmpty())
+            assertTrue(resolutionDiagnostics(file).isEmpty())
             assertNavigation(project, root, "RevisedGreeting")
             assertCompletion(project, root, "RevisedGreeting")
             val added = renamed.replace("</StackPanel>", "<TextBlock x:Name=\"ExtraGreeting\" Text=\"Added in the IDE\"/>\n    </StackPanel>")
@@ -351,7 +370,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             // The plugin must preserve their edited semantics across that save.
             expectedDiskXaml = Files.readString(source)
             assertTrue("RevisedGreeting" in memberNames(file))
-            assertTrue(unresolvedDiagnostics(file).isEmpty())
+            assertTrue(resolutionDiagnostics(file).isEmpty())
             edit(beforeXaml, "Greeting", true)
             WriteCommandAction.runWriteCommandAction(project) {
                 kotlin.setText(if (saveEdit) probe else beforeKotlin)
@@ -383,7 +402,8 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         assertTrue(targets.toString(), targets.any { it.containingFile == file })
         val custom = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).single { it.localName == "GreetingControl" }
         val control = custom.descriptor!!.declaration!!
-        assertTrue(control.containingFile.virtualFile.path, control.containingFile.virtualFile.path.contains("/controls/src/main/kotlin/"))
+        assertEquals(source(root, "controls", "sample/controls/GreetingControl.kt").toString().replace('\\', '/'),
+            control.containingFile.virtualFile.path)
     }
 
     private fun assertCompletion(project: Project, root: Path, name: String) {
@@ -421,8 +441,10 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         PlatformTestUtil.waitWithEventsDispatching("Imported source indexing", { !DumbService.isDumb(project) }, 180)
     }
 
-    private fun unresolvedDiagnostics(file: KtFile): List<String> = allowAnalysisOnEdt { analyze(file) {
-        file.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS).filter { it.factoryName.contains("UNRESOLVED_REFERENCE") }
+    private fun resolutionDiagnostics(file: KtFile): List<String> = allowAnalysisOnEdt { analyze(file) {
+        file.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS).filter {
+            it.factoryName.contains("UNRESOLVED_REFERENCE") || it.factoryName == "NOTHING_TO_OVERRIDE"
+        }
             .map { it.defaultMessage }
     } }
 
@@ -458,14 +480,51 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         val sdkClasses = KotlinFullClassNameIndex.Helper.get("microsoft.ui.xaml.controls.TextBlock", project,
             com.intellij.psi.search.GlobalSearchScope.allScope(project))
         assertFalse("Generated SDK source must be imported", sdkClasses.isEmpty())
-        val source = root.resolve("app/src/main/kotlin/sample/hello/MainWindow.kt")
-        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
+        val kotlinPath = source(root, "app", "sample/hello/MainWindow.kt")
+        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(kotlinPath)!!
         val file = PsiManager.getInstance(project).findFile(virtualFile) as KtFile
+        val module = requireNotNull(com.intellij.openapi.module.ModuleUtilCore.findModuleForPsiElement(file))
+        val settings = requireNotNull(KotlinFacet.get(module)).configuration.settings
+        val arguments = settings.compilerArguments
+        if (kotlinPath.toString().replace('\\', '/').contains("/src/winuiMain/")) {
+            assertTrue("The actual shared source-set facet must retain its metadata compiler: $arguments",
+                arguments is K2MetadataCompilerArguments)
+        }
         val names = allowAnalysisOnEdt { analyze(file) {
             file.declarations.filterIsInstance<org.jetbrains.kotlin.psi.KtClass>().single().namedClassSymbol!!.memberScope.callables
                 .mapNotNull { (it as? KaNamedSymbol)?.name?.asString() }.toSet()
         } }
-        assertTrue(names.toString(), "Greeting" in names)
+        assertTrue("module=${module.name}, projectSettings=${settings.useProjectSettings}, " +
+            "options=${arguments?.pluginOptions?.filter { it.startsWith("plugin:io.github.composefluent.winrt.compiler:") }}, " +
+            "members=$names", "Greeting" in names)
+        assertTrue(names.toString(), "initializeComponent" in names)
+        assertTrue(resolutionDiagnostics(file).toString(), resolutionDiagnostics(file).isEmpty())
+        // The real SDK owns the ordinary member and the DP registration; neither
+        // destination may fall back to a tag's class or a synthetic fixture type.
+        val markup = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(
+            source(root, "app", "sample/hello/MainWindow.xaml"))!!
+        val xml = PsiManager.getInstance(project).findFile(markup) as XmlFile
+        val catalog = project.service<io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalogService>()
+        PlatformTestUtil.waitWithEventsDispatching("Imported WinMD XAML property vocabulary", {
+            catalog.forFile(markup.path) != null
+        }, 60)
+        val block = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).single { it.getAttributeValue("x:Name") == "Greeting" }
+        val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, markup), false)!!
+        listOf("Text", "FontSize").forEach { property ->
+            val attribute = block.getAttribute(property)!!
+            val member = allowAnalysisOnEdt { WinRTXamlAttributeAnalysis.forAttribute(attribute) }!!
+            assertNotNull("$property needs its actual projected getter", member.primary)
+            assertNotNull("$property needs its actual DependencyProperty registration", member.dependencyProperty)
+            val expected = property.replaceFirstChar(Char::lowercaseChar)
+            assertEquals(expected, (member.primary as org.jetbrains.kotlin.psi.KtNamedDeclaration).name)
+            assertEquals(expected + "Property", (member.dependencyProperty as org.jetbrains.kotlin.psi.KtNamedDeclaration).name)
+            val offset = attribute.nameElement!!.textOffset + 1
+            val destinations = allowAnalysisOnEdt { WinRTXamlAttributeNavigation().getGotoDeclarationTargets(
+                xml.findElementAt(offset), offset, editor) }!!.toList()
+            assertEquals(member.targets, destinations)
+            destinations.forEach { assertTrue(it.containingFile.virtualFile.path,
+                it.containingFile.virtualFile.path.contains("/winrt-projections/build/")) }
+        }
     }
 
     private fun sync(project: Project, root: Path) {

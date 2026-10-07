@@ -3,7 +3,6 @@ package io.github.composefluent.winrt.ide.analysis
 import com.intellij.facet.FacetManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
-import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootManager
@@ -20,15 +19,13 @@ import java.nio.file.Path
 internal object WinRTFirModuleConfiguration {
     private const val DECLARATIONS = "plugin:io.github.composefluent.winrt.compiler:xamlDeclarations="
 
-    fun configure(project: Project, models: List<WinRTModuleData>, provider: IdeModifiableModelsProvider? = null) {
+    fun configure(project: Project, models: List<WinRTModuleData>) {
         val adapter = winRTFirAdapterJar()?.toString() ?: return
-        val modules = provider?.modules ?: ModuleManager.getInstance(project).modules
+        val modules = ModuleManager.getInstance(project).modules
         var changed = false
         modules.filterNot { it.isDisposed }.forEach { module ->
-            val facet = provider?.getModifiableFacetModel(module)?.allFacets?.filterIsInstance<KotlinFacet>()?.singleOrNull()
-                ?: KotlinFacet.get(module) ?: return@forEach
-            val roots = provider?.getModifiableRootModel(module)?.sourceRoots
-                ?: ModuleRootManager.getInstance(module).sourceRoots
+            val facet = KotlinFacet.get(module) ?: return@forEach
+            val roots = ModuleRootManager.getInstance(module).sourceRoots
             val compilation = models.flatMap { it.xamlCompilations }.filter { candidate ->
                 roots.any { root -> candidate.sourceRoots.any { source -> sameRoot(root.path, source) } }
             }.sortedBy { it.taskName }.firstOrNull() ?: return@forEach
@@ -48,7 +45,7 @@ internal object WinRTFirModuleConfiguration {
             }
             settings.compilerArguments = updated
             settings.updateMergedArguments()
-            if (provider == null) FacetManager.getInstance(module).facetConfigurationChanged(facet)
+            FacetManager.getInstance(module).facetConfigurationChanged(facet)
             changed = true
         }
         if (changed) project.messageBus.syncPublisher(KotlinCompilerSettingsListener.TOPIC).settingsChanged(null, models)

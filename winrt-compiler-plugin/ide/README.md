@@ -99,6 +99,13 @@ supertype appear, a name replacement removes the old member, and an empty index
 removes the replacement. The adapter is coupled to its selected SDK and must be
 rebuilt/validated for another embedded compiler.
 
+Shared KMP source sets such as `winuiMain` retain their metadata compiler and
+existing Kotlin options. After KGP commits a successful import, the IDE attaches
+the same XAMLC declaration input to their facets. Applying this during the earlier
+post-processing phase loses the options to KGP's final shared-source settings.
+Cached workspace recovery also restores this frontend configuration; the owning
+Gradle business compilations and their IR configuration remain separate.
+
 The tool window's **Prepare XAML analysis** action runs the existing declaration
 and projection preparation tasks through the IDE's Gradle runner. Once their
 input/header and compiler artifacts are available, local XAML document edits
@@ -188,6 +195,14 @@ boundaries follow WinMD inheritance; source-matched harvester connections supply
 their data types. A stale declaration location is never matched by line alone.
 Incomplete expressions retain completion. Ordinary Binding has no assumed data
 type, but explicit ElementName sources resolve within their name scope.
+
+Markup extensions override the enclosing XML string color. Keywords, options,
+punctuation, literals, resolved members and resource keys have separate styles
+under **Editor → Color Scheme → Kotlin WinRT XAML**. Unknown typed `x:Bind` members
+receive errors; an ordinary Binding with unknown runtime data stays neutral.
+Resource warnings cover only the unresolved key. Ordinary and dependency-property
+attribute names use actual Kotlin members; Ctrl+B also offers the real
+`…Property` registration for a DP, including inherited and attached properties.
 
 Native references/usage search connect x:Class, handlers, typed binding paths
 and element names. The native Kotlin rename processor updates resolved XML
