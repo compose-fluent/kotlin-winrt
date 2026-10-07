@@ -29,12 +29,24 @@ import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
-class WinRTXmlFormEditorProvider : FileEditorProvider {
+class WinRTXmlFormEditorProvider : FileEditorProvider, com.intellij.openapi.project.DumbAware {
     override fun accept(project: Project, file: VirtualFile): Boolean = !file.isDirectory &&
-        (file.name.equals("AppxManifest.xml", true) || file.extension.equals("appxmanifest", true) || file.extension.equals("resw", true))
+        (isManifest(file.name) || file.extension.equals("resw", true))
     override fun createEditor(project: Project, file: VirtualFile): FileEditor = WinRTXmlFormEditor(project, file)
-    override fun getEditorTypeId() = "kotlin-winrt-xml-form"
-    override fun getPolicy() = FileEditorPolicy.PLACE_AFTER_DEFAULT_EDITOR
+    override fun getEditorTypeId() = EDITOR_ID
+    override fun getPolicy() = FileEditorPolicy.PLACE_BEFORE_DEFAULT_EDITOR
+    companion object {
+        const val EDITOR_ID = "kotlin-winrt-xml-form"
+        fun isManifest(name: String) = name.equals("AppxManifest.xml", true) || name.endsWith(".appxmanifest", true)
+        fun open(project: Project, path: String) {
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                    .refreshAndFindFileByPath(path.replace('\\', '/'))?.let { file ->
+                        FileEditorManager.getInstance(project).apply { openFile(file, true); setSelectedEditor(file, EDITOR_ID) }
+                    }
+            }
+        }
+    }
 }
 
 private class WinRTXmlFormEditor(private val project: Project, private val virtualFile: VirtualFile) : UserDataHolderBase(), FileEditor {
@@ -136,7 +148,7 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
 
     override fun getComponent(): JComponent = component
     override fun getPreferredFocusedComponent(): JComponent = component
-    override fun getName() = if (resw) "Resources" else "Manifest"
+    override fun getName() = if (resw) "Resources" else "Manifest Designer"
     override fun getFile() = virtualFile
     override fun setState(state: FileEditorState) = Unit
     override fun isModified() = FileDocumentManager.getInstance().isFileModified(virtualFile)

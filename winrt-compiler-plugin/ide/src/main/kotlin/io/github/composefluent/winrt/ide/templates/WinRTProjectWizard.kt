@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -43,6 +44,11 @@ import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.Panel
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.ide.ui.WinRTChoice
+import io.github.composefluent.winrt.ide.nuget.WinRTNuGetBrowser
+import io.github.composefluent.winrt.ide.nuget.WinRTNuGetSources
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.bridge.compose
 import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.DefaultButton
@@ -70,10 +76,16 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
     initialKind: WinRTTemplateKind = WinRTTemplateKind.WinUIApplication) : AbstractNewProjectWizardStep(base) {
     private val checkout = TextFieldState(PropertiesComponent.getInstance().getValue("kotlin.winrt.toolchain.checkout", ""))
     private val packageName = TextFieldState("io.github.composefluent.winrt.app")
-    private val sdk = TextFieldState("10.0.26100.0")
+    private val installedSdks = service<WinRTInstalledSdks>()
+    private val sdk = TextFieldState()
     private val jdk = TextFieldState(PropertiesComponent.getInstance().getValue("kotlin.winrt.jdk",
         System.getenv("JAVA_HOME") ?: System.getProperty("java.home")))
     private val appSdk = TextFieldState("2.5.1")
+    private var appSdkVersions by mutableStateOf(listOf("2.5.1"))
+    private var appSdkLoading by mutableStateOf(false)
+    private var appSdkError by mutableStateOf<String?>(null)
+    private var sdkRefresh by mutableStateOf(0)
+    private var appSdkPrerelease by mutableStateOf(false)
     private val dependencies = TextFieldState()
     private val projections = TextFieldState(":winrt-projections")
     private val buildRoot = TextFieldState(context.project?.let { GradleSettings.getInstance(it).linkedProjectsSettings.firstOrNull()?.externalProjectPath }.orEmpty())
@@ -92,6 +104,10 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
         projectionModule = projections.text.toString().trim(), includeWinUI = includeWinUI)
 
     private fun error(): String? = runCatching {
+        require(!installedSdks.state.value.loading) { "Detecting locally installed Windows SDK versions…" }
+        require(installedSdks.state.value.sdks.any { it.version == sdk.text.toString() }) {
+            "Install the selected Windows SDK on this machine, then refresh the SDK list. NuGet metadata alone is insufficient."
+        }
         options().validate()
         val jdkPath = Path.of(jdk.text.toString().trim())
         require(java.nio.file.Files.isRegularFile(jdkPath.resolve("include/jni.h")) &&
@@ -108,6 +124,27 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
 
     override fun setupUI(builder: Panel) {
         val component = compose(focusOnClickInside = true) {
+            val installed by installedSdks.state.collectAsState()
+            LaunchedEffect(installed) {
+                if (installed.sdks.none { it.version == sdk.text.toString() })
+                    sdk.edit { replace(0, length, installed.sdks.firstOrNull()?.version.orEmpty()) }
+                validate(); validationChanged()
+            }
+            LaunchedEffect(checkout.text, appSdkPrerelease, sdkRefresh) {
+                kotlinx.coroutines.delay(300)
+                appSdkLoading = true; appSdkError = null
+                try {
+                    val available = withContext(Dispatchers.IO) {
+                        val basePath = checkout.text.toString().takeIf { it.isNotBlank() }?.let(Path::of) ?: Path.of(base.path)
+                        val feed = WinRTNuGetSources.read(basePath).firstOrNull { it.address.startsWith("https://") }
+                            ?: error("No HTTPS NuGet source is configured. Choose a cached Windows App SDK version.")
+                        WinRTNuGetBrowser(feed).versions("Microsoft.WindowsAppSDK", appSdkPrerelease)
+                    }
+                    appSdkVersions = (available + appSdk.text.toString()).distinct()
+                } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (error: Exception) { appSdkError = "Cannot refresh Windows App SDK versions: ${error.message}. The template default remains available." }
+                finally { appSdkLoading = false }
+            }
             LaunchedEffect(Unit) {
                 snapshotFlow { listOf(checkout.text, packageName.text, jdk.text, sdk.text, appSdk.text, dependencies.text, buildRoot.text, projections.text, kind, packaged, includeWinUI) }
                     .collect { validate(); validationChanged() }
@@ -122,13 +159,26 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                 Text("JDK 25 installation")
                 TextField(jdk, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "JDK 25 installation" })
                 Text("Windows SDK version")
-                TextField(sdk, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Windows SDK version" })
+                WinRTChoice("Locally installed Windows SDK", installed.sdks.map { it.version to "${it.version} · installed" }, sdk.text.toString()) {
+                    sdk.edit { replace(0, length, it) }
+                }
+                Text("The selected Windows SDK must be installed on this machine, including headers, libraries, WinRT metadata and packaging tools.")
+                if (installed.loading) Text("Detecting installed Windows SDKs…")
+                else if (installed.sdks.isEmpty()) Text("No complete Windows SDK was found. Install a Windows SDK and refresh this list.")
+                DefaultButton(onClick = { installedSdks.refresh() }) { Text("Refresh installed SDKs") }
                 if (kind == WinRTTemplateKind.ProjectionLibrary) {
                     CheckboxRow("Include WinUI projections", checked = includeWinUI, onCheckedChange = { includeWinUI = it })
                 }
                 if (kind.xaml || (kind == WinRTTemplateKind.ProjectionLibrary && includeWinUI)) {
                     Text("Windows App SDK version")
-                    TextField(appSdk, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Windows App SDK version" })
+                    WinRTChoice("Windows App SDK (NuGet)", appSdkVersions.map { it to it }, appSdk.text.toString()) {
+                        appSdk.edit { replace(0, length, it) }
+                    }
+                    Text("Windows App SDK is restored from NuGet. The Windows SDK selected above must be installed locally.")
+                    CheckboxRow("Include prerelease SDK versions", appSdkPrerelease, { appSdkPrerelease = it })
+                    DefaultButton(enabled = !appSdkLoading, onClick = { sdkRefresh++ }) { Text("Refresh Windows App SDK versions") }
+                    if (appSdkLoading) Text("Loading Windows App SDK versions…")
+                    appSdkError?.let { Text(it) }
                 }
                 if (context.isCreatingNewProject) {
                     Text("Kotlin WinRT toolchain checkout")

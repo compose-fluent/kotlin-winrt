@@ -64,6 +64,9 @@ fun WinRTResourcesPanel(project: Project) {
             it.name to "Source files · ${it.name}"
         } + current.packageLayouts.map { it.taskName to "Staged package · ${it.variant}" } }.orEmpty(), selection) { selection = it }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            module?.manifestFiles?.firstOrNull()?.let { manifest ->
+                DefaultButton(onClick = { WinRTXmlFormEditorProvider.open(project, manifest) }) { Text("Manifest Designer") }
+            }
             DefaultButton(onClick = { revision++ }) { Text("Refresh") }
             if (layout != null && module != null) DefaultButton(onClick = {
                 WinRTGradleTasks.run(project, module, listOf(layout.taskName), "Stage ${layout.variant}") { revision++ }
@@ -90,6 +93,8 @@ fun WinRTResourcesPanel(project: Project) {
         selected?.let { entry ->
             Text(entry.target)
             ResourcePreview(entry.source)
+            if (WinRTXmlFormEditorProvider.isManifest(Path.of(entry.source).fileName.toString()))
+                DefaultButton(onClick = { WinRTXmlFormEditorProvider.open(project, entry.source) }) { Text("Manifest Designer") }
             DefaultButton(onClick = { service.openFile(entry.source) }) { Text("Open source") }
             WinRTDetails("file details") {
                 Text("${entry.owner}: ${entry.source}")

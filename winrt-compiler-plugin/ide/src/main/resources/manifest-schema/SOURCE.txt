@@ -1,0 +1,3 @@
+Microsoft msix-packaging 25a65f5c1690930813bcc10cdf1d59fa865f2bb1
+https://github.com/microsoft/msix-packaging/tree/25a65f5c1690930813bcc10cdf1d59fa865f2bb1/resources/AppxPackaging/Manifest/Schema/2015
+SDKs omit these restricted/Windows capability schemas. Retained verbatim under the accompanying MIT license.

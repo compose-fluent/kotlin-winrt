@@ -49,9 +49,11 @@ kotlin {
         kotlin.srcDir("../../windows-toolkit-gradle-plugin/src/main/kotlin")
         kotlin.srcDir("../../winrt-runtime/src/commonMain/kotlin")
         kotlin.srcDir("../../winrt-runtime/src/jvmMain/kotlin")
+        kotlin.srcDir("../../winrt-metadata/src/main/kotlin")
         kotlin.include("io/github/composefluent/winrt/ide/**",
             "io/github/composefluent/winrt/runtime/WinRTXamlHotReloadProtocol.kt",
             "io/github/composefluent/winrt/runtime/WinRTXamlHotReloadWire.kt",
+            "io/github/composefluent/winrt/metadata/WindowsSdkRootDiscovery.kt",
             "io/github/composefluent/windows/toolkit/gradle/AppxResourceLayout.kt",
             "io/github/composefluent/windows/toolkit/gradle/PackageResourcePaths.kt",
             "io/github/composefluent/windows/toolkit/gradle/ProjectPriManifestSupport.kt",

@@ -45,7 +45,7 @@ private fun WinRTOverviewPanel(project: Project) {
                 Text(module.targets.joinToString { "${it.name} (${it.platform})" })
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     module.manifestFiles.firstOrNull()?.let { manifest ->
-                        DefaultButton(onClick = { service.openFile(manifest) }) { Text("Edit app manifest") }
+                        DefaultButton(onClick = { io.github.composefluent.winrt.ide.resources.WinRTXmlFormEditorProvider.open(project, manifest) }) { Text("Manifest Designer") }
                     }
                     DefaultButton(onClick = { service.openFile("${module.projectDirectory}/build.gradle.kts") }) { Text("Open build file") }
                     if (module.xamlCompilations.isNotEmpty())
