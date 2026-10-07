@@ -916,6 +916,39 @@ object ComWrappersSupport {
         registerObjectForComInterface(value, PlatformAbi.fromRawComPtr(instance.pointer))
     }
 
+    /**
+     * Consumes a generated Metadata.wrap reference while preserving the actual runtime class.
+     * Mirrors CsWinRT GetRuntimeClassForTypeCreation and its static tear-off fallback.
+     * Registered factories construct wrappers directly, without reentering Metadata.wrap.
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> wrapRuntimeClass(
+        instance: IInspectableReference,
+        staticallyDeterminedType: KClass<T>,
+        factory: (IInspectableReference) -> T,
+    ): T {
+        var ownershipTransferred = false
+        try {
+            findObject(PlatformAbi.fromRawComPtr(instance.pointer), staticallyDeterminedType)?.let { cached ->
+                instance.close()
+                ownershipTransferred = true
+                return cached
+            }
+            val runtimeFactory = RcwProjectionFactoryRegistry.resolveRuntimeClassFactoryForType(
+                staticallyDeterminedType,
+                instance.tryGetRuntimeClassName(),
+            )
+            val projected = runtimeFactory?.invoke(instance) ?: factory(instance)
+            check(staticallyDeterminedType.isInstance(projected)) {
+                "The registered runtime-class factory cannot project '${staticallyDeterminedType.typeDisplayName()}'."
+            }
+            ownershipTransferred = true
+            return projected as T
+        } finally {
+            if (!ownershipTransferred && !instance.isDisposed) instance.close()
+        }
+    }
+
     fun initializeComposableReference(instance: IInspectableReference): IInspectableReference =
         instance.also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
 

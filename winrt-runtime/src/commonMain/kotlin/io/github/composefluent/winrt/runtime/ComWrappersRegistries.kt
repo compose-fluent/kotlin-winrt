@@ -57,24 +57,41 @@ internal object RcwProjectionFactoryRegistry {
         runtimeClassName: String?,
     ): ((IInspectableReference) -> Any)? {
         if (staticallyDeterminedType != null) {
+            val typeId = WinRTTypeRegistry.findByTypeHandle(staticallyDeterminedType)
+            if (typeId?.isRuntimeClass == true) {
+                resolveRuntimeClassFactoryForType(typeId.kClass, runtimeClassName)?.let { return it }
+            }
             typedRcwFactories[staticallyDeterminedType]?.let { return it }
             helperTypeRegistry[staticallyDeterminedType]?.let { helper ->
                 typedRcwFactories[helper]?.let { return it }
+            }
+            if (typeId?.isRuntimeClass == true) {
+                runtimeClassFactories[typeId.runtimeClassName ?: typeId.projectedTypeName]?.let { return it }
             }
             // A statically requested interface must be projected through its
             // interface factory below.  Falling back to the runtime-class
             // factory discovered from the pointer would return (for example)
             // DependencyObject when the caller requested ICollectionViewGroup.
-            // Runtime-class handles are allowed to use that fallback because
-            // WinMD and generated Kotlin names can differ in casing.
-            if (!WinRTTypeRegistry.isRuntimeClassHandle(staticallyDeterminedType)) {
-                return null
-            }
+            // Runtime classes use the compatible implementation selected above;
+            // an unrelated runtime name must not replace the static tear-off type.
+            return null
         }
         if (!runtimeClassName.isNullOrBlank()) {
             runtimeClassFactories[runtimeClassName]?.let { return it }
         }
         return null
+    }
+
+    fun resolveRuntimeClassFactoryForType(
+        staticallyDeterminedType: KClass<*>,
+        runtimeClassName: String?,
+    ): ((IInspectableReference) -> Any)? {
+        if (runtimeClassName.isNullOrBlank()) return null
+        val factory = runtimeClassFactories[runtimeClassName] ?: return null
+        val implementationType = TypeNameSupport.findRcwKClassByNameCached(runtimeClassName) ?: return null
+        // CsWinRT ComWrappersSupport.GetRuntimeClassForTypeCreation prefers the
+        // actual class only when it is assignable; tear-offs retain their static type.
+        return factory.takeIf { isAssignableFrom(staticallyDeterminedType, implementationType) }
     }
 
     fun resolveInterfaceProjectionFactory(

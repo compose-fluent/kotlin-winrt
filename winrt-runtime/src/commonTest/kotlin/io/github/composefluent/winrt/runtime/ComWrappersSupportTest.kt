@@ -175,6 +175,151 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun static_base_rcw_creation_preserves_the_registered_runtime_subclass() {
+        // CsWinRT GetRuntimeClassForTypeCreation accepts a composable subclass
+        // returned through its statically known parent.
+        ComWrappersSupport.clearRegistriesForTests()
+        registerRuntimeClassInheritance()
+        val staticType = WinRTTypeHandle("test.baseruntimeclass", IID.IInspectable)
+        ComWrappersSupport.registerTypedRcwFactory(staticType) { TestBaseRuntimeClassWrapper(it) }
+        val host = WinRTInspectableComObject.inspectableBox("payload", "test.DerivedRuntimeClass")
+        val pointer = host.ownedInspectablePointer()
+        var wrapper: TestBaseRuntimeClassWrapper? = null
+        try {
+            wrapper = ComWrappersSupport.createRcwForComObject(pointer, staticType) as TestBaseRuntimeClassWrapper
+            assertTrue(wrapper is TestDerivedRuntimeClassWrapper)
+            assertSame(wrapper, ComWrappersSupport.findObject(pointer, TestBaseRuntimeClassWrapper::class))
+        } finally {
+            wrapper?.nativeObject?.close()
+            WinRTPlatformApi.releaseRaw(pointer)
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun runtime_class_wrap_preserves_derived_identity_and_consumes_duplicate_owned_references() {
+        // CsWinRT's generated class FromAbi delegates to MarshalInspectable<T>;
+        // Metadata.wrap must retain the same assignable runtime identity.
+        ComWrappersSupport.clearRegistriesForTests()
+        registerRuntimeClassInheritance()
+        val host = WinRTInspectableComObject.inspectableBox("payload", "test.DerivedRuntimeClass")
+        val pointer = host.ownedInspectablePointer()
+        var wrapper: TestBaseRuntimeClassWrapper? = null
+        try {
+            var staticFactoryCalls = 0
+            val first = ComWrappersSupport.wrapRuntimeClass(
+                IInspectableReference(pointer.asRawComPtr(), IID.IInspectable),
+                TestBaseRuntimeClassWrapper::class,
+            ) {
+                staticFactoryCalls += 1
+                TestBaseRuntimeClassWrapper(it)
+            }
+            wrapper = first
+            assertTrue(first is TestDerivedRuntimeClassWrapper)
+            assertEquals(0, staticFactoryCalls)
+            val retainedCount = checkNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            val second = ComWrappersSupport.wrapRuntimeClass(
+                IInspectableReference(host.ownedInspectablePointer().asRawComPtr(), IID.IInspectable),
+                TestBaseRuntimeClassWrapper::class,
+            ) { error("The existing derived wrapper must be reused.") }
+            assertSame(first, second)
+            assertEquals(retainedCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            first.nativeObject.close()
+            assertEquals(1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        } finally {
+            wrapper?.nativeObject?.close()
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun runtime_class_wrap_keeps_the_static_type_for_unknown_or_incompatible_runtime_names() {
+        // CsWinRT retains the static class for tear-offs and inaccurate GetRuntimeClassName.
+        ComWrappersSupport.clearRegistriesForTests()
+        registerRuntimeClassInheritance()
+        registerGeneratedProjectionTypeIndex(TestRuntimeClassWrapper::class, "test.Unrelated", "RuntimeClass", "")
+        var unrelatedFactoryCalls = 0
+        ComWrappersSupport.registerRuntimeClassFactory("test.Unrelated") {
+            unrelatedFactoryCalls += 1
+            TestRuntimeClassWrapper(it)
+        }
+        try {
+            for (runtimeName in listOf("test.Unrelated", "test.Unknown")) {
+                val host = WinRTInspectableComObject.inspectableBox("payload", runtimeName)
+                var wrapper: TestBaseRuntimeClassWrapper? = null
+                try {
+                    wrapper = ComWrappersSupport.wrapRuntimeClass(
+                        IInspectableReference(host.ownedInspectablePointer().asRawComPtr(), IID.IInspectable),
+                        TestBaseRuntimeClassWrapper::class,
+                    ) { TestBaseRuntimeClassWrapper(it) }
+                    assertEquals(TestBaseRuntimeClassWrapper::class, wrapper::class)
+                } finally {
+                    wrapper?.nativeObject?.close()
+                    host.close()
+                }
+                val staticHost = WinRTInspectableComObject.inspectableBox("payload", runtimeName)
+                val staticPointer = staticHost.ownedInspectablePointer()
+                var staticWrapper: TestBaseRuntimeClassWrapper? = null
+                try {
+                    staticWrapper = ComWrappersSupport.createRcwForComObject(
+                        staticPointer,
+                        WinRTTypeHandle("test.BaseRuntimeClass", IID.IInspectable),
+                    ) as TestBaseRuntimeClassWrapper
+                    assertEquals(TestBaseRuntimeClassWrapper::class, staticWrapper::class)
+                } finally {
+                    staticWrapper?.nativeObject?.close()
+                    WinRTPlatformApi.releaseRaw(staticPointer)
+                    staticHost.close()
+                }
+            }
+            assertEquals(0, unrelatedFactoryCalls)
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    @Test
+    fun runtime_class_wrap_releases_the_owned_reference_when_the_selected_factory_fails() {
+        ComWrappersSupport.clearRegistriesForTests()
+        registerGeneratedProjectionTypeIndex(
+            TestBaseRuntimeClassWrapper::class, "test.BaseRuntimeClass", "RuntimeClass", "",
+        )
+        registerGeneratedProjectionTypeIndex(
+            TestDerivedRuntimeClassWrapper::class, "test.DerivedRuntimeClass", "RuntimeClass", "test.BaseRuntimeClass",
+        )
+        ComWrappersSupport.registerRuntimeClassFactory("test.DerivedRuntimeClass") { error("factory failure") }
+        val host = WinRTInspectableComObject.inspectableBox("payload", "test.DerivedRuntimeClass")
+        val pointer = host.ownedInspectablePointer()
+        try {
+            assertFailsWith<IllegalStateException> {
+                ComWrappersSupport.wrapRuntimeClass(
+                    IInspectableReference(pointer.asRawComPtr(), IID.IInspectable),
+                    TestBaseRuntimeClassWrapper::class,
+                ) { error("The derived factory must be selected.") }
+            }
+            assertEquals(1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        } finally {
+            host.close()
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
+    private fun registerRuntimeClassInheritance() {
+        registerGeneratedProjectionTypeIndex(
+            TestBaseRuntimeClassWrapper::class, "test.BaseRuntimeClass", "RuntimeClass", "", IID.IInspectable.toString(),
+        )
+        // An omitted intermediate projection still contributes its WinMD inheritance.
+        registerGeneratedProjectionTypeIndex(
+            TestDerivedRuntimeClassWrapper::class, "test.DerivedRuntimeClass", "RuntimeClass", "test.Intermediate",
+        )
+        TypeNameSupport.registerProjectionTypeBaseTypeMapping(mapOf("test.Intermediate" to "test.BaseRuntimeClass"))
+        ComWrappersSupport.registerRuntimeClassFactory("test.BaseRuntimeClass") { TestBaseRuntimeClassWrapper(it) }
+        ComWrappersSupport.registerRuntimeClassFactory("test.DerivedRuntimeClass") { TestDerivedRuntimeClassWrapper(it) }
+    }
+
+    @Test
     fun typed_runtime_class_owned_probe_keeps_pointer_on_cache_miss() {
         ComWrappersSupport.clearRegistriesForTests()
         val host = WinRTInspectableComObject.inspectableBox(
@@ -2080,14 +2225,21 @@ class ComWrappersSupportTest {
     }
 
     private open class TestBaseRuntimeClassWrapper(
-        pointer: RawAddress,
+        private val inspectable: IInspectableReference,
     ) : IWinRTObject {
-        override val nativeObject: ComObjectReference = IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+        constructor(pointer: RawAddress) : this(IInspectableReference(pointer.asRawComPtr(), IID.IInspectable))
+        override val nativeObject: ComObjectReference get() = inspectable
+
+        init {
+            ComWrappersSupport.registerRuntimeClassWrapper(this, inspectable)
+        }
     }
 
     private class TestDerivedRuntimeClassWrapper(
-        pointer: RawAddress,
-    ) : TestBaseRuntimeClassWrapper(pointer)
+        inspectable: IInspectableReference,
+    ) : TestBaseRuntimeClassWrapper(inspectable) {
+        constructor(pointer: RawAddress) : this(IInspectableReference(pointer.asRawComPtr(), IID.IInspectable))
+    }
 
     @WinRTProjectedInterface
     private interface CompilerProjectedInterface
