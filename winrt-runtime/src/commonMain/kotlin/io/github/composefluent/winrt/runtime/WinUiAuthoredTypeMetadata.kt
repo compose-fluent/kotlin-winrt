@@ -92,6 +92,19 @@ internal object WinUiAuthoredTypeMetadata {
         return null
     }
 
+    fun customProperties(source: Any): List<microsoft.ui.xaml.data.ICustomProperty> {
+        val names = linkedSetOf<String>()
+        var definition = definitionsByType[source::class]
+        val seen = mutableSetOf<String>()
+        while (definition != null && seen.add(definition.name)) {
+            names += definition.members.values.filterNot { it.isAttachable }.map { it.name }
+            definition = definition.baseType?.let { definitionsByType[it] } ?: definitions[definition.baseName]
+        }
+        // Keep the selected control's own properties ahead of inherited UIElement
+        // members so bounded inspection still includes Text, Content, etc.
+        return names.mapNotNull { customProperty(source, it) }
+    }
+
     /** Returns an owned IXamlType pointer, or null when this is not an authored type. */
     fun tryCreate(name: String, resolveType: (String) -> RawAddress): RawAddress {
         enumTypes[name]?.let { return createSystemType(name, it.type, it.parse) }

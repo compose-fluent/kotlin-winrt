@@ -62,16 +62,18 @@ internal class WinRTXamlHotReloadServer(private val registry: WinRTXamlHotReload
             socket.use {
                 require(it.inetAddress.isLoopbackAddress) { "Only loopback development clients are accepted." }
                 it.soTimeout = 3_000
-                val (supplied, patch) = WinRTXamlHotReloadWire.readRequest(it.getInputStream())
+                val request = WinRTXamlHotReloadWire.readCommand(it.getInputStream())
+                val supplied = request.token; val patch = request.patch
                 if (!MessageDigest.isEqual(supplied.toByteArray(Charsets.UTF_8), token.toByteArray(Charsets.UTF_8))) {
                     WinRTXamlHotReloadWire.writeReply(it.getOutputStream(), WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.REJECTED, "Invalid development session."))
                     return
                 }
-                val reply = if (patch == null) registry.snapshot() else {
+                val reply = if (patch == null && request.inspection == null) registry.snapshot() else {
                     val latch = CountDownLatch(1)
                     var response: WinRTXamlHotReloadReply? = null
-                    registry.submit(patch) { result -> response = result; latch.countDown() }
-                    if (latch.await(5, TimeUnit.SECONDS)) requireNotNull(response)
+                    val complete: (WinRTXamlHotReloadReply) -> Unit = { result -> response = result; latch.countDown() }
+                    if (request.inspection != null) registry.inspect(request.inspection, complete) else registry.submit(requireNotNull(patch), complete)
+                    if (latch.await(10, TimeUnit.SECONDS)) requireNotNull(response)
                     else WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.UNAVAILABLE, "The UI update is still pending. Reconnect before sending another version.")
                 }
                 WinRTXamlHotReloadWire.writeReply(it.getOutputStream(), reply)

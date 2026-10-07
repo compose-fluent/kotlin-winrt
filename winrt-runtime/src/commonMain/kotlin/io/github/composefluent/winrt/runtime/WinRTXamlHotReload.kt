@@ -10,6 +10,7 @@ internal class WinRTXamlHotReloadRegistry(
     private val convert: (KClass<*>, String) -> Any?,
     private val loadResources: (String) -> Map<Any?, Any?> = { error("Resource loading is not configured; rebuild.") },
     private val loadElement: (String) -> Any = { error("Element loading is not configured; rebuild.") },
+    private val inspector: WinRTXamlVisualInspector? = null,
 ) {
     private class Root(owner: Any, val thread: Long, val enqueue: (() -> Unit) -> Boolean) {
         val owner = PlatformManagedWeakReference(owner)
@@ -68,7 +69,7 @@ internal class WinRTXamlHotReloadRegistry(
         pages.values.forEach { page -> page.roots.removeAll { it.owner.get() == null } }
         val roots = pages.values.filter { it.roots.any { root -> root.ready } }.map { page ->
             WinRTXamlHotReloadRoot(page.className, page.path, page.hash, page.version,
-                page.roots.filter { it.ready }.flatMap { it.elements.keys }.distinct().sorted())
+                page.roots.filter { it.ready }.flatMap { it.elements.keys }.distinct().sorted(), page.roots.count { it.ready })
         }
         val error = pages.values.firstNotNullOfOrNull { it.restart }
         val pending = pages.values.any { it.pending }
@@ -153,6 +154,28 @@ internal class WinRTXamlHotReloadRegistry(
     }
 
     fun close() = lock.withLock { closed = true; pages.clear() }
+
+    fun inspect(request: WinRTXamlInspectionRequest, complete: (WinRTXamlHotReloadReply) -> Unit) {
+        if (request.previewMarkup.isNotEmpty() && request.className != WinRTXamlHotReloadProtocol.PREVIEW_CLASS) {
+            complete(WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.REJECTED, "Static preview must use the isolated design host.")); return
+        }
+        val selection = lock.withLock {
+            pages[request.className to request.resourcePath]?.roots?.filter { it.ready && it.owner.get() != null }?.getOrNull(request.instance)
+        }
+        if (selection == null || inspector == null) {
+            complete(WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.UNAVAILABLE, "No live visual inspector. Rebuild with the current toolchain and select a loaded component.")); return
+        }
+        try {
+            if (!selection.enqueue {
+                val owner = selection.owner.get()
+                if (owner == null || lock.withLock { closed }) complete(WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.UNAVAILABLE, "The component has closed."))
+                else if (platformCurrentThreadToken() != selection.thread) complete(WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.REJECTED, "Visual inspection must run on the owning UI thread."))
+                else inspector.inspect(owner, request) { result -> complete(result.fold(
+                    { view -> snapshot().copy(message = "${view.nodes.size} visual nodes", inspection = view) },
+                    { error -> WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.REJECTED, error.message.orEmpty()) })) }
+            }) complete(WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.UNAVAILABLE, "The UI dispatcher rejected inspection."))
+        } catch (error: Exception) { complete(WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.UNAVAILABLE, error.message.orEmpty())) }
+    }
 
     private class Prepared(val commit: () -> Unit, val rollback: () -> Unit, val result: () -> WinRTXamlHotReloadValue)
 
@@ -338,11 +361,12 @@ private object WinRTXamlHotReloadConfiguration {
 /** Generated application metadata supplies typed SDK conversion and an owning-thread dispatcher. */
 fun configureWinRTXamlHotReload(dispatcherFactory: () -> ((() -> Unit) -> Boolean), sdkConvert: (KClass<*>, String) -> Any?,
     loadResources: (String) -> Map<Any?, Any?> = { error("Resource loading is not configured; rebuild.") },
-    loadElement: (String) -> Any = { error("Element loading is not configured; rebuild.") }) {
+    loadElement: (String) -> Any = { error("Element loading is not configured; rebuild.") },
+    inspector: WinRTXamlVisualInspector? = null) {
     WinRTXamlHotReloadConfiguration.lock.withLock {
         if (WinRTXamlHotReloadConfiguration.initialized) return
         WinRTXamlHotReloadConfiguration.initialized = true
-        val registry = WinRTXamlHotReloadRegistry(dispatcherFactory, sdkConvert, loadResources, loadElement)
+        val registry = WinRTXamlHotReloadRegistry(dispatcherFactory, sdkConvert, loadResources, loadElement, inspector)
         platformStartWinRTXamlHotReload(registry)?.let { transport ->
             WinRTXamlHotReloadConfiguration.registry = registry
             WinRTXamlHotReloadConfiguration.transport = transport

@@ -7,6 +7,18 @@ import java.util.Properties
 import kotlin.test.*
 
 class WinRTXamlHotReloadServerTest {
+    @Test fun visual_inspection_paths_and_bgra_frames_round_trip_with_limits() {
+        val request = WinRTXamlInspectionRequest("probe.Page", "Page.xaml", selectedPath = listOf(1, 0))
+        val encoded = ByteArrayOutputStream().also { WinRTXamlHotReloadWire.writeInspectionRequest(it, "token", request) }.toByteArray()
+        assertEquals(request, WinRTXamlHotReloadWire.readCommand(ByteArrayInputStream(encoded)).inspection)
+        val image = WinRTXamlVisualImage(2, 1, byteArrayOf(0, 0, -1, -1, 0, -1, 0, -1))
+        val view = WinRTXamlVisualSnapshot(listOf(WinRTXamlVisualNode(listOf(1, 0), "TextBlock", "Heading",
+            WinRTXamlVisualBounds(1.0, 2.0, 30.0, 40.0))), listOf(WinRTXamlVisualProperty("Text", "hello")), image)
+        val response = ByteArrayOutputStream().also { WinRTXamlHotReloadWire.writeReply(it, WinRTXamlHotReloadReply(0, "", inspection = view)) }.toByteArray()
+        val decoded = WinRTXamlHotReloadWire.readReply(ByteArrayInputStream(response)).inspection!!
+        assertEquals(view.nodes, decoded.nodes); assertEquals(view.properties, decoded.properties); assertContentEquals(image.pixels, decoded.image!!.pixels)
+        assertFailsWith<IllegalArgumentException> { WinRTXamlHotReloadWire.writeReply(ByteArrayOutputStream(), WinRTXamlHotReloadReply(0, "", inspection = view.copy(image = image.copy(width = 769)))) }
+    }
     @Test fun development_session_authenticates_loopback_requests_and_removes_its_file_on_close() {
         val root = Files.createTempDirectory("winrt-hot-reload-")
         try {
