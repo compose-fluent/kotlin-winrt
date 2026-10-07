@@ -24,7 +24,7 @@ class WinRTResourceCompletion : CompletionContributor() {
         }
         val candidates = WinRTResourceReferences.resourceKeys(file, lookup, attribute.parent, null).distinctBy { it.value }
         val completion = result.withPrefixMatcher(prefix)
-        candidates.forEach { key -> completion.addElement(LookupElementBuilder.create(key, key.value)
-            .withTypeText(key.containingFile.name, true)) }
+        candidates.forEach { key -> completion.addElement(LookupElementBuilder.create(key.element, key.value)
+            .withTypeText(key.element.containingFile.name, true)) }
     }
 }

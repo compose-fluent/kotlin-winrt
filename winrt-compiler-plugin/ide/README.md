@@ -204,6 +204,12 @@ Resource warnings cover only the unresolved key. Ordinary and dependency-propert
 attribute names use actual Kotlin members; Ctrl+B also offers the real
 `…Property` registration for a DP, including inherited and attached properties.
 
+SDK resource dictionaries exceeding the platform's XML PSI size limit are
+indexed in the background; their keys navigate to the original file offsets.
+Relative `ResourceDictionary.Source` URIs resolve from each dictionary's
+compiler-provided `MSBuild_Link`, including `.` and `..` segments. Source-relative
+file navigation is also available before Gradle import.
+
 Native references/usage search connect x:Class, handlers, typed binding paths
 and element names. The native Kotlin rename processor updates resolved XML
 usages; class rename also adds its required same-basename XAML file to the

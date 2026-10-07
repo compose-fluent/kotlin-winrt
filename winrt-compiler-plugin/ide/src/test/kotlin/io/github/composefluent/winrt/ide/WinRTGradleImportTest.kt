@@ -530,6 +530,24 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             destinations.forEach { assertTrue(it.containingFile.virtualFile.path,
                 it.containingFile.virtualFile.path.contains("/winrt-projections/build/")) }
         }
+        // The actual WinUI generic.xaml exceeds the platform's XML PSI limit.
+        // Verify the SDK key and original source location, not a small stand-in.
+        val resources = project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceIndex>()
+        PlatformTestUtil.waitWithEventsDispatching("Actual SDK resource keys", {
+            resources.forFile(markup.path)?.let { lookup ->
+                io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(xml, lookup, block, "SubtleButtonStyle").isNotEmpty()
+            } == true
+        }, 60)
+        val style = io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(xml,
+            resources.forFile(markup.path), block, "SubtleButtonStyle").single().element
+        assertTrue(style.containingFile.virtualFile.path, style.containingFile.virtualFile.path.endsWith("/Microsoft.UI/Themes/generic.xaml"))
+        val styleDocument = FileDocumentManager.getInstance().getDocument(style.containingFile.virtualFile)!!
+        assertEquals("SubtleButtonStyle", styleDocument.text.substring(style.textRange.startOffset, style.textRange.endOffset))
+        pooled("Actual SDK source navigation") {
+            com.intellij.openapi.application.ReadAction.run<RuntimeException> {
+                assertNotNull((style as com.intellij.psi.NavigatablePsiElement).navigationRequest())
+            }
+        }
     }
 
     private fun sync(project: Project, root: Path) {

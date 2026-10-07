@@ -23,7 +23,7 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
     }
     private fun configure(text: String, name: String = "View.xaml"): XmlFile {
         val file = myFixture.addFileToProject(name, text) as XmlFile
-        val directory = file.virtualFile.parent.path
+        val directory = myFixture.tempDirFixture.getFile("")!!.path
         importedRoot = directory
         myFixture.addFileToProject("assets/Assets/Logo.scale-100.png", "probe")
         myFixture.addFileToProject("assets/Assets/Logo.scale-200.png", "probe")
@@ -167,5 +167,114 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         myFixture.complete(CompletionType.BASIC)
         assertTrue(myFixture.lookupElementStrings.toString(), myFixture.lookupElementStrings.orEmpty().containsAll(
             listOf("TitleTextBlockStyle", "SolidBackgroundFillColorBaseBrush", "SystemColorWindowColor", "LinkedAccent")))
+    }
+
+    // .cswinrt/src/Samples/AuthoringDemo/WinUI3CppApp/App.xaml installs
+    // XamlControlsResources. The WinUI SDK owns its keys; file size cannot turn
+    // an existing SDK key into an unresolved reference.
+    fun testLargeSdkDictionaryKeysNavigateToTheirOriginalLocations() {
+        val padding = " ".repeat(com.intellij.openapi.vfs.limits.FileSizeLimit.getIntellisenseLimit("xaml") + 1024)
+        val text = """<ResourceDictionary xmlns:k="http://schemas.microsoft.com/winfx/2006/xaml">
+<!-- $padding -->
+<Style k:Key='SubtleButtonStyle'><Style.Resources><ResourceDictionary><Style k:Key="PrivateToStyle"/></ResourceDictionary></Style.Resources></Style>
+<ResourceDictionary.ThemeDictionaries><ResourceDictionary k:Key="Dark"><SolidColorBrush k:Key="LargeThemeBrush"/></ResourceDictionary></ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>""".replace("\n", "\r\n")
+        val generic = myFixture.addFileToProject("winui/lib/native/Microsoft.UI/Themes/generic.xaml", text)
+        val indexedKeys = WinRTFrameworkResourceKey.read(java.nio.file.Path.of(generic.virtualFile.path))
+        assertTrue("JDK XML source offsets: ${indexedKeys.map { it.value }}", indexedKeys.any { it.value == "SubtleButtonStyle" })
+        val winmd = myFixture.addFileToProject("winui/metadata/Microsoft.UI.Xaml.winmd", "")
+        val input = myFixture.addFileToProject("large-input.json", """{"ReferenceAssemblies":[{"FullPath":"${winmd.virtualFile.path}"}]}""")
+        val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Style="{StaticResource SubtleButtonStyle}" Foreground="{ThemeResource LargeThemeBrush}"/></Page>""")
+        val projects = project.service<WinRTProjectService>()
+        val module = projects.modules.value.single().let { it.copy(xamlCompilations = it.xamlCompilations.map { compilation -> compilation.copy(inputFile = input.virtualFile.path) }) }
+        val index = project.service<WinRTResourceIndex>()
+        projects.replaceBuildModels(module.projectDirectory, listOf(module))
+        PlatformTestUtil.waitWithEventsDispatching("Large framework keys indexed without PSI", {
+            index.forFile(file.virtualFile.path)?.frameworkKeys?.any { it.value == "SubtleButtonStyle" } == true
+        }, 15)
+        val lookup = index.forFile(file.virtualFile.path)!!
+        assertFalse(lookup.frameworkKeys.any { it.value in setOf("PrivateToStyle", "Dark") })
+        val block = file.rootTag!!.findFirstSubTag("TextBlock")!!
+        val target = WinRTResourceReferences.reference(block.getAttribute("Style")!!.valueElement!!)!!.multiResolve(false).single().element!!
+        assertEquals(generic.virtualFile, target.containingFile.virtualFile)
+        assertEquals(text.replace("\r\n", "\n").indexOf("SubtleButtonStyle"), target.textOffset)
+        assertEquals("SubtleButtonStyle", (target as com.intellij.psi.PsiNamedElement).name)
+        assertTrue((target as com.intellij.psi.NavigatablePsiElement).canNavigate())
+        val navigation = com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread(
+            java.util.concurrent.Callable {
+                com.intellij.openapi.application.ReadAction.compute<com.intellij.platform.backend.navigation.NavigationRequest?, RuntimeException> {
+                    (target as com.intellij.psi.NavigatablePsiElement).navigationRequest()
+                }
+            })
+        PlatformTestUtil.waitWithEventsDispatching("Background SDK source navigation", { navigation.isDone }, 10)
+        assertNotNull(navigation.get())
+        val theme = WinRTResourceReferences.reference(block.getAttribute("Foreground")!!.valueElement!!)!!.multiResolve(false).single().element!!
+        assertEquals(generic.virtualFile, theme.containingFile.virtualFile)
+        val highlights = myFixture.doHighlighting()
+        assertFalse(highlights.mapNotNull { it.description }.toString(), highlights.any { it.description?.startsWith("No resource source candidate") == true })
+        assertEquals(2, highlights.count { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinRTXamlMarkupColors.RESOURCE })
+        val document = myFixture.editor.document
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(document.text.replace("SubtleButtonStyle}", "Sub}")) }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        myFixture.editor.caretModel.moveToOffset(document.text.indexOf("{StaticResource Sub") + "{StaticResource Sub".length)
+        myFixture.complete(CompletionType.BASIC)
+        assertTrue(myFixture.lookupElementStrings.toString(), myFixture.lookupElementStrings.orEmpty().contains("SubtleButtonStyle") || document.text.contains("SubtleButtonStyle}"))
+    }
+
+    fun testRelativeSourcesFollowEachMergedAndThemeDictionary() {
+        val palette = myFixture.addFileToProject("themes/colors/Palette.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="PaletteAccent"/></ResourceDictionary>""")
+        val dark = myFixture.addFileToProject("themes/dark/Dark.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="DarkAccent"/></ResourceDictionary>""")
+        val shared = myFixture.addFileToProject("themes/Shared.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="./colors/Palette.xaml"/></ResourceDictionary.MergedDictionaries><ResourceDictionary.ThemeDictionaries><ResourceDictionary x:Key="Dark" Source="dark/../dark/Dark.xaml"/></ResourceDictionary.ThemeDictionaries></ResourceDictionary>""") as XmlFile
+        val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Page.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../themes/Shared.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Page.Resources><TextBlock Foreground="{StaticResource PaletteAccent}" Tag="{ThemeResource DarkAccent}"/></Page>""", "views/View.xaml")
+        fun target(value: XmlAttributeValue) = WinRTResourceReferences.reference(value)!!.multiResolve(false).single().element!!
+        val source = file.rootTag!!.subTags[0].subTags.single().subTags.single().subTags.single().getAttribute("Source")!!.valueElement!!
+        assertEquals(shared, target(source))
+        assertEquals(palette, target(shared.rootTag!!.subTags[0].subTags.single().getAttribute("Source")!!.valueElement!!))
+        assertEquals(dark, target(shared.rootTag!!.subTags[1].subTags.single().getAttribute("Source")!!.valueElement!!))
+        val block = file.rootTag!!.findFirstSubTag("TextBlock")!!
+        assertEquals(palette, target(block.getAttribute("Foreground")!!.valueElement!!).containingFile)
+        assertEquals(dark, target(block.getAttribute("Tag")!!.valueElement!!).containingFile)
+        assertFalse(myFixture.doHighlighting().any { it.description?.startsWith("No resource source candidate") == true })
+    }
+
+    fun testRelativeSourcesUseXamlCompilerLinksInsteadOfPhysicalNeighbours() {
+        val theme = myFixture.addFileToProject("physical/Theme.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="./Palette.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary>""") as XmlFile
+        val palette = myFixture.addFileToProject("elsewhere/Palette.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="LinkedAccent"/></ResourceDictionary>""")
+        myFixture.addFileToProject("physical/Palette.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="WrongNeighbour"/></ResourceDictionary>""")
+        val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Page.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../Theme.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Page.Resources><TextBlock Foreground="{StaticResource LinkedAccent}"/></Page>""")
+        val input = myFixture.addFileToProject("linked-input.json", kotlinx.serialization.json.buildJsonObject {
+            put("XamlPages", kotlinx.serialization.json.buildJsonArray {
+                listOf(file to "Views/View.xaml", theme to "Theme.xaml", palette to "Palette.xaml").forEach { (source, link) ->
+                    add(kotlinx.serialization.json.buildJsonObject { put("FullPath", kotlinx.serialization.json.JsonPrimitive(source.virtualFile.path)); put("MSBuild_Link", kotlinx.serialization.json.JsonPrimitive(link)) })
+                }
+            })
+        }.toString())
+        val projects = project.service<WinRTProjectService>()
+        val module = projects.modules.value.single().let { it.copy(xamlCompilations = it.xamlCompilations.map { compilation -> compilation.copy(inputFile = input.virtualFile.path) }) }
+        val index = project.service<WinRTResourceIndex>()
+        projects.replaceBuildModels(module.projectDirectory, listOf(module))
+        PlatformTestUtil.waitWithEventsDispatching("Compiler resource links indexed", {
+            index.forFile(file.virtualFile.path)?.entries?.any { it.target == "Views/View.xaml" } == true
+        }, 10)
+        fun target(value: XmlAttributeValue) = WinRTResourceReferences.reference(value)!!.multiResolve(false).single().element!!
+        val source = file.rootTag!!.subTags[0].subTags.single().subTags.single().subTags.single().getAttribute("Source")!!.valueElement!!
+        assertEquals(theme, target(source))
+        val nested = theme.rootTag!!.subTags.single().subTags.single().getAttribute("Source")!!.valueElement!!
+        assertEquals(palette, target(nested))
+        val accent = file.rootTag!!.findFirstSubTag("TextBlock")!!.getAttribute("Foreground")!!.valueElement!!
+        assertEquals(palette, target(accent).containingFile)
+        assertTrue(WinRTResourceReferences.resourceKeys(file, index.forFile(file.virtualFile.path), file.rootTag, null).none { it.value == "WrongNeighbour" })
+        val sourceAttribute = source.parent as XmlAttribute
+        WriteCommandAction.runWriteCommandAction(project) { sourceAttribute.setValue("../../../Palette.xaml") }
+        assertEquals(0, WinRTResourceReferences.reference(sourceAttribute.valueElement!!)!!.multiResolve(false).size)
+    }
+
+    fun testRelativeDictionaryFileReferencesWorkBeforeGradleImport() {
+        val dictionary = myFixture.addFileToProject("Shared Styles.xaml", """<ResourceDictionary xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="Accent"/></ResourceDictionary>""")
+        val file = myFixture.addFileToProject("views/View.xaml", """<ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../Shared Styles.xaml"/><ResourceDictionary Source="..\Shared Styles.xaml"/><ResourceDictionary Source="../Shared%20Styles.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary>""") as XmlFile
+        for (tag in file.rootTag!!.subTags.single().subTags) {
+            val source = tag.getAttribute("Source")!!.valueElement!!
+            assertEquals(dictionary, WinRTResourceReferences.reference(source)!!.multiResolve(false).single().element)
+        }
     }
 }

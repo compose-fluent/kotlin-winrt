@@ -7,6 +7,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.limits.FileSizeLimit
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import kotlinx.coroutines.*
@@ -15,14 +16,18 @@ import kotlinx.coroutines.flow.combine
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlinx.serialization.json.*
+import java.util.concurrent.ConcurrentHashMap
 
 internal data class WinRTResourceLookup(val module: WinRTModuleData, val entries: List<WinRTResourceEntry>,
-    val xamlFiles: List<String>, val pri: List<WinRTPriCandidate>, val frameworkDictionaries: List<String> = emptyList())
+    val xamlFiles: List<String>, val pri: List<WinRTPriCandidate>, val frameworkDictionaries: List<String> = emptyList(),
+    val frameworkKeys: List<WinRTFrameworkResourceKey> = emptyList())
 
 /** File enumeration/staging-report IO never runs in PSI reference or completion requests. */
 @Service(Service.Level.PROJECT)
 class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : Disposable {
     @Volatile private var lookups = emptyList<WinRTResourceLookup>()
+    private data class FrameworkKeys(val modified: Long, val size: Long, val keys: List<WinRTFrameworkResourceKey>)
+    private val frameworkKeys = ConcurrentHashMap<String, FrameworkKeys>()
     init {
         scope.launch(Dispatchers.IO) {
             val projects = project.service<WinRTProjectService>()
@@ -86,7 +91,17 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
         }.plus(markup.map { it.source }).distinct()
         val vfs = LocalFileSystem.getInstance()
         (entries.map { it.source } + files + frameworks).distinct().forEach { vfs.refreshAndFindFileByNioFile(Path.of(it)) }
-        return WinRTResourceLookup(module, entries, files, staged.flatMap { it.candidates }, frameworks)
+        val oversizedKeys = frameworks.flatMap { source ->
+            val path = Path.of(source)
+            val size = Files.size(path)
+            if (size <= FileSizeLimit.getIntellisenseLimit("xaml")) return@flatMap emptyList()
+            val modified = Files.getLastModifiedTime(path).toMillis()
+            frameworkKeys.compute(source) { _, old ->
+                if (old?.modified == modified && old.size == size) old
+                else FrameworkKeys(modified, size, WinRTFrameworkResourceKey.read(path))
+            }!!.keys
+        }
+        return WinRTResourceLookup(module, entries, files, staged.flatMap { it.candidates }, frameworks, oversizedKeys)
     }
 
     private fun frameworkDictionaries(reference: Path, sdkVersion: String): List<String> {

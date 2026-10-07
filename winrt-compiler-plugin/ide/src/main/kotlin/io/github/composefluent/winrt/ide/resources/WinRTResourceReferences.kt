@@ -49,6 +49,8 @@ internal object WinRTResourceReferences {
         val file = element.containingFile as? XmlFile ?: return null
         val lookup = file.originalFile.virtualFile?.path?.let { file.project.service<WinRTResourceIndex>().forFile(it) }
         val attribute = (element as? XmlAttributeValue)?.parent as? XmlAttribute
+        val dictionarySource = attribute?.localName == "Source" && WinRTXamlSymbols.isXaml(file) &&
+            attribute.parent.localName == "ResourceDictionary"
         val value = when (element) { is XmlAttributeValue -> element.value; is XmlText -> element.value.trim(); else -> return null }
         val key = WinRTXamlResourceExpression.parse(value)?.key ?: value.takeIf {
             attribute?.localName == "ResourceKey" && attribute.parent.localName.removeSuffix("Extension") in
@@ -59,6 +61,7 @@ internal object WinRTResourceReferences {
             attribute?.localName == "Uid" && attribute.namespace == WinRTXamlCatalog.XAML -> Kind.Uid
             value.startsWith("ms-resource:", true) -> Kind.String
             value.startsWith("ms-appx:", true) -> Kind.File
+            dictionarySource && !value.startsWith('{') -> Kind.File
             attribute != null && file.rootTag?.localName == "Package" && attribute.localName.endsWith("Logo") -> Kind.File
             attribute != null && WinRTXamlSymbols.isXaml(file) &&
                 WinRTXamlSymbols.members(attribute.parent).firstOrNull { it.name == attribute.localName }?.typeName in
@@ -66,7 +69,7 @@ internal object WinRTResourceReferences {
             else -> return null
         }
         if (value.isBlank()) return null
-        if (kind != Kind.Key && lookup == null) return null
+        if (lookup == null && kind != Kind.Key && !(kind == Kind.File && dictionarySource)) return null
         val token = key ?: value
         if (kind == Kind.File && token.contains(':') && !token.startsWith("ms-appx:", true)) return null
         val contentRange = ElementManipulators.getValueTextRange(element)
@@ -78,7 +81,7 @@ internal object WinRTResourceReferences {
                     Kind.File -> files(file, lookup, token)
                     Kind.String -> strings(file, lookup!!, token)
                     Kind.Uid -> strings(file, lookup!!, token, prefix = true)
-                    Kind.Key -> resourceKeys(file, lookup, (attribute?.parent ?: (element.parent as? XmlTag)), token)
+                    Kind.Key -> resourceKeys(file, lookup, (attribute?.parent ?: (element.parent as? XmlTag)), token).map { it.element }
                 }
                 return targets.distinct().map { PsiElementResolveResult(it) }.toTypedArray()
             }
@@ -102,25 +105,54 @@ internal object WinRTResourceReferences {
 
     private fun path(value: String): String? = runCatching {
         val normalized = value.replace('\\', '/')
-        val uri = URI(normalized)
+        val uri = URI(normalized.replace(" ", "%20"))
         if (uri.scheme != null) {
             if (uri.rawAuthority.orEmpty().isNotEmpty()) return null // A foreign package has its own resource map.
             (uri.path ?: uri.schemeSpecificPart).trimStart('/')
-        } else normalized.trimStart('/')
-    }.getOrNull()?.takeUnless { it.split('/').any { part -> part == ".." } }
+        } else uri.path?.trimStart('/')
+    }.getOrNull()
+
+    private fun packagePath(value: String): String? {
+        val parts = ArrayDeque<String>()
+        for (part in value.split('/')) when (part) {
+            "", "." -> Unit
+            ".." -> if (parts.isEmpty()) return null else parts.removeLast()
+            else -> parts.addLast(part)
+        }
+        return parts.joinToString("/").takeIf { it.isNotBlank() }
+    }
 
     private fun files(file: XmlFile, lookup: WinRTResourceLookup?, value: String): List<PsiElement> {
-        val logical = path(value)?.takeIf { it.isNotBlank() } ?: return emptyList()
-        val priTargets = lookup?.pri.orEmpty().filter { candidate ->
-            runCatching { URI(candidate.resourceUri).path?.substringAfter("/Files/", "")?.equals(logical, true) == true }.getOrDefault(false)
-        }.map { it.value.replace('\\', '/').trimStart('/') }.toSet()
-        val matches = lookup?.entries.orEmpty().filter { entry -> entry.target.equals(logical, true) || entry.target in priTargets ||
-            WinRTResourceCatalog.family(entry.target).equals(logical, true) }
-        val xaml = lookup?.xamlFiles.orEmpty().filter { it.replace('\\', '/').endsWith("/$logical", true) }
-        val relative = file.originalFile.virtualFile?.parent?.findFileByRelativePath(logical)?.let { listOf(it.path) }.orEmpty()
-        return (matches.map { it.source } + xaml + relative).distinct().mapNotNull { source ->
-            LocalFileSystem.getInstance().findFileByPath(source.replace('\\', '/'))?.let { PsiManager.getInstance(file.project).findFile(it) }
+        val requested = path(value)?.takeIf { it.isNotBlank() } ?: return emptyList()
+        val normalized = value.replace('\\', '/')
+        val relative = !normalized.startsWith('/') && !normalized.contains(':')
+        val physical = file.originalFile.virtualFile?.path ?: return emptyList()
+        // WinUI's BaseUri is the current dictionary's package URI, not the
+        // caller's URI. XAMLC's MSBuild_Link may differ from its physical path.
+        val links = lookup?.entries.orEmpty().filter { it.source.replace('\\', '/').equals(physical, true) }
+        val logicals = if (relative && links.isNotEmpty()) links.mapNotNull {
+            packagePath(it.target.substringBeforeLast('/', "") + "/" + requested)
+        }.distinct() else listOfNotNull(packagePath(requested))
+        if (relative && links.isEmpty()) {
+            file.originalFile.virtualFile?.parent?.findFileByRelativePath(requested)?.let {
+                return listOfNotNull(PsiManager.getInstance(file.project).findFile(it))
+            }
         }
+        return logicals.flatMap { logical ->
+            val priTargets = lookup?.pri.orEmpty().filter { candidate ->
+                runCatching { URI(candidate.resourceUri).path?.substringAfter("/Files/", "")?.equals(logical, true) == true }.getOrDefault(false)
+            }.map { it.value.replace('\\', '/').trimStart('/') }.toSet()
+            val matches = lookup?.entries.orEmpty().filter { entry -> entry.target.equals(logical, true) || entry.target in priTargets ||
+                WinRTResourceCatalog.family(entry.target).equals(logical, true) }
+            val xaml = if (matches.isNotEmpty()) emptyList() else lookup?.xamlFiles.orEmpty().filter { source ->
+                source.replace('\\', '/').endsWith("/$logical", true) && lookup?.entries.orEmpty().none {
+                    it.source.replace('\\', '/').equals(source.replace('\\', '/'), true) && !it.target.equals(logical, true)
+                }
+            }
+            (matches.map { it.source } + xaml).distinct().mapNotNull { source ->
+                LocalFileSystem.getInstance().findFileByPath(source.replace('\\', '/'))?.let { PsiManager.getInstance(file.project).findFile(it) }
+            }
+        }.distinct()
     }
 
     private fun strings(file: XmlFile, lookup: WinRTResourceLookup, value: String, prefix: Boolean = false): List<PsiElement> {
@@ -145,21 +177,29 @@ internal object WinRTResourceReferences {
         return found + merged + source + nested
     }
 
-    internal fun resourceKeys(file: XmlFile, lookup: WinRTResourceLookup?, tag: XmlTag?, key: String?): List<XmlAttributeValue> {
+    internal data class Key(val value: String, val element: PsiElement)
+
+    internal fun resourceKeys(file: XmlFile, lookup: WinRTResourceLookup?, tag: XmlTag?, key: String?): List<Key> {
         val visited = hashSetOf<XmlTag>()
         val local = generateSequence(tag) { it.parentTag }.flatMap { owner ->
             val dictionaries = owner.subTags.filter { it.localName.endsWith(".Resources") } +
                 if (owner.localName == "ResourceDictionary") listOf(owner) else emptyList()
             dictionaries.asSequence().flatMap { dictionary(file, lookup, it, key, visited) }
         }.toList()
-        if (key != null && local.isNotEmpty()) return local
+        fun List<XmlAttributeValue>.candidates() = map { Key(it.value, it) }
+        if (key != null && local.isNotEmpty()) return local.candidates()
         val application = lookup?.xamlFiles.orEmpty().mapNotNull { xml(file, it) }.filter { it.rootTag?.localName == "Application" }
             .flatMap { app -> app.rootTag!!.subTags.filter { it.localName.endsWith(".Resources") }
                 .flatMap { dictionary(app, lookup, it, key, visited) } }
-        if (key != null && application.isNotEmpty()) return application.distinct()
-        val framework = lookup?.frameworkDictionaries.orEmpty().mapNotNull { xml(file, it) }.flatMap { dictionary ->
+        if (key != null && application.isNotEmpty()) return application.distinct().candidates()
+        val indexedSources = lookup?.frameworkKeys.orEmpty().map { it.source }.toSet()
+        val framework = lookup?.frameworkDictionaries.orEmpty().filterNot { it in indexedSources }.mapNotNull { xml(file, it) }.flatMap { dictionary ->
             dictionary.rootTag?.let { dictionary(dictionary, lookup, it, key, visited) }.orEmpty()
         }
-        return (local + application + framework).distinct()
+        val oversized = lookup?.frameworkKeys.orEmpty().filter { key == null || it.value == key }.mapNotNull { resource ->
+            LocalFileSystem.getInstance().findFileByPath(resource.source.replace('\\', '/'))?.let { PsiManager.getInstance(file.project).findFile(it) }
+                ?.let { source -> resource.element(source).takeIf { it.isValid }?.let { Key(resource.value, it) } }
+        }
+        return (local + application + framework).distinct().candidates() + oversized
     }
 }
