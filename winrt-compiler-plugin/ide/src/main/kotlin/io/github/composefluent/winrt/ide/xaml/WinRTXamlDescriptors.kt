@@ -76,8 +76,10 @@ private class WinRTXamlElementDescriptor(private val tag: XmlTag, private val el
     override fun getName(context: PsiElement?) = elementName
     override fun init(element: PsiElement?) = Unit
     override fun getDeclaration(): PsiElement? {
-        WinRTXamlSymbols.tagClass(tag, elementName)?.let { return it }
         val name = elementName.substringAfter(':')
+        if (name.contains('.')) {
+            WinRTXamlAttributeAnalysis.forName(tag, name.substringAfter('.'))?.targets?.firstOrNull()?.let { return it }
+        } else WinRTXamlSymbols.tagClass(tag, elementName)?.let { return it }
         val namespace = tag.getNamespaceByPrefix(elementName.substringBefore(':', ""))
         if (isXamlLanguageElement(namespace, name)) return tag
         // WinMD can be ready before its Kotlin projection has been indexed. A
@@ -116,7 +118,8 @@ private class WinRTXamlAttributeDescriptor(private val tag: XmlTag, private val 
     override fun getName() = attributeName
     override fun getName(context: PsiElement?) = attributeName
     override fun init(element: PsiElement?) = Unit
-    override fun getDeclaration(): PsiElement? = member?.let { WinRTXamlSymbols.memberTarget(tag, it) }
+    override fun getDeclaration(): PsiElement? = WinRTXamlAttributeAnalysis.forName(tag, attributeName)?.targets?.firstOrNull()
+        ?: tag.getAttribute(attributeName)?.takeIf { member != null }
     override fun isRequired() = false
     override fun isFixed() = false
     override fun hasIdType() = attributeName.substringAfter(':') == "Name"

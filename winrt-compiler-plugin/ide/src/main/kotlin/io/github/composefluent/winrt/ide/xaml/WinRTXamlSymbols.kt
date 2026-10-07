@@ -73,8 +73,8 @@ internal object WinRTXamlSymbols {
     }
 
     fun isDirective(attribute: XmlAttribute, name: String) = attribute.localName == name && attribute.namespace == WinRTXamlCatalog.XAML
+    fun memberNames(name: String) = listOf(name, name.replaceFirstChar(Char::lowercase)).distinct()
     fun memberTarget(tag: XmlTag, member: WinRTXamlMember): PsiElement? {
-        val owner = kotlinClass(tag.containingFile, member.owner) ?: return null
-        return owner.declarations.firstOrNull { (it as? org.jetbrains.kotlin.psi.KtNamedDeclaration)?.name == member.name } ?: owner
+        return WinRTXamlAttributeAnalysis.forName(tag, member.name)?.primary
     }
 }

@@ -30,7 +30,25 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
 
     private fun configure(markup: String): XmlFile {
         myFixture.addFileToProject("Shell.kt", "package sample\nclass Shell { fun onClick(sender: Any, args: Any) {} }")
-        myFixture.addFileToProject("Widget.kt", "package sample\nclass Widget { var Label: String = \"\" }")
+        myFixture.addFileToProject("Widget.kt", """
+            package sample
+            open class WidgetBase {
+                var inherited: String = ""
+                companion object { val inheritedProperty = microsoft.ui.xaml.DependencyProperty() }
+            }
+            class Widget : WidgetBase() {
+                var Label: String = ""
+                var frame: String = ""
+                companion object {
+                    val frameProperty = microsoft.ui.xaml.DependencyProperty()
+                    val LabelProperty: String = "Not a dependency property"
+                    val rowProperty = microsoft.ui.xaml.DependencyProperty()
+                    fun GetRow(target: Any): Int = 0
+                    fun SetRow(target: Any, value: Int) {}
+                }
+            }
+        """.trimIndent())
+        myFixture.addFileToProject("DependencyProperty.kt", "package microsoft.ui.xaml\nclass DependencyProperty")
         val file = myFixture.configureByText("Shell.xaml", markup) as XmlFile
         val directory = Files.createTempDirectory("winrt-ide-editor-").also { root = it }
         val metadata = directory.resolve("Controls.winmd")
@@ -109,6 +127,43 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         assertEquals("Widget", (child.descriptor!!.declaration as KtClass).name)
         val descriptors = file.rootTag!!.descriptor!!.getElementsDescriptors(file.rootTag).map { it.name }
         assertTrue(descriptors.toString(), descriptors.containsAll(listOf("Button", "local:Widget")))
+    }
+
+    fun testNativeAttributeNavigationAndSemanticColorsIncludeInheritedAndAttachedDependencyProperties() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:local="using:sample" Content="Hello" Width="240"><local:Widget Label="Normal" Frame="DP" Inherited="Base" local:Widget.Row="1"><local:Widget.Label>Property element</local:Widget.Label></local:Widget></Button>""")
+        myFixture.addFileToProject("SdkControls.kt", """
+            package microsoft.ui.xaml.controls
+            open class Control {
+                var width: Double = 0.0
+                companion object { val widthProperty = microsoft.ui.xaml.DependencyProperty() }
+            }
+            class Button : Control() { var content: String = "" }
+        """.trimIndent())
+        fun targets(attribute: com.intellij.psi.xml.XmlAttribute): List<String?> = allowAnalysisOnEdt {
+            val source = attribute.nameElement!!
+            WinRTXamlAttributeNavigation().getGotoDeclarationTargets(source, source.textRange.endOffset - 1, myFixture.editor)!!
+                .map { (it as org.jetbrains.kotlin.psi.KtNamedDeclaration).name }
+        }
+        val button = file.rootTag!!
+        val widget = button.subTags.single()
+        assertEquals(listOf("content"), targets(button.getAttribute("Content")!!))
+        assertEquals(listOf("width", "widthProperty"), targets(button.getAttribute("Width")!!))
+        assertEquals(listOf("Label"), targets(widget.getAttribute("Label")!!)) // The suffix alone cannot identify a DP.
+        assertEquals(listOf("frame", "frameProperty"), targets(widget.getAttribute("Frame")!!))
+        assertEquals(listOf("inherited", "inheritedProperty"), targets(widget.getAttribute("Inherited")!!))
+        assertEquals(listOf("GetRow", "rowProperty"), targets(widget.getAttribute("local:Widget.Row")!!))
+        assertEquals("Label", allowAnalysisOnEdt { (widget.subTags.single().descriptor!!.declaration as org.jetbrains.kotlin.psi.KtProperty).name })
+        val width = button.getAttribute("Width")!!
+        assertEquals("width", allowAnalysisOnEdt { (width.descriptor!!.declaration as org.jetbrains.kotlin.psi.KtProperty).name })
+        myFixture.editor.caretModel.moveToOffset(width.nameElement!!.textRange.startOffset + 2)
+        val native = allowAnalysisOnEdt { com.intellij.codeInsight.TargetElementUtil.findTargetElement(myFixture.editor,
+            com.intellij.codeInsight.TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED) }
+        assertEquals("width", (native as org.jetbrains.kotlin.psi.KtProperty).name)
+        val highlights = allowAnalysisOnEdt { myFixture.doHighlighting() }
+        fun colored(key: com.intellij.openapi.editor.colors.TextAttributesKey) = highlights.filter { it.forcedTextAttributesKey == key }
+            .map { file.text.substring(it.startOffset, it.endOffset) }.toSet()
+        assertEquals(setOf("Content", "Label"), colored(WinRTXamlMarkupColors.ATTRIBUTE))
+        assertEquals(setOf("Width", "Frame", "Inherited", "Row"), colored(WinRTXamlMarkupColors.DEPENDENCY_PROPERTY))
     }
 
     fun testClassAndEventReferencesResolveAndParticipateInRename() {

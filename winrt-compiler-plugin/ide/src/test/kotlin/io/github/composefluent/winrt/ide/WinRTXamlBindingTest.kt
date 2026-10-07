@@ -1,6 +1,11 @@
 package io.github.composefluent.winrt.ide
 
 import com.intellij.codeInsight.completion.CompletionType
+import com.intellij.lang.annotation.HighlightSeverity
+import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.impl.view.IterationState
+import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.psi.PsiReferenceService
@@ -39,6 +44,7 @@ class WinRTXamlBindingTest : BasePlatformTestCase() {
                 val model: Box<Person> = Box(Person())
                 val items: List<Person> = emptyList()
                 fun format(person: Person): String = person.name
+                fun decorate(text: String, count: Int): String = text
                 fun pressed(sender: Any?, args: Any?) {}
             }
             class Tools { companion object { val selected: Person = Person(); fun GetLabel(target: Any): String = "" } }
@@ -99,6 +105,47 @@ class WinRTXamlBindingTest : BasePlatformTestCase() {
         val values = PsiTreeUtil.findChildrenOfType(file, XmlAttribute::class.java).filter { it.localName == "Content" }.map { it.valueElement!! }
         assertTrue(analysis(values[0]).sites.any { it.problem == "Unresolved x:Bind member 'missing'." })
         assertTrue(analysis(values[1]).sites.all { it.problem == null && it.target == null })
+    }
+
+    fun testMarkupColorsOverrideXmlStringsAndKeepResolvedAndUnresolvedPathsDistinct() {
+        val file = configure("""<Button Content="{x:Bind model.item.name, Mode=OneWay}"/><Button Content="{x:Bind model.item.missing}"/><Button Content="{Binding Path=Title}"/>""")
+        val editor = myFixture.editor as EditorEx
+        for (schemeName in listOf("Default", "Darcula")) {
+            editor.colorsScheme = EditorColorsManager.getInstance().getScheme(schemeName)!!.clone() as com.intellij.openapi.editor.colors.EditorColorsScheme
+            val highlights = allowAnalysisOnEdt { myFixture.doHighlighting() }
+            fun at(token: String, key: com.intellij.openapi.editor.colors.TextAttributesKey) = highlights.any {
+                it.forcedTextAttributesKey == key && file.text.substring(it.startOffset, it.endOffset) == token
+            }
+            assertTrue(highlights.toString(), at("x:Bind", WinRTXamlMarkupColors.EXTENSION))
+            assertTrue(at("Mode", WinRTXamlMarkupColors.OPTION))
+            assertTrue(at("name", WinRTXamlMarkupColors.MEMBER))
+            assertFalse(at("missing", WinRTXamlMarkupColors.MEMBER))
+            assertFalse(at("Title", WinRTXamlMarkupColors.MEMBER)) // Binding's DataContext is supplied at runtime.
+            assertTrue(highlights.any { it.severity == HighlightSeverity.ERROR && it.description == "Unresolved x:Bind member 'missing'." })
+            assertTrue(highlights.any { it.forcedTextAttributes === TextAttributes.ERASE_MARKER })
+            fun foreground(offset: Int): java.awt.Color? {
+                val state = IterationState(editor, offset, offset + 1, null, false, false, false, false)
+                return state.mergedAttributes.foregroundColor
+            }
+            val path = file.text.indexOf("{Binding Path=Title}") + "{Binding Path=".length
+            val keyword = file.text.indexOf("x:Bind model")
+            assertEquals("$schemeName unresolved dynamic path must use editor text", editor.colorsScheme.defaultForeground, foreground(path))
+            assertEquals("$schemeName extension must use its themed keyword color", editor.colorsScheme.getAttributes(WinRTXamlMarkupColors.EXTENSION).foregroundColor, foreground(keyword))
+        }
+    }
+
+    fun testQuotedArgumentsAreStringsAndLiteralXmlValuesAreUnaffected() {
+        val file = configure("""<Button Content="{x:Bind decorate(&quot;hello, Path=literal&quot;, 42), Mode=OneWay}"/><Button Content="{}literal {x:Bind missing}"/><Button Content="plain green text"/>""")
+        val highlights = allowAnalysisOnEdt { myFixture.doHighlighting() }
+        val syntax = highlights.filter { it.forcedTextAttributesKey?.externalName?.startsWith("WINRT_XAML_") == true }
+        assertTrue(syntax.toString(), syntax.any { it.forcedTextAttributesKey == WinRTXamlMarkupColors.STRING && file.text.substring(it.startOffset, it.endOffset) == "&quot;hello, Path=literal&quot;" })
+        assertTrue(syntax.any { it.forcedTextAttributesKey == WinRTXamlMarkupColors.NUMBER && file.text.substring(it.startOffset, it.endOffset) == "42" })
+        assertTrue(syntax.any { it.forcedTextAttributesKey == WinRTXamlMarkupColors.METHOD && file.text.substring(it.startOffset, it.endOffset) == "decorate" })
+        assertEquals(1, syntax.count { it.forcedTextAttributesKey == WinRTXamlMarkupColors.OPTION })
+        assertTrue(syntax.filter { it.forcedTextAttributesKey != WinRTXamlMarkupColors.ATTRIBUTE }.all { it.endOffset < file.text.indexOf("{}literal") })
+        val xml = myFixture.configureByText("Plain.xml", """<Button xmlns:x="${WinRTXamlCatalog.XAML}" Content="{x:Bind missing}"/>""")
+        assertFalse(myFixture.doHighlighting().any { it.forcedTextAttributesKey?.externalName?.startsWith("WINRT_XAML_") == true })
+        assertNotNull(xml)
     }
 
     fun testTemplateDataTypeAndNamesDoNotLeakAcrossScopes() {

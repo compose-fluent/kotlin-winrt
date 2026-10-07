@@ -174,8 +174,19 @@ class WinRTXamlBindingAnnotator : Annotator {
     override fun annotate(element: PsiElement, holder: AnnotationHolder) {
         val value = element as? XmlAttributeValue ?: return
         val result = WinRTXamlBindingAnalysis.forValue(value) ?: return
-        for (site in result.sites) site.problem?.let { problem ->
-            holder.newAnnotation(HighlightSeverity.ERROR, problem).range(site.range.shiftRight(value.textRange.startOffset)).create()
+        for (site in result.sites) {
+            val range = site.range.shiftRight(value.textRange.startOffset)
+            if (range.isEmpty) continue
+            if (site.problem != null) {
+                holder.newAnnotation(HighlightSeverity.ERROR, site.problem).range(range).create()
+            } else if (site.target != null) {
+                val color = when (site.target) {
+                    is org.jetbrains.kotlin.psi.KtNamedFunction -> WinRTXamlMarkupColors.METHOD
+                    is org.jetbrains.kotlin.psi.KtClassOrObject -> WinRTXamlMarkupColors.TYPE
+                    else -> WinRTXamlMarkupColors.MEMBER
+                }
+                holder.newSilentAnnotation(HighlightSeverity.TEXT_ATTRIBUTES).range(range).textAttributes(color).create()
+            }
         }
     }
 }

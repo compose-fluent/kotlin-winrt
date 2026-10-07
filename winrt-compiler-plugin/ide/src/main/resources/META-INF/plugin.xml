@@ -26,11 +26,15 @@
         <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlReferenceContributor"/>
         <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlEventAnnotator"/>
         <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlBindingAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlMarkupAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeAnnotator"/>
+        <colorSettingsPage implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlColorSettingsPage"/>
         <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceContributor"/>
         <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceAnnotator"/>
-        <completion.contributor language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceCompletion"/>
+        <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceCompletion"/>
         <codeInsight.lineMarkerProvider language="kotlin" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlRelatedMarker"/>
         <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation"/>
+        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeNavigation"/>
         <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameReferencesSearch"/>
         <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameProcessor"/>
         <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlClassRenameProcessor" order="last"/>

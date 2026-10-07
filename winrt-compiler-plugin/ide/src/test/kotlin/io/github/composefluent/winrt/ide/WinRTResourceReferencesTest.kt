@@ -29,14 +29,31 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         myFixture.addFileToProject("assets/Assets/Logo.scale-200.png", "probe")
         myFixture.addFileToProject("assets/Strings/en-US/Resources.resw", """<root><data name="AppName"><value>Application</value></data><data name="Greeting.Text"><value>Hello</value></data></root>""")
         myFixture.addFileToProject("assets/Strings/zh-CN/Resources.resw", """<root><data name="AppName"><value>应用</value></data></root>""")
+        val metadata = myFixture.addFileToProject("Controls.winmd", "")
+        io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Controls", listOf(
+            io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Page"),
+            io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.TextBlock"),
+            io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Media.SolidColorBrush"),
+            io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.ResourceDictionary"),
+        ), mapOf("Microsoft.UI.Xaml.Controls.TextBlock" to io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeMembers(
+            properties = listOf("Foreground", "Style", "Tag").map { property -> io.github.composefluent.winrt.metadata.WinRTXamlApplicationProperty(
+                property, io.github.composefluent.winrt.metadata.WinRTTypeRef.named("String")) })),
+            java.nio.file.Path.of(metadata.virtualFile.path), emptyMap())
+        val metadataInput = myFixture.addFileToProject("resource-editor-input.json", kotlinx.serialization.json.buildJsonObject {
+            put("ReferenceAssemblies", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.buildJsonObject {
+                put("FullPath", kotlinx.serialization.json.JsonPrimitive(metadata.virtualFile.path))
+            }) })
+        }.toString())
         val module = WinRTModuleData(":", directory, "$directory/build", "2.4.0", "", listOf(
             WinRTSourceSetData("main", listOf(directory), emptyList(), listOf("$directory/assets"))),
-            emptyList(), emptyList(), emptyList(), listOf(WinRTXamlCompilationData("analyze", listOf(directory), "", "", "", "")))
+            emptyList(), emptyList(), emptyList(), listOf(WinRTXamlCompilationData("analyze", listOf(directory), "", metadataInput.virtualFile.path, "", "")))
         val index = project.service<WinRTResourceIndex>()
+        val catalog = project.service<io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalogService>()
         project.service<WinRTProjectService>().replaceBuildModels(directory, listOf(module))
         PlatformTestUtil.waitWithEventsDispatching("Resource files indexed", {
             index.forFile(file.virtualFile.path)?.entries?.size == 4
         }, 10)
+        PlatformTestUtil.waitWithEventsDispatching("WinMD catalog indexed", { catalog.forFile(file.virtualFile.path) != null }, 10)
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         myFixture.configureFromExistingVirtualFile(file.virtualFile)
         return file
@@ -67,6 +84,28 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         myFixture.editor.caretModel.moveToOffset(document.text.indexOf("{StaticResource ") + "{StaticResource ".length)
         myFixture.complete(CompletionType.BASIC)
         assertTrue(myFixture.lookupElementStrings.toString(), myFixture.lookupElementStrings.orEmpty().containsAll(listOf("Accent", "Alternate", "MergedAccent")))
+    }
+
+    fun testStaticAndThemeResourceColorsAndDiagnosticsUseOnlyTheKeySpan() {
+        val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Page.Resources><SolidColorBrush x:Key="Accent.Brush"/></Page.Resources><TextBlock Foreground="{StaticResource Accent.Brush}"/><TextBlock Foreground="{ThemeResource ResourceKey=Accent.Brush}"/><TextBlock Foreground="{ThemeResource Missing}"/></Page>""")
+        val values = file.rootTag!!.findSubTags("TextBlock").map { it.getAttribute("Foreground")!!.valueElement!! }
+        for (value in values) assertNotNull(value.text, io.github.composefluent.winrt.ide.xaml.WinRTXamlMarkupHighlighting.parse(value)?.resourceKey)
+        assertEquals(1, WinRTResourceReferences.reference(values[0])!!.multiResolve(false).size)
+        assertEquals(1, WinRTResourceReferences.reference(values[1])!!.multiResolve(false).size)
+        assertEquals(0, WinRTResourceReferences.reference(values[2])!!.multiResolve(false).size)
+        val highlights = myFixture.doHighlighting()
+        val resolved = highlights.filter { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinRTXamlMarkupColors.RESOURCE }
+        assertEquals(highlights.map { "${it.forcedTextAttributesKey}: ${it.description}" }.toString(), 2, resolved.size)
+        assertTrue(resolved.all { file.text.substring(it.startOffset, it.endOffset) == "Accent.Brush" })
+        val extensions = highlights.filter { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinRTXamlMarkupColors.EXTENSION }
+        assertEquals(setOf("StaticResource", "ThemeResource"), extensions.map { file.text.substring(it.startOffset, it.endOffset) }.toSet())
+        val unknown = highlights.single { it.description?.startsWith("No resource source candidate") == true }
+        assertEquals("Missing", file.text.substring(unknown.startOffset, unknown.endOffset))
+        val key = file.rootTag!!.findSubTags("TextBlock")[0].getAttribute("Foreground")!!.valueElement!!
+        val reference = WinRTResourceReferences.reference(key)!!
+        assertEquals("Accent.Brush", reference.rangeInElement.substring(key.text))
+        WriteCommandAction.runWriteCommandAction(project) { reference.handleElementRename("RenamedAccent") }
+        assertTrue(file.text.contains("{StaticResource RenamedAccent}"))
     }
 
     fun testReferencesReadUnsavedReswAndPreserveUriOnExactFileRename() {
@@ -108,7 +147,10 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         val index = project.service<WinRTResourceIndex>()
         val lookup = index.read(module, listOf(module))
         assertEquals(setOf(generic.virtualFile.path, system.virtualFile.path), lookup.frameworkDictionaries.map { it.replace('\\', '/') }.toSet())
-        index.publish(listOf(lookup))
+        projects.replaceBuildModels(module.projectDirectory, listOf(module))
+        PlatformTestUtil.waitWithEventsDispatching("Framework dictionaries indexed", {
+            index.forFile(file.virtualFile.path)?.frameworkDictionaries?.size == 2
+        }, 10)
         val text = file.rootTag!!.findFirstSubTag("TextBlock")!!
         fun target(value: XmlAttributeValue) = WinRTResourceReferences.reference(value)!!.multiResolve(false).single().element!!
         assertEquals(generic, target(text.getAttribute("Style")!!.valueElement!!).containingFile)
