@@ -73,6 +73,7 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.hotReloadGraphSession").orNull?.let { systemProperty("winrt.ide.hotReloadGraphSession", it) }
     providers.gradleProperty("winrt.ide.hotReloadGraphSource").orNull?.let { systemProperty("winrt.ide.hotReloadGraphSource", it) }
     providers.gradleProperty("winrt.ide.importProject").orNull?.let { systemProperty("winrt.ide.importProject", it) }
+    providers.gradleProperty("winrt.ide.recoveredHotReloadSession").orNull?.let { systemProperty("winrt.ide.recoveredHotReloadSession", it) }
 }
 
 intellijPlatform {

@@ -4,6 +4,8 @@ import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.impl.stores.IProjectStore
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder
 import com.intellij.openapi.externalSystem.model.DataNode
 import com.intellij.openapi.externalSystem.model.project.ProjectData
@@ -24,11 +26,18 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
 import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.xml.XmlFile
+import com.intellij.psi.xml.XmlTag
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
+import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadClient
+import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadService
+import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadLaunchState
+import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
@@ -106,6 +115,26 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 assertEquals("The native cache validates this exact path equality on reopen", info.externalProjectPath,
                     info.externalProjectStructure?.data?.linkedExternalProjectPath)
             }
+            // Optional actual WinUI process: persist the plugin through the
+            // platform component store, then reconnect from a new project service.
+            val savedLaunch = System.getProperty("winrt.ide.recoveredHotReloadSession")?.let { session ->
+                val clients = WinRTHotReloadClient.discover(Path.of(session))
+                require(clients.size == 1)
+                clients.single().use { client ->
+                    // runWindows can alias a variant's launch task for the same host.
+                    val launch = app.hotReloadLaunches.first { it.executable.replace('\\', '/').equals(
+                        client.process.info().command().orElseThrow().replace('\\', '/'), true) }
+                    val saved = WinRTHotReloadLaunchState(app.projectDirectory, launch.taskName, session,
+                        client.process.pid(), client.started.toString())
+                    val hot = imported.service<WinRTHotReloadService>()
+                    hot.automatic.value = false
+                    hot.loadState(saved)
+                    hot.reconnect()
+                    awaitHotReload(hot)
+                    assertEquals(saved, hot.getState())
+                    saved
+                }
+            }
             // Unit-test mode suppresses the automatic save scheduler. Persist
             // through the actual platform stores before closing this project.
             PlatformTestUtil.saveProject(imported, true)
@@ -145,6 +174,38 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             importFailure.get()?.let { throw AssertionError("Cached Gradle import failed", it) }
             PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
             assertEditingReady(imported, root)
+            if (savedLaunch != null) {
+                val hot = imported.service<WinRTHotReloadService>()
+                assertEquals("Native workspace store must restore the previous development launch", savedLaunch, hot.getState())
+                hot.automatic.value = false
+                hot.reconnect()
+                awaitHotReload(hot)
+                val running = hot.state.value.roots.single { it.className == "sample.hello.MainWindow" }
+                val source = restored.modules.value.single { it.projectPath == ":app" }.xamlCompilations
+                    .map { Json.parseToJsonElement(Files.readString(Path.of(it.inputFile))).jsonObject }
+                    .flatMap { it.getValue("XamlPages").jsonArray }.filter {
+                        it.jsonObject["MSBuild_Link"]?.jsonPrimitive?.content == running.resourcePath
+                    }.map { Path.of(it.jsonObject.getValue("FullPath").jsonPrimitive.content) }.distinct().single()
+                val before = Files.readString(source)
+                val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile)!!
+                try {
+                    val xml = PsiManager.getInstance(imported).findFile(virtualFile) as XmlFile
+                    fun greeting(tag: XmlTag): XmlTag? = if (tag.getAttributeValue("x:Name") == "Greeting") tag
+                        else tag.subTags.firstNotNullOfOrNull(::greeting)
+                    WriteCommandAction.runWriteCommandAction(imported) {
+                        greeting(xml.rootTag!!)!!.setAttribute("Text", "Reconnected from the restored IDE workspace")
+                        PsiDocumentManager.getInstance(imported).doPostponedOperationsAndUnblockDocument(document)
+                    }
+                    hot.apply()
+                    PlatformTestUtil.waitWithEventsDispatching("Restored service applies unsaved XAML to native WinUI", {
+                        hot.state.value.values.any { it.element == "Greeting" && it.property == "Text" &&
+                            it.value == "Reconnected from the restored IDE workspace" }
+                    }, 30)
+                    assertTrue(hot.state.value.roots.single { it.className == running.className }.version > running.version)
+                    assertEquals(before, Files.readString(source))
+                } finally { FileDocumentManager.getInstance().reloadFromDisk(document) }
+            }
         } finally {
             manager.saveAndForceCloseProject(imported)
             ApplicationManager.getApplication().runWriteAction {
@@ -153,6 +214,12 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                     .forEach { ProjectJdkTable.getInstance().removeJdk(it) }
             }
         }
+    }
+
+    private fun awaitHotReload(service: WinRTHotReloadService) {
+        PlatformTestUtil.waitWithEventsDispatching("Native WinUI development handshake", {
+            service.state.value.connected && !service.state.value.busy
+        }, 30)
     }
 
     private fun cacheModules(project: Project) = ProjectDataManager.getInstance()

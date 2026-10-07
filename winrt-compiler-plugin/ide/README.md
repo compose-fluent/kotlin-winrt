@@ -259,6 +259,17 @@ provides reconnect, disconnect, stop and rebuild/restart actions. Disconnect kee
 the application running; stopping verifies the lifetime of the process launched
 by this session. A disconnected build can be cancelled in its Gradle Run window.
 
+The IDE workspace saves the confirmed launch's module, task, session directory,
+process ID and start time, without its authentication token. After reopening a
+project, **Reconnect** restores the connection only after matching the imported
+launch, module-owned directory, executable and original process lifetime. Source
+fingerprints must still match before applying changes. Unconfirmed launches and
+expired/reused process IDs require a new session. Closing a project releases its
+connection while the application can continue running. Disconnect/reconnect/close
+cancel outstanding update jobs and close their sockets; an obsolete response
+cannot overwrite a newer session's state. Reconnect reconciles a patch that
+committed before its response was lost.
+
 The compiler records source fingerprints and named objects through XAMLC's existing
 connection path. Its existing typed member emitter supplies SDK property accessors
 only when development is enabled; SDK type-provider behavior remains unchanged.
@@ -314,6 +325,13 @@ and `-Pwinrt.ide.hotReloadResourcesSource=<MainWindow.xaml>` for a template with
 named Layout, local Accent brush/GreetingStyle and Greeting/Second TextBlocks. It
 checks native shared colors, sealed styles, effective font sizes, transactional
 rollback and subsequent brush changes through the SDK loader/accessors.
+`WinRTHotReloadServiceTest` validates native state serialization/service recreation,
+cancelled handshake/update sockets and lifetime rejection against a controlled
+loopback peer. Add `-Pwinrt.ide.recoveredHotReloadSession=<module session directory>`
+to `WinRTGradleImportTest` to save through the real project component store, close
+and reopen its imported project, recover the session and apply an unsaved Text edit
+to an existing WinUI application. This uses the native project lifecycle inside
+the platform host; full desktop IDE restart remains separate interactive acceptance.
 The common runtime engine compiles for `mingwX64`, but its development transport and
 end-to-end IDE support currently target JVM. Android Studio and other IDEA/Kotlin
 versions require their own adapter and UI validation.
