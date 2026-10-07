@@ -763,6 +763,7 @@ internal fun applicationHostSource(
 
     // Package activation forwards arguments, not the launching IDE's environment.
     // Consume the development opt-in before JVM creation; user main sees only its own arguments.
+    static int kotlin_winrt_preview_requested = 0;
     static int kotlin_winrt_development_arguments(int *argc, wchar_t **wargv) {
         const wchar_t *prefix = L"$WINAPP_HOT_RELOAD_ARGUMENT";
         const size_t prefix_length = wcslen(prefix);
@@ -776,6 +777,8 @@ internal fun applicationHostSource(
                     return 1;
                 }
                 enabled = 1;
+            } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
+                kotlin_winrt_preview_requested = 1;
             } else {
                 wargv[next++] = wargv[i];
             }
@@ -808,7 +811,8 @@ internal fun applicationHostSource(
             kotlin_winrt_close_application_host(env, application_host);
             return 1;
         }
-        main_class = (*env)->FindClass(env, "$mainClassPath");
+        main_class = (*env)->FindClass(env, kotlin_winrt_preview_requested ?
+            "io/github/composefluent/winrt/generated/xaml/KotlinWinRTXamlPreviewHost" : "$mainClassPath");
         if (main_class == NULL) {
             exit_code = 1;
             kotlin_winrt_handle_pending_exception(env);

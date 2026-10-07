@@ -38,11 +38,16 @@ class WinRTIdeModelBuilderTest {
         assertEquals(run.name, launch.taskName)
         assertEquals(run.deploymentDirectory.file("packaged-app.exe").get().asFile.absolutePath, launch.executable)
         assertEquals(run.deploymentDirectory.get().asFile.absolutePath, launch.workingDirectory)
+        assertNotEquals("A design session must discover its independent package process", launch.executable, launch.previewExecutable)
+        assertEquals(project.layout.buildDirectory.file("kotlin-winrt/application-preview/desktop_main/AppX/packaged-app.exe").get().asFile.absolutePath,
+            launch.previewExecutable)
         application.selfContained()
         assertTrue(builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.isEmpty())
         application.packageType.set(WindowsPackageType.None)
         assertEquals(listOf("runWinAppHostDesktopMain"),
             builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.map { it.taskName })
+        val unpackaged = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single()
+        assertEquals(unpackaged.executable, unpackaged.previewExecutable)
     }
 
     @Test

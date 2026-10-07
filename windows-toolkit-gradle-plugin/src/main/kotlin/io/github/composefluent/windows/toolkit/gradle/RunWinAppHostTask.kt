@@ -26,6 +26,7 @@ abstract class RunWinAppHostTask @Inject constructor(
         jvmArgs.convention(emptyList())
         environmentVariables.convention(emptyMap())
         supportsXamlHotReload.convention(false)
+        designPreview.convention(project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
     }
 
     @get:InputFile
@@ -47,6 +48,9 @@ abstract class RunWinAppHostTask @Inject constructor(
     /** Configuration fact exported to the IDE; the runtime still requires an explicit development session. */
     @get:Internal
     abstract val supportsXamlHotReload: org.gradle.api.provider.Property<Boolean>
+
+    @get:Internal
+    abstract val designPreview: org.gradle.api.provider.Property<Boolean>
 
     @get:Optional
     @get:OutputFile
@@ -73,6 +77,10 @@ abstract class RunWinAppHostTask @Inject constructor(
             spec.executable = hostExecutable.get().asFile.absolutePath
             spec.workingDir = workingDirectory.get().asFile
             spec.args(args.get())
+            if (designPreview.get()) {
+                check(supportsXamlHotReload.get()) { "The XAML preview host requires a JVM WinUI development launch." }
+                spec.args(io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ARGUMENT)
+            }
             val configuredEnvironment = environmentVariables.get()
             spec.environment(configuredEnvironment)
             val configuredJvmArgs = jvmArgs.get()

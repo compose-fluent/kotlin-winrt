@@ -22,11 +22,12 @@ interface WinRTIdeModel : Serializable {
     val restoreLockFiles: List<String>
     val hotReloadLaunches: List<HotReloadLaunch>
 
-    /** Existing unpackaged JVM launch tasks, including their configured host paths. */
+    /** Development JVM launch tasks and isolated preview host paths. */
     interface HotReloadLaunch : Serializable {
         val taskName: String
         val executable: String
         val workingDirectory: String
+        val previewExecutable: String
     }
 
     /** Actual staging/restore outputs, which need not exist during synchronization. */
@@ -70,6 +71,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 4
+        const val SCHEMA_VERSION: Int = 5
     }
 }

@@ -47,6 +47,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
 
     @get:Input
     abstract val developmentIdentity: Property<Boolean>
+    @get:Input abstract val developmentIdentitySuffix: Property<String>
 
     @get:Input
     abstract val minWindowsVersion: Property<String>
@@ -201,6 +202,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
     init {
         generateProjectPri.convention(true)
         developmentIdentity.convention(false)
+        developmentIdentitySuffix.convention("dev")
         minWindowsVersion.convention("")
         maxVersionTested.convention(windowsSdkVersion)
         projectPriIndexName.convention("")
@@ -257,7 +259,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             outputRoot.resolve("AppxManifest.xml"), minWindowsVersion.get(), maxVersionTested.get(),
         )
         val developmentIndexName = if (developmentIdentity.get()) {
-            AppxManifestPackageSupport.useDevelopmentIdentity(outputRoot.resolve("AppxManifest.xml"))
+            AppxManifestPackageSupport.useDevelopmentIdentity(outputRoot.resolve("AppxManifest.xml"), developmentIdentitySuffix.get())
         } else null
         val restoredPackageRoots = winAppRestoreLockFiles.files
             .filter(java.io.File::isFile)

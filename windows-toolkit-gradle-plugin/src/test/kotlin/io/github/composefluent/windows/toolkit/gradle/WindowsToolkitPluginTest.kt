@@ -916,6 +916,7 @@ class WindowsToolkitPluginTest {
         val page = root.resolve("src/winuiMain/kotlin/sample/Page.xaml")
         Files.createDirectories(page.parent)
         Files.writeString(page, """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Page"/>""")
+        Files.writeString(page.resolveSibling("Page.kt"), "package sample\nclass Page : microsoft.ui.xaml.controls.Page()")
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
@@ -923,7 +924,12 @@ class WindowsToolkitPluginTest {
             mingwX64("winuiMingw")
         }
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        // The toolkit attaches winuiMain and XAML sources after evaluation, just
+        // as a consumer build does before resolving its compiler arguments.
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
         assertEquals(false, (project.extensions.extraProperties.get("kotlinWinRTLocalGenerationRequired") as org.gradle.api.provider.Provider<*>).get())
+        assertEquals(winRTSourceRootOwners(project).toString(), true,
+            (project.extensions.extraProperties.get("kotlinWinRTXamlSourcesPresent") as org.gradle.api.provider.Provider<*>).get())
         listOf("compileKotlinWinuiJvm", "compileKotlinWinuiMingw").forEach { name ->
             val compile = project.tasks.named(name).get()
             val args = when (compile) {

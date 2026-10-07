@@ -78,7 +78,8 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                 project.tasks.withType(RunWinAppHostTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath)
                 } + project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
-                    IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath)
+                    IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath,
+                        it.previewHostExecutable.get().asFile.absolutePath)
                 }).sortedBy { it.taskName },
         )
     }
@@ -110,6 +111,7 @@ private data class IdeHotReloadLaunch(
     override val taskName: String,
     override val executable: String,
     override val workingDirectory: String,
+    override val previewExecutable: String = executable,
 ) : WinRTIdeModel.HotReloadLaunch
 
 private data class IdePackageLayout(

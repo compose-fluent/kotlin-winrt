@@ -80,9 +80,13 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal
     abstract val supportsXamlHotReload: Property<Boolean>
 
+    @get:Internal
+    abstract val designPreview: Property<Boolean>
+
     /** Actual deployed executable, rather than the pre-registration input layout. */
     @get:Internal
     abstract val hostExecutable: org.gradle.api.file.RegularFileProperty
+    @get:Internal abstract val previewHostExecutable: org.gradle.api.file.RegularFileProperty
 
     init {
         packageType.convention(WindowsPackageType.Packaged.name)
@@ -98,6 +102,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
         offline.convention(false)
         developmentSessionDirectory.convention(project.providers.environmentVariable(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY))
         supportsXamlHotReload.convention(false)
+        designPreview.convention(project.providers.environmentVariable(WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
+        previewHostExecutable.convention(hostExecutable)
         outputs.upToDateWhen { false }
     }
 
@@ -140,7 +146,10 @@ abstract class RunWinAppPackageTask @Inject constructor(
             offline = offline.get(),
             logger = logger,
         ).resolve()
-        val applicationArguments = winAppDevelopmentArguments(args.get(),
+        val applicationArguments = winAppDevelopmentArguments(if (designPreview.get()) {
+            check(supportsXamlHotReload.get()) { "The XAML preview host requires a JVM WinUI development launch." }
+            WinRTXamlHotReloadProtocol.PREVIEW_ARGUMENT
+        } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
         val arguments = buildList {
             add("run")

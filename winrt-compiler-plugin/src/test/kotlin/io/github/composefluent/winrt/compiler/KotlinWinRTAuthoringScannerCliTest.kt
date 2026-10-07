@@ -15,6 +15,24 @@ import kotlin.io.path.writeText
 
 class KotlinWinRTAuthoringScannerCliTest {
     @Test
+    fun generated_preview_application_participates_in_application_override_authoring() {
+        // Like CsWinRT's Application subclass, the generated design host needs
+        // an authored IApplicationOverrides so native OnLaunched reaches Kotlin.
+        val root = Files.createTempDirectory("kotlin-winrt-preview-authoring-")
+        io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList())
+        val index = root.resolve("index.tsv")
+        index.writeText("Microsoft.UI.Xaml.Application\tRuntimeClass\tMicrosoft.UI.Xaml.IApplicationOverrides\n" +
+            "Microsoft.UI.Xaml.IApplicationOverrides\tInterface\t\n")
+        val output = root.resolve("candidates.tsv")
+        KotlinWinRTAuthoringScannerCli.main(arrayOf("--metadata-index", index.toString(),
+            "--source-root", root.toString(), "--output", output.toString()))
+        val candidate = KotlinWinRTAuthoringCandidateFile.read(output).single()
+        assertEquals("io.github.composefluent.winrt.generated.xaml.KotlinWinRTXamlPreviewApplication", candidate.sourceTypeName)
+        assertEquals(listOf("Microsoft.UI.Xaml.IApplicationOverrides"), candidate.overridableInterfaceNames)
+        assertTrue(!candidate.isPublic)
+    }
+
+    @Test
     fun xaml_pages_share_the_authored_candidate_and_validate_the_declared_base() {
         // XamlCompiler's generated C# partial adds IComponentConnector to the page itself;
         // the source scanner must predict the same interface as our FIR extension.

@@ -265,6 +265,13 @@ private fun readDependencyCompilerSupportFileRecords(identityFiles: Iterable<Fil
                 .map { record -> record.copy(group = "dependency-$index-${record.group}") }
         }
 
+/** The preview uses the same dependency XAML registrars as generated page loading. */
+internal fun dependencyXamlRegistrarNames(identityFiles: Iterable<File>): List<String> =
+    readDependencyCompilerSupportFileRecords(identityFiles).filter { it.fileName == "xaml-type-registrars.tsv" }
+        .flatMap { it.content.lineSequence().drop(1).filter(String::isNotBlank).toList() }.distinct().sorted().onEach {
+            require(it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+"))) { "Invalid dependency XAML registrar: $it" }
+        }
+
 private fun readDependencyCompilerSupportFileRecordsFromIdentity(identityFile: File): List<CompilerSupportFileRecord> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     val arrayContent = readIdentityJsonArrayContent(content, "compilerSupportFileRecords") ?: return emptyList()

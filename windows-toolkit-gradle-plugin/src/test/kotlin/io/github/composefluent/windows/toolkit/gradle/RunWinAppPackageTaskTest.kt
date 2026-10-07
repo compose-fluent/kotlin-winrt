@@ -84,11 +84,12 @@ class RunWinAppPackageTaskTest {
         task.developmentIdentity.set(true)
         task.minWindowsVersion.set("10.0.19041.0")
         task.windowsSdkVersion.set("10.0.26100.0")
-        repeat(2) {
+        listOf("dev", "preview", "preview").forEach { suffix ->
+            task.developmentIdentitySuffix.set(suffix)
             task.stage()
             val staged = Files.readString(root.resolve("output/AppxManifest.xml"))
-            assertTrue(staged, staged.contains("Name=\"KotlinWinRT.RunTest.dev\""))
-            assertTrue(staged, staged.contains("ms-resource://KotlinWinRT.RunTest.dev/Resources/AppName"))
+            assertTrue(staged, staged.contains("Name=\"KotlinWinRT.RunTest.$suffix\""))
+            assertTrue(staged, staged.contains("ms-resource://KotlinWinRT.RunTest.$suffix/Resources/AppName"))
             assertTrue(staged, staged.contains("Id=\"App\""))
             assertEquals(original, Files.readString(input.resolve("AppxManifest.xml")))
         }
@@ -167,10 +168,11 @@ class RunWinAppPackageTaskTest {
         write(root.resolve("build output/App.exe"), "test executable")
         write(root.resolve("build output/Assets/Logo.png"), "test logo")
 
-        fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null) =
+        fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null, preview: Boolean = false) =
             GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
-                .withEnvironment(System.getenv().filterKeys { it != "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" } +
-                    (session?.let { mapOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" to it) } ?: emptyMap()))
+                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW") } +
+                    (session?.let { mapOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" to it) } ?: emptyMap()) +
+                    if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1") else emptyMap())
                 .withArguments(listOf("runFixture", "--configuration-cache", "--offline", "--stacktrace") + options)
         val first = runner().build()
         assertEquals(TaskOutcome.SUCCESS, first.task(":runFixture")?.outcome)
@@ -210,6 +212,11 @@ class RunWinAppPackageTaskTest {
         val nextInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
         assertTrue(nextInvocation, nextInvocation.contains(nextSession))
         assertFalse(nextInvocation, nextInvocation.contains(firstSession))
+        runner(session = nextSession, preview = true).build()
+        val previewInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
+        assertTrue(previewInvocation, previewInvocation.contains("--kotlin-winrt-xaml-preview"))
+        assertTrue(previewInvocation, previewInvocation.contains(nextSession))
+        assertFalse(previewInvocation, previewInvocation.contains("hello world"))
         runner(listOf("--no-launch"), session = nextSession).build()
         assertFalse(Files.readAllLines(root.resolve("invocations.log")).last().contains(WINAPP_HOT_RELOAD_ARGUMENT))
         runner(listOf("--no-launch", "-PsdkApi=10.0.28000.0", "-Pminimum=10.0.22000.0")).build()

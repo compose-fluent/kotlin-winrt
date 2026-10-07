@@ -126,6 +126,7 @@ internal fun configureWinRTXamlPipeline(
                 .get().dependencyIdentityFiles
         })
         task.emitSources.set(hasXaml)
+        task.previewHost.set(extension.applicationEnabled)
         task.onlyIf { hasXaml.get() || exportsLibrarySchema.get() }
         task.dependsOn(removeStaleXaml)
     }

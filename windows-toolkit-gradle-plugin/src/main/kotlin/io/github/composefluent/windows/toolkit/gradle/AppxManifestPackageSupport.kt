@@ -75,15 +75,16 @@ internal object AppxManifestPackageSupport {
         writeXml(manifest, document)
     }
 
-    fun useDevelopmentIdentity(manifest: Path): String {
+    fun useDevelopmentIdentity(manifest: Path, suffix: String = "dev"): String {
+        require(suffix in setOf("dev", "preview")) { "Unsupported development identity suffix" }
         val document = requireNotNull(readXml(manifest)) { "Cannot read development package manifest: $manifest" }
         val identity = requireNotNull(document.documentElement.childElements("Identity").firstOrNull()) {
             "Development package manifest must declare Identity: $manifest"
         }
         val originalName = identity.getAttribute("Name")
-        val developmentName = "$originalName.dev"
+        val developmentName = "$originalName.$suffix"
         require(originalName.isNotBlank() && developmentName.length <= 50) {
-            "Package Identity Name must contain 1 to 46 characters to append the development suffix '.dev': $originalName"
+            "Package Identity Name must contain 1 to ${49 - suffix.length} characters to append the development suffix '.$suffix': $originalName"
         }
         identity.setAttribute("Name", developmentName)
         // Absolute references into the application's resource map must follow the new identity.

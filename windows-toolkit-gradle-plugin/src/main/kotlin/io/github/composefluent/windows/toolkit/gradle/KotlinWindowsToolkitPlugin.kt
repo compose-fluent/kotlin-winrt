@@ -1494,12 +1494,15 @@ private fun configureWinAppTasks(
         }
     }
     val developmentPackageTask = registerApplicationPackageStage("stageWinAppDevelopmentPackage")
+    val designPreview = project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT)
+        .map { it == "1" }.orElse(false)
     developmentPackageTask.configure { task ->
         task.description = "Stages an isolated development identity and regenerates its application PRI."
         task.runtimeAssetsDirectory.set(applicationPackageDirectory)
         task.developmentIdentity.set(true)
+        task.developmentIdentitySuffix.set(designPreview.map { if (it) "preview" else "dev" })
         task.outputDirectory.set(project.layout.buildDirectory.dir(
-            selectedVariant.map { "kotlin-winrt/application-run/${it.id.toSafeDirectoryName()}/input" },
+            selectedVariant.zip(designPreview) { variant, preview -> "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.id.toSafeDirectoryName()}/input" },
         ))
         task.resourceResolutionReport.set(project.layout.buildDirectory.file(
             selectedVariant.map { "kotlin-winrt/reports/${it.id.toSafeDirectoryName()}/development-appx-resource-resolution.json" },
@@ -1523,7 +1526,7 @@ private fun configureWinAppTasks(
             task.packageDirectory.set(developmentPackageTask.flatMap { it.outputDirectory })
             task.deploymentDirectory.set(
                 project.layout.buildDirectory.dir(
-                    selectedVariant.map { "kotlin-winrt/application-run/${it.id.toSafeDirectoryName()}/AppX" },
+                    selectedVariant.zip(designPreview) { variant, preview -> "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.id.toSafeDirectoryName()}/AppX" },
                 ),
             )
             task.packageType.set(options.packageType.map { it.name })
@@ -1537,6 +1540,9 @@ private fun configureWinAppTasks(
                 jvmPackage && deployment != WindowsAppSdkDeployment.SelfContained
             })
             task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
+            task.previewHostExecutable.set(project.layout.buildDirectory.dir(
+                selectedVariant.map { "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/AppX" }
+            ).flatMap { directory -> applicationHostTask.flatMap { it.executableBaseName }.map { directory.file("$it.exe") } })
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
             task.winAppCliCacheDirectory.set(
                 project.layout.dir(project.provider {
