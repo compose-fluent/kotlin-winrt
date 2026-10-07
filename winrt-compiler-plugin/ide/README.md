@@ -93,6 +93,9 @@ the Windows compiler and the IDE FIR adapter together. It validates unsaved
 name addition/removal/rename, generated members and unresolved-reference
 diagnostics, preservation across model reimport, invalid markup and temporary
 cleanup. Only SDK contracts are fixture sources; named properties come from FIR.
+It also observes a live child XAMLC process, cancels the analysis invocation,
+and verifies process exit, removal of its owned temporary snapshot and unchanged
+source files.
 Supply `-Pwinrt.ide.xamlInput=<prepared input.json>` and
 `-Pwinrt.ide.xamlCompiler=<compiler directory>` to enable it. Newly added XAML
 files and changes requiring a new Kotlin application schema still require

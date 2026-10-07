@@ -10,11 +10,14 @@ import com.intellij.facet.FacetManager
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
+import io.github.composefluent.winrt.ide.analysis.WinRTXamlDocumentCompiler
+import io.github.composefluent.winrt.ide.analysis.WinRTXamlDocument
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.gradle.WinRTXamlCompilationData
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.metadata.WinRTXamlDeclarations
 import kotlinx.serialization.json.*
+import kotlinx.coroutines.*
 import org.junit.Assume.assumeTrue
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
@@ -30,10 +33,70 @@ import org.jetbrains.kotlin.psi.KtFile
 import java.util.jar.JarOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 
 /** Optional Windows integration fixture from a prepared declaration pass; never edits its source or outputs. */
 @OptIn(KaExperimentalApi::class, KaAllowAnalysisOnEdt::class)
 class WinRTXamlDocumentCompilerTest : BasePlatformTestCase() {
+    fun testCancellingLiveXamlCompilationTerminatesTheOwnedProcessAndRemovesItsSnapshot() {
+        val prepared = Path.of(requireNotNull(System.getProperty("winrt.ide.xamlInput")))
+        val compilerDirectory = requireNotNull(System.getProperty("winrt.ide.xamlCompiler"))
+        val input = Json.parseToJsonElement(Files.readString(prepared)).jsonObject
+        val source = input.getValue("XamlPages").jsonArray.map {
+            Path.of(it.jsonObject.getValue("FullPath").jsonPrimitive.content)
+        }.first { Files.readString(it).contains("</StackPanel>") }
+        val original = Files.readString(source)
+        // Keep the real DOM/harvester busy long enough to observe its process;
+        // all input identities/references still come from the prepared pass.
+        val expanded = original.replaceFirst("</StackPanel>",
+            "<TextBlock Text=\"Cancellation probe\"/>".repeat(12_000) + "</StackPanel>")
+        val cache = Files.createTempDirectory("winrt-ide-cancel-")
+        val compilation = WinRTXamlCompilationData("analyzeWinRTXaml", listOf(source.parent.toString()),
+            prepared.parent.resolve("declarations.json").toString(), prepared.toString(), compilerDirectory, "")
+        var owned: ProcessHandle? = null
+        try {
+            runBlocking {
+                val previous = ProcessHandle.current().children().use { children -> children.map { it.pid() }.toList().toSet() }
+                val worker = async(Dispatchers.IO) {
+                    WinRTXamlDocumentCompiler.harvest(compilation, listOf(WinRTXamlDocument(source.toString(), expanded, 1)), cache)
+                }
+                try {
+                    withTimeout(15_000) {
+                        val executable = Path.of(compilerDirectory).resolve("XamlCompiler.exe").toAbsolutePath().normalize()
+                        while (owned == null) {
+                            owned = ProcessHandle.current().children().use { children -> children.filter { child ->
+                                child.pid() !in previous && child.info().command().map {
+                                    Path.of(it).toAbsolutePath().normalize() == executable
+                                }.orElse(false)
+                            }.toList().singleOrNull() }
+                            if (owned == null && worker.isCompleted) {
+                                worker.await()
+                                error("The compiler finished before its live process could be observed.")
+                            }
+                            if (owned == null) delay(10)
+                        }
+                    }
+                    assertTrue(owned!!.isAlive)
+                    withTimeout(10_000) { worker.cancelAndJoin() }
+                    assertTrue(worker.isCancelled)
+                    assertFalse("Cancelled XAMLC process must exit", owned!!.isAlive)
+                    Files.list(cache).use { assertEquals("Cancelled snapshots must be removed", 0L, it.count()) }
+                    assertEquals(original, Files.readString(source))
+                } finally { withContext(NonCancellable) { worker.cancelAndJoin() } }
+            }
+        } finally {
+            // Preserve the assertion above while also cleaning up a failed test.
+            // Never remove a snapshot while its observed compiler is still alive.
+            owned?.takeIf { it.isAlive }?.let { child ->
+                child.destroyForcibly()
+                child.onExit().get(10, TimeUnit.SECONDS)
+            }
+            check(cache.toRealPath().parent == Path.of(System.getProperty("java.io.tmpdir")).toRealPath())
+            check(cache.fileName.toString().startsWith("winrt-ide-cancel-"))
+            FileUtil.delete(cache.toFile())
+        }
+    }
+
     fun testUnsavedNameIsHarvestedByTheRealXamlCompilerWithoutChangingTheOriginalFile() {
         val inputProperty = System.getProperty("winrt.ide.xamlInput")
         val compilerProperty = System.getProperty("winrt.ide.xamlCompiler")
