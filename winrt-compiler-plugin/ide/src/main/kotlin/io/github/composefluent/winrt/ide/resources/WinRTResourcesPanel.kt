@@ -1,11 +1,9 @@
 package io.github.composefluent.winrt.ide.resources
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,18 +22,20 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
+import io.github.composefluent.winrt.ide.ui.*
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun WinRTResourcesPanel(project: Project) {
     val service = project.service<WinRTProjectService>()
     val modules by service.modules.collectAsState()
     val fileRevision by project.service<WinRTResourceChanges>().revision.collectAsState()
-    var moduleKey by remember { mutableStateOf("") }
-    val module = modules.firstOrNull { it.projectDirectory == moduleKey } ?: modules.firstOrNull()
-    var selection by remember(module?.projectDirectory) { mutableStateOf("main") }
+    val module = selectedWinRTModule(project)
+    val defaultSource = module?.sourceSets?.firstOrNull { it.appxResourceRoots.isNotEmpty() } ?: module?.sourceSets?.firstOrNull()
+    var selection by remember(module?.projectDirectory) { mutableStateOf(defaultSource?.name.orEmpty()) }
     var revision by remember { mutableIntStateOf(0) }
     var inventory by remember { mutableStateOf<WinRTResourceInventory?>(null) }
     var selected by remember { mutableStateOf<WinRTResourceEntry?>(null) }
@@ -58,22 +58,18 @@ fun WinRTResourcesPanel(project: Project) {
         translationErrors = withContext(Dispatchers.IO) { WinRTReswTranslations.inspect(project, inventory?.entries.orEmpty()) }
     }
     Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            modules.forEach { candidate -> DefaultButton(onClick = { moduleKey = candidate.projectDirectory }) { Text(candidate.projectPath) } }
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            module?.sourceSets?.forEach { candidate -> DefaultButton(onClick = { selection = candidate.name }) { Text(candidate.name) } }
-            module?.packageLayouts?.forEach { candidate -> DefaultButton(onClick = { selection = candidate.taskName }) { Text("Package: ${candidate.variant}") } }
-        }
-        Text(inventory?.label ?: "Select a Kotlin WinRT module and source set.")
-        Text("File overrides are resolved by staging. PRI chooses language, scale and other resource candidates at runtime.")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Application resources")
+        WinRTModulePicker(project)
+        WinRTChoice("Resource scope", module?.let { current -> current.sourceSets.filter { it.appxResourceRoots.isNotEmpty() }.map {
+            it.name to "Source files · ${it.name}"
+        } + current.packageLayouts.map { it.taskName to "Staged package · ${it.variant}" } }.orEmpty(), selection) { selection = it }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             DefaultButton(onClick = { revision++ }) { Text("Refresh") }
             if (layout != null && module != null) DefaultButton(onClick = {
                 WinRTGradleTasks.run(project, module, listOf(layout.taskName), "Stage ${layout.variant}") { revision++ }
             }) { Text("Stage variant") }
             sourceSet?.appxResourceRoots?.lastOrNull()?.let { root ->
-                DefaultButton(onClick = { service.openFile(root) }) { Text("Open resource root") }
+                DefaultButton(onClick = { service.openFile(root) }) { Text("Open folder") }
                 DefaultButton(onClick = {
                     error = null
                     val files = FileChooser.chooseFiles(FileChooserDescriptor(true, false, false, false, false, true), project, null)
@@ -92,11 +88,14 @@ fun WinRTResourcesPanel(project: Project) {
         (error ?: inventory?.error)?.let { Text(it) }
         TextField(filter, placeholder = { Text("Filter package paths / resource families") }, modifier = Modifier.fillMaxWidth())
         selected?.let { entry ->
-            Text("${entry.owner}: ${entry.source}")
-            entry.sourceArchive?.let { Text("Archive: $it") }
-            if (entry.overrides.isNotEmpty()) Text("Override chain: ${(entry.overrides + entry.source).joinToString(" → ")}")
-            DefaultButton(onClick = { service.openFile(entry.source) }) { Text("Open source") }
+            Text(entry.target)
             ResourcePreview(entry.source)
+            DefaultButton(onClick = { service.openFile(entry.source) }) { Text("Open source") }
+            WinRTDetails("file details") {
+                Text("${entry.owner}: ${entry.source}")
+                entry.sourceArchive?.let { Text("Archive: $it") }
+                if (entry.overrides.isNotEmpty()) Text("Override chain: ${(entry.overrides + entry.source).joinToString(" → ")}")
+            }
         }
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             items(translationErrors) { Text(it) }

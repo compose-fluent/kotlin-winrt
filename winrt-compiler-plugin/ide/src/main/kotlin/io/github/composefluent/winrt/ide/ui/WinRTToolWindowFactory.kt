@@ -1,14 +1,8 @@
 package io.github.composefluent.winrt.ide.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.intellij.openapi.components.service
@@ -19,14 +13,12 @@ import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.project.WinRTGradleTasks
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import org.jetbrains.jewel.bridge.addComposeTab
-import org.jetbrains.jewel.ui.component.DefaultButton
-import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.*
 
 class WinRTToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val service = project.service<WinRTProjectService>()
-        val analysis = project.service<WinRTXamlSnapshotService>()
-        service.refreshFromGradleCache()
+        project.service<WinRTProjectService>().refreshFromGradleCache()
+        toolWindow.addComposeTab("Overview", focusOnClickInside = true) { WinRTOverviewPanel(project) }
         toolWindow.addComposeTab("Hot Reload", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadPanel(project)
         }
@@ -36,37 +28,44 @@ class WinRTToolWindowFactory : ToolWindowFactory {
         toolWindow.addComposeTab("Resources", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.resources.WinRTResourcesPanel(project)
         }
-        toolWindow.addComposeTab("Projects", focusOnClickInside = true) {
-            val modules by service.modules.collectAsState()
-            val snapshots by analysis.state.collectAsState()
-            LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item {
-                    Text("Kotlin WinRT")
-                    if (modules.isEmpty()) Text("Synchronize Gradle to import modules using the Windows toolkit plugin.")
-                }
-                items(modules, key = { it.projectDirectory }) { module ->
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(module.projectPath)
-                        Text("Kotlin ${module.kotlinVersion} · Windows SDK ${module.windowsSdkVersion.ifEmpty { "not selected" }}")
-                        Text(module.targets.joinToString { "${it.name} (${it.platform})" })
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            DefaultButton(onClick = { service.openFile("${module.projectDirectory}/build.gradle.kts") }) { Text("Build configuration") }
-                            module.manifestFiles.firstOrNull()?.let { manifest ->
-                                DefaultButton(onClick = { service.openFile(manifest) }) { Text("AppX manifest") }
-                            }
-                        }
-                        module.sourceSets.forEach { sourceSet ->
-                            Text("${sourceSet.name}: ${sourceSet.dependsOn.joinToString().ifEmpty { "no source set dependencies" }}")
-                        }
-                        if (module.xamlCompilations.isNotEmpty()) {
-                            DefaultButton(onClick = { WinRTGradleTasks.prepareXaml(project, module) }) { Text("Prepare XAML analysis") }
-                            module.xamlCompilations.forEach { compilation ->
-                                val snapshot = snapshots[WinRTXamlSnapshotService.key(compilation.declarationsFile)]
-                                Text(snapshot?.error ?: "${snapshot?.declarations?.pages?.size ?: 0} XAML classes available")
-                            }
-                        }
-                        module.packages.forEach { pkg -> Text("${pkg.id} ${pkg.version}") }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WinRTOverviewPanel(project: Project) {
+    val service = project.service<WinRTProjectService>()
+    val snapshots by project.service<WinRTXamlSnapshotService>().state.collectAsState()
+    val module = selectedWinRTModule(project)
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Text("Kotlin WinRT"); WinRTModulePicker(project) }
+        if (module == null) item { Text("Sync Gradle to load your Kotlin WinRT modules.") }
+        else {
+            item {
+                Text(module.targets.joinToString { "${it.name} (${it.platform})" })
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    module.manifestFiles.firstOrNull()?.let { manifest ->
+                        DefaultButton(onClick = { service.openFile(manifest) }) { Text("Edit app manifest") }
                     }
+                    DefaultButton(onClick = { service.openFile("${module.projectDirectory}/build.gradle.kts") }) { Text("Open build file") }
+                    if (module.xamlCompilations.isNotEmpty())
+                        DefaultButton(onClick = { WinRTGradleTasks.prepareXaml(project, module) }) { Text("Prepare XAML") }
+                }
+            }
+            if (module.xamlCompilations.isNotEmpty()) item {
+                val states = module.xamlCompilations.mapNotNull { snapshots[WinRTXamlSnapshotService.key(it.declarationsFile)] }
+                val errors = states.mapNotNull { it.error }.distinct()
+                if (states.isEmpty()) Text("Prepare XAML to enable generated members in the editor.")
+                else if (errors.isNotEmpty()) errors.forEach { Text(it) }
+                else Text("${states.flatMap { it.declarations.pages }.distinctBy { it.className }.size} XAML classes ready")
+            }
+            item {
+                Text("Manage dependencies in NuGet, application assets in Resources, and live XAML changes in Hot Reload.")
+                WinRTDetails("project details") {
+                    Text("Kotlin ${module.kotlinVersion} · Windows SDK ${module.windowsSdkVersion.ifEmpty { "not selected" }}")
+                    Text(module.projectDirectory)
+                    module.sourceSets.forEach { Text("${it.name}: ${it.dependsOn.joinToString().ifEmpty { "no source set dependencies" }}") }
+                    module.packages.forEach { Text("${it.id} ${it.version}") }
                 }
             }
         }

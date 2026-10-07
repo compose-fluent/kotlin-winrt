@@ -17,6 +17,7 @@ import org.jetbrains.plugins.gradle.util.GradleConstants
 class WinRTProjectService(private val project: Project) {
     private val imported = MutableStateFlow<List<WinRTModuleData>>(emptyList())
     val modules: StateFlow<List<WinRTModuleData>> = imported
+    val selectedModuleDirectory = MutableStateFlow<String?>(null)
     private val builds = linkedMapOf<String, List<WinRTModuleData>>()
     private val preparationRequests = mutableSetOf<String>()
     private val dependencyRequests = mutableSetOf<String>()

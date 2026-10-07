@@ -25,6 +25,7 @@ import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import kotlinx.coroutines.*
 import org.jetbrains.jewel.ui.component.*
 import org.jetbrains.plugins.gradle.util.GradleConstants
+import io.github.composefluent.winrt.ide.ui.*
 import java.nio.file.Path
 
 @Composable
@@ -52,6 +53,8 @@ fun WinRTNuGetPanel(project: Project) {
     var projection by remember { mutableStateOf(false) }
     var transitive by remember { mutableStateOf(false) }
     var versions by remember(module?.projectDirectory) { mutableStateOf<List<String>>(emptyList()) }
+    var tab by remember { mutableStateOf("browse") }
+    var manualPackage by remember(module?.projectDirectory) { mutableStateOf(false) }
     var rid by remember { mutableStateOf("win-x64") }
     var request by remember { mutableStateOf<Job?>(null) }
     var requestGeneration by remember { mutableLongStateOf(0) }
@@ -115,100 +118,122 @@ fun WinRTNuGetPanel(project: Project) {
         }
     }
     fun choose(packageId: String, packageVersion: String) {
+        ++requestGeneration; request?.cancel(); busy = false
         id.edit { replace(0, length, packageId) }; version.edit { replace(0, length, packageVersion) }; versions = emptyList()
+        selected = inventory.packages.firstOrNull { it.id.equals(packageId, true) }
+        source?.let { feed ->
+            val preview = prerelease
+            browse { versions = runInterruptible(Dispatchers.IO) { WinRTNuGetBrowser(feed).versions(packageId, preview) } }
+        }
     }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("NuGet packages")
-            if (modules.isEmpty()) Text("Synchronize a Kotlin WinRT project to manage its packages.")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { modules.forEach { current ->
-                DefaultButton(onClick = { directory = current.projectDirectory }) { Text(current.projectPath) }
-            } }
-            module?.let { current ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    DefaultButton(onClick = { restore(current) }) { Text("Synchronize and restore") }
-                    DefaultButton(onClick = { revision++ }) { Text("Refresh status") }
-                    DefaultButton(onClick = { service.openFile("${current.projectDirectory}/build.gradle.kts") }) { Text("Build configuration") }
-                    if (current.nuGetConfigFile.isNotEmpty()) DefaultButton(onClick = { service.openFile(current.nuGetConfigFile) }) { Text("NuGet.Config") }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("NuGet packages")
+                if (modules.isEmpty()) Text("Synchronize a Kotlin WinRT project to manage its packages.")
+                WinRTModulePicker(project)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RadioButtonRow("Browse", tab == "browse", { tab = "browse" })
+                    RadioButtonRow("Installed", tab == "installed", { tab = "installed" })
+                }
+                TextField(query, placeholder = { Text(if (tab == "browse") "Search packages" else "Filter installed packages") },
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search packages" })
+                if (tab == "browse") {
+                    WinRTChoice("Package source", sources.map { it.name to it.name }, source?.name) { sourceName = it }
+                    CheckboxRow("Include prerelease versions", prerelease, { prerelease = it })
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DefaultButton(enabled = source != null && !busy, onClick = {
+                            val feed = source ?: return@DefaultButton; val text = query.text.toString(); val preview = prerelease
+                            browse { results = runInterruptible(Dispatchers.IO) { WinRTNuGetBrowser(feed).search(text, preview) } }
+                        }) { Text("Search") }
+                        if (busy) DefaultButton(onClick = { ++requestGeneration; request?.cancel(); busy = false }) { Text("Cancel") }
+                        Link("Enter a package ID…", onClick = { manualPackage = true })
+                    }
+                } else CheckboxRow("Show transitive packages", transitive, { transitive = it })
+                (inventory.errors + listOfNotNull(failure)).forEach { Text(it) }
+                if (busy) Text("Loading packages…")
+            }
+        }
+        if (id.text.isNotBlank() || manualPackage) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (manualPackage) TextField(id, placeholder = { Text("Package ID") },
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Package ID" }) else Text(id.text.toString())
+                val declared = module?.packages?.firstOrNull { it.id.equals(id.text.toString(), true) }
+                val choices = (listOf(version.text.toString()) + versions).filter(String::isNotBlank).distinct()
+                if (manualPackage) TextField(version, placeholder = { Text("Exact version") }, modifier = Modifier.fillMaxWidth())
+                else WinRTChoice("Version", choices.map { it to it }, version.text.toString()) { value -> version.edit { replace(0, length, value) } }
+                selected?.let { pkg ->
+                    Text(if (pkg.root != null && pkg.problems.isEmpty()) "Installed: ${pkg.version}" else "Restore incomplete")
+                    pkg.problems.forEach { Text(it) }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DefaultButton(enabled = module != null && id.text.isNotBlank() && version.text.isNotBlank(), onClick = { edit(false) }) {
+                        Text(if (declared == null) "Install" else "Update")
+                    }
+                    if (declared != null) DefaultButton(onClick = { edit(true) }) { Text("Remove") }
+                }
+                WinRTDetails("advanced package options") {
+                    TextField(id, placeholder = { Text("Package ID") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Package ID" })
+                    TextField(version, placeholder = { Text("Exact version") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Exact version" })
+                    CheckboxRow("Generate Kotlin projection", projection, { projection = it }, enabled = declared == null)
+                    DefaultButton(enabled = !busy && source != null, onClick = {
+                        val feed = source ?: return@DefaultButton; val packageId = id.text.toString(); val preview = prerelease
+                        browse { versions = runInterruptible(Dispatchers.IO) { WinRTNuGetBrowser(feed).versions(packageId, preview) } }
+                    }) { Text("Refresh versions") }
+                    runCatching { WinRTNuGetDependencies.declaration(id.text.toString(), version.text.toString(), projection) }.getOrNull()?.let {
+                        androidx.compose.foundation.text.selection.SelectionContainer { Text(it) }
+                    }
+                }
+                selected?.let { pkg ->
+                    WinRTDetails("package contents") {
+                        WinRTChoice("Architecture", listOf("win-x64", "win-x86", "win-arm64").map { it to it }, rid) { rid = it }
+                        pkg.root?.let { DefaultButton(onClick = { service.openFile(it.toString()) }) { Text("Open package folder") } }
+                        contributions?.let { info ->
+                            info.errors.forEach { Text(it) }
+                            info.winmds.forEach { Text("WinMD: $it") }
+                            info.copyLocal.forEach { (file, target) -> Text("$target ← $file") }
+                            info.nativeFiles.forEach { Text("Native: $it") }
+                            info.buildFiles.forEach { file -> Link(file.fileName.toString(), onClick = { service.openFile(file.toString()) }) }
+                        }
+                    }
                 }
             }
-            (inventory.errors + listOfNotNull(failure)).forEach { Text(it) }
-            Text("Package sources")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { sources.forEach { feed ->
-                RadioButtonRow(feed.name, source === feed, { sourceName = feed.name })
-            } }
-            source?.let { feed ->
-                Text(feed.address)
-                if (feed.requiresProvider) Text("This source uses encrypted credentials. Search needs a NuGet source credential environment variable; restore uses the configured NuGet provider.")
-            }
-            TextField(query, placeholder = { Text("Search packages") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search packages" })
-            CheckboxRow("Include prerelease versions", prerelease, { prerelease = it })
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DefaultButton(enabled = source != null && !busy, onClick = {
-                    val feed = source ?: return@DefaultButton; val text = query.text.toString(); val preview = prerelease
-                    browse { results = runInterruptible(Dispatchers.IO) { WinRTNuGetBrowser(feed).search(text, preview) } }
-                }) { Text("Search") }
-                if (busy) DefaultButton(onClick = { request?.cancel() }) { Text("Cancel") }
-            }
-            TextField(id, placeholder = { Text("Package ID") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Package ID" })
-            TextField(version, placeholder = { Text("Exact version") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Exact version" })
-            val declared = module?.packages?.firstOrNull { it.id.equals(id.text.toString(), true) }
-            CheckboxRow("Generate projection for a new package", projection, { projection = it }, enabled = declared == null)
-            if (declared != null) Text("Existing projection options are preserved (${declared.generateProjection}).")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DefaultButton(enabled = !busy && source != null && id.text.isNotBlank(), onClick = {
-                    val feed = source ?: return@DefaultButton; val packageId = id.text.toString(); val preview = prerelease
-                    browse { versions = runInterruptible(Dispatchers.IO) { WinRTNuGetBrowser(feed).versions(packageId, preview) } }
-                }) { Text("Load versions") }
-                DefaultButton(enabled = module != null && id.text.isNotBlank() && version.text.isNotBlank(), onClick = { edit(false) }) { Text(if (declared == null) "Install" else "Update") }
-                DefaultButton(enabled = declared != null, onClick = { edit(true) }) { Text("Remove") }
-            }
-            if (versions.isNotEmpty()) Text("Select a version")
-            // Long version lists scroll with the panel instead of requiring a second scroll surface.
         }
-        items(versions, key = { "version:$it" }) { value -> DefaultButton(onClick = { version.edit { replace(0, length, value) } }) { Text(value) } }
-        item {
-            if (id.text.isNotBlank() && version.text.isNotBlank()) {
-                runCatching { WinRTNuGetDependencies.declaration(id.text.toString(), version.text.toString(), projection) }.getOrNull()?.let {
-                    Text("Declaration for packageReferences { }")
-                    androidx.compose.foundation.text.selection.SelectionContainer { Text(it) }
+        if (tab == "browse") {
+            if (results.isEmpty() && !busy) item { Text("Search by package name, then select a result to choose its version and install it.") }
+            items(results, key = { "search:${it.id.lowercase()}" }) { result ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RadioButtonRow("${result.id}  ${result.version}", id.text.toString().equals(result.id, true),
+                        { choose(result.id, result.version) }, modifier = Modifier.fillMaxWidth())
+                    Text(result.description, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+            }
+        } else {
+            val visible = inventory.packages.filter { (transitive || it.direct) && it.id.contains(query.text.toString(), true) }
+            if (visible.isEmpty()) item { Text("No installed packages match this filter.") }
+            items(visible, key = { "installed:${it.id.lowercase()}:${it.version}" }) { pkg ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RadioButtonRow("${pkg.id}  ${pkg.version}", id.text.toString().equals(pkg.id, true),
+                        { choose(pkg.id, pkg.version) }, modifier = Modifier.fillMaxWidth())
+                    Text(if (pkg.direct) "Direct dependency" else "Transitive dependency")
                 }
             }
         }
-        items(results, key = { "search:${it.id.lowercase()}" }) { result ->
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                DefaultButton(onClick = { choose(result.id, result.version) }) { Text("${result.id} ${result.version}") }
-                Text(result.authors); Text(result.description)
+        item {
+            WinRTDetails("sources and build settings") {
+                source?.let { feed ->
+                    Text(feed.address)
+                    if (feed.requiresProvider) Text("This source needs a NuGet credential environment variable for search. Restore uses its configured credential provider.")
+                }
+                module?.let { current ->
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DefaultButton(onClick = { restore(current) }) { Text("Restore packages") }
+                        DefaultButton(onClick = { revision++ }) { Text("Refresh installed packages") }
+                        Link("Gradle build file", onClick = { service.openFile("${current.projectDirectory}/build.gradle.kts") })
+                        if (current.nuGetConfigFile.isNotEmpty()) Link("NuGet.Config", onClick = { service.openFile(current.nuGetConfigFile) })
+                    }
+                }
             }
-        }
-        item { Text("Declared / restored dependencies"); CheckboxRow("Show transitive and tooling packages", transitive, { transitive = it }) }
-        items(inventory.packages.filter { transitive || it.direct }, key = { "installed:${it.id.lowercase()}:${it.version}" }) { pkg ->
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                DefaultButton(onClick = { selected = pkg; choose(pkg.id, pkg.version) }) { Text("${pkg.id} ${pkg.version}") }
-                Text(if (pkg.direct) "Direct dependency · projection ${pkg.projection}" else "Transitive or WinApp tooling dependency")
-                Text(if (pkg.root != null && pkg.problems.isEmpty()) "Restored · build/packaging validation still required" else "Restore incomplete")
-                pkg.source?.let { Text("Source: $it") }; pkg.problems.forEach { Text(it) }
-            }
-        }
-        selected?.let { pkg ->
-            item {
-                Text("${pkg.id}: package contributions")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("win-x64", "win-x86", "win-arm64").forEach { value ->
-                    RadioButtonRow(value, rid == value, { rid = value })
-                } }
-                pkg.root?.let { DefaultButton(onClick = { service.openFile(it.toString()) }) { Text("Package directory") } }
-                Text("WinMD inputs and CopyLocal items use the existing toolkit contracts. Arbitrary MSBuild targets are not executed.")
-                contributions?.errors?.forEach { Text(it) }
-            }
-            contributions?.let { info ->
-                items(info.winmds, key = { "winmd:$it" }) { file -> Text("WinMD: $file") }
-                items(info.copyLocal, key = { "payload:${it.first}:${it.second}" }) { (file, target) -> Text("CopyLocal: $file → $target") }
-                items(info.nativeFiles, key = { "native:$it" }) { file -> Text("Native candidate: $file") }
-                items(info.buildFiles, key = { "msbuild:$it" }) { file -> DefaultButton(onClick = { service.openFile(file.toString()) }) { Text("MSBuild: ${file.fileName}") } }
-            }
-            item { module?.packageLayouts?.forEach { layout ->
-                DefaultButton(onClick = { WinRTGradleTasks.run(project, module!!, listOf(layout.taskName), "Validate ${layout.variant} package") { revision++ } }) { Text("Stage ${layout.variant}") }
-            } }
         }
     }
 }
