@@ -34,19 +34,20 @@ import java.util.concurrent.atomic.AtomicLong
 
 data class WinRTHotReloadState(val message: String = "Start a JVM application with XAML Hot Reload to update its properties.",
     val connected: Boolean = false, val busy: Boolean = false, val pid: Long? = null,
-    val roots: List<WinRTXamlHotReloadRoot> = emptyList(), val values: List<WinRTXamlHotReloadValue> = emptyList())
+    val roots: List<WinRTXamlHotReloadRoot> = emptyList(), val values: List<WinRTXamlHotReloadValue> = emptyList(),
+    val inspection: WinRTXamlVisualSnapshot? = null, val inspecting: Boolean = false)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinRTHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
     var processId: Long = 0, var startedUtc: String = "")
 
-@Service(Service.Level.PROJECT)
-@State(name = "KotlinWinRTXamlHotReload", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
-class WinRTHotReloadService(private val project: Project, private val scope: CoroutineScope) : Disposable, PersistentStateComponent<WinRTHotReloadLaunchState> {
+open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
+    private val isolatedPreview: Boolean = false) : Disposable, PersistentStateComponent<WinRTHotReloadLaunchState> {
     private data class Source(val path: String, val markup: WinRTHotReloadMarkup)
-    private val display = MutableStateFlow(WinRTHotReloadState())
+    private val display = MutableStateFlow(if (isolatedPreview)
+        WinRTHotReloadState("Start the design host to render the XAML document.") else WinRTHotReloadState())
     val state: StateFlow<WinRTHotReloadState> = display
-    val automatic = MutableStateFlow(true)
+    val automatic = MutableStateFlow(!isolatedPreview)
     private val mutex = Mutex()
     @Volatile private var client: WinRTHotReloadClient? = null
     private val generation = AtomicLong()
@@ -61,6 +62,9 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
     private var worker: Job? = null
     private var edits: Job? = null
     private var update: Job? = null
+    private var inspection: Job? = null
+    private var pendingInspection: WinRTXamlInspectionRequest? = null
+    private var inspectionOwner: Triple<String, String, Int>? = null
     private var uncertain = false
     private var owned: WinRTHotReloadClient? = null
     private var savedLaunch = WinRTHotReloadLaunchState()
@@ -88,7 +92,7 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
     }
 
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
-    fun start(module: WinRTModuleData, launch: WinRTHotReloadLaunchData, restart: Boolean = false) {
+    fun start(module: WinRTModuleData, launch: WinRTHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false) {
         if (disposed || project.isDisposed) return
         require(launch in module.hotReloadLaunches) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
@@ -112,8 +116,9 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                 }
                 ApplicationManager.getApplication().invokeLater {
                     if (isCurrent(request)) WinRTGradleTasks.run(project, module,
-                        listOf(launch.taskName), "Run with XAML Hot Reload",
-                        environment = mapOf(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()),
+                        listOf(launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
+                        environment = mapOf(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
+                            if (preview) mapOf(WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
                         onFailure = { withCurrent(request) { if (client == null) {
                             worker?.cancel(); display.value = WinRTHotReloadState("The Gradle launch failed or stopped. See its Run output.")
                         } } })
@@ -123,7 +128,7 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                 }) return@launch
                 withTimeout(10 * 60_000L) {
                     while (isActive && isCurrent(request)) {
-                        val found = WinRTHotReloadClient.discover(directory!!, launch.executable)
+                        val found = WinRTHotReloadClient.discover(directory!!, if (preview) launch.previewExecutable else launch.executable)
                         require(found.size <= 1) { "Multiple development processes use this session directory. Stop them before reconnecting." }
                         val candidate = found.singleOrNull()
                         if (candidate != null) {
@@ -171,7 +176,7 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                     require(folder.parent == expected && runCatching { UUID.fromString(folder.fileName.toString()).toString().equals(folder.fileName.toString(), true) }.getOrDefault(false)) {
                         "The saved development session does not belong to this module. Start a new session."
                     }
-                    val next = WinRTHotReloadClient.discover(folder, launch.executable)
+                    val next = WinRTHotReloadClient.discover(folder, if (isolatedPreview) launch.previewExecutable else launch.executable)
                     require(next.size == 1) { "No unique live development session. Rebuild and restart the application." }
                     val candidate = next.single()
                     if (saved.processId > 0) {
@@ -239,7 +244,8 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
                 uncertain = false
                 savedLaunch = savedLaunch.copy(processId = connection.process.pid(), startedUtc = connection.started.toString())
             }
-            val missing = reply.roots.filter { baselines[it.className to it.resourcePath]?.markup?.hash != it.sourceHash }
+            val missing = reply.roots.filter { it.className != WinRTXamlHotReloadProtocol.PREVIEW_CLASS &&
+                baselines[it.className to it.resourcePath]?.markup?.hash != it.sourceHash }
             val previous = display.value
             display.value = previous.copy(message = if (missing.isEmpty()) {
                 if (!previous.connected || previous.busy || previous.roots.isEmpty()) reply.message else previous.message
@@ -318,6 +324,49 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
         beginRequest(WinRTHotReloadState("Development connection closed. The application can continue running.", pid = owned?.process?.takeIf { it.isAlive }?.pid()))
     }
 
+    fun inspect(request: WinRTXamlInspectionRequest) {
+        synchronized(lifecycle) {
+            val connection = client ?: return
+            val epoch = generation.get()
+            if (!isCurrent(epoch)) return
+            // Coalesce rapid edits/selections, but keep an unrendered design document.
+            val previous = pendingInspection
+            pendingInspection = if (request.previewMarkup.isEmpty() && previous?.previewMarkup?.isNotEmpty() == true &&
+                previous.className == request.className && previous.resourcePath == request.resourcePath) request.copy(
+                    previewMarkup = previous.previewMarkup, width = previous.width, height = previous.height, theme = previous.theme)
+                else request
+            if (display.value.inspecting) return
+            display.value = display.value.copy(inspecting = true)
+            inspection = scope.launch(Dispatchers.IO) {
+                try {
+                    while (isCurrent(epoch)) {
+                        val next = synchronized(lifecycle) {
+                            pendingInspection.also {
+                                pendingInspection = null
+                                if (it == null) { inspection = null; display.value = display.value.copy(inspecting = false) }
+                            }
+                        } ?: break
+                        val reply = mutex.withLock { runInterruptible { connection.inspect(next) } }
+                        if (client === connection) withCurrent(epoch) {
+                            val owner = Triple(next.className, next.resourcePath, next.instance)
+                            val image = display.value.inspection?.image.takeIf { inspectionOwner == owner }
+                            display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(image = it.image ?: image) } ?: display.value.inspection,
+                                message = reply.message, roots = reply.roots.ifEmpty { display.value.roots })
+                            if (reply.inspection != null) inspectionOwner = owner
+                        }
+                    }
+                } catch (error: CancellationException) { throw error }
+                catch (error: Exception) { withCurrent(epoch) { display.value = display.value.copy(message = error.message.orEmpty()) } }
+                finally { withCurrent(epoch) { if (inspection === coroutineContext[Job]) {
+                    inspection = null; display.value = display.value.copy(inspecting = false)
+                } } }
+            }
+        }
+    }
+
+    fun sourcePath(root: WinRTXamlHotReloadRoot): String? = sourcePath(root.className)
+    fun sourcePath(className: String): String? = sources.firstOrNull { it.markup.className == className }?.path
+
     fun stop() {
         if (disposed || project.isDisposed) return
         val request = beginRequest(WinRTHotReloadState("Stopping the development application…", busy = true,
@@ -365,19 +414,34 @@ class WinRTHotReloadService(private val project: Project, private val scope: Cor
     private fun beginRequest(next: WinRTHotReloadState): Long = synchronized(lifecycle) {
         val request = generation.incrementAndGet()
         cancelRequests()
-        display.value = next
+        display.value = next.copy(inspecting = false)
         request
     }
 
     private fun cancelRequests() {
-        worker?.cancel(); edits?.cancel(); update?.cancel()
+        worker?.cancel(); edits?.cancel(); update?.cancel(); inspection?.cancel()
+        pendingInspection = null
+        inspectionOwner = null
         // Closing the sockets interrupts blocking transport IO immediately.
         // Cancellation alone cannot interrupt Socket.read on Dispatchers.IO.
         client?.close(); client = null
     }
 
     override fun dispose() = synchronized(lifecycle) {
-        disposed = true; generation.incrementAndGet(); cancelRequests(); owned?.close()
+        disposed = true; generation.incrementAndGet(); cancelRequests()
+        owned?.let { process ->
+            if (isolatedPreview && process.process.isAlive && process.process.info().startInstant().orElse(null) == process.started)
+                process.process.destroy()
+            process.close()
+        }
         Unit
     }
 }
+
+@Service(Service.Level.PROJECT)
+@State(name = "KotlinWinRTXamlHotReload", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
+class WinRTHotReloadService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope)
+
+@Service(Service.Level.PROJECT)
+@State(name = "KotlinWinRTXamlStaticPreview", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
+class WinRTStaticPreviewService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope, isolatedPreview = true)

@@ -44,13 +44,14 @@ data class WinRTModuleData(
                 model.packageLayouts.map { WinRTPackageLayoutData(it.taskName, it.variant, it.packageDirectory,
                     it.resourceReportFile, it.minWindowsVersion, it.maxVersionTested) },
                 model.nuGetConfigFile, model.nuGetConfigDirectory, model.restoreLockFiles.toList(),
-                model.hotReloadLaunches.map { WinRTHotReloadLaunchData(it.taskName, it.executable, it.workingDirectory) },
+                model.hotReloadLaunches.map { WinRTHotReloadLaunchData(it.taskName, it.executable, it.workingDirectory, it.previewExecutable) },
             )
         }
     }
 }
 
-data class WinRTHotReloadLaunchData(val taskName: String, val executable: String, val workingDirectory: String) : Serializable
+data class WinRTHotReloadLaunchData(val taskName: String, val executable: String, val workingDirectory: String,
+    val previewExecutable: String = executable) : Serializable
 
 data class WinRTSourceSetData(
     val name: String,

@@ -20,14 +20,20 @@ internal class WinRTHotReloadClient private constructor(
     val alive get() = !closed && process.isAlive && process.info().startInstant().orElse(null) == started
 
     fun request(patch: WinRTXamlHotReloadPatch? = null): WinRTXamlHotReloadReply {
+        return exchange { socket -> WinRTXamlHotReloadWire.writeRequest(socket.getOutputStream(), token, patch) }
+    }
+    fun inspect(request: WinRTXamlInspectionRequest): WinRTXamlHotReloadReply = exchange { socket ->
+        WinRTXamlHotReloadWire.writeInspectionRequest(socket.getOutputStream(), token, request)
+    }
+    private fun exchange(send: (Socket) -> Unit): WinRTXamlHotReloadReply {
         check(alive) { "The application has exited. Start a new development session." }
         return Socket().use { socket ->
             sockets += socket
             try {
                 check(!closed) { "The development connection is closed." }
                 socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 2_000)
-                socket.soTimeout = 7_000
-                WinRTXamlHotReloadWire.writeRequest(socket.getOutputStream(), token, patch)
+                socket.soTimeout = 12_000
+                send(socket)
                 WinRTXamlHotReloadWire.readReply(socket.getInputStream())
             } finally { sockets -= socket }
         }

@@ -33,6 +33,38 @@ import java.util.concurrent.atomic.AtomicReference
 class WinRTHotReloadServiceTest : BasePlatformTestCase() {
     private val markup = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><TextBlock x:Name="Greeting" Text="Hello"/></Window>"""
 
+    fun testInspectionCoalescesNewSelectionsAndKeepsThePendingDesignDocument() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
+        service.inspect(WinRTXamlInspectionRequest("probe.Window", "Window.xaml"))
+        fixture.await("First inspection reached peer", entered)
+        service.inspect(WinRTXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", width = 640))
+        service.inspect(WinRTXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0)))
+        fixture.beforeInspection.set(null); release.countDown()
+        PlatformTestUtil.waitWithEventsDispatching("Latest design inspection completes", {
+            fixture.inspections.size == 2 && !service.state.value.inspecting
+        }, 10)
+        val next = fixture.inspections.last()
+        assertEquals("<Grid/>", next.previewMarkup); assertEquals(640, next.width)
+        assertEquals(listOf(0), next.selectedPath)
+        assertEquals("Greeting", service.state.value.inspection!!.properties.single().value)
+        assertEquals(0, fixture.patches.get())
+    }
+
+    fun testDisconnectClosesAnInspectionSocketAndDiscardsItsLateResult() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val closed = CountDownLatch(1)
+        fixture.beforeInspection.set { socket -> entered.countDown(); assertEquals(-1, socket.getInputStream().read()); closed.countDown() }
+        service.inspect(WinRTXamlInspectionRequest("probe.Window", "Window.xaml"))
+        fixture.await("Inspection reached peer", entered)
+        service.disconnect(); val state = service.state.value
+        fixture.await("Disconnect closes inspection socket", closed); fixture.completedRequests()
+        assertEquals(state, service.state.value)
+        assertNull(service.state.value.inspection)
+    }
+
     fun testWorkspaceRoundTripRestoresAnExistingConnectionAndPropertyUpdates() = session { fixture ->
         val first = fixture.service()
         first.reconnect()
@@ -140,6 +172,28 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
         fixture.connected(service)
     }
 
+    fun testTreeOnlyInspectionPreservesThePreviewImageForTheSameInstance() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect()
+        fixture.connected(service)
+        val root = service.state.value.roots.single()
+        service.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath))
+        PlatformTestUtil.waitWithEventsDispatching("Captured preview", {
+            !service.state.value.inspecting && service.state.value.inspection?.image != null
+        }, 10)
+        val pixels = service.state.value.inspection!!.image!!.pixels
+        service.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath, selectedPath = listOf(0), capture = false))
+        PlatformTestUtil.waitWithEventsDispatching("Tree selection inspected", {
+            fixture.inspections.size == 2 && !service.state.value.inspecting
+        }, 10)
+        assertTrue(pixels.contentEquals(service.state.value.inspection!!.image!!.pixels))
+        service.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath, instance = 1, capture = false))
+        PlatformTestUtil.waitWithEventsDispatching("Another instance inspected", {
+            fixture.inspections.size == 3 && !service.state.value.inspecting
+        }, 10)
+        assertNull(service.state.value.inspection!!.image)
+    }
+
     private fun session(action: (Session) -> Unit) {
         val fixture = Session()
         try { action(fixture); fixture.failure.get()?.let { throw AssertionError("Loopback peer failed", it) } }
@@ -156,6 +210,8 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
         val failure = AtomicReference<Throwable?>()
         val beforeHandshake = AtomicReference<((java.net.Socket) -> Unit)?>()
         val afterPatch = AtomicReference<((java.net.Socket) -> Unit)?>()
+        val beforeInspection = AtomicReference<((java.net.Socket) -> Unit)?>()
+        val inspections = java.util.concurrent.CopyOnWriteArrayList<WinRTXamlInspectionRequest>()
         private val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
         private val executor = Executors.newCachedThreadPool()
         private val services = linkedMapOf<WinRTHotReloadService, CoroutineScope>()
@@ -185,9 +241,13 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
                     executor.submit {
                         try { socket.use {
                             socket.soTimeout = 10_000
-                            val (supplied, patch) = WinRTXamlHotReloadWire.readRequest(socket.getInputStream())
-                            assertEquals(token, supplied); requests.incrementAndGet()
-                            if (patch == null) beforeHandshake.get()?.invoke(socket)
+                            val command = WinRTXamlHotReloadWire.readCommand(socket.getInputStream())
+                            val patch = command.patch
+                            assertEquals(token, command.token); requests.incrementAndGet()
+                            if (command.inspection != null) {
+                                inspections += command.inspection
+                                beforeInspection.get()?.invoke(socket)
+                            } else if (patch == null) beforeHandshake.get()?.invoke(socket)
                             else {
                                 val before = liveRoot.get()
                                 assertEquals(before.sourceHash, patch.expectedHash)
@@ -197,7 +257,9 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
                                 afterPatch.get()?.invoke(socket)
                             }
                             runCatching { WinRTXamlHotReloadWire.writeReply(socket.getOutputStream(),
-                                WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.APPLIED, "connected", listOf(liveRoot.get()))) }
+                                WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.APPLIED, "connected", listOf(liveRoot.get()),
+                                    inspection = command.inspection?.let { WinRTXamlVisualSnapshot(emptyList(), listOf(WinRTXamlVisualProperty("Name", "Greeting")),
+                                        if (it.capture) WinRTXamlVisualImage(1, 1, byteArrayOf(0, 0, 0, -1)) else null) })) }
                         } } catch (error: Throwable) { failure.compareAndSet(null, error) }
                         finally { activeRequests.decrementAndGet() }
                     }

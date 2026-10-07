@@ -245,6 +245,12 @@ Unpackaged WinUI applications explicitly select SelfContained deployment so
 their activation manifest and local runtime DLLs form a complete launch layout.
 Optional preparation runs after the first successful model import.
 
+Windows App SDK is a version dropdown populated from the selected NuGet V3
+source, with explicit prerelease selection and refresh. Windows SDK is a dropdown
+of complete locally installed versions discovered through the shared registry-first
+SDK locator. The wizard explains that the chosen Windows SDK must be installed
+locally with headers, libraries, metadata and packaging tools.
+
 Both application templates carry the supplied 122 PNG assets, including all
 scale, target-size and theme variants. The manifest uses their base resource
 names; the launcher ICO wraps six original PNGs without resizing or re-encoding.
@@ -280,10 +286,19 @@ comments share the same document; duplicate keys and missing translations includ
 unsaved edits. Tests verify XML preservation, source undo/redo, stale edit protection,
 resource provenance and actual PRI qualifier reading.
 
+**Manifest Designer** is the default manifest editor and is also available from
+Overview and Resources. Its Source tab remains available. XML validation uses
+the module's installed SDK XSDs, including namespace-only imports; the four
+restricted/Windows-capability schemas omitted by the SDK are bundled verbatim
+from Microsoft's MIT-licensed MSIX schema sources. Unknown attributes still fail
+validation; recognized capabilities and COM/desktop extensions do not become
+false unresolved-namespace errors.
+
 ## NuGet package management
 
 The Compose **NuGet** tab selects an imported module and a configured source,
-searches the NuGet V3 index, shows descriptions and versions, and installs,
+provides **Browse**, **Installed** and **Updates**, searches the NuGet V3 index,
+shows paged results and the exact selected version's registration details, and installs,
 updates or removes direct Kotlin DSL package declarations. Source browsing
 applies machine/user/project sources, `clear`/`remove`, disabled sources and
 environment expansion. Requests use the IDE HTTP client/proxy, bounded responses
@@ -293,6 +308,12 @@ redirects do not forward them. Encrypted credentials and external credential
 providers remain supported by WinApp restore; private-source browsing may require
 a credential environment variable. V2/local feeds can still use exact ID/version
 declarations and restored-package browsing.
+
+Details include authors, publication date, download count, license/project links
+and target-framework dependency groups with navigation to dependency packages.
+Version selection follows NuGet's numeric core/prerelease ordering, including
+four-part versions. A wide panel places the list beside details; a narrow panel
+stacks them. Updates checks the module's direct packages against the selected feed.
 
 PSI edits preserve existing option lambdas and comments, participate in native undo,
 and reject computed/conditional/ambiguous declarations. A selectable declaration
@@ -321,6 +342,45 @@ navigation candidates, not a claim about MRT's selected runtime value. Reference
 are soft and unresolved sources have a diagnostic describing dependency/runtime
 limits. Foreign package authorities and opaque compiled dictionaries require their
 own source mapping; they are not resolved to unrelated local files.
+
+## Preview and Visual Tree
+
+The Kotlin WinRT tool window contains **Preview** and **Visual Tree** tabs.
+Live Preview captures a connected development application's actual WinUI content;
+clicking its image selects the deepest visual at that position. Both tabs share
+component, instance and visual selection. The expandable Jewel tree supports
+keyboard selection and includes real control-template
+children, and the property view reads effective values through generated accessors
+on the owner's UI dispatcher. **Go to XAML** locates named source elements;
+template internals locate the nearest source control or fall back to the component's XAML.
+
+Each XAML editor also has a **Preview** tab for static rendering. Select an
+application module that references that document and start its design host.
+The host uses the existing build/deployment layout, including packaged JVM
+launches, but invokes a separate generated entry point without running user main
+or constructing the user's Application. It renders current unsaved XAML through
+WinUI XamlReader, VisualTreeHelper and RenderTargetBitmap. Static and live
+sessions have independent connections and process ownership; closing the project
+stops its isolated design host.
+Packaged design hosts use a separate `.preview` identity and deployment folder;
+they can run beside the application's `.dev` package. Synchronize Gradle after
+updating the toolkit to import version 5 of the IDE launch model.
+
+Static rendering preserves StaticResource, ThemeResource, local dictionaries,
+application resources and their original package-relative Source paths. Preview
+options select viewport dimensions and theme. Supported `d:` values replace
+compiled `x:Bind` expressions; otherwise control defaults apply. Event handlers
+and compiler-only directives are removed from the design copy with a visible
+notice. Regular Binding still needs an available design DataContext. User controls
+and resource objects can execute their normal constructors. There is no static
+simulation of Kotlin code or binding execution.
+
+WinUI owns layout/rendering. Captures are premultiplied BGRA8, scaled to at most
+768 pixels per side, and bounded to 2048 visual nodes. RenderTargetBitmap's own
+limitations apply, including content outside the captured visual such as popups.
+The protocol is version 4: rebuild applications using an older development host
+before connecting the updated IDE plugin. Runtime inspection contracts and typed
+adapters are shared Kotlin; the development transport currently supports JVM.
 
 ## XAML Hot Reload
 

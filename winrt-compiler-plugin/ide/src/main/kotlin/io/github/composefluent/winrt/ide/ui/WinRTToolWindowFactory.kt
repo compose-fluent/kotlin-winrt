@@ -22,6 +22,12 @@ class WinRTToolWindowFactory : ToolWindowFactory {
         toolWindow.addComposeTab("Hot Reload", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadPanel(project)
         }
+        toolWindow.addComposeTab("Preview", focusOnClickInside = true) {
+            io.github.composefluent.winrt.ide.preview.WinRTPreviewPanel(project)
+        }
+        toolWindow.addComposeTab("Visual Tree", focusOnClickInside = true) {
+            io.github.composefluent.winrt.ide.preview.WinRTPreviewPanel(project, treeOnly = true)
+        }
         toolWindow.addComposeTab("NuGet", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.nuget.WinRTNuGetPanel(project)
         }
@@ -60,7 +66,7 @@ private fun WinRTOverviewPanel(project: Project) {
                 else Text("${states.flatMap { it.declarations.pages }.distinctBy { it.className }.size} XAML classes ready")
             }
             item {
-                Text("Manage dependencies in NuGet, application assets in Resources, and live XAML changes in Hot Reload.")
+                Text("Inspect running UI in Preview and Visual Tree. Open a XAML file's Preview tab for static rendering. Manage dependencies in NuGet and application assets in Resources.")
                 WinRTDetails("project details") {
                     Text("Kotlin ${module.kotlinVersion} · Windows SDK ${module.windowsSdkVersion.ifEmpty { "not selected" }}")
                     Text(module.projectDirectory)
