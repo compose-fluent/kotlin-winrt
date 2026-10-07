@@ -185,6 +185,13 @@ Unit return, no suspend, generic, context, extension or vararg parameters, and
 parameters accepting the delegate inputs. Missing dependencies defer the
 parameter check; the IDE does not guess a control-specific signature.
 
+Event-value completion includes **Create event handler** for the entered name,
+or an element-name/event suggestion when the value is empty. A missing handler
+also has an Alt+Enter quick fix. Creation adds a private Kotlin method with the
+actual delegate parameter types, shortens imports and opens its body. It uses
+native cross-file undo and never duplicates an existing method. Creation waits
+for the projected delegate signature and writable owning class to be available.
+
 `WinRTXamlEditorTest` covers the real XML pipeline with a WinMD written and read
 by the metadata owner, closed generic event signatures, inherited handlers,
 completion filtering and native diagnostic ranges. `WinRTFirAnalysisTest` also

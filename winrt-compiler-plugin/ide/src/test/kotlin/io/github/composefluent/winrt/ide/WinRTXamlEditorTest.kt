@@ -29,7 +29,7 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
     private var root: Path? = null
 
     private fun configure(markup: String): XmlFile {
-        myFixture.addFileToProject("Shell.kt", "package sample\nclass Shell { fun onClick(sender: Any, args: Any) {} }")
+        myFixture.addFileToProject("Shell.kt", "package sample\nclass Shell { val reservedHandler = 0; fun onClick(sender: Any, args: Any) {} }")
         myFixture.addFileToProject("Widget.kt", """
             package sample
             open class WidgetBase {
@@ -289,6 +289,78 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         assertTrue(unused.toString(), unused.any { kotlin.text.substring(it.startOffset, it.endOffset) == "neverUsed" })
         allowAnalysisOnEdt { RenameProcessor(project, handler, "onPopupClicked", false, false).run() }
         assertEquals("onPopupClicked", file.rootTag!!.getAttributeValue("Click"))
+    }
+
+    private fun projectedClickDelegate() {
+        myFixture.addFileToProject("TypedHandler.kt", "package sample\nclass RoutedEventArgs\nclass TypedHandler<T, E> { operator fun invoke(sender: T, args: E) {} }")
+        myFixture.addFileToProject("ProjectedButton.kt", "package microsoft.ui.xaml.controls\nclass Button { fun addClick(handler: sample.TypedHandler<Any?, sample.RoutedEventArgs>) {} }")
+    }
+
+    fun testMissingHandlerQuickFixCreatesTheClosedDelegateSignatureAndSupportsUndo() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.Shell" Click="ShowPopupButton_Click"/>""")
+        projectedClickDelegate()
+        val action = allowAnalysisOnEdt { myFixture.findSingleIntention("Create event handler 'ShowPopupButton_Click'") }
+        myFixture.launchAction(action)
+        val owner = WinRTXamlSymbols.ownerClass(file.rootTag!!)!!
+        val handler = owner.declarations.filterIsInstance<KtNamedFunction>().single { it.name == "ShowPopupButton_Click" }
+        assertTrue(handler.text, handler.text.contains("private fun ShowPopupButton_Click(sender: Any?, args: RoutedEventArgs)"))
+        assertNull(allowAnalysisOnEdt { WinRTXamlEventAnalysis.forAttribute(file.rootTag!!.getAttribute("Click")!!)!!.problem("ShowPopupButton_Click") })
+        val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).selectedEditor
+        // The platform asks to confirm a command initiated in another file.
+        val previous = com.intellij.openapi.ui.TestDialogManager.setTestDialog(com.intellij.openapi.ui.TestDialog.OK)
+        try {
+            com.intellij.openapi.command.undo.UndoManager.getInstance(project).undo(editor)
+            com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+            val undone = WinRTXamlSymbols.ownerClass(file.rootTag!!)!!
+            assertFalse(undone.text, undone.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "ShowPopupButton_Click" })
+            com.intellij.openapi.command.undo.UndoManager.getInstance(project).redo(editor)
+            com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+            val redone = WinRTXamlSymbols.ownerClass(file.rootTag!!)!!
+            assertTrue(redone.text, redone.declarations.filterIsInstance<KtNamedFunction>().any { it.name == "ShowPopupButton_Click" })
+        } finally { com.intellij.openapi.ui.TestDialogManager.setTestDialog(previous) }
+        assertEquals("ShowPopupButton_Click", file.rootTag!!.getAttributeValue("Click"))
+    }
+
+    fun testEventCompletionOffersCreationUsingTheElementName() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.Shell" x:Name="ShowPopupButton" Click="<caret>"/>""")
+        projectedClickDelegate()
+        val settings = com.intellij.codeInsight.CodeInsightSettings.getInstance()
+        val automatic = settings.AUTOCOMPLETE_ON_CODE_COMPLETION
+        settings.AUTOCOMPLETE_ON_CODE_COMPLETION = false
+        try {
+            val items = allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }!!
+            val item = items.single { it.lookupString == "ShowPopupButton_Click" }
+            val presentation = com.intellij.codeInsight.lookup.LookupElementPresentation()
+            item.renderElement(presentation)
+            assertTrue(presentation.tailText.orEmpty(), presentation.tailText.orEmpty().contains("Create event handler"))
+            myFixture.lookup.currentItem = item
+            myFixture.finishLookup('\n')
+            assertEquals("ShowPopupButton_Click", file.rootTag!!.getAttributeValue("Click"))
+            val owner = WinRTXamlSymbols.ownerClass(file.rootTag!!)!!
+            assertTrue(owner.text, owner.declarations.filterIsInstance<KtNamedFunction>().single { it.name == "ShowPopupButton_Click" }
+                .text.contains("sender: Any?, args: RoutedEventArgs"))
+        } finally { settings.AUTOCOMPLETE_ON_CODE_COMPLETION = automatic }
+    }
+
+    fun testEventCompletionCreatesTheEnteredNameAndDoesNotDuplicateAnExistingMethod() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.Shell" Click="openPopup<caret>"/>""")
+        projectedClickDelegate()
+        val settings = com.intellij.codeInsight.CodeInsightSettings.getInstance()
+        val automatic = settings.AUTOCOMPLETE_ON_CODE_COMPLETION
+        settings.AUTOCOMPLETE_ON_CODE_COMPLETION = false
+        try {
+            val item = allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }!!.single { it.lookupString == "openPopup" }
+            myFixture.lookup.currentItem = item
+            myFixture.finishLookup('\n')
+            val owner = WinRTXamlSymbols.ownerClass(file.rootTag!!)!!
+            val handler = owner.declarations.filterIsInstance<KtNamedFunction>().single { it.name == "openPopup" }
+            assertTrue(handler.text, handler.text.contains("sender: Any?, args: RoutedEventArgs"))
+            assertEquals("openPopup", file.rootTag!!.getAttributeValue("Click"))
+            val event = allowAnalysisOnEdt { WinRTXamlEventAnalysis.forAttribute(file.rootTag!!.getAttribute("Click")!!) }!!
+            assertNull(WinRTXamlEventCreation.proposal(file.rootTag!!.getAttribute("Click")!!, "openPopup", event))
+            assertNull(WinRTXamlEventCreation.proposal(file.rootTag!!.getAttribute("Click")!!, "onClick", event))
+            assertNull(WinRTXamlEventCreation.proposal(file.rootTag!!.getAttribute("Click")!!, "reservedHandler", event))
+        } finally { settings.AUTOCOMPLETE_ON_CODE_COMPLETION = automatic }
     }
 
     override fun tearDown() {

@@ -31,15 +31,32 @@ class WinRTXamlCompletionContributor : CompletionContributor() {
                     }
                     return
                 }
+                WinRTXamlEventAnalysis.forAttribute(attribute)?.let { event ->
+                    event.candidates.groupBy { it.name }.filterValues { it.size == 1 && it.single().problem == null }
+                        .keys.forEach { result.addElement(LookupElementBuilder.create(it)) }
+                    val entered = value.value.replace(CompletionUtilCore.DUMMY_IDENTIFIER_TRIMMED, "").trim()
+                    val name = entered.takeIf(WinRTXamlEventCreation::isIdentifier) ?: (
+                        tag.getAttributeValue("Name", WinRTXamlCatalog.XAML)?.takeIf(WinRTXamlEventCreation::isIdentifier)
+                            ?: tag.localName) + "_" + attribute.localName
+                    WinRTXamlEventCreation.proposal(attribute, name, event)?.let { creation ->
+                        result.addElement(LookupElementBuilder.create(name).withTailText(" — Create event handler", true)
+                            .withTypeText("Kotlin").withInsertHandler { insertion, _ ->
+                                insertion.commitDocument()
+                                val current = PsiTreeUtil.getParentOfType(insertion.file.findElementAt(insertion.startOffset),
+                                    XmlAttributeValue::class.java, false) ?: return@withInsertHandler
+                                if (!creation.canCreate()) return@withInsertHandler
+                                (current.parent as XmlAttribute).setValue(name)
+                                creation.create()?.let { function -> insertion.setLaterRunnable { WinRTXamlEventCreation.navigate(function) } }
+                            })
+                    }
+                    return
+                }
                 val catalog = WinRTXamlSymbols.catalog(file)
                 val values = when {
                     attribute.isNamespaceDeclaration -> listOf(WinRTXamlCatalog.PRESENTATION, WinRTXamlCatalog.XAML) +
                         catalog?.model?.namespaces.orEmpty().map { "using:${it.name}" } +
                         WinRTXamlSymbols.classNames(file).map { "using:${it.substringBeforeLast('.', "")}" }.filter { it != "using:" }
                     WinRTXamlSymbols.isDirective(attribute, "Class") -> WinRTXamlSymbols.classNames(file)
-                    WinRTXamlSymbols.member(tag, attribute.localName)?.isEvent == true ->
-                        WinRTXamlEventAnalysis.forAttribute(attribute)?.candidates.orEmpty()
-                            .groupBy { it.name }.filterValues { it.size == 1 && it.single().problem == null }.keys.toList()
                     attribute.localName == "ElementName" -> WinRTXamlReferences.namedElements(tag).map { it.first }
                     else -> {
                         val member = WinRTXamlSymbols.member(tag, attribute.name)

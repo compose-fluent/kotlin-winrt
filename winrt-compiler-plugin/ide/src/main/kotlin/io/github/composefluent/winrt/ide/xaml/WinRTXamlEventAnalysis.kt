@@ -21,8 +21,10 @@ import org.jetbrains.kotlin.analysis.api.signatures.KaFunctionSignature
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.types.KaErrorType
 import org.jetbrains.kotlin.analysis.api.types.KaType
+import org.jetbrains.kotlin.analysis.api.renderer.types.impl.KaTypeRendererForSource
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.types.Variance
 
 /** IDE form of XamlSemanticExport/XamlPageBodies' instance-method contract.
  * The projected add<Event> parameter closes generic delegate arguments before
@@ -32,7 +34,8 @@ import org.jetbrains.kotlin.psi.KtNamedFunction
 @OptIn(KaExperimentalApi::class)
 internal object WinRTXamlEventAnalysis {
     data class Handler(val name: String, val declaration: PsiElement?, val problem: String?)
-    data class Result(val candidates: List<Handler>, val delegateAvailable: Boolean) {
+    data class Parameter(val name: String, val type: String)
+    data class Result(val candidates: List<Handler>, val delegateAvailable: Boolean, val parameters: List<Parameter>? = null) {
         fun matching(name: String) = candidates.filter { it.name == name }.ifEmpty {
             candidates.filter { it.name == name.replaceFirstChar(Char::lowercase) }
         }
@@ -66,10 +69,15 @@ internal object WinRTXamlEventAnalysis {
                     ?.filter { it.symbol is KaNamedFunctionSymbol && it.symbol.psi is KtNamedFunction }
                     ?.toList().orEmpty()
                 val invoke = delegateInvoke(tag, member)
+                val parameters = invoke?.takeIf { it.returnType.semanticallyEquals(builtinTypes.unit) &&
+                    it.valueParameters.all { parameter -> resolved(parameter.returnType) } }?.valueParameters?.mapIndexed { index, parameter ->
+                    Parameter(parameter.symbol.name.asString().takeIf(WinRTXamlEventCreation::isIdentifier) ?: "arg$index",
+                        parameter.returnType.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, Variance.IN_VARIANCE))
+                }
                 Result(handlers.map { handler ->
                     val symbol = handler.symbol as KaNamedFunctionSymbol
                     Handler(symbol.name.asString(), symbol.psi, handlerProblem(handler, invoke))
-                }, invoke != null)
+                }, invoke != null, parameters)
         }
     }
 
@@ -114,6 +122,10 @@ class WinRTXamlEventAnnotator : Annotator {
         if (value.value.isBlank() || value.value.trimStart().startsWith('{')) return
         val result = WinRTXamlEventAnalysis.forAttribute(attribute) ?: return
         val problem = result.problem(value.value) ?: return
-        holder.newAnnotation(HighlightSeverity.ERROR, problem).range(value.valueTextRange).create()
+        val annotation = holder.newAnnotation(HighlightSeverity.ERROR, problem).range(value.valueTextRange)
+        WinRTXamlEventCreation.proposal(attribute, value.value, result)?.let { creation ->
+            annotation.withFix(WinRTXamlCreateEventHandler(value, creation))
+        }
+        annotation.create()
     }
 }
