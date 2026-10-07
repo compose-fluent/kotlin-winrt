@@ -510,9 +510,14 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         }, 60)
         val block = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).single { it.getAttributeValue("x:Name") == "Greeting" }
         val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, markup), false)!!
+        // On a cold AS reopen, the startup scanner can enqueue indexing while
+        // we dispatch events waiting for WinMD. Navigation requires smart mode.
+        awaitSmart(project)
         listOf("Text", "FontSize").forEach { property ->
             val attribute = block.getAttribute(property)!!
-            val member = allowAnalysisOnEdt { WinRTXamlAttributeAnalysis.forAttribute(attribute) }!!
+            val member = requireNotNull(allowAnalysisOnEdt { WinRTXamlAttributeAnalysis.forAttribute(attribute) }) {
+                "$property could not resolve after indexing in ${com.intellij.openapi.module.ModuleUtilCore.findModuleForPsiElement(xml)?.name}"
+            }
             assertNotNull("$property needs its actual projected getter", member.primary)
             assertNotNull("$property needs its actual DependencyProperty registration", member.dependencyProperty)
             val expected = property.replaceFirstChar(Char::lowercaseChar)
