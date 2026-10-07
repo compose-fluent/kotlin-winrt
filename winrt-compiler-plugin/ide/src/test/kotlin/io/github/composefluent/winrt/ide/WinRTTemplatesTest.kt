@@ -8,9 +8,6 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 import javax.imageio.ImageIO
 
 class WinRTTemplatesTest {
@@ -51,33 +48,4 @@ class WinRTTemplatesTest {
         }
     }
 
-    @Test fun generateStandaloneConsumersForWindowsValidation() {
-        val output = System.getProperty("winrt.ide.templateOutput")
-        org.junit.Assume.assumeNotNull(output)
-        val checkout = Path.of(System.getProperty("winrt.ide.toolchain"))
-        val directory = Path.of(requireNotNull(output))
-        listOf(WinRTTemplateKind.ConsoleApplication, WinRTTemplateKind.WinUIApplication).forEach { kind ->
-            val root = directory.resolve(if (kind.xaml) "winui" else "console")
-            val dependencies = if (kind.xaml) listOf(":controls", ":resources", ":library") else emptyList()
-            WinRTTemplates.project(WinRTTemplateOptions("hello", "sample.hello", kind, packaged = false, dependencies = dependencies), checkout).forEach { (path, bytes) ->
-                val file = root.resolve(path)
-                Files.createDirectories(file.parent)
-                Files.write(file, bytes, StandardOpenOption.CREATE_NEW)
-            }
-            if (kind.xaml) {
-                val xaml = root.resolve("app/src/main/kotlin/sample/hello/MainWindow.xaml")
-                Files.writeString(xaml, Files.readString(xaml).replace("xmlns:x=", "xmlns:controls=\"using:sample.controls\" xmlns:x=")
-                    .replace("</StackPanel>", "<controls:GreetingControl />\n    </StackPanel>"))
-                listOf("controls" to WinRTTemplateKind.WinUIControlLibrary, "resources" to WinRTTemplateKind.ResourceLibrary,
-                    "library" to WinRTTemplateKind.WinRTLibrary).forEach { (name, template) ->
-                    WinRTTemplates.module(WinRTTemplateOptions(name, "sample.$name", template)).forEach { (path, bytes) ->
-                        val file = root.resolve(name).resolve(path)
-                        Files.createDirectories(file.parent)
-                        Files.write(file, bytes, StandardOpenOption.CREATE_NEW)
-                    }
-                    Files.writeString(root.resolve("settings.gradle.kts"), "\ninclude(\":$name\")\n", StandardOpenOption.APPEND)
-                }
-            }
-        }
-    }
 }

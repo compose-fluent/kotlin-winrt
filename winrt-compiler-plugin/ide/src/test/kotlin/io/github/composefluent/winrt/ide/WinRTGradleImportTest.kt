@@ -1,11 +1,16 @@
 package io.github.composefluent.winrt.ide
 
+import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
+import com.intellij.codeInsight.completion.CompletionType
+import com.intellij.codeInsight.lookup.LookupManager
 import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.components.impl.stores.IProjectStore
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder
 import com.intellij.openapi.externalSystem.model.DataNode
 import com.intellij.openapi.externalSystem.model.project.ProjectData
@@ -27,24 +32,39 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiReferenceService
+import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.psi.xml.XmlAttributeValue
 import com.intellij.psi.xml.XmlFile
 import com.intellij.psi.xml.XmlTag
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.platform.backend.workspace.WorkspaceModel
+import com.intellij.platform.backend.workspace.WorkspaceModelCache
+import com.intellij.workspaceModel.ide.impl.WorkspaceModelCacheImpl
+import com.intellij.workspaceModel.ide.impl.WorkspaceModelImpl
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadClient
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadService
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadLaunchState
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation
+import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadMarkup
+import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadPatch
+import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadRead
+import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadTarget
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.permissions.KaAllowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
 import org.jetbrains.kotlin.analysis.api.symbols.markers.KaNamedSymbol
+import org.jetbrains.kotlin.analysis.api.components.KaDiagnosticCheckerFilter
 import org.jetbrains.kotlin.idea.stubindex.KotlinFullClassNameIndex
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.plugins.gradle.settings.DistributionType
 import org.jetbrains.plugins.gradle.settings.GradleProjectSettings
 import org.jetbrains.plugins.gradle.settings.GradleSettings
@@ -67,6 +87,12 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         val root = Path.of(requested).toAbsolutePath().normalize()
         require(root.startsWith(Path.of(System.getProperty("winrt.ide.toolchain")).resolve(".gradle")))
         require(Files.isRegularFile(root.resolve("settings.gradle.kts")))
+        VfsRootAccess.allowRootAccess(testRootDisposable, root.toString(), System.getProperty("winrt.ide.toolchain"))
+        val phase = System.getProperty("winrt.ide.importPhase", "import-and-reopen")
+        require(phase in setOf("import", "reopen", "import-and-reopen"))
+        // Use the platform's supported test switch, keeping the production
+        // workspace serializer/loader. No cached graph is reimported on reopen.
+        WorkspaceModelCacheImpl.forceEnableCaching(testRootDisposable)
         // The composite includes the runtime's Native source set. IDEA's test
         // VFS guard must permit the user's external, read-only dependency caches.
         System.getenv("GRADLE_USER_HOME")?.let { gradleHome ->
@@ -79,9 +105,10 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         val home = System.getProperty("java.home")
         val previousSdks = ProjectJdkTable.getInstance().allJdks.toSet()
         val sdk = JavaSdk.getInstance().createJdk("WinRT import validation ${root.hashCode()}", home, false)
+        ApplicationManager.getApplication().runWriteAction { ProjectJdkTable.getInstance().addJdk(sdk) }
         val manager = ProjectManagerEx.getInstanceEx()
         var imported = manager.openProject(root, OpenProjectTask {
-            isNewProject = true
+            isNewProject = phase != "reopen"
             useDefaultProjectAsTemplate = false
             forceOpenInNewFrame = true
             runConfigurators = false
@@ -90,8 +117,16 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             beforeInit = { it.putUserData(IProjectStore.COMPONENT_STORE_LOADING_ENABLED, true) }
         })!!
         try {
+            if (phase == "reopen") {
+                val previousProcess = Files.readString(root.resolve("app/build/ide-validation/import-process.txt")).trim().toLong()
+                assertTrue("Recovery must run in a new IDE host process", previousProcess != ProcessHandle.current().pid())
+                assertWorkspaceRecovered(imported, root)
+                assertNavigation(imported, root, "Greeting")
+                assertCompletion(imported, root, "Greeting")
+                assertRunningTemplate(imported, root)
+                return
+            }
             ApplicationManager.getApplication().runWriteAction {
-                ProjectJdkTable.getInstance().addJdk(sdk)
                 ProjectRootManager.getInstance(imported).projectSdk = sdk
             }
             GradleSettings.getInstance(imported).linkProject(GradleProjectSettings().apply {
@@ -104,6 +139,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             assertTrue(service.modules.value.toString(), service.modules.value.any { it.projectPath == ":app" })
             val app = service.modules.value.single { it.projectPath == ":app" }
             assertEditingReady(imported, root)
+            assertLiveEditing(imported, root, phase == "import")
             assertTrue(app.xamlCompilations.toString(), app.xamlCompilations.all { Files.isRegularFile(Path.of(it.declarationsFile)) })
             // A real second synchronization exercises replacement of model nodes,
             // compiler configuration and source roots, not a manual service call.
@@ -139,6 +175,15 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             // through the actual platform stores before closing this project.
             PlatformTestUtil.saveProject(imported, true)
             ExternalProjectsDataStorage.getInstance(imported).doSave()
+            val workspaceCache = requireNotNull(WorkspaceModelCache.getInstance(imported))
+            pooled("Save native workspace cache") { workspaceCache.saveCacheNow() }
+            assertTrue(Files.isRegularFile(workspaceCache.cacheFile))
+            if (phase == "import") {
+                val marker = root.resolve("app/build/ide-validation/import-process.txt")
+                Files.createDirectories(marker.parent)
+                Files.writeString(marker, ProcessHandle.current().pid().toString())
+                return
+            }
             assertTrue(manager.saveAndForceCloseProject(imported))
             imported = manager.openProject(root, OpenProjectTask {
                 forceOpenInNewFrame = true
@@ -155,25 +200,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 }, 10)
             } catch (error: AssertionError) { throw AssertionError("Restored cache: ${cacheKeys(imported)}", error) }
             assertTrue("Restored cache: ${cacheKeys(imported)}", cacheModules(imported).isNotEmpty())
-            // Platform unit tests disable automatic workspace-model cache
-            // persistence. Reapply the actually deserialized native Gradle graph
-            // through its importer to recover source roots/facets for analysis.
-            // This does not resolve Gradle again or inject any model/test types.
-            val cached = ProjectDataManager.getInstance().getExternalProjectsData(imported, GradleConstants.SYSTEM_ID)
-                .single { it.externalProjectPath == root.toString().replace('\\', '/') }.externalProjectStructure!!
-            val reopened = imported
-            val complete = AtomicBoolean()
-            val importFailure = AtomicReference<Throwable?>()
-            ApplicationManager.getApplication().executeOnPooledThread {
-                try {
-                    ProgressManager.getInstance().runProcess({ ProjectDataManager.getInstance().importData(cached, reopened) }, EmptyProgressIndicator())
-                } catch (error: Throwable) { importFailure.set(error) }
-                finally { complete.set(true) }
-            }
-            PlatformTestUtil.waitWithEventsDispatching("Import deserialized Gradle graph", { complete.get() }, 180)
-            importFailure.get()?.let { throw AssertionError("Cached Gradle import failed", it) }
-            PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
-            assertEditingReady(imported, root)
+            assertWorkspaceRecovered(imported, root)
             if (savedLaunch != null) {
                 val hot = imported.service<WinRTHotReloadService>()
                 assertEquals("Native workspace store must restore the previous development launch", savedLaunch, hot.getState())
@@ -215,6 +242,189 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             }
         }
     }
+
+    private fun pooled(message: String, action: () -> Unit) {
+        val complete = AtomicBoolean()
+        val failure = AtomicReference<Throwable?>()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try { ProgressManager.getInstance().runProcess(action, EmptyProgressIndicator()) }
+            catch (error: Throwable) { failure.set(error) }
+            finally { complete.set(true) }
+        }
+        PlatformTestUtil.waitWithEventsDispatching(message, { complete.get() }, 180)
+        failure.get()?.let { throw AssertionError(message, it) }
+    }
+
+    private fun assertWorkspaceRecovered(project: Project, root: Path) {
+        assertTrue("Source roots and facets must be deserialized from the native workspace cache",
+            (WorkspaceModel.getInstance(project) as WorkspaceModelImpl).loadedFromCache)
+        val service = project.service<WinRTProjectService>()
+        service.refreshFromGradleCache()
+        PlatformTestUtil.waitWithEventsDispatching("Persisted WinRT Gradle model", {
+            service.modules.value.any { it.projectPath == ":app" }
+        }, 30)
+        assertTrue(cacheModules(project).isNotEmpty())
+        assertEditingReady(project, root)
+    }
+
+    private fun assertRunningTemplate(project: Project, root: Path) {
+        val session = System.getProperty("winrt.ide.recoveredHotReloadSession") ?: return
+        val model = project.service<WinRTProjectService>().modules.value.single { it.projectPath == ":app" }
+        val source = root.resolve("app/src/main/kotlin/sample/hello/MainWindow.xaml")
+        val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
+        val xml = PsiManager.getInstance(project).findFile(file) as XmlFile
+        val greeting = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).single { it.getAttributeValue("x:Name") == "Greeting" }
+        val expectedText = greeting.getAttributeValue("Text")!!
+        assertEquals("Created and edited by Kotlin WinRT IDE", expectedText)
+        pooled("Read the newly built native template's actual WinUI properties") {
+            val clients = WinRTHotReloadClient.discover(Path.of(session))
+            assertEquals(1, clients.size)
+            clients.single().use { client ->
+                assertTrue(model.hotReloadLaunches.any { it.executable.replace('\\', '/').equals(
+                    client.process.info().command().orElseThrow().replace('\\', '/'), true) })
+                val snapshot = client.request()
+                val running = snapshot.roots.single { it.className == "sample.hello.MainWindow" }
+                assertTrue("The authored control module must also load in the real application", snapshot.roots.any {
+                    it.className == "sample.controls.GreetingControl"
+                })
+                assertEquals(WinRTHotReloadMarkup.parse(Files.readString(source)).hash, running.sourceHash)
+                val result = client.request(WinRTXamlHotReloadPatch(running.className, running.resourcePath, running.sourceHash,
+                    running.sourceHash, running.version + 1, emptyList(), reads = listOf(
+                        WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Greeting"), "Text"))))
+                assertEquals(result.message, WinRTXamlHotReloadProtocol.APPLIED, result.status)
+                assertEquals(expectedText, result.values.single { it.element == "Greeting" && it.property == "Text" }.value)
+            }
+        }
+    }
+
+    private fun kotlinFile(project: Project, root: Path): KtFile = PsiManager.getInstance(project).findFile(
+        LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root.resolve("app/src/main/kotlin/sample/hello/MainWindow.kt"))!!) as KtFile
+
+    private fun assertLiveEditing(project: Project, root: Path, saveEdit: Boolean) {
+        val source = root.resolve("app/src/main/kotlin/sample/hello/MainWindow.xaml")
+        val xamlFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
+        val documents = FileDocumentManager.getInstance()
+        val xaml = documents.getDocument(xamlFile)!!
+        val file = kotlinFile(project, root)
+        val kotlin = documents.getDocument(file.virtualFile)!!
+        val beforeXaml = xaml.text
+        var expectedDiskXaml = Files.readString(source)
+        val beforeKotlin = kotlin.text
+        var saved = false
+        val probe = beforeKotlin.substringBefore(" {").trimEnd() + " {\n    fun ideElement() = Greeting\n}\n"
+        try {
+            WriteCommandAction.runWriteCommandAction(project) { kotlin.setText(probe) }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            assertNavigation(project, root, "Greeting")
+            assertCompletion(project, root, "Greeting")
+            fun edit(text: String, name: String, exists: Boolean) {
+                WriteCommandAction.runWriteCommandAction(project) { xaml.setText(text) }
+                val snapshots = project.service<WinRTXamlSnapshotService>()
+                PlatformTestUtil.waitWithEventsDispatching("Live imported XAMLC name $name", {
+                    snapshots.state.value.values.any { snapshot -> snapshot.error != null ||
+                        snapshot.declarations.pages.any { page -> page.className == "sample.hello.MainWindow" &&
+                            page.connections.any { it.fieldName == name } == exists } }
+                }, 60)
+                snapshots.state.value.values.forEach { assertNull(it.error, it.error) }
+                PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+                awaitSmart(project)
+                val names = memberNames(file)
+                assertEquals(names.toString(), exists, name in names)
+                assertEquals("The XAMLC document producer must not write to source files", expectedDiskXaml, Files.readString(source))
+            }
+            val renamed = beforeXaml.replace("x:Name=\"Greeting\"", "x:Name=\"RevisedGreeting\"")
+            edit(renamed, "RevisedGreeting", true)
+            assertFalse("Greeting" in memberNames(file))
+            assertTrue(unresolvedDiagnostics(file).any { it.contains("Greeting") })
+            WriteCommandAction.runWriteCommandAction(project) { kotlin.setText(probe.replace("= Greeting", "= RevisedGreeting")) }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            assertTrue(unresolvedDiagnostics(file).isEmpty())
+            assertNavigation(project, root, "RevisedGreeting")
+            assertCompletion(project, root, "RevisedGreeting")
+            val added = renamed.replace("</StackPanel>", "<TextBlock x:Name=\"ExtraGreeting\" Text=\"Added in the IDE\"/>\n    </StackPanel>")
+            edit(added, "ExtraGreeting", true)
+            edit(added.replace("x:Name=\"ExtraGreeting\"", ""), "ExtraGreeting", false)
+            // A real resolver synchronization must retain the edited declarations
+            // while replacing roots and facets, including their FIR configuration.
+            sync(project, root)
+            // Native Gradle synchronization saves documents before resolving.
+            // The plugin must preserve their edited semantics across that save.
+            expectedDiskXaml = Files.readString(source)
+            assertTrue("RevisedGreeting" in memberNames(file))
+            assertTrue(unresolvedDiagnostics(file).isEmpty())
+            edit(beforeXaml, "Greeting", true)
+            WriteCommandAction.runWriteCommandAction(project) {
+                kotlin.setText(if (saveEdit) probe else beforeKotlin)
+                if (saveEdit) xaml.setText(beforeXaml.replace("Hello from Kotlin WinRT", "Created and edited by Kotlin WinRT IDE"))
+            }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            if (saveEdit) { documents.saveDocument(xaml); documents.saveDocument(kotlin); saved = true }
+        } finally {
+            if (!saved) {
+                WriteCommandAction.runWriteCommandAction(project) { xaml.setText(beforeXaml); kotlin.setText(beforeKotlin) }
+                PsiDocumentManager.getInstance(project).commitAllDocuments()
+                documents.saveDocument(xaml)
+                documents.saveDocument(kotlin)
+            }
+            FileEditorManager.getInstance(project).closeFile(file.virtualFile)
+        }
+    }
+
+    private fun assertNavigation(project: Project, root: Path, name: String) {
+        val file = kotlinFile(project, root)
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val expression = PsiTreeUtil.findChildrenOfType(file, KtNameReferenceExpression::class.java).single { it.getReferencedName() == name }
+        val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file.virtualFile), false)!!
+        val target = allowAnalysisOnEdt { WinRTXamlGeneratedNavigation().getGotoDeclarationTargets(expression, expression.textOffset, editor) }!!.single() as XmlAttributeValue
+        assertEquals(name, target.value)
+        val xml = target.containingFile as XmlFile
+        val classValue = xml.rootTag!!.getAttribute("Class", "http://schemas.microsoft.com/winfx/2006/xaml")!!.valueElement!!
+        val targets = allowAnalysisOnEdt { PsiReferenceService.getService().getReferences(classValue, PsiReferenceService.Hints.NO_HINTS).mapNotNull { it.resolve() } }
+        assertTrue(targets.toString(), targets.any { it.containingFile == file })
+        val custom = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).single { it.localName == "GreetingControl" }
+        val control = custom.descriptor!!.declaration!!
+        assertTrue(control.containingFile.virtualFile.path, control.containingFile.virtualFile.path.contains("/controls/src/main/kotlin/"))
+    }
+
+    private fun assertCompletion(project: Project, root: Path, name: String) {
+        val file = kotlinFile(project, root)
+        val document = FileDocumentManager.getInstance().getDocument(file.virtualFile)!!
+        val before = document.text
+        val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file.virtualFile), false)!!
+        val prefix = name.take(3)
+        val offset = before.indexOf("= $name") + 2
+        require(offset >= 2)
+        try {
+            WriteCommandAction.runWriteCommandAction(project) { document.replaceString(offset, offset + name.length, prefix) }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            editor.caretModel.moveToOffset(offset + prefix.length)
+            allowAnalysisOnEdt { CodeCompletionHandlerBase(CompletionType.BASIC, true, false, true).invokeCompletion(project, editor) }
+            // A cold IDE can hand the invocation back while its contributor is
+            // still running. Wait for the actual lookup or native insertion.
+            PlatformTestUtil.waitWithEventsDispatching("Real Kotlin completion for $name", {
+                name in LookupManager.getActiveLookup(editor)?.items.orEmpty().map { it.lookupString } ||
+                    document.text.substring(offset).startsWith(name)
+            }, 60)
+        } finally {
+            LookupManager.getInstance(project).hideActiveLookup()
+            WriteCommandAction.runWriteCommandAction(project) { document.setText(before) }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+        }
+    }
+
+    private fun memberNames(file: KtFile): Set<String> = allowAnalysisOnEdt { analyze(file) {
+        file.declarations.filterIsInstance<org.jetbrains.kotlin.psi.KtClass>().single().namedClassSymbol!!.memberScope.callables
+            .mapNotNull { (it as? KaNamedSymbol)?.name?.asString() }.toSet()
+    } }
+
+    private fun awaitSmart(project: Project) {
+        PlatformTestUtil.waitWithEventsDispatching("Imported source indexing", { !DumbService.isDumb(project) }, 180)
+    }
+
+    private fun unresolvedDiagnostics(file: KtFile): List<String> = allowAnalysisOnEdt { analyze(file) {
+        file.collectDiagnostics(KaDiagnosticCheckerFilter.ONLY_COMMON_CHECKERS).filter { it.factoryName.contains("UNRESOLVED_REFERENCE") }
+            .map { it.defaultMessage }
+    } }
 
     private fun awaitHotReload(service: WinRTHotReloadService) {
         PlatformTestUtil.waitWithEventsDispatching("Native WinUI development handshake", {
@@ -278,5 +488,6 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         PlatformTestUtil.waitWithEventsDispatching("Native Gradle import", { done.get() }, 600)
         assertNull(failure.get(), failure.get())
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+        awaitSmart(project)
     }
 }

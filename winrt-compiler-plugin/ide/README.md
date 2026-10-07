@@ -4,7 +4,7 @@ This is a standalone IDE build beneath the compiler tooling owner. It does not
 add IntelliJ dependencies to the WinRT runtime, metadata, generator or main
 application build. The shared Kotlin/JVM 17 Tooling API contract is imported from
 `windows-toolkit-gradle-plugin/ide-model`; plugin code targets Java 25, matching
-the 262 IDE runtime and the metadata toolchain.
+the validated IDE runtimes and the metadata toolchain.
 
 The initial target is IntelliJ IDEA 2026.2.2 (build 262). Compose and Jewel are
 provided by that IDE through `composeUI()`; a separate desktop runtime or
@@ -17,12 +17,16 @@ replaces a build's models, including removal of previously configured modules.
 
 | IDE / compiler combination | Compose/Jewel adaptation | FIR adaptation | Validation |
 | --- | --- | --- | --- |
-| Windows IDEA 2026.2.2 / 262, embedded Kotlin 2.4, runtime JDK 25 | IDE-provided Jewel bridge and Compose; no bundled UI runtime | Separate fir-adapter compiled from the owning frontend sources against the embedded compiler | Platform/editor/Analysis API tests, native Gradle import and persisted model recovery, real XAMLC document pass and JVM WinUI updates |
-| Other 262 distributions or patch releases | Reuse only after checking their bundled UI APIs | Check the embedded compiler and rebuild/verify the adapter | Not validated |
-| Other IDEA build lines and Android Studio | Select that distribution's Compose/Jewel SDK and validate its native host | Recompile and validate against that distribution's embedded Kotlin | Not validated; no compatibility claim |
+| Windows IDEA 2026.2.2 / IU-262.10315.125, analysis compiler 2.4.20-ij262-52, JBR 25 | Bundled Compose/Jewel bridge | Separate fir-adapter compiled from the owning frontend sources | Platform/editor/Analysis API tests, native Gradle import and cold workspace recovery, real XAMLC and JVM WinUI updates |
+| Android Studio / AI-261.26222.65.2614.16204760, analysis compiler 2.4.255-dev-255, JBR 25 | That distribution's bundled Compose/Jewel bridge | Recompiled against its analysis compiler; native Kotlin reference resolution shared with 262 | Platform/editor/Analysis API tests, native Gradle import/cache recovery and real XAMLC |
+| Android Studio Canary / AI-262.10315.125.2622.16434108, analysis compiler 2.4.255-dev-255, JBR 25 | That distribution's bundled Compose/Jewel bridge | Recompiled against its analysis compiler | Platform/editor/Analysis API tests, native Gradle import/cache recovery and real XAMLC |
+| Other distributions or patch releases | Check their bundled UI APIs | Rebuild and validate against their analysis compiler | No compatibility claim |
 
-Plugin metadata accepts build 262 only. The JVM 17 ide-model transport stays
-independent of both adapters. Changes to the build compiler do not implicitly
+Each package's metadata accepts only its SDK's build line (261 or 262). Packages
+are rebuilt for each distribution; one binary is not declared compatible across
+both lines. The JVM 17 ide-model transport stays independent of both adapters.
+The analysis compiler is read from the Kotlin plugin's analysis libraries, rather
+than its separate JPS compiler. Changes to the build compiler do not implicitly
 upgrade the IDE adapter; embedded Kotlin is selected by the IDE distribution.
 The current baseline is JVM first. Native development transport and Native
 application/template validation remain separate parity work.
@@ -52,9 +56,21 @@ Build and test on Windows from the repository root:
 
 To reuse a locally installed SDK, add
 `'-PkotlinWinRT.ide.path=D:/Program Files/JetBrains IDEA'` to the command. The
-selected local installation must match the supported build line.
+selected local installation must match a validated build line. When switching
+distributions, supply `-PkotlinWinRT.ide.variant=<simple-name>`, for example
+`as-261` or `as-canary-262`, together with
+`--project-cache-dir <absolute IDE build root>/.gradle/variants/<name>`.
+Settings require that cache path and select separate output directories before
+Kotlin plugins initialize their source sets, including `fir-adapter` and
+`ide-model`. Sandboxes are isolated as well. Gradle tracks previous outputs per
+task; sharing its project cache lets one SDK build delete another's classes,
+even with distinct output directories. Both layers are isolated so packages and
+running native tests retain the selected distribution's adapters.
+Run SDK builds sequentially: included toolchain producers are shared, and Windows
+can lock their JARs while native Gradle import uses them.
 
-The IDE plugin distribution is produced under `build/distributions`. Application
+The baseline distribution is produced under `build/distributions`; named SDK
+variants use `build/variants/<name>/distributions`. Application
 runtime/projection behavior remains in the existing Kotlin modules corresponding
 to `.cswinrt`; IDE UI and analysis adapters do not own ABI behavior.
 
@@ -75,7 +91,7 @@ changes refresh snapshots. Snapshot publication invalidates both cached compiler
 configurations and Kotlin analysis sessions. `WinRTFirAnalysisTest` exercises
 the actual IDE plugin loader and Analysis API: a generated name and connector
 supertype appear, a name replacement removes the old member, and an empty index
-removes the replacement. The adapter is coupled to build 262 APIs and must be
+removes the replacement. The adapter is coupled to its selected SDK and must be
 rebuilt/validated for another embedded compiler.
 
 The tool window's **Prepare XAML analysis** action runs the existing declaration
@@ -87,6 +103,12 @@ are retained. XAMLC's existing DOM/harvester produces the declaration index,
 with diagnostic paths mapped back to the original files. Source files and build
 outputs are never overwritten by this producer. Invalid markup clears generated
 symbols; revisions prevent an older result from replacing a newer edit.
+
+Snapshot directories use a hash of the IDE system directory and project identity.
+If that system path exceeds XAMLC's Windows path budget, snapshots use a short
+directory beneath the user's temporary directory. Invocation-owned directories
+are removed after the child compiler exits, including cancellation. Short copied
+source names keep their original package identities through `MSBuild_Link`.
 
 `WinRTXamlDocumentCompilerTest` optionally exercises real document events,
 the Windows compiler and the IDE FIR adapter together. It validates unsaved
@@ -104,15 +126,25 @@ build on each keystroke.
 
 `WinRTGradleImportTest` optionally opens a standalone template through the real
 Gradle resolver, imports generated SDK sources and Kotlin compiler options, then
-checks SDK and XAML FIR members before an application build. It repeats native
-synchronization and recovers the model after saving, closing and reopening the
-project. Supply `-Pwinrt.ide.importProject=<prepared template under .gradle>`;
-prepare only `analyzeWinRTXaml` and `generateWinRTProjections` first. Platform unit
-tests disable automatic workspace-model persistence, so the reopen analysis
-check reapplies the actually deserialized Gradle graph through its native
-importer without resolving Gradle again. Interactive IDE restart remains separate
-validation. Windows external-project paths use the platform's forward-slash
-representation consistently, required by its persisted-cache validation.
+checks SDK and XAML FIR members before an application build. Actual editor
+completion and bidirectional navigation cover generated names and the dependent
+control module. Unsaved XAML addition/removal/rename updates members and diagnostics;
+native Gradle synchronization preserves those edits through its document save.
+It saves the platform workspace cache and checks recovered source roots, Kotlin
+facets and analysis after reopening, without reimporting a cached Gradle graph.
+Supply `-Pwinrt.ide.importProject=<prepared template under .gradle>`; prepare only
+`analyzeWinRTXaml` and `generateWinRTProjections` first. Native import tests receive
+a 4 GiB heap budget for the real SDK and included toolchain.
+
+The optional `-Pwinrt.ide.importPhase=import` saves the edited template and native
+workspace cache. A separate invocation with `importPhase=reopen` requires a
+different IDE host process, asserts that the platform loaded its cache, and tests
+completion/navigation without Gradle synchronization. Supplying an existing
+`recoveredHotReloadSession` also verifies that the newly built WinUI application
+loaded its authored control and returns the edited Text through an actual SDK
+getter on its UI thread. Full desktop UI restart acceptance remains separate.
+Windows external-project paths use the platform's forward-slash representation
+consistently, required by its persisted-cache validation.
 
 ## XAML editor
 
@@ -185,9 +217,14 @@ scale, target-size and theme variants. The manifest uses their base resource
 names; the launcher ICO wraps six original PNGs without resizing or re-encoding.
 Library templates do not include application icons or package manifests.
 Tests cover original icon payloads, manifest references, file protection and
-module undo/redo. Generated standalone consumers are also compiled on Windows;
-the console consumer is launched through the actual Windows host. The combined
-WinUI application/control/resource/library consumer also creates a real window.
+module undo/redo. `WinRTTemplateGenerationTest` takes
+`-Pwinrt.ide.templateOutput=<fresh directory under .gradle>` and creates both
+applications and their library modules through the wizard's native write commands.
+It saves a document edit referencing the control library, then the import test
+completes the editing workflow before application compilation. These saved
+consumers are built and launched through actual Windows hosts: the console prints
+its greeting, and the combined WinUI application/control/resource/library consumer
+loads the authored control and reports the edited native Text value.
 
 ## Resources and package manifest
 
@@ -336,8 +373,9 @@ and reopen its imported project, recover the session and apply an unsaved Text e
 to an existing WinUI application. This uses the native project lifecycle inside
 the platform host; full desktop IDE restart remains separate interactive acceptance.
 The common runtime engine compiles for `mingwX64`, but its development transport and
-end-to-end IDE support currently target JVM. Android Studio and other IDEA/Kotlin
-versions require their own adapter and UI validation.
+end-to-end IDE support currently target JVM. The compatibility matrix records
+backend validation for installed SDKs; desktop interaction still requires
+acceptance in each distribution.
 
 The implementation queue remains in the local, uncommitted
 `IDE_SUPPORT_LOCAL_PLAN.md`; this README records module boundaries and supported

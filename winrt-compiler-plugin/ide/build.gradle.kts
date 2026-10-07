@@ -10,6 +10,15 @@ plugins {
 group = "io.github.composefluent.winrt"
 version = "0.1.0-SNAPSHOT"
 
+// Each distribution recompiles its FIR/UI adapters and owns its test caches.
+// Keep the baseline package intact while validating another installed SDK.
+val ideVariant = providers.gradleProperty("kotlinWinRT.ide.variant").orNull
+val ideBuildLine = providers.provider {
+    intellijPlatform.productInfo.buildNumber.substringBefore('.').also {
+        require(it in setOf("261", "262")) { "This adapter requires a validated 261 or 262 SDK." }
+    }
+}
+
 repositories {
     mavenCentral()
     intellijPlatform { defaultRepositories() }
@@ -58,9 +67,13 @@ tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
 }
 
 tasks.withType<Test>().configureEach {
+    // Native import indexes the real SDK and included toolchain alongside the
+    // distribution's own plugins; a light fixture's 2 GiB budget is insufficient.
+    if (providers.gradleProperty("winrt.ide.importProject").isPresent) maxHeapSize = "4g"
     // BasePlatformTestCase is JUnit 3; its runner reports JUnit 4 assumptions
     // as failures. Keep optional real-toolchain fixtures out until configured.
     if (!providers.gradleProperty("winrt.ide.importProject").isPresent) exclude("**/WinRTGradleImportTest.class")
+    if (!providers.gradleProperty("winrt.ide.templateOutput").isPresent) exclude("**/WinRTTemplateGenerationTest.class")
     if (!providers.gradleProperty("winrt.ide.xamlInput").isPresent || !providers.gradleProperty("winrt.ide.xamlCompiler").isPresent)
         exclude("**/WinRTXamlDocumentCompilerTest.class")
     systemProperty("winrt.ide.toolchain", rootProject.projectDir.resolve("../..").canonicalPath)
@@ -73,18 +86,20 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.hotReloadGraphSession").orNull?.let { systemProperty("winrt.ide.hotReloadGraphSession", it) }
     providers.gradleProperty("winrt.ide.hotReloadGraphSource").orNull?.let { systemProperty("winrt.ide.hotReloadGraphSource", it) }
     providers.gradleProperty("winrt.ide.importProject").orNull?.let { systemProperty("winrt.ide.importProject", it) }
+    providers.gradleProperty("winrt.ide.importPhase").orNull?.let { systemProperty("winrt.ide.importPhase", it) }
     providers.gradleProperty("winrt.ide.recoveredHotReloadSession").orNull?.let { systemProperty("winrt.ide.recoveredHotReloadSession", it) }
 }
 
 intellijPlatform {
+    if (ideVariant != null) sandboxContainer.set(layout.projectDirectory.dir(".intellijPlatform/sandbox/$ideVariant"))
     // Compose owns the UI; there are no IntelliJ .form files or Java classes.
     instrumentCode = false
     pluginConfiguration {
         id = "io.github.composefluent.winrt.ide"
         name = "Kotlin WinRT"
         ideaVersion {
-            sinceBuild = "262"
-            untilBuild = "262.*"
+            sinceBuild.set(ideBuildLine)
+            untilBuild.set(ideBuildLine.map { "$it.*" })
         }
     }
 }

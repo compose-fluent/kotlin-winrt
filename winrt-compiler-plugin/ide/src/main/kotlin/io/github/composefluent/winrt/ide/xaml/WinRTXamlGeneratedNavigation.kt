@@ -17,6 +17,7 @@ import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.symbols.KaCallableSymbol
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtExperimentalApi
+import org.jetbrains.kotlin.idea.references.mainReference
 
 /** Generated FIR properties have no physical Kotlin declaration to navigate to. */
 class WinRTXamlGeneratedNavigation : GotoDeclarationHandler {
@@ -31,7 +32,9 @@ class WinRTXamlGeneratedNavigation : GotoDeclarationHandler {
     internal fun targets(expression: KtNameReferenceExpression): List<PsiElement> {
         if (DumbService.isDumb(expression.project)) return emptyList()
         val owner = analyze(expression) {
-            val symbol = expression.resolveSymbol() as? KaCallableSymbol ?: return@analyze null
+            // 261's shipped name PSI does not implement the newer KtResolvable.
+            // Both validated SDKs expose this native reference resolution API.
+            val symbol = expression.mainReference.resolveToSymbol() as? KaCallableSymbol ?: return@analyze null
             // A user property with the same name keeps normal Kotlin navigation.
             if (symbol.psi != null && symbol.psi !is org.jetbrains.kotlin.psi.KtClassOrObject) return@analyze null
             symbol.callableId?.classId?.asSingleFqName()?.asString()
