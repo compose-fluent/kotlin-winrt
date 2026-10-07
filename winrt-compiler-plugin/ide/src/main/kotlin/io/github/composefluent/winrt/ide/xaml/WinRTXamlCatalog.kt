@@ -70,16 +70,17 @@ class WinRTXamlCatalog(val model: WinRTMetadataModel) {
     }.distinctBy { it.name }
 
     fun attachedMembers(type: WinRTTypeDefinition): List<WinRTXamlMember> {
-        val definitions = listOf(type) + if (type.kind == WinRTTypeKind.RuntimeClass)
+        val staticInterfaces = if (type.kind == WinRTTypeKind.RuntimeClass)
             closure.resolveRuntimeClass(type).activation.staticInterfaces.mapNotNull { it.definitionType } else emptyList()
-        val methods = definitions.flatMap { it.methods }
-        // XAMLC DirectUIXamlType's attachable-member convention: matching
-        // GetX(target)/SetX(target, value), rather than a list of known properties.
-        return methods.filter { it.name.startsWith("Set") && it.parameters.size == 2 }.mapNotNull { setter ->
-            val name = setter.name.removePrefix("Set")
-            val getter = methods.firstOrNull { it.name == "Get$name" && it.parameters.size == 1 }
-                ?: return@mapNotNull null
-            if (getter.returnTypeName != setter.parameters[1].typeName) return@mapNotNull null
+        val methods = type.methods.filter { it.isStatic } + staticInterfaces.flatMap { it.methods }
+        // XAMLC/System.Xaml LookupAttachableMember accepts a getter without a
+        // setter for read-only collections such as VisualStateGroups. A paired
+        // setter must agree with that getter; the IDE maintains no control list.
+        return methods.filter { it.name.startsWith("Get") && it.name.length > 3 && it.parameters.size == 1 &&
+            !isWinRTVoidTypeName(it.returnTypeName) }.mapNotNull { getter ->
+            val name = getter.name.removePrefix("Get")
+            val setter = methods.firstOrNull { it.name == "Set$name" && it.parameters.size == 2 }
+            if (setter != null && getter.returnTypeName != setter.parameters[1].typeName) return@mapNotNull null
             WinRTXamlMember(name, getter.returnTypeName, type.qualifiedName)
         }.distinctBy { it.name }
     }

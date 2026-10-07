@@ -191,6 +191,23 @@ class WinRTXamlBindingTest : BasePlatformTestCase() {
         assertTrue(consumer.text, consumer.text.contains("page.viewModel.item.name"))
     }
 
+    fun testPrivateProjectedPropertyUsagesAndRenameIncludeUppercaseXamlSpelling() {
+        val file = configure("""<Button Content="{x:Bind Model.item.name}"/><Button Content="{Binding Model.item.name}"/>""")
+        val target = analysis(value(file)).sites.first { it.name == "Model" }.target as KtProperty
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            target.addModifier(org.jetbrains.kotlin.lexer.KtTokens.PRIVATE_KEYWORD)
+        }
+        val references = allowAnalysisOnEdt { ReferencesSearch.search(target).findAll() }
+        assertEquals(references.toString(), 1, references.count { it.element.containingFile == file })
+        val renames = linkedMapOf<com.intellij.psi.PsiElement, String>(target to "viewModel")
+        // Native preparation is on EDT and must not invoke Kotlin analysis.
+        WinRTXamlKotlinRenameProcessor().prepareRenaming(target, "viewModel", renames)
+        assertEquals(2, renames.size)
+        allowAnalysisOnEdt { RenameProcessor(project, target, "viewModel", false, false).run() }
+        assertTrue(file.text, file.text.contains("{x:Bind ViewModel.item.name}"))
+        assertTrue(file.text, file.text.contains("{Binding Model.item.name}"))
+    }
+
     fun testStaticCastIndexerAttachedAndBindBackReferencesUseTheCompilerLookupShape() {
         val file = configure("""<Button Content="{x:Bind local:Tools.selected.name}"/><Button Content="{x:Bind items[0].name}"/>
             <Button Content="{x:Bind ((local:Person)model.item).name}"/><Button Content="{x:Bind model.item.(local:Tools.Label)}"/>

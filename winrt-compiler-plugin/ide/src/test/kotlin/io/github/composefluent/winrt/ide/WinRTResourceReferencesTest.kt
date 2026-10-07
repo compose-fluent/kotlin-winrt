@@ -277,4 +277,34 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
             assertEquals(dictionary, WinRTResourceReferences.reference(source)!!.multiResolve(false).single().element)
         }
     }
+
+    // FrameworkTheming::RebuildColorAndBrushResources owns these dynamic
+    // declarations; the SDK dictionaries contain references, not definitions.
+    fun testSystemAndAccentResourcesResolveWithoutFictitiousSdkDefinitions() {
+        val file = configure("""<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ResourceDictionary.ThemeDictionaries><ResourceDictionary x:Key="HighContrast"><SolidColorBrush x:Key="Background" Color="{ThemeResource SystemColorWindowColor}"/><SolidColorBrush x:Key="Border" Color="{ThemeResource SystemColorWindowTextColor}"/><SolidColorBrush x:Key="Accent" Color="{StaticResource SystemAccentColorDark1}"/><SolidColorBrush x:Key="Missing" Color="{ThemeResource SystemColorWindowsColor}"/></ResourceDictionary></ResourceDictionary.ThemeDictionaries></ResourceDictionary>""")
+        val brushes = file.rootTag!!.subTags.single().subTags.single().subTags
+        for (brush in brushes.take(3)) {
+            val target = WinRTResourceReferences.reference(brush.getAttribute("Color")!!.valueElement!!)!!.multiResolve(false).single().element!!
+            assertEquals("WinUI System Resources.xml", target.containingFile.name)
+            assertFalse(target.containingFile.isWritable)
+            assertTrue((target as com.intellij.psi.NavigatablePsiElement).canNavigate())
+            assertFalse(target.containingFile.text.contains("value="))
+        }
+        val highlights = myFixture.doHighlighting().filter { it.description?.startsWith("No resource source candidate") == true }
+        assertEquals(listOf("SystemColorWindowsColor"), highlights.map { file.text.substring(it.startOffset, it.endOffset) })
+        val document = myFixture.editor.document
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(document.text.replace("SystemColorWindowColor}", "SystemColorWindow}")) }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        myFixture.editor.caretModel.moveToOffset(document.text.indexOf("{ThemeResource SystemColorWindow") + "{ThemeResource SystemColorWindow".length)
+        myFixture.complete(CompletionType.BASIC)
+        assertTrue(myFixture.lookupElementStrings.toString(), myFixture.lookupElementStrings.orEmpty().containsAll(
+            listOf("SystemColorWindowColor", "SystemColorWindowTextColor", "SystemColorWindowBrush", "SystemColorWindowTextBrush")))
+    }
+
+    fun testLocalDefinitionsOverrideSystemResources() {
+        val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Page.Resources><Color x:Key="SystemColorWindowColor">Red</Color></Page.Resources><TextBlock Foreground="{ThemeResource SystemColorWindowColor}"/></Page>""")
+        val definition = file.rootTag!!.subTags[0].subTags.single().getAttribute("Key", io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog.XAML)!!.valueElement!!
+        val reference = file.rootTag!!.subTags[1].getAttribute("Foreground")!!.valueElement!!
+        assertEquals(definition, WinRTResourceReferences.reference(reference)!!.multiResolve(false).single().element)
+    }
 }

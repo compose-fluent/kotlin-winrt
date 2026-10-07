@@ -200,6 +200,8 @@ internal object WinRTResourceReferences {
             LocalFileSystem.getInstance().findFileByPath(resource.source.replace('\\', '/'))?.let { PsiManager.getInstance(file.project).findFile(it) }
                 ?.let { source -> resource.element(source).takeIf { it.isValid }?.let { Key(resource.value, it) } }
         }
-        return (local + application + framework).distinct().candidates() + oversized
+        val sources = (local + application + framework).distinct().candidates() + oversized
+        if (key != null && sources.isNotEmpty()) return sources
+        return sources + file.project.service<WinRTSystemResourceKeys>().candidates(key)
     }
 }

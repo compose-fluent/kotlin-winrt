@@ -39,8 +39,11 @@
         <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation"/>
         <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeNavigation"/>
         <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameReferencesSearch"/>
+        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlKotlinReferencesSearch"/>
+        <implicitUsageProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlImplicitUsageProvider"/>
         <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameProcessor"/>
         <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlClassRenameProcessor" order="last"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlKotlinRenameProcessor" order="last"/>
         <renameHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameHandler" order="first"/>
         <toolWindow id="Kotlin WinRT" anchor="right"
                     factoryClass="io.github.composefluent.winrt.ide.ui.WinRTToolWindowFactory"/>

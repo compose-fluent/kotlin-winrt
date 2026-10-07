@@ -85,6 +85,10 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         PlatformTestUtil.waitWithEventsDispatching("Resource index initialized", {
             resources.forFile(file.originalFile.virtualFile.path)?.module?.projectDirectory == directory.toString()
         }, 10)
+        val snapshots = project.service<io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService>()
+        PlatformTestUtil.waitWithEventsDispatching("XAML analysis input initialized", {
+            snapshots.currentText(directory.resolve("declarations.json").toString()) != null
+        }, 10)
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         return file
     }
@@ -259,6 +263,32 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         assertEquals("sample.RenamedShell", file.rootTag!!.getAttributeValue("Class", WinRTXamlCatalog.XAML))
         assertEquals("RenamedShell.kt", owner.containingFile.name)
         assertEquals("RenamedShell.xaml", file.name)
+    }
+
+    fun testPrivateXamlHandlersHaveNativeUsagesCodeVisionAndNoUnusedWarning() {
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:x="${WinRTXamlCatalog.XAML}" x:Class="sample.PopupPage" Click="ShowPopupButton_Click"/>""")
+        val kotlin = myFixture.addFileToProject("PopupPage.kt", "package sample\nclass PopupPage { private fun ShowPopupButton_Click(sender: Any?, args: Any?) {}\nprivate fun neverUsed() {} }")
+        val handler = allowAnalysisOnEdt { WinRTXamlEventAnalysis.forAttribute(file.rootTag!!.getAttribute("Click")!!)!!.target("ShowPopupButton_Click") } as KtNamedFunction
+        val references = allowAnalysisOnEdt { ReferencesSearch.search(handler).findAll() }
+        assertTrue(references.toString(), references.any { it.element == file.rootTag!!.getAttribute("Click")!!.valueElement })
+        val hint = com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService().submit(java.util.concurrent.Callable {
+            com.intellij.openapi.application.ReadAction.compute<String?, RuntimeException> {
+                org.jetbrains.kotlin.idea.k2.codeinsight.hints.KotlinReferencesCodeVisionProvider().getHint(handler, kotlin)
+            }
+        })
+        PlatformTestUtil.waitWithEventsDispatching("Native Kotlin usage hint", { hint.isDone }, 10)
+        assertEquals("1 Usage", hint.get())
+        myFixture.configureFromExistingVirtualFile(kotlin.virtualFile)
+        val unusedInspection = com.intellij.codeInspection.LocalInspectionEP.LOCAL_INSPECTION.extensionList.single {
+            it.language == "kotlin" && it.implementationClass.endsWith(".UnusedSymbolInspection") &&
+                !it.implementationClass.startsWith("org.jetbrains.kotlin.idea.inspections.") // K1 implementation
+        }.instantiateTool()
+        myFixture.enableInspections(unusedInspection)
+        val unused = allowAnalysisOnEdt { myFixture.doHighlighting() }.filter { it.description?.contains("never used") == true }
+        assertFalse(unused.toString(), unused.any { kotlin.text.substring(it.startOffset, it.endOffset) == "ShowPopupButton_Click" })
+        assertTrue(unused.toString(), unused.any { kotlin.text.substring(it.startOffset, it.endOffset) == "neverUsed" })
+        allowAnalysisOnEdt { RenameProcessor(project, handler, "onPopupClicked", false, false).run() }
+        assertEquals("onPopupClicked", file.rootTag!!.getAttributeValue("Click"))
     }
 
     override fun tearDown() {

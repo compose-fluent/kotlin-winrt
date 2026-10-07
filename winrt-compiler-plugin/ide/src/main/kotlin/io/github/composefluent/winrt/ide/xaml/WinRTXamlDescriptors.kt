@@ -37,7 +37,8 @@ class WinRTXamlSchemaProvider : XmlSchemaProvider() {
     }
 }
 
-private fun isXamlNamespace(uri: String) = uri.substringBefore('?') == WinRTXamlCatalog.XAML ||
+private fun isXamlNamespace(uri: String) = uri.substringBefore('?') in setOf(WinRTXamlCatalog.XAML,
+    "http://schemas.microsoft.com/expression/blend/2008", "http://schemas.openxmlformats.org/markup-compatibility/2006") ||
     WinRTXamlCatalog.namespaces(uri).isNotEmpty()
 
 /** XAMLC DirectUISchemaContext.GetProxyType and DirectUIXamlLanguage.LookupXamlObjects.
@@ -78,7 +79,8 @@ private class WinRTXamlElementDescriptor(private val tag: XmlTag, private val el
     override fun getDeclaration(): PsiElement? {
         val name = elementName.substringAfter(':')
         if (name.contains('.')) {
-            WinRTXamlAttributeAnalysis.forName(tag, name.substringAfter('.'))?.targets?.firstOrNull()?.let { return it }
+            (WinRTXamlAttributeAnalysis.forName(tag, name.substringAfter('.'))?.primary
+                ?: WinRTXamlAttributeAnalysis.forName(tag, elementName)?.primary)?.let { return it }
         } else WinRTXamlSymbols.tagClass(tag, elementName)?.let { return it }
         val namespace = tag.getNamespaceByPrefix(elementName.substringBefore(':', ""))
         if (isXamlLanguageElement(namespace, name)) return tag
@@ -87,7 +89,8 @@ private class WinRTXamlElementDescriptor(private val tag: XmlTag, private val el
         // still produce the native XML unresolved-reference diagnostic.
         val catalog = WinRTXamlSymbols.catalog(tag.containingFile) ?: return null
         val owner = catalog.resolve(namespace, name.substringBefore('.')) ?: return null
-        return tag.takeIf { !name.contains('.') || catalog.members(owner).any { it.name == name.substringAfter('.') } }
+        return tag.takeIf { !name.contains('.') || (catalog.members(owner) + catalog.attachedMembers(owner))
+            .any { it.name == name.substringAfter('.') } }
     }
     override fun getDependencies(): Array<Any> = arrayOf(tag.project.service<WinRTXamlCatalogService>().modificationTracker, tag.containingFile)
     override fun getElementsDescriptors(context: XmlTag?): Array<XmlElementDescriptor> = (context ?: tag).knownNamespaces()

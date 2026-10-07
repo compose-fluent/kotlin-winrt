@@ -167,7 +167,8 @@ that model and its existing interface closure. Presentation namespace aliases
 follow XAMLC's `DirectUISchemaContext`; `using:` namespaces also query Kotlin's
 class index within the module's dependency scope. There is no separate list of
 WinUI controls. Enum/Boolean values, namespaces, classes and event handlers are
-completion candidates; matching static accessor pairs resolve attached values.
+completion candidates. Static accessors resolve attached values, including
+getter-only collections such as `VisualStateManager.VisualStateGroups`.
 
 PSI references resolve `x:Class` and event handlers to Kotlin, and descriptors
 navigate custom controls and projected types. Kotlin class gutter markers link
@@ -218,6 +219,12 @@ preview machinery. Identical names in other templates and shadowing Kotlin
 variables are excluded by resolution, not a text replacement. Dynamic Binding
 paths with an unknown source remain unchanged. `WinRTXamlBindingTest` validates
 these paths, completion insertion and native refactoring scope boundaries.
+Private handlers and typed properties referenced by XAML contribute to Kotlin's
+native Usage Code Vision and unused-symbol inspection. The indexed search still
+resolves ownership; another class's matching name does not imply a use. Private
+XAML references participate in the same native rename preview and undo transaction
+despite Kotlin's normal private-file search restriction. Projected uppercase
+property spelling is retained when renaming a lowercase Kotlin property.
 
 ## Project and module wizard
 
@@ -342,6 +349,13 @@ navigation candidates, not a claim about MRT's selected runtime value. Reference
 are soft and unresolved sources have a diagnostic describing dependency/runtime
 limits. Foreign package authorities and opaque compiled dictionaries require their
 own source mapping; they are not resolved to unrelated local files.
+
+System colors and brushes supplied dynamically by WinUI's `FrameworkTheming`
+resolve even though they have no `x:Key` declaration in SDK dictionaries. Navigation
+opens a read-only declaration view with each key's type and Windows provider;
+runtime color values are not invented. Application dictionary overrides retain
+priority. This includes `SystemColorWindowColor` and `SystemColorWindowTextColor`;
+misspelled keys still produce the normal unresolved-resource diagnostic.
 
 ## Preview and Visual Tree
 
