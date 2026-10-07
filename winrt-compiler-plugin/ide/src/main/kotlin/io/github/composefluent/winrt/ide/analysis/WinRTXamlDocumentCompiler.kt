@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.Comparator
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
@@ -23,6 +24,23 @@ data class WinRTXamlDocument(val path: String, val text: String, val revision: L
 
 /** Uses XamlCompiler's DOM/harvester and KotlinXamlDeclarationWriter, just like CompileWinRTXamlTask. */
 internal object WinRTXamlDocumentCompiler {
+    /** .NET Framework XAMLC still requires short working/output paths on Windows.
+     * A distribution's sandbox or a long project name can exceed that budget even
+     * when each copied source has a short name. Keep a stable user-owned cache and
+     * retain per-invocation ownership/cleanup in harvest.
+     */
+    fun cacheDirectory(systemDirectory: Path, projectIdentity: String): Path {
+        val identity = "${systemDirectory.toAbsolutePath().normalize()}\n$projectIdentity"
+        val key = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
+            .take(12).joinToString("") { "%02x".format(it) }
+        val preferred = systemDirectory.resolve("kotlin-winrt/xaml/$key")
+        if (preferred.toAbsolutePath().toString().length <= 160) return preferred
+        val temporary = System.getenv("TEMP")?.takeIf(String::isNotBlank) ?: System.getProperty("java.io.tmpdir")
+        return Path.of(temporary).toAbsolutePath().normalize().resolve("kotlin-winrt-xaml/$key").also {
+            require(it.toString().length <= 160) { "XAML analysis requires a shorter IDE system or user temporary directory." }
+        }
+    }
+
     suspend fun harvest(compilation: WinRTXamlCompilationData, documents: List<WinRTXamlDocument>, cacheRoot: Path): String =
         withContext(Dispatchers.IO) {
             require(Files.isRegularFile(Path.of(compilation.inputFile))) {

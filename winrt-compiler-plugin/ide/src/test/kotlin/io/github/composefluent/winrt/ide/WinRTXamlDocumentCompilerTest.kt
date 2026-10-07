@@ -2,7 +2,6 @@ package io.github.composefluent.winrt.ide
 
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -211,7 +210,7 @@ class WinRTXamlDocumentCompilerTest : BasePlatformTestCase() {
             assertFalse(memberNames(kotlinFile).contains("IdeUnsavedElement"))
             assertEquals(original, Files.readString(source))
             FileDocumentManager.getInstance().reloadFromDisk(document)
-            Files.list(PathManager.getSystemDir().resolve("kotlin-winrt/xaml/${project.locationHash}")).use { assertEquals(0L, it.count()) }
+            Files.list(snapshots.cacheDirectory).use { assertEquals(0L, it.count()) }
         } finally {
             fixtureFacet?.let { facet -> ApplicationManager.getApplication().runWriteAction {
                 val manager = FacetManager.getInstance(module)

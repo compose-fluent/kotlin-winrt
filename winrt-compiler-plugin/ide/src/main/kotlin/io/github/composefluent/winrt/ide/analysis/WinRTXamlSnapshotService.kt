@@ -45,6 +45,7 @@ data class WinRTXamlSnapshot(val text: String, val declarations: WinRTXamlDeclar
 @Service(Service.Level.PROJECT)
 @OptIn(FlowPreview::class)
 class WinRTXamlSnapshotService(private val project: Project, private val scope: CoroutineScope) : Disposable, com.intellij.openapi.util.ModificationTracker {
+    internal val cacheDirectory = WinRTXamlDocumentCompiler.cacheDirectory(PathManager.getSystemDir(), project.locationHash)
     private val snapshots = MutableStateFlow<Map<String, WinRTXamlSnapshot>>(emptyMap())
     val state: StateFlow<Map<String, WinRTXamlSnapshot>> = snapshots
     private val documents = ConcurrentHashMap<String, WinRTXamlDocument>()
@@ -80,7 +81,7 @@ class WinRTXamlSnapshotService(private val project: Project, private val scope: 
                     try {
                         check(TrustedProjects.isProjectTrusted(project)) { "Trust this project before running XAML analysis." }
                         val text = WinRTXamlDocumentCompiler.harvest(compilation, inputs,
-                            PathManager.getSystemDir().resolve("kotlin-winrt/xaml/${project.locationHash}"))
+                            cacheDirectory)
                         if (generation.get() == request) publish(compilation.declarationsFile, text)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
