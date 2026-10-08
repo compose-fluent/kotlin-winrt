@@ -53,6 +53,7 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
     val live = project.service<WinRTHotReloadService>()
     val design = project.service<WinRTStaticPreviewService>()
     var static by remember { mutableStateOf(staticFile != null) }
+    var showInspector by remember { mutableStateOf(staticFile == null) }
     val session: WinRTDevelopmentSession = if (static) design else live
     val state by session.state.collectAsState()
     val selection = project.service<WinRTVisualInspectionSelection>()
@@ -151,17 +152,22 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
             RadioButtonRow("Live Preview", !static, { static = false }); RadioButtonRow("Static Preview", static, { static = true })
         }
         if (!state.connected) {
-            WinRTModulePicker(project)
-            WinRTChoice(if (static) "Design host" else "Application", launches.map { it.taskName to if (it.taskName.startsWith("runWinAppPackage")) "JVM · Packaged" else "JVM · Unpackaged" }, launch?.taskName) { launchName = it }
+            @Composable fun buildOptions() {
+                WinRTModulePicker(project)
+                WinRTChoice(if (static) "Design host" else "Application", launches.map { it.taskName to if (it.taskName.startsWith("runWinAppPackage")) "JVM · Packaged" else "JVM · Unpackaged" }, launch?.taskName) { launchName = it }
+            }
+            if (staticFile != null) WinRTDetails("build options") { buildOptions() } else buildOptions()
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (!state.connected) DefaultButton(enabled = module != null && launch != null && !state.busy && state.pid == null,
-                onClick = { session.start(module!!, launch!!, preview = static) }) { Text(if (static) "Start preview host" else "Start application") }
+                onClick = { session.start(module!!, launch!!, preview = static) }) { Text(if (static) "Build & Refresh" else "Start application") }
             DefaultButton(enabled = state.connected && !state.inspecting, onClick = { selectPath(emptyList()); manualRefresh++ }) { Text("Refresh") }
-            DefaultButton(enabled = !state.busy, onClick = session::reconnect) { Text("Reconnect") }
+            if (staticFile == null || state.pid != null) DefaultButton(enabled = !state.busy, onClick = session::reconnect) { Text("Reconnect") }
             if (state.pid != null) DefaultButton(onClick = session::stop) { Text(if (static) "Stop preview" else "Stop application") }
         }
         Text(state.message)
+        if (staticFile != null && (module == null || launch == null))
+            Text("Synchronize a Kotlin WinRT application module, then select it in build options to preview this document.")
         if (static) {
             if (staticFile == null) WinRTChoice("XAML document", files.map { it to (module?.projectDirectory?.let { dir -> it.removePrefix(dir.replace('\\', '/') + "/") } ?: it) }, source) { source = it }
             else Text(Path.of(staticFile).fileName.toString())
@@ -181,10 +187,13 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
             }
         }
         CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
+        if (staticFile != null) CheckboxRow("Visual Tree and properties", showInspector, { showInspector = it })
         failure?.let { Text(it) }
         val view = state.inspection
         if (view != null) {
-            if (!treeOnly) PreviewImage(view, selectedPath, ::selectPath)
+            if (!treeOnly) PreviewImage(view, selectedPath, ::selectPath,
+                if (staticFile != null && !showInspector) Modifier.weight(1f).fillMaxWidth()
+                else Modifier.fillMaxWidth().heightIn(max = 280.dp))
             val node = view.nodes.firstOrNull { it.path == selectedPath }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 node?.let { Text(it.name.ifEmpty { it.typeName.substringAfterLast('.') }) }
@@ -198,7 +207,7 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
                     }
                 }) { Text("Go to XAML") }
             }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            if (showInspector) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 @Composable fun tree(modifier: Modifier) { key(root?.className, root?.resourcePath, instance, static) {
                     VisualTree(view.nodes, selectedPath, ::selectPath, modifier)
                 } }
@@ -245,16 +254,16 @@ internal fun visualInspectionTree(nodes: List<WinRTXamlVisualNode>): Tree<WinRTX
 }
 
 @Composable
-private fun PreviewImage(view: WinRTXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit) {
+private fun PreviewImage(view: WinRTXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, modifier: Modifier) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
     }
     val root = view.nodes.firstOrNull()?.bounds ?: return
     if (root.width <= 0 || root.height <= 0) return
-    BoxWithConstraints(Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
+    BoxWithConstraints(modifier) {
       val ratio = image.width.toFloat() / image.height
-      val displayWidth = minOf(maxWidth, 280.dp * ratio)
+      val displayWidth = minOf(maxWidth, maxHeight * ratio)
       Box(Modifier.width(displayWidth).aspectRatio(ratio)) {
         bitmap?.let { Image(it, "WinUI XAML preview", Modifier.matchParentSize()) }
         Canvas(Modifier.matchParentSize().pointerInput(view.nodes) { detectTapGestures { point ->

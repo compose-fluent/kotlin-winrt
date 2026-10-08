@@ -375,8 +375,13 @@ children, and the property view reads effective values through generated accesso
 on the owner's UI dispatcher. **Go to XAML** locates named source elements;
 template internals locate the nearest source control or fall back to the component's XAML.
 
-Each XAML editor also has a **Preview** tab for static rendering. Select an
-application module that references that document and start its design host.
+Each XAML editor has native **Code / Split / Preview** buttons in its top-right
+toolbar. The normal XML editor remains the code pane, with native navigation,
+completion, caret state and refactoring. The selected mode survives reopening.
+The preview pane is active only while visible in the selected editor. Select an
+application module in **build options** and press **Build & Refresh**. The static
+image fits the available preview area; **Visual Tree and properties** adds
+the inspector when needed.
 The host uses the existing build/deployment layout, including packaged JVM
 launches, but invokes a separate generated entry point without running user main
 or constructing the user's Application. It renders current unsaved XAML through
