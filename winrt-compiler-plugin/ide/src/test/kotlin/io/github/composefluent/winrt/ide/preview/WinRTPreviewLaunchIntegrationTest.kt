@@ -17,7 +17,9 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.github.composefluent.winrt.ide.gradle.*
 import io.github.composefluent.winrt.ide.hotreload.WinRTStaticPreviewService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalogService
 import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinRTXamlInspectionRequest
 import kotlinx.coroutines.*
 import org.jetbrains.jewel.bridge.theme.SwingBridgeTheme
 import org.jetbrains.plugins.gradle.settings.DistributionType
@@ -25,6 +27,7 @@ import org.jetbrains.plugins.gradle.settings.GradleProjectSettings
 import org.jetbrains.plugins.gradle.settings.GradleSettings
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.imageio.ImageIO
 
 /** Opt-in Windows acceptance with a prepared SDK-only Gradle fixture. This
  * exercises the real Compose effect -> development session -> native Gradle
@@ -93,6 +96,45 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
             assertTrue(design.state.value.message, design.state.value.connected)
             assertEquals(WinRTXamlHotReloadProtocol.PREVIEW_CLASS, design.state.value.roots.single().className)
             assertTrue(design.state.value.inspection!!.image!!.pixels.isNotEmpty())
+            // The repository's Gallery exercises real application dictionaries
+            // and authored containers, beyond a single built-in TextBlock.
+            val gallery = Path.of(System.getProperty("winrt.ide.toolchain"), "winui-gallery")
+            val gallerySources = listOf(gallery.resolve("src/winuiMain/kotlin"), gallery.resolve("resources/src/winuiMain/resources"))
+            val files = gallerySources.flatMap { directory -> Files.walk(directory).use { paths ->
+                paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".xaml") }.map(Path::toString).toList()
+            } }
+            val base = gallerySources.first().resolve("io/github/composefluent/winrt/gallery")
+            val module = opened.service<WinRTProjectService>().modules.value.single().copy(
+                projectDirectory = gallery.toString(), sourceSets = listOf(WinRTSourceSetData("winuiMain", gallerySources.map(Path::toString), emptyList(), emptyList())))
+            val catalog = requireNotNull(opened.service<WinRTXamlCatalogService>().forDesigner(module))
+            for ((relative, expected) in listOf("basicinput/ToggleButtonPage.xaml" to "ToggleButton", "MainWindow.xaml" to "NavigationView")) {
+                val page = base.resolve(relative).toString()
+                val documents = WinRTXamlPreviewSources(opened, module, files, page)
+                val application = documents.application()!!
+                val prepared = WinRTXamlDesignDocument.prepare(documents.read(page), documents.read(application),
+                    documents.target(page), documents.target(application), documents::resolve,
+                    sdkType = { uri, type -> catalog.resolve(uri, type) != null },
+                    visualType = { uri, type -> catalog.resolve(uri, type)?.let(catalog::isVisual) == true }) { uri, type, attribute ->
+                    catalog.resolve(uri, type)?.let { catalog.members(it) }.orEmpty().any { it.isEvent && it.name == attribute }
+                }
+                Files.writeString(root.parent.resolve("preview-gallery-${Path.of(relative).fileName}"), prepared.markup)
+                assertTrue("$relative must retain its SDK visual content", prepared.markup.contains("<$expected"))
+                val previous = design.state.value.inspection
+                val previewRoot = design.state.value.roots.single()
+                design.inspect(WinRTXamlInspectionRequest(previewRoot.className, previewRoot.resourcePath, previewMarkup = prepared.markup))
+                runBlocking { withTimeout(15_000) { while (design.state.value.inspecting) delay(100) } }
+                assertNotNull("$relative: ${design.state.value.message}", design.state.value.inspection)
+                assertNotSame("$relative: ${design.state.value.message}", previous, design.state.value.inspection)
+                val rendered = design.state.value.inspection!!
+                Files.writeString(root.parent.resolve("preview-gallery-${Path.of(relative).fileName}.nodes.txt"), rendered.nodes.joinToString("\n"))
+                assertTrue("$relative: ${design.state.value.message}", rendered.nodes.any {
+                    it.typeName.endsWith(".$expected") && it.bounds.width > 0 && it.bounds.height > 0
+                })
+                if (expected == "NavigationView") assertTrue("Nonvisual window properties must not shrink the content layout", rendered.nodes.single {
+                    it.typeName.endsWith(".$expected")
+                }.bounds.height > 400)
+                ImageIO.write(bgraImage(rendered.image!!), "png", root.parent.resolve("preview-gallery-${Path.of(relative).fileName}.png").toFile())
+            }
             assertFalse("SDK preview must not compile application classes", Files.exists(app.resolve("build/classes/kotlin/winuiJvm/main")))
         } finally {
             EdtTestUtil.runInEdtAndWait<Exception> { scene?.close() }

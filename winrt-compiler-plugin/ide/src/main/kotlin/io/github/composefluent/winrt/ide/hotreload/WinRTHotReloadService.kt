@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicLong
 data class WinRTHotReloadState(val message: String = "Start a JVM application with XAML Hot Reload to update its properties.",
     val connected: Boolean = false, val busy: Boolean = false, val pid: Long? = null,
     val roots: List<WinRTXamlHotReloadRoot> = emptyList(), val values: List<WinRTXamlHotReloadValue> = emptyList(),
-    val inspection: WinRTXamlVisualSnapshot? = null, val inspecting: Boolean = false)
+    val inspection: WinRTXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinRTHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
@@ -369,10 +369,18 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         } ?: break
                         val reply = mutex.withLock { runInterruptible { connection.inspect(next) } }
                         if (client === connection) withCurrent(epoch) {
+                            if (next.previewMarkup.isNotEmpty() && reply.status != WinRTXamlHotReloadProtocol.APPLIED) {
+                                display.value = display.value.copy(inspection = null, inspectionError = reply.message, message = reply.message)
+                                inspectionOwner = null
+                                return@withCurrent
+                            }
+                            // Selection/capture of the native host's retained
+                            // content must not revive a rejected design document.
+                            if (display.value.inspectionError != null && next.previewMarkup.isEmpty()) return@withCurrent
                             val owner = Triple(next.className, next.resourcePath, next.instance)
                             val image = display.value.inspection?.image.takeIf { inspectionOwner == owner }
                             display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(image = it.image ?: image) } ?: display.value.inspection,
-                                message = reply.message, roots = reply.roots.ifEmpty { display.value.roots })
+                                message = reply.message, roots = reply.roots.ifEmpty { display.value.roots }, inspectionError = null)
                             if (reply.inspection != null) inspectionOwner = owner
                         }
                     }

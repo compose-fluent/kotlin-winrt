@@ -133,7 +133,8 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
                     WinRTXamlDesignDocument.prepare(documents.read(source), application?.let(documents::read),
                         documents.target(source), application?.let(documents::target).orEmpty(),
                         resource = if (projectCode) null else documents::resolve,
-                        sdkType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type) != null }) { uri, type, attribute ->
+                        sdkType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type) != null },
+                        visualType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type)?.let(catalog::isVisual) == true }) { uri, type, attribute ->
                         catalog.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == attribute && member.isEvent } } == true
                     }
                 }
@@ -207,7 +208,7 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
         CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
         if (staticFile != null) CheckboxRow("Visual Tree and properties", showInspector, { showInspector = it })
         failure?.let { Text(it) }
-        val view = state.inspection
+        val view = state.inspection.takeIf { failure == null && (!static || prepared != null) }
         if (view != null) {
             if (!treeOnly) PreviewImage(view, selectedPath, ::selectPath,
                 if (staticFile != null && !showInspector) Modifier.weight(1f).fillMaxWidth()
@@ -238,7 +239,12 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
                     tree(Modifier.weight(1f).fillMaxWidth()); properties(Modifier.weight(1f).fillMaxWidth())
                 }
             }
-        } else Text(if (static) "Start the design host to render this document with WinUI." else "Connect a development application to inspect its actual visual tree.")
+        } else Text(when {
+            static && (failure != null || state.inspectionError != null) -> "This document could not be rendered. Fix the reported XAML or resource error, then refresh."
+            static && state.connected -> "Rendering this XAML document…"
+            static -> "Start the design host to render this document with WinUI."
+            else -> "Connect a development application to inspect its actual visual tree."
+        })
     }
 }
 

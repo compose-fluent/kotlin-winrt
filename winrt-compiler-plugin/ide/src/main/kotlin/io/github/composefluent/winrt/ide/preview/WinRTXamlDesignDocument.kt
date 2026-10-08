@@ -19,6 +19,7 @@ internal data class WinRTXamlDesignDocument(val markup: String, val notes: List<
         fun prepare(text: String, application: String? = null, packagePath: String = "Page.xaml", applicationPath: String = "App.xaml",
             resource: ((String, String) -> WinRTXamlDesignResource?)? = null,
             sdkType: ((String, String) -> Boolean)? = null,
+            visualType: ((String, String) -> Boolean)? = null,
             event: (String, String, String) -> Boolean = { _, _, _ -> false }): WinRTXamlDesignDocument {
             val factory = DocumentBuilderFactory.newInstance().apply {
                 isNamespaceAware = true
@@ -37,6 +38,11 @@ internal data class WinRTXamlDesignDocument(val markup: String, val notes: List<
                 .filter { it.namespaceURI == XMLConstants.XMLNS_ATTRIBUTE_NS_URI }.forEach { to.setAttributeNS(it.namespaceURI, it.nodeName, it.nodeValue) } }
             var expandedSize = text.length + application.orEmpty().length
             fun sanitize(tag: Element, sourcePath: String, stack: Set<String> = setOf(sourcePath)) {
+                if (tag.namespaceURI == WinRTXamlCatalog.XAML && tag.localName == "Properties") {
+                    tag.parentNode.removeChild(tag)
+                    notes += "Authored property declarations are excluded from static preview."
+                    return
+                }
                 val targetType = tag.getAttribute("TargetType").trim()
                 if (sdkType != null && tag.localName in setOf("Style", "ControlTemplate") && ':' in targetType) {
                     val uri = tag.lookupNamespaceURI(targetType.substringBefore(':')).orEmpty()
@@ -78,15 +84,47 @@ internal data class WinRTXamlDesignDocument(val markup: String, val notes: List<
                         notes += "Project resource '$type' requires enabling project code."
                     } else {
                         val placeholder = tag.ownerDocument.createElementNS(WinRTXamlCatalog.PRESENTATION, "Border")
+                        namespaces(tag, placeholder)
                         val layout = setOf("Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight", "Margin",
                             "HorizontalAlignment", "VerticalAlignment", "Visibility", "Opacity", "Grid.Row", "Grid.Column", "Grid.RowSpan", "Grid.ColumnSpan")
                         (0 until tag.attributes.length).map { tag.attributes.item(it) }.filter {
                             it.nodeName in layout || it.namespaceURI == WinRTXamlCatalog.XAML && it.localName == "Name"
                         }.forEach { placeholder.setAttributeNS(it.namespaceURI, it.nodeName, it.nodeValue) }
-                        val label = tag.ownerDocument.createElementNS(WinRTXamlCatalog.PRESENTATION, "TextBlock")
-                        label.setAttribute("Text", type); label.setAttribute("Opacity", "0.6")
-                        placeholder.appendChild(label)
+                        // An unavailable container must not erase its SDK
+                        // children. Property-element content remains in source
+                        // order, without treating nonvisual values as controls.
+                        val visuals = mutableListOf<Element>()
+                        fun containsVisual(from: Element): Boolean = visualType?.invoke(from.namespaceURI.orEmpty(), from.localName) == true ||
+                            children(from).any(::containsVisual)
+                        fun retain(from: Element, propertyValue: Boolean = false) {
+                            children(from).forEach { child ->
+                                val property = child.localName.substringAfter('.', "")
+                                if (child.namespaceURI == tag.namespaceURI && child.localName.substringBefore('.') == tag.localName && property.isNotEmpty()) {
+                                    if (property == "Resources") {
+                                        val resources = tag.ownerDocument.renameNode(child.cloneNode(true), WinRTXamlCatalog.PRESENTATION, "Border.Resources") as Element
+                                        placeholder.appendChild(resources)
+                                    } else retain(child, propertyValue = true)
+                                } else if (visualType?.invoke(child.namespaceURI.orEmpty(), child.localName) == true) {
+                                    visuals += child.cloneNode(true) as Element
+                                } else if (child.namespaceURI.orEmpty().startsWith("using:") && '.' !in child.localName &&
+                                    !sdkType(child.namespaceURI, child.localName) && (!propertyValue || containsVisual(child))) {
+                                    visuals += child.cloneNode(true) as Element
+                                }
+                            }
+                        }
+                        retain(tag)
+                        if (visuals.size == 1) placeholder.appendChild(visuals.single())
+                        else if (visuals.isNotEmpty()) {
+                            val content = tag.ownerDocument.createElementNS(WinRTXamlCatalog.PRESENTATION, "StackPanel")
+                            visuals.forEach(content::appendChild)
+                            placeholder.appendChild(content)
+                        } else {
+                            val label = tag.ownerDocument.createElementNS(WinRTXamlCatalog.PRESENTATION, "TextBlock")
+                            label.setAttribute("Text", type); label.setAttribute("Opacity", "0.6")
+                            placeholder.appendChild(label)
+                        }
                         tag.parentNode.replaceChild(placeholder, tag)
+                        sanitize(placeholder, sourcePath, stack)
                         notes += "'$type' is a placeholder. Enable project code to render custom controls."
                     }
                     return
@@ -105,7 +143,7 @@ internal data class WinRTXamlDesignDocument(val markup: String, val notes: List<
                             notes += "Project attached properties require enabling project code."
                         }
                         uri == DESIGN || uri == "http://schemas.openxmlformats.org/markup-compatibility/2006" -> tag.removeAttributeNode(attr as org.w3c.dom.Attr)
-                        uri == WinRTXamlCatalog.XAML && local in setOf("Class", "DataType", "DefaultBindMode", "Phase", "Load", "DeferLoadStrategy") -> tag.removeAttributeNode(attr as org.w3c.dom.Attr)
+                        uri == WinRTXamlCatalog.XAML && local in setOf("Class", "DataType", "DefaultBindMode", "Phase", "Load", "DeferLoadStrategy", "FieldModifier") -> tag.removeAttributeNode(attr as org.w3c.dom.Attr)
                         compiledBinding -> { tag.removeAttributeNode(attr as org.w3c.dom.Attr); notes += "Compiled x:Bind expressions use design values or control defaults in static preview." }
                         uri.isEmpty() && event(tag.namespaceURI.orEmpty(), tag.localName, local) -> {
                             tag.removeAttributeNode(attr as org.w3c.dom.Attr); notes += "Event handlers are excluded from static preview."
@@ -129,6 +167,13 @@ internal data class WinRTXamlDesignDocument(val markup: String, val notes: List<
                         sanitize(replacement, sourcePath, stack)
                     } else sanitize(child, sourcePath, stack)
                 }
+                // Loose XAML loads merged dictionaries immediately, unlike
+                // compiled resource dictionaries' deferred materialization.
+                // Establish this dictionary's theme keys before merged styles
+                // refer to them; dictionary lookup/override order is unchanged.
+                if (tag.localName == "ResourceDictionary") children(tag)
+                    .firstOrNull { it.localName == "ResourceDictionary.ThemeDictionaries" }
+                    ?.let { tag.insertBefore(it, tag.firstChild) }
             }
             sanitize(root, packagePath)
             root = document.documentElement
@@ -141,6 +186,9 @@ internal data class WinRTXamlDesignDocument(val markup: String, val notes: List<
             }
             val viewport = document.createElementNS(WinRTXamlCatalog.PRESENTATION, "Grid")
             viewport.setAttributeNS(XMLConstants.XMLNS_ATTRIBUTE_NS_URI, "xmlns", WinRTXamlCatalog.PRESENTATION)
+            // The artboard must remain legible independently of the IDE theme
+            // when the document itself has a transparent background.
+            viewport.setAttribute("Background", "{ThemeResource ApplicationPageBackgroundThemeBrush}")
             application?.let { appText ->
                 val app = parse(appText).documentElement
                 namespaces(app, viewport)

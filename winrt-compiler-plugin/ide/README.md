@@ -416,6 +416,15 @@ The test opens the actual Compose preview, launches through the IDE's native
 Gradle runner and waits for a WinUI image. Validation uses a fixture whose
 application Kotlin compilation deliberately fails, so application compilation
 cannot silently become a designer prerequisite.
+It also loads the Gallery's actual application and merged dictionaries and
+renders its ToggleButton page and main window. The SDK-only designer preserves
+built-in visual children and local resources inside unavailable custom containers;
+their appearance uses a placeholder rather than executing the custom control.
+Loose design dictionaries establish theme resources before loading merged styles.
+A rejected design document clears the previous image and reports its XAML/resource
+error; refreshing after a correction renders the new document.
+The artboard uses the preview theme's page background so transparent pages remain
+legible in both light and dark IDE themes.
 
 **Enable project code (requires compilation)** switches to the existing isolated
 application-derived host to render custom Kotlin controls. Packaged project-code

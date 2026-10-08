@@ -18,6 +18,18 @@ class WinRTXamlCatalog(val model: WinRTMetadataModel) {
 
     fun resolve(uri: String, name: String): WinRTTypeDefinition? = namespaces(uri).firstNotNullOfOrNull { types["$it.$name"] }
 
+    /** The SDK hierarchy decides what can be retained inside a design-time
+     * placeholder; brushes, templates and other object values are not visuals. */
+    fun isVisual(type: WinRTTypeDefinition): Boolean {
+        val seen = hashSetOf<String>()
+        var current: WinRTTypeDefinition? = type
+        while (current != null && seen.add(current.qualifiedName)) {
+            if (current.qualifiedName in setOf("Microsoft.UI.Xaml.UIElement", "Windows.UI.Xaml.UIElement")) return true
+            current = current.baseTypeName?.let(types::get)
+        }
+        return false
+    }
+
     /** ContentPropertyAttribute and the existing normalized collection closure
      * determine traversal; no IDE list of container controls is maintained. */
     fun contentMember(type: WinRTTypeDefinition): WinRTXamlContentMember? {

@@ -48,6 +48,33 @@ class WinRTPreviewTest {
         assertEquals(1, parse(result.markup).getElementsByTagNameNS("*", "TextBlock").length)
         assertTrue(runCatching { WinRTXamlDesignDocument.prepare("""<!DOCTYPE Page [<!ENTITY secret SYSTEM "file:///unavailable">]><Page $namespaces>&secret;</Page>""") }.isFailure)
     }
+    @Test fun unavailable_containers_retain_visual_content_resources_and_namespace_scope() {
+        val result = WinRTXamlDesignDocument.prepare("""<local:WindowEx $namespaces xmlns:local="using:sample" xmlns:sdk="using:Microsoft.UI.Xaml.Controls" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="sample.Window">
+          <x:Properties><x:Property Name="Title" Type="x:String" DefaultValue="Window"/></x:Properties>
+          <local:WindowEx.SystemBackdrop><local:Backdrop><local:Backdrop.Fallback><local:Tint/></local:Backdrop.Fallback></local:Backdrop></local:WindowEx.SystemBackdrop>
+          <local:WindowEx.Content><Grid><local:Example x:Name="Example" Width="{x:Bind MissingWidth}">
+            <local:Example.Resources><Style x:Key="LabelStyle" TargetType="sdk:TextBlock"/></local:Example.Resources>
+            <local:Example.Example><Button x:Name="Action" Content="{x:Bind MissingTitle}" d:Content="Design button" Click="Clicked" x:FieldModifier="public"/></local:Example.Example>
+            <local:Example.Options><TextBlock Text="Options" Style="{StaticResource LabelStyle}"/></local:Example.Options>
+            <local:Example.Brush><SolidColorBrush Color="Red"/></local:Example.Brush>
+          </local:Example></Grid></local:WindowEx.Content></local:WindowEx>""",
+            sdkType = { uri, _ -> uri == "using:Microsoft.UI.Xaml.Controls" },
+            visualType = { uri, type -> uri == io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog.PRESENTATION && type in setOf("Grid", "Button", "TextBlock") }
+        ) { _, type, member -> type == "Button" && member == "Click" }
+        val document = parse(result.markup)
+        val button = document.getElementsByTagNameNS("*", "Button").item(0) as org.w3c.dom.Element
+        assertEquals("Design button", button.getAttribute("Content"))
+        assertFalse(button.hasAttribute("Click"))
+        assertFalse(button.hasAttributeNS(io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog.XAML, "FieldModifier"))
+        assertFalse(result.markup.contains("x:Bind"))
+        assertEquals(0, document.getElementsByTagNameNS("*", "Properties").length)
+        assertEquals(0, document.getElementsByTagNameNS("*", "SolidColorBrush").length)
+        val resources = document.getElementsByTagNameNS("*", "Border.Resources").item(0) as org.w3c.dom.Element
+        assertEquals("using:Microsoft.UI.Xaml.Controls", resources.lookupNamespaceURI("sdk"))
+        assertEquals(2, document.getElementsByTagNameNS("*", "Border").length)
+        assertEquals("The original Grid remains inside the design viewport", 2, document.getElementsByTagNameNS("*", "Grid").length)
+        assertTrue(result.notes.any { it.contains("placeholder") })
+    }
     @Test fun source_dictionaries_are_inlined_recursively_in_their_own_relative_scope() {
         val calls = mutableListOf<Pair<String, String>>()
         val result = WinRTXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="../Styles/Colors.xaml"/></Page.Resources><TextBlock Foreground="{StaticResource Accent}"/></Page>""",

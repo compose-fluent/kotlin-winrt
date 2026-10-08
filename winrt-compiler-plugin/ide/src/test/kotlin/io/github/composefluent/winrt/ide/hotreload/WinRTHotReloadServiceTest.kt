@@ -65,6 +65,31 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
         assertNull(service.state.value.inspection)
     }
 
+    fun testRejectedDesignDocumentDoesNotDisplayThePreviousImageAndCanRecover() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        fun inspect(markup: String = "") {
+            val count = fixture.inspections.size
+            service.inspect(WinRTXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = markup))
+            PlatformTestUtil.waitWithEventsDispatching("Design inspection completes", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        inspect("<Grid/>")
+        assertNotNull(service.state.value.inspection!!.image)
+        fixture.inspectionReply.set(WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.REJECTED, "Missing theme resource"))
+        inspect("<Invalid/>")
+        assertNull(service.state.value.inspection)
+        assertEquals("Missing theme resource", service.state.value.inspectionError)
+        assertTrue(service.state.value.connected)
+        fixture.inspectionReply.set(null)
+        inspect()
+        assertNull("Capturing the old host content must not revive a failed document", service.state.value.inspection)
+        assertEquals("Missing theme resource", service.state.value.inspectionError)
+        inspect("<Grid/>")
+        assertNull(service.state.value.inspectionError)
+        assertNotNull(service.state.value.inspection!!.image)
+    }
+
     fun testWorkspaceRoundTripRestoresAnExistingConnectionAndPropertyUpdates() = session { fixture ->
         val first = fixture.service()
         first.reconnect()
@@ -212,6 +237,7 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
         val afterPatch = AtomicReference<((java.net.Socket) -> Unit)?>()
         val beforeInspection = AtomicReference<((java.net.Socket) -> Unit)?>()
         val inspections = java.util.concurrent.CopyOnWriteArrayList<WinRTXamlInspectionRequest>()
+        val inspectionReply = AtomicReference<WinRTXamlHotReloadReply?>()
         private val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
         private val executor = Executors.newCachedThreadPool()
         private val services = linkedMapOf<WinRTHotReloadService, CoroutineScope>()
@@ -257,7 +283,7 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
                                 afterPatch.get()?.invoke(socket)
                             }
                             runCatching { WinRTXamlHotReloadWire.writeReply(socket.getOutputStream(),
-                                WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.APPLIED, "connected", listOf(liveRoot.get()),
+                                (if (command.inspection != null) inspectionReply.get() else null) ?: WinRTXamlHotReloadReply(WinRTXamlHotReloadProtocol.APPLIED, "connected", listOf(liveRoot.get()),
                                     inspection = command.inspection?.let { WinRTXamlVisualSnapshot(emptyList(), listOf(WinRTXamlVisualProperty("Name", "Greeting")),
                                         if (it.capture) WinRTXamlVisualImage(1, 1, byteArrayOf(0, 0, 0, -1)) else null) })) }
                         } } catch (error: Throwable) { failure.compareAndSet(null, error) }
