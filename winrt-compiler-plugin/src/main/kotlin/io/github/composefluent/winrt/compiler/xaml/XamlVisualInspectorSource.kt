@@ -28,6 +28,24 @@ internal fun xamlDevelopmentConfigurationSource(inspector: String): String = """
     )
 """.trimIndent()
 
+/** The designer needs a connected WinUI visual tree, never a user-facing window.
+ * AppWindow.Show(false) initializes it without taking focus; Hide keeps it alive.
+ * https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.windowing.appwindow.hide
+ */
+private fun xamlPreviewWindowSource(): String = """
+    Window().apply {
+      title = "Kotlin WinRT XAML Preview"
+      content = microsoft.ui.xaml.controls.Grid().apply { width = 800.0; height = 600.0 }
+      val host = requireNotNull(appWindow)
+      host.isShownInSwitchers = false
+      // Keep initialization out of the desktop even before Hide runs.
+      host.move(windows.graphics.PointInt32(-32000, -32000))
+      host.show(false)
+      host.hide()
+      completeWinRTXamlHotReloadComponent(this, WinRTXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
+    }
+""".trimIndent()
+
 /**
  * Uses the same generated SDK projection as CsWinRT's WinUIDesktopSample, with no
  * project declarations, event handlers or user entry point. The fixed designer
@@ -85,12 +103,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
           }
           internal fun showWindow() {
             requireNotNull(application).resources.mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
-            window = Window().apply {
-              title = "Kotlin WinRT XAML Preview"
-              content = microsoft.ui.xaml.controls.Grid().apply { width = 800.0; height = 600.0 }
-              activate()
-              completeWinRTXamlHotReloadComponent(this, WinRTXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
-            }
+            window = ${xamlPreviewWindowSource().prependIndent("            ").trimStart()}
           }
         }
     """.trimIndent())
@@ -136,7 +149,8 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val basic = element?.let { listOf(WinRTXamlVisualProperty("Name", it.name),
               WinRTXamlVisualProperty("ActualWidth", it.actualWidth.toString()), WinRTXamlVisualProperty("ActualHeight", it.actualHeight.toString()),
               WinRTXamlVisualProperty("Visibility", it.visibility.toString()), WinRTXamlVisualProperty("Opacity", it.opacity.toString()),
-              WinRTXamlVisualProperty("DataContext", it.dataContext?.toString().orEmpty())) }.orEmpty()
+              WinRTXamlVisualProperty("DataContext", it.dataContext?.toString().orEmpty()),
+              WinRTXamlVisualProperty("XamlRoot.IsHostVisible", it.xamlRoot?.isHostVisible?.toString().orEmpty())) }.orEmpty()
             (basic + winRTXamlInspectionProperties(value)).distinctBy { it.name }
           },
           capture = { value, complete ->
@@ -149,6 +163,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             }
             val lifetime = Job()
             CoroutineScope(lifetime + dispatcher).launch {
+              var stage = "render the visual tree"
               try {
                 val bitmap = RenderTargetBitmap()
                 // RenderAsync's requested size is in view pixels. PixelWidth and
@@ -159,23 +174,36 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 val width = (element.actualWidth * scale).toInt().coerceIn(1, 768)
                 val height = (element.actualHeight * scale).toInt().coerceIn(1, 768)
                 bitmap.renderAsync(element, width, height).await()
+                stage = "read the rendered pixels"
                 val buffer = bitmap.getPixelsAsync().await()
                 require(bitmap.pixelWidth in 1..768 && bitmap.pixelHeight in 1..768 && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
                   "WinUI returned an unsupported bitmap size or pixel buffer."
                 }
                 val bytes = readWinRTXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())
                 complete(Result.success(WinRTXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes)))
-              } catch (error: Exception) { complete(Result.failure(error)) }
+              } catch (error: Exception) { complete(Result.failure(IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error))) }
               finally { lifetime.cancel() }
             }
           },
           preview = { owner, request ->
             val window = owner.asWinRT<Window>()
-            val element = requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(request.previewMarkup)).asWinRT<FrameworkElement>()
-            element.width = request.width.toDouble(); element.height = request.height.toDouble()
-            element.requestedTheme = when (request.theme) { "Dark" -> ElementTheme.Dark; "Light" -> ElementTheme.Light; else -> ElementTheme.Default }
-            window.content = element
-            element.updateLayout()
+            var stage = "load the XAML"
+            try {
+              val element = requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(request.previewMarkup)).asWinRT<FrameworkElement>()
+              element.width = request.width.toDouble(); element.height = request.height.toDouble()
+              element.requestedTheme = when (request.theme) { "Dark" -> ElementTheme.Dark; "Light" -> ElementTheme.Light; else -> ElementTheme.Default }
+              stage = "size the design surface"
+              // Use the real client area so window-aware SDK controls (TitleBar)
+              // see the same layout as the artboard, even while it is hidden.
+              val dpi = window.content?.asWinRT<FrameworkElement>()?.xamlRoot?.rasterizationScale ?: 1.0
+              require(dpi.isFinite() && dpi > 0) { "The visual root has an invalid DPI scale." }
+              requireNotNull(window.appWindow).resizeClient(windows.graphics.SizeInt32(
+                (request.width * dpi).toInt(), (request.height * dpi).toInt()))
+              stage = "attach the visual tree"
+              window.content = element
+              stage = "lay out the visual tree"
+              element.updateLayout()
+            } catch (error: Exception) { throw IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error) }
           },
         )
     """.trimIndent())
@@ -204,12 +232,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 // The native Application resource dictionary is ready after Start's
                 // initialization callback returns, when OnLaunched is dispatched.
                 requireNotNull(application).resources.mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
-                window = Window().apply {
-                  title = "Kotlin WinRT XAML Preview"
-                  content = microsoft.ui.xaml.controls.Grid().apply { width = 800.0; height = 600.0 }
-                  activate()
-                  completeWinRTXamlHotReloadComponent(this, WinRTXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
-                }
+                window = ${xamlPreviewWindowSource().prependIndent("                ").trimStart()}
               }
             }
         """.trimIndent())

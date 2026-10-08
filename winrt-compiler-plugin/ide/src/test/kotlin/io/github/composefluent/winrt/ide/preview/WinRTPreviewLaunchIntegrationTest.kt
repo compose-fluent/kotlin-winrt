@@ -85,17 +85,28 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
                 }
             }, false)
             runBlocking {
-                withTimeout(180_000) {
+                try { withTimeout(180_000) {
                     while (design.state.value.inspection?.image == null) {
                         EdtTestUtil.runInEdtAndWait<Exception>({ scene!!.render().close() }, false)
                         check(!design.state.value.message.startsWith("The Gradle launch failed")) { design.state.value.message }
                         delay(100)
                     }
+                } } catch (error: TimeoutCancellationException) {
+                    throw AssertionError("Preview startup timed out: ${design.state.value.message}; connected=${design.state.value.connected}; busy=${design.state.value.busy}; inspectionError=${design.state.value.inspectionError}", error)
                 }
             }
             assertTrue(design.state.value.message, design.state.value.connected)
             assertEquals(WinRTXamlHotReloadProtocol.PREVIEW_CLASS, design.state.value.roots.single().className)
             assertTrue(design.state.value.inspection!!.image!!.pixels.isNotEmpty())
+            assertEquals("The SDK designer must stay hidden while it renders inside the IDE", "false",
+                design.state.value.inspection!!.properties.single { it.name == "XamlRoot.IsHostVisible" }.value)
+            val initialImage = design.state.value.inspection!!.image!!
+            assertTrue("A hidden host must still render visible pixels", initialImage.pixels.indices.any {
+                it % 4 == 3 && initialImage.pixels[it].toInt() and 255 != 0
+            })
+            assertTrue("The rendered TextBlock must differ from the artboard background", (0 until initialImage.pixels.size step 4).any { pixel ->
+                (0..2).any { channel -> initialImage.pixels[pixel + channel] != initialImage.pixels[channel] }
+            })
             // The repository's Gallery exercises real application dictionaries
             // and authored containers, beyond a single built-in TextBlock.
             val gallery = Path.of(System.getProperty("winrt.ide.toolchain"), "winui-gallery")
@@ -126,6 +137,8 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
                 assertNotNull("$relative: ${design.state.value.message}", design.state.value.inspection)
                 assertNotSame("$relative: ${design.state.value.message}", previous, design.state.value.inspection)
                 val rendered = design.state.value.inspection!!
+                assertEquals("$relative must render without displaying a desktop window", "false",
+                    rendered.properties.single { it.name == "XamlRoot.IsHostVisible" }.value)
                 Files.writeString(root.parent.resolve("preview-gallery-${Path.of(relative).fileName}.nodes.txt"), rendered.nodes.joinToString("\n"))
                 assertTrue("$relative: ${design.state.value.message}", rendered.nodes.any {
                     it.typeName.endsWith(".$expected") && it.bounds.width > 0 && it.bounds.height > 0

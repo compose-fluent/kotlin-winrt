@@ -47,7 +47,7 @@ abstract class BuildWinRTXamlSdkPreviewTask @Inject constructor(private val exec
         require(inputs.isNotEmpty()) { "The selected SDK has no XAML projection sources." }
         val digest = MessageDigest.getInstance("SHA-256")
         fun field(text: String) { digest.update(text.toByteArray()); digest.update(0) }
-        field("kotlin-winrt-xaml-sdk-preview-v2-no-optimize"); field(javaMajor.get().toString())
+        field("kotlin-winrt-xaml-sdk-preview-v3-hidden-host"); field(javaMajor.get().toString())
         inputs.sortedBy { it.first }.forEach { (name, path) -> field(name); Files.newInputStream(path).use { stream ->
             val buffer = ByteArray(64 * 1024); var count = stream.read(buffer)
             while (count >= 0) { digest.update(buffer, 0, count); count = stream.read(buffer) }
