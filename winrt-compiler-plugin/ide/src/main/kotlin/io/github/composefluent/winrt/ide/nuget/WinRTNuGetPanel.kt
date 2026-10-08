@@ -1,19 +1,17 @@
 package io.github.composefluent.winrt.ide.nuget
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import org.jetbrains.jewel.ui.Orientation
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
@@ -27,7 +25,6 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.ui.*
 import kotlinx.coroutines.*
-import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.ui.component.*
 import org.jetbrains.plugins.gradle.util.GradleConstants
 import java.nio.file.Path
@@ -59,7 +56,6 @@ fun WinRTNuGetPanel(project: Project) {
     var loadingDetails by remember { mutableStateOf(false) }
     var prerelease by remember { mutableStateOf(false) }
     var projection by remember { mutableStateOf(false) }
-    var transitive by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Browse") }
     var rid by remember { mutableStateOf("win-x64") }
     var searchJob by remember { mutableStateOf<Job?>(null) }
@@ -167,62 +163,66 @@ fun WinRTNuGetPanel(project: Project) {
     }
     fun select(id: String, selectedVersion: String) { packageId = id; version = selectedVersion; projection = module?.packages?.firstOrNull { it.id.equals(id, true) }?.generateProjection ?: false; manual = false }
 
-    Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        WinRTModulePicker(project)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("Browse", "Installed", "Updates").forEach { RadioButtonRow(it, tab == it, { tab = it }) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            WinRTTabs(listOf("Browse", "Installed", "Updates"), tab, Modifier.weight(1f)) { tab = it }
+            WinRTModulePicker(project, Modifier.widthIn(max = 330.dp).weight(1f, fill = false), compact = true)
         }
-        TextField(query, placeholder = { Text(if (tab == "Browse") "Search NuGet packages" else "Filter packages") },
-            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search NuGet packages" }.onPreviewKeyEvent {
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextField(query, placeholder = { Text(if (tab == "Browse") "Search NuGet packages" else "Filter packages") },
+            modifier = Modifier.widthIn(min = 180.dp, max = 340.dp).semantics { contentDescription = "Search NuGet packages" }.onPreviewKeyEvent {
                 if (it.key == Key.Enter && it.type == KeyEventType.KeyUp) { searchRevision++; true } else false
             })
-        WinRTChoice("Package source", sources.map { it.name to it.name }, source?.name) { sourceName = it; results = emptyList(); total = 0 }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            CheckboxRow("Include prerelease", prerelease, { prerelease = it })
-            if (tab == "Installed") CheckboxRow("Show transitive", transitive, { transitive = it })
-            DefaultButton(onClick = { revision++; searchRevision++ }) { Text("Refresh") }
-            if (searching) DefaultButton(onClick = { searchJob?.cancel() }) { Text("Cancel search") }
-        }
-        if (module == null) Text("Sync Gradle to manage this project's NuGet dependencies.")
-        (inventory.errors + listOfNotNull(failure)).forEach { Text(it) }
-        if (searching || checkingUpdates) Text(if (checkingUpdates) "Checking available updates…" else "Searching packages…")
-
-        @Composable fun packageList(modifier: Modifier) {
-            LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (tab == "Browse") {
-                    items(results, key = { it.id.lowercase() }) { pkg ->
-                        PackageRow(pkg.id, pkg.version, pkg.description, pkg.authors,
-                            inventory.packages.firstOrNull { it.id.equals(pkg.id, true) }?.let { "Installed ${it.version}" }, packageId.equals(pkg.id, true)) { select(pkg.id, pkg.version) }
-                    }
-                    if (results.isEmpty() && !searching) item { Text("No packages found. Change the query or package source.") }
-                    if (results.size < total) item { DefaultButton(enabled = !searching, onClick = { search(true) }) { Text("Load more (${results.size} / $total)") } }
-                } else {
-                    val packages = inventory.packages.filter { pkg -> (transitive || pkg.direct) && pkg.id.contains(query.text.toString(), true) &&
-                        (tab != "Updates" || updates.containsKey(pkg.id.lowercase())) }
-                    items(packages, key = { "${it.id.lowercase()}:${it.version}" }) { pkg ->
-                        val update = updates[pkg.id.lowercase()]
-                        PackageRow(pkg.id, if (tab == "Updates") "${pkg.version} → $update" else pkg.version, pkg.problems.joinToString(),
-                            if (pkg.direct) "Direct dependency" else "Transitive dependency", null, packageId.equals(pkg.id, true)) { select(pkg.id, update ?: pkg.version) }
-                    }
-                    if (packages.isEmpty() && !checkingUpdates) item { Text(if (tab == "Updates") "No updates available from this source." else "No installed packages match this filter.") }
+            OutlinedButton(onClick = { revision++; searchRevision++ }) { Text("Refresh") }
+            CheckboxRow("Include prerelease", prerelease, { prerelease = it }, Modifier.heightIn(min = 28.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Package source:")
+                WinRTComboBox("Package source", sources.map { it.name to it.name }, source?.name, Modifier.width(170.dp)) {
+                    sourceName = it; results = emptyList(); total = 0
                 }
             }
+            if (searching) Link("Cancel search", onClick = { searchJob?.cancel() })
+        }
+        Divider(Orientation.Horizontal)
+        if (module == null) Text("Sync Gradle to manage this project's NuGet dependencies.", Modifier.padding(12.dp))
+        (inventory.errors + listOfNotNull(failure)).forEach { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) }
+        if (searching || checkingUpdates) Text(if (checkingUpdates) "Checking available updates…" else "Searching packages…", Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+
+        @Composable fun packageList(modifier: Modifier) {
+            val packages = if (tab == "Browse") results.map { pkg ->
+                WinRTNuGetListPackage(pkg.id, pkg.version, pkg.description, pkg.authors, inventory.packages.firstOrNull { it.id.equals(pkg.id, true) }?.version)
+            } else inventory.packages.filter { pkg -> pkg.id.contains(query.text.toString(), true) &&
+                (tab != "Updates" || pkg.direct && updates.containsKey(pkg.id.lowercase())) }.map { pkg ->
+                val available = updates[pkg.id.lowercase()]
+                WinRTNuGetListPackage(pkg.id, if (tab == "Updates") "${pkg.version} → $available" else pkg.version, pkg.problems.joinToString(),
+                    group = if (pkg.direct) "Top-level packages" else "Transitive packages")
+            }
+            WinRTNuGetPackageList(packages, packageId, modifier, footer = {
+                if (packages.isEmpty() && !searching && !checkingUpdates) Text(when (tab) {
+                    "Browse" -> "No packages found. Change the query or package source."
+                    "Updates" -> "No updates available from this source."
+                    else -> "No installed packages match this filter."
+                }, Modifier.padding(12.dp))
+                if (tab == "Browse" && results.size < total) OutlinedButton(enabled = !searching, onClick = { search(true) }, modifier = Modifier.padding(12.dp)) { Text("Load more (${results.size} / $total)") }
+            }) { pkg -> select(pkg.id, updates[pkg.id.lowercase()]?.takeIf { tab == "Updates" } ?: pkg.version) }
         }
         @Composable fun packageDetails(modifier: Modifier) {
-            Column(modifier.verticalScroll(rememberScrollState()).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (packageId.isEmpty()) Text("Select a package to see its versions, dependencies and installation options.") else {
-                    Text(packageId)
+                    Text(packageId, fontWeight = FontWeight.SemiBold)
                     installed?.let { Text("Installed: ${it.version} · ${if (it.direct) "direct" else "transitive"}") }
-                    WinRTChoice("Version", (listOf(version) + versions).filter(String::isNotEmpty).distinct().map { it to it }, version) { version = it }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Version:")
+                        WinRTComboBox("Version", (listOf(version) + versions).filter(String::isNotEmpty).distinct().map { it to it }, version, Modifier.weight(1f)) { version = it }
                         val same = declared?.version?.equals(version, true) == true
                         DefaultButton(enabled = module != null && version.isNotEmpty() && !same, onClick = { edit(false) }) {
                             Text(when { declared == null -> "Install"; same -> "Installed"; WinRTNuGetVersion.compare(version, declared.version) < 0 -> "Downgrade"; else -> "Update" })
                         }
-                        if (declared != null) DefaultButton(onClick = { edit(true) }) { Text("Uninstall") }
                     }
+                    if (declared != null) OutlinedButton(onClick = { edit(true) }) { Text("Uninstall") }
                     if (declared == null) CheckboxRow("Generate Kotlin projections", projection, { projection = it })
                     else Text(if (declared.generateProjection) "Kotlin projection enabled" else "Runtime package only")
+                    Divider(Orientation.Horizontal)
                     if (loadingDetails) Text("Loading version details…")
                     detailsError?.let { Text(it) }
                     Text(details?.description ?: searchResult?.description.orEmpty())
@@ -235,7 +235,8 @@ fun WinRTNuGetPanel(project: Project) {
                     }
                     details?.deprecation?.takeIf(String::isNotEmpty)?.let { Text("Deprecated: $it") }
                     details?.dependencies?.let { groups ->
-                        Text("Dependencies")
+                        Divider(Orientation.Horizontal)
+                        Text("Dependencies", fontWeight = FontWeight.SemiBold)
                         if (groups.isEmpty()) Text("No dependencies")
                         groups.forEach { group ->
                             Text(group.framework.ifEmpty { "All target frameworks" })
@@ -255,34 +256,28 @@ fun WinRTNuGetPanel(project: Project) {
             }
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            if (maxWidth >= 640.dp) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                packageList(Modifier.weight(1f).fillMaxHeight()); packageDetails(Modifier.weight(1f).fillMaxHeight())
-            } else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                packageList(Modifier.weight(1f).fillMaxWidth())
-                if (packageId.isNotEmpty()) packageDetails(Modifier.weight(1f).fillMaxWidth())
+            if (maxWidth >= 640.dp) HorizontalSplitLayout(
+                first = { packageList(Modifier.fillMaxSize()) },
+                second = { packageDetails(Modifier.fillMaxSize()) },
+                state = rememberSplitLayoutState(.62f),
+                firstPaneMinWidth = 280.dp,
+                secondPaneMinWidth = 280.dp,
+                modifier = Modifier.fillMaxSize(),
+            ) else if (packageId.isEmpty()) packageList(Modifier.fillMaxSize()) else Column(Modifier.fillMaxSize()) {
+                Link("← Packages", onClick = { packageId = "" }, modifier = Modifier.padding(12.dp))
+                packageDetails(Modifier.weight(1f).fillMaxWidth())
             }
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            DefaultButton(enabled = module != null, onClick = { restore() }) { Text("Restore packages") }
+        Divider(Orientation.Horizontal)
+        FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(enabled = module != null, onClick = { restore() }) { Text("Restore") }
             Link("Package ID…", onClick = { manual = !manual })
             module?.let { current -> Link("Gradle", onClick = { service.openFile("${current.projectDirectory}/build.gradle.kts") })
                 if (current.nuGetConfigFile.isNotEmpty()) Link("Package sources…", onClick = { service.openFile(current.nuGetConfigFile) }) }
         }
-        if (manual) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (manual) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextField(manualId, placeholder = { Text("Exact package ID") }, modifier = Modifier.weight(1f))
             DefaultButton(enabled = manualId.text.isNotBlank(), onClick = { select(manualId.text.toString().trim(), "") }) { Text("Find versions") }
         }
-    }
-}
-
-@Composable
-private fun PackageRow(id: String, version: String, description: String, authors: String, installed: String?, selected: Boolean, onSelect: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(if (selected) JewelTheme.globalColors.panelBackground.copy(alpha = .6f) else androidx.compose.ui.graphics.Color.Transparent)
-        .clickable(onClick = onSelect).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RadioButtonRow(id, selected, onSelect, modifier = Modifier.fillMaxWidth())
-        Text(version)
-        if (authors.isNotEmpty()) Text(authors, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (description.isNotEmpty()) Text(description, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        installed?.let { Text(it) }
     }
 }
