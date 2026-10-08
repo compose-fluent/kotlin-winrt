@@ -1,6 +1,9 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.PatchPluginXmlTask
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "2.4.0"
@@ -28,6 +31,9 @@ repositories {
 
 dependencies {
     implementation(project(":ide-model"))
+    // The isolated FIR jar already owns the metadata/runtime model classes.
+    // UI code must consume that same bytecode: recompiling it with Compose
+    // adds $stable fields that the non-Compose copy does not have.
     implementation(project(":fir-adapter")) { isTransitive = false }
     intellijPlatform {
         val localIde = providers.gradleProperty("kotlinWinRT.ide.path")
@@ -47,13 +53,7 @@ kotlin {
         // Compile the packaging owner's pure Kotlin sources, as with the FIR adapter.
         // Selection, package-path checks and manifest validation have one source of truth.
         kotlin.srcDir("../../windows-toolkit-gradle-plugin/src/main/kotlin")
-        kotlin.srcDir("../../winrt-runtime/src/commonMain/kotlin")
-        kotlin.srcDir("../../winrt-runtime/src/jvmMain/kotlin")
-        kotlin.srcDir("../../winrt-metadata/src/main/kotlin")
         kotlin.include("io/github/composefluent/winrt/ide/**",
-            "io/github/composefluent/winrt/runtime/WinRTXamlHotReloadProtocol.kt",
-            "io/github/composefluent/winrt/runtime/WinRTXamlHotReloadWire.kt",
-            "io/github/composefluent/winrt/metadata/WindowsSdkRootDiscovery.kt",
             "io/github/composefluent/windows/toolkit/gradle/AppxResourceLayout.kt",
             "io/github/composefluent/windows/toolkit/gradle/PackageResourcePaths.kt",
             "io/github/composefluent/windows/toolkit/gradle/ProjectPriManifestSupport.kt",
@@ -65,6 +65,45 @@ kotlin {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
         freeCompilerArgs.add("-Xcontext-parameters")
     }
+}
+
+// Unit-test classpaths can hide a duplicate class by loading the UI output
+// first. Verify the installed artifact, whose jar ordering is IDE-owned.
+val verifyPluginClassOwnership by tasks.registering {
+    val archive = tasks.named<Zip>("buildPlugin").flatMap { it.archiveFile }
+    dependsOn("buildPlugin")
+    inputs.file(archive)
+    doLast {
+        val owners = mutableMapOf<String, String>()
+        val duplicates = mutableListOf<String>()
+        ZipFile(archive.get().asFile).use { plugin ->
+            plugin.entries().asSequence().filter { it.name.endsWith(".jar") && "/lib/" in it.name }.forEach { jar ->
+                ZipInputStream(plugin.getInputStream(jar)).use { classes ->
+                    var entry = classes.nextEntry
+                    while (entry != null) {
+                        if (entry.name.startsWith("io/github/composefluent/") && entry.name.endsWith(".class")) {
+                            owners.put(entry.name, jar.name)?.let { previous ->
+                                duplicates += "${entry.name}: $previous and ${jar.name}"
+                            }
+                        }
+                        entry = classes.nextEntry
+                    }
+                }
+            }
+        }
+        check(owners.isNotEmpty()) { "The plugin archive contains no Kotlin WinRT classes." }
+        check(duplicates.isEmpty()) { "Classes must have a single owner in the plugin archive:\n${duplicates.joinToString("\n")}" }
+    }
+}
+tasks.check { dependsOn(verifyPluginClassOwnership) }
+
+tasks.named<KotlinCompile>("compileTestKotlin") {
+    // The controlled development peer uses the runtime's real internal wire
+    // reader. Keep it internal and grant friendship only to this test compiler.
+    val models = project(":fir-adapter").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+    compilerOptions.freeCompilerArgs.add(models.map {
+        "-Xfriend-paths=${layout.buildDirectory.dir("classes/kotlin/main").get().asFile.absolutePath},${it.asFile.absolutePath}"
+    })
 }
 
 // IntelliJ replaces the source descriptor with patchPluginXml's output during

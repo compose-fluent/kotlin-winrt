@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.ide.preview
 
 import io.github.composefluent.winrt.runtime.*
+import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadState
 import org.junit.Assert.*
 import org.junit.Test
 import org.xml.sax.InputSource
@@ -10,6 +11,13 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 
 class WinRTPreviewTest {
     private val namespaces = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
+    @Test fun preview_state_uses_the_single_shared_protocol_model_without_compose_abi_fields() {
+        // The development wire model belongs to winrt-runtime, also bundled
+        // for isolated FIR metadata loading; it is not a Compose UI model.
+        val snapshot = WinRTXamlVisualSnapshot(emptyList(), emptyList())
+        assertSame(snapshot, WinRTHotReloadState(inspection = snapshot).inspection)
+        assertFalse(WinRTXamlVisualSnapshot::class.java.declaredFields.any { it.name == "\$stable" })
+    }
     @Test fun compiled_bindings_and_events_use_design_values_without_losing_runtime_resource_references() {
         val result = WinRTXamlDesignDocument.prepare("""<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="sample.Page">
           <StackPanel><Button x:Name="Action" Content="{x:Bind Title}" d:Content="Design title" Click="Clicked" Style="{StaticResource SubtleButtonStyle}"/>
