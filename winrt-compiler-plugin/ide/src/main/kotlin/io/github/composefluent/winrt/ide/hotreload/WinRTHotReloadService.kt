@@ -2,7 +2,9 @@ package io.github.composefluent.winrt.ide.hotreload
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.writeIntentReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
@@ -97,10 +99,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val sdkPreview = preview && launch == module.staticPreview?.launch()
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
-        FileDocumentManager.getInstance().saveAllDocuments()
         val request = beginRequest(WinRTHotReloadState("Preparing the development launch…", busy = true))
         worker = scope.launch(Dispatchers.IO) {
             try {
+                // Compose effects and clicks run on EDT without the platform's
+                // write-intent lock. Only app-derived launches need saved files;
+                // the SDK designer renders the editor's unsaved XAML directly.
+                if (!sdkPreview) withContext(Dispatchers.EDT) {
+                    writeIntentReadAction {
+                        if (isCurrent(request)) FileDocumentManager.getInstance().saveAllDocuments()
+                    }
+                }
                 mutex.withLock {
                     if (!isCurrent(request)) return@launch
                     if (restart) stopOwned()

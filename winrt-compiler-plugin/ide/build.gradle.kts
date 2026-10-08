@@ -135,10 +135,11 @@ tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
 tasks.withType<Test>().configureEach {
     // Native import indexes the real SDK and included toolchain alongside the
     // distribution's own plugins; a light fixture's 2 GiB budget is insufficient.
-    if (providers.gradleProperty("winrt.ide.importProject").isPresent) maxHeapSize = "4g"
+    if (providers.gradleProperty("winrt.ide.importProject").isPresent || providers.gradleProperty("winrt.ide.sdkPreviewProject").isPresent) maxHeapSize = "4g"
     // BasePlatformTestCase is JUnit 3; its runner reports JUnit 4 assumptions
     // as failures. Keep optional real-toolchain fixtures out until configured.
     if (!providers.gradleProperty("winrt.ide.importProject").isPresent) exclude("**/WinRTGradleImportTest.class")
+    if (!providers.gradleProperty("winrt.ide.sdkPreviewProject").isPresent) exclude("**/WinRTPreviewLaunchIntegrationTest.class")
     if (!providers.gradleProperty("winrt.ide.templateOutput").isPresent) exclude("**/WinRTTemplateGenerationTest.class")
     if (!providers.gradleProperty("winrt.ide.xamlInput").isPresent || !providers.gradleProperty("winrt.ide.xamlCompiler").isPresent)
         exclude("**/WinRTXamlDocumentCompilerTest.class")
@@ -150,6 +151,7 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.hotReloadSession").orNull?.let { systemProperty("winrt.ide.hotReloadSession", it) }
     providers.gradleProperty("winrt.ide.previewSession").orNull?.let { systemProperty("winrt.ide.previewSession", it) }
     providers.gradleProperty("winrt.ide.sdkPreviewSession").orNull?.let { systemProperty("winrt.ide.sdkPreviewSession", it) }
+    providers.gradleProperty("winrt.ide.sdkPreviewProject").orNull?.let { systemProperty("winrt.ide.sdkPreviewProject", it) }
     providers.gradleProperty("winrt.ide.previewOutput").orNull?.let { systemProperty("winrt.ide.previewOutput", it) }
     providers.gradleProperty("winrt.ide.hotReloadResourcesSession").orNull?.let { systemProperty("winrt.ide.hotReloadResourcesSession", it) }
     providers.gradleProperty("winrt.ide.hotReloadResourcesSource").orNull?.let { systemProperty("winrt.ide.hotReloadResourcesSource", it) }

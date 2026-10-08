@@ -394,6 +394,18 @@ edits reuse that process. The selected SDK must be installed/restorable, and the
 configured JDK and Windows native toolchain must be available for first preparation.
 **Retry preview** reruns preparation after a failure.
 
+`WinRTDevelopmentLaunchTest` invokes the production session from EDT without
+write intent, as Compose effects and clicks do. It checks automatic SDK preview
+and retry preserve unsaved XAML, while project-code preview and Hot Reload save
+documents through the platform's EDT/write-intent boundary before preparation.
+The optional `WinRTPreviewLaunchIntegrationTest` accepts
+`-Pwinrt.ide.sdkPreviewProject=<prepared SDK-only fixture root under .gradle>`.
+The fixture needs a Gradle wrapper, an `:app` module and its prepared SDK designer.
+The test opens the actual Compose preview, launches through the IDE's native
+Gradle runner and waits for a WinUI image. Validation uses a fixture whose
+application Kotlin compilation deliberately fails, so application compilation
+cannot silently become a designer prerequisite.
+
 **Enable project code (requires compilation)** switches to the existing isolated
 application-derived host to render custom Kotlin controls. Packaged project-code
 hosts use a separate `.preview` identity and deployment folder and can run beside
