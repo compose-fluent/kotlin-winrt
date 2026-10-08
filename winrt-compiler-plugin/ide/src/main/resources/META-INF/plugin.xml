@@ -57,4 +57,18 @@
         <bundledFirCompilerPluginProvider implementation="io.github.composefluent.winrt.ide.analysis.WinRTBundledFirProvider"/>
         <firCompilerPluginConfigurationProvider implementation="io.github.composefluent.winrt.ide.analysis.WinRTFirConfigurationProvider"/>
     </extensions>
+    <actions>
+        <action id="KotlinWinRT.NewXamlPage" class="io.github.composefluent.winrt.ide.templates.WinRTNewXamlPageAction"
+                text="XAML Page" description="Create a Kotlin WinRT Page with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">
+            <add-to-group group-id="NewGroup" anchor="last"/>
+        </action>
+        <action id="KotlinWinRT.NewXamlUserControl" class="io.github.composefluent.winrt.ide.templates.WinRTNewXamlUserControlAction"
+                text="XAML UserControl" description="Create a Kotlin WinRT UserControl with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">
+            <add-to-group group-id="NewGroup" anchor="last"/>
+        </action>
+        <action id="KotlinWinRT.NewXamlResources" class="io.github.composefluent.winrt.ide.templates.WinRTNewXamlResourcesAction"
+                text="XAML ResourceDictionary" description="Create a XAML resource dictionary" icon="AllIcons.FileTypes.Xml">
+            <add-to-group group-id="NewGroup" anchor="last"/>
+        </action>
+    </actions>
 </idea-plugin>

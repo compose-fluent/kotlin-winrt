@@ -9,7 +9,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 object WinRTTemplateWriter {
-    fun create(project: Project, target: Path, files: Map<String, ByteArray>, buildRoot: Path? = null) {
+    fun create(project: Project, target: Path, files: Map<String, ByteArray>, buildRoot: Path? = null,
+        commandName: String = "Create Kotlin WinRT ${if (buildRoot == null) "project" else "module"}") {
         val directory = target.toAbsolutePath().normalize()
         val settings = buildRoot?.toAbsolutePath()?.normalize()?.let { root ->
             require(directory.startsWith(root) && directory != root) { "Create the module inside the selected Gradle build." }
@@ -27,7 +28,7 @@ object WinRTTemplateWriter {
             require(!Files.exists(directory)) { "The module directory already exists: $directory" }
             require(directory.parent.toRealPath() == settings.parent.toRealPath()) { "Invalid module location." }
         }
-        WriteCommandAction.runWriteCommandAction(project, "Create Kotlin WinRT ${if (settings == null) "project" else "module"}", null, Runnable {
+        WriteCommandAction.runWriteCommandAction(project, commandName, null, Runnable {
             val settingsDocument = settings?.let {
                 val file = requireNotNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it))
                 requireNotNull(FileDocumentManager.getInstance().getDocument(file))

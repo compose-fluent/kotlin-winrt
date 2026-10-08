@@ -279,6 +279,17 @@ consumers are built and launched through actual Windows hosts: the console print
 its greeting, and the combined WinUI application/control/resource/library consumer
 loads the authored control and reports the edited native Text value.
 
+Right-click a Kotlin source directory in an imported WinRT module and choose
+**New → XAML Page** or **New → XAML UserControl**. The Compose dialog infers the
+package from existing Kotlin files or the path beneath the source root, and lets
+it be edited. Both actions create matching `.kt` and `.xaml` files in one undoable
+command; `x:Class` names the Kotlin declaration. Component initialization uses
+the existing compiler construction hook. **New → XAML ResourceDictionary** creates
+a standalone `.xaml` file and is also available in AppX resource roots. Generated
+build directories are excluded, and a conflict with either companion file rejects
+the entire creation. New XAML files reuse analysis preparation after
+creation when the module exports that compilation.
+
 ## Resources and package manifest
 
 The Compose **Resources** tab switches between source sets and actual staged
