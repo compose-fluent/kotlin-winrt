@@ -38,6 +38,8 @@ import io.github.composefluent.winrt.compiler.xaml.xamlCreateFromStringMethodSou
 import io.github.composefluent.winrt.compiler.xaml.XamlStaticAccessor
 import io.github.composefluent.winrt.compiler.xaml.writeXamlProjectedTypeRegistrationSource
 import io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource
+import io.github.composefluent.winrt.compiler.xaml.xamlDevelopmentConfigurationSource
+import io.github.composefluent.winrt.compiler.xaml.writeXamlMemberConversionSource
 import io.github.composefluent.winrt.metadata.WinRTTypeRefKind
 import io.github.composefluent.winrt.metadata.winRTArrayElementForKotlinType
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
@@ -385,20 +387,7 @@ object KotlinWinRTAuthoringScannerCli {
             root.resolve("registrars.tsv").writeText("className\n")
             return
         }
-        val converter = supportRoot.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlMemberValue.kt")
-        Files.createDirectories(converter.parent)
-        converter.writeText(buildString {
-            appendLine("package io.github.composefluent.winrt.generated.xaml")
-            // XamlTypeExtensions.GetStringToTypeConversion uses the same SDK
-            // converter when a XAML literal has not already been boxed as its
-            // target type. Keep parsing out of application code and runtime ABI.
-            appendLine("internal inline fun <reified T> kotlinWinRTXamlMemberValue(value: Any?): T {")
-            appendLine("  if (value is T || value !is String) return value as T")
-            appendLine("  return io.github.composefluent.winrt.runtime.convertWinRTXamlLiteral(T::class, value) { type, text ->")
-            appendLine("    microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text)")
-            appendLine("  } as T")
-            appendLine("}")
-        })
+        writeXamlMemberConversionSource(supportRoot)
         val registrarNames = registrations.groupBy { it.first }.toSortedMap(compareBy { it.orEmpty() })
             .map { (owner, entries) ->
                 val ownerRoot = owner?.let { root.resolve("sourceSets/$it") } ?: root
@@ -413,25 +402,7 @@ object KotlinWinRTAuthoringScannerCli {
                     appendLine("import io.github.composefluent.winrt.runtime.asWinRT")
                     appendLine("object $registryName {")
                     appendLine("  private val registration: Unit = run {")
-                    appendLine("    io.github.composefluent.winrt.runtime.configureWinRTXamlHotReload(")
-                    appendLine("      dispatcherFactory = {")
-                    appendLine("        val queue = microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()")
-                    appendLine("        val enqueue: (() -> Unit) -> Boolean = { action ->")
-                    appendLine("          queue.tryEnqueue(microsoft.ui.dispatching.DispatcherQueueHandler { action() })")
-                    appendLine("        }")
-                    appendLine("        enqueue")
-                    appendLine("      },")
-                    appendLine("      sdkConvert = { type, text -> microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text) },")
-                    appendLine("      loadResources = { markup ->")
-                    appendLine("        requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(markup))")
-                    appendLine("          .asWinRT<microsoft.ui.xaml.ResourceDictionary>()")
-                    appendLine("      },")
-                    appendLine("      loadElement = { markup ->")
-                    appendLine("        requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(markup))")
-                    appendLine("          .asWinRT<microsoft.ui.xaml.UIElement>()")
-                    appendLine("      },")
-                    appendLine("      inspector = $inspector(),")
-                    appendLine("    )")
+                    appendLine(xamlDevelopmentConfigurationSource(inspector).prependIndent("    "))
                     entries.forEach { appendLine("    ${it.second}()") }
                     appendLine("  }")
                     appendLine("  fun registerAll() { registration }")

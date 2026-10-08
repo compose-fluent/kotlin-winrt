@@ -21,6 +21,15 @@ interface WinRTIdeModel : Serializable {
     val nuGetConfigDirectory: String
     val restoreLockFiles: List<String>
     val hotReloadLaunches: List<HotReloadLaunch>
+    val staticPreview: StaticPreview?
+
+    /** Fixed SDK-only designer, independent of every application's build output. */
+    interface StaticPreview : Serializable {
+        val taskName: String
+        val executable: String
+        val workingDirectory: String
+        val metadataReferencesFile: String
+    }
 
     /** Development JVM launch tasks and isolated preview host paths. */
     interface HotReloadLaunch : Serializable {
@@ -71,6 +80,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 5
+        const val SCHEMA_VERSION: Int = 6
     }
 }

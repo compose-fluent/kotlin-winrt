@@ -16,6 +16,7 @@ object WinRTGradleTasks {
         run(project, module, buildList {
             if (module.xamlCompilations.isNotEmpty()) add("analyzeWinRTXaml")
             add("generateWinRTProjections")
+            if (module.staticPreview != null) add("prepareWinRTXamlSdkPreview")
         }, "Prepare Kotlin WinRT XAML analysis") { project.service<WinRTXamlSnapshotService>().refresh() }
     }
 

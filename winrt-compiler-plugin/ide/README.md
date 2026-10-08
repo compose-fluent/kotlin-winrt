@@ -378,28 +378,45 @@ template internals locate the nearest source control or fall back to the compone
 Each XAML editor has native **Code / Split / Preview** buttons in its top-right
 toolbar. The normal XML editor remains the code pane, with native navigation,
 completion, caret state and refactoring. The selected mode survives reopening.
-The preview pane is active only while visible in the selected editor. Select an
-application module in **build options** and press **Build & Refresh**. The static
-image fits the available preview area; **Visual Tree and properties** adds
-the inspector when needed.
-The host uses the existing build/deployment layout, including packaged JVM
-launches, but invokes a separate generated entry point without running user main
-or constructing the user's Application. It renders current unsaved XAML through
-WinUI XamlReader, VisualTreeHelper and RenderTargetBitmap. Static and live
-sessions have independent connections and process ownership; closing the project
-stops its isolated design host.
-Packaged design hosts use a separate `.preview` identity and deployment folder;
-they can run beside the application's `.dev` package. Synchronize Gradle after
-updating the toolkit to import version 5 of the IDE launch model.
+New documents default to **Split**, opening the designer automatically for the
+document's imported module. Saved mode choices still survive reopening. The
+preview pane is active only while visible in the selected editor. The static
+image fits the available preview area; **Visual Tree and properties** adds the
+inspector when needed.
+
+The default follows UWP's design-time workflow: it uses a fixed SDK-only WinUI
+host and reads current XAML, without compiling the application, running XAMLC,
+constructing the user's Application or invoking user main. Application Kotlin
+errors do not block this designer. The first launch prepares a host for the
+selected Windows App SDK and Windows SDK; its SDK compilation is cached across
+projects with matching SDKs and compiler/runtime inputs. Subsequent document
+edits reuse that process. The selected SDK must be installed/restorable, and the
+configured JDK and Windows native toolchain must be available for first preparation.
+**Retry preview** reruns preparation after a failure.
+
+**Enable project code (requires compilation)** switches to the existing isolated
+application-derived host to render custom Kotlin controls. Packaged project-code
+hosts use a separate `.preview` identity and deployment folder and can run beside
+the application's `.dev` package. The default SDK designer is independent of the
+application's packaging mode. Static and live sessions have independent
+connections and process ownership; closing the project stops its design host.
+Synchronize Gradle after updating the toolkit to import version 6 of the IDE model.
 
 Static rendering preserves StaticResource, ThemeResource, local dictionaries,
-application resources and their original package-relative Source paths. Preview
-options select viewport dimensions and theme. Supported `d:` values replace
+application resources and their original package-relative Source paths. In the
+default designer, relative and `ms-appx:///` dictionaries are read recursively
+from source, including unsaved edits. Named project ResourceDictionary classes
+can contribute their XAML without executing their constructors. Missing files
+and dictionary cycles are reported. Passive image/font assets are copied to the
+module's owned designer folder. Preview options select viewport dimensions and
+theme. Supported `d:` values and inline design children replace
 compiled `x:Bind` expressions; otherwise control defaults apply. Event handlers
 and compiler-only directives are removed from the design copy with a visible
-notice. Regular Binding still needs an available design DataContext. User controls
-and resource objects can execute their normal constructors. There is no static
-simulation of Kotlin code or binding execution.
+notice. Regular Binding still needs an available design DataContext. With project
+code disabled, custom controls retain layout as visible placeholders and custom
+resource objects are excluded. Enabling project code permits their normal
+constructors. There is no simulation of Kotlin code or binding execution, and
+this feature does not provide UWP's drag-and-drop designer.
 
 WinUI owns layout/rendering. Captures are premultiplied BGRA8, scaled to at most
 768 pixels per side, and bounded to 2048 visual nodes. RenderTargetBitmap's own

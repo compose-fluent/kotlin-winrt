@@ -48,6 +48,44 @@ class WinRTPreviewTest {
         assertEquals(1, parse(result.markup).getElementsByTagNameNS("*", "TextBlock").length)
         assertTrue(runCatching { WinRTXamlDesignDocument.prepare("""<!DOCTYPE Page [<!ENTITY secret SYSTEM "file:///unavailable">]><Page $namespaces>&secret;</Page>""") }.isFailure)
     }
+    @Test fun source_dictionaries_are_inlined_recursively_in_their_own_relative_scope() {
+        val calls = mutableListOf<Pair<String, String>>()
+        val result = WinRTXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="../Styles/Colors.xaml"/></Page.Resources><TextBlock Foreground="{StaticResource Accent}"/></Page>""",
+            packagePath = "UI/Page.xaml", resource = { uri, origin ->
+                calls += uri to origin
+                when (uri) {
+                    "../Styles/Colors.xaml" -> WinRTXamlDesignResource("""<ResourceDictionary $namespaces x:Class="sample.Colors"><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Brushes.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary>""", "Styles/Colors.xaml")
+                    "Brushes.xaml" -> WinRTXamlDesignResource("""<ResourceDictionary $namespaces><SolidColorBrush x:Key="Accent" Color="Tomato"/></ResourceDictionary>""", "Styles/Brushes.xaml")
+                    else -> null
+                }
+            })
+        assertEquals(listOf("../Styles/Colors.xaml" to "UI/Page.xaml", "Brushes.xaml" to "Styles/Colors.xaml"), calls)
+        assertTrue(result.markup, result.markup.contains("Color=\"Tomato\""))
+        assertFalse(result.markup, result.markup.contains("Source="))
+        assertFalse(result.markup, result.markup.contains("x:Class"))
+        assertTrue(runCatching { WinRTXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="Missing.xaml"/></Page.Resources></Page>""", resource = { _, _ -> null }) }.isFailure)
+        assertTrue(runCatching { WinRTXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="Cycle.xaml"/></Page.Resources></Page>""", resource = { _, _ -> WinRTXamlDesignResource("""<ResourceDictionary $namespaces Source="Cycle.xaml"/>""", "Cycle.xaml") }) }.exceptionOrNull()!!.message!!.contains("cycle"))
+    }
+    @Test fun disabled_project_code_keeps_sdk_controls_design_children_and_dictionary_source() {
+        val result = WinRTXamlDesignDocument.prepare("""<Page $namespaces xmlns:local="using:sample" xmlns:sdk="using:Microsoft.UI.Xaml.Controls" xmlns:d="http://schemas.microsoft.com/expression/blend/2008">
+          <Page.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><local:Colors/></ResourceDictionary.MergedDictionaries><local:Converter x:Key="Converter"/><Style x:Key="CustomStyle" TargetType="local:Custom"/></ResourceDictionary></Page.Resources>
+          <StackPanel><sdk:TextBlock Text="SDK" local:Attached.Value="custom"/><local:Custom x:Name="Custom" Width="180" Margin="12"/>
+          <TextBlock Text="{Binding Value, Converter={StaticResource Converter}}"/><ListView><d:ListView.Items><d:TextBlock Text="Sample item"/></d:ListView.Items></ListView></StackPanel></Page>""",
+            resource = { uri, _ -> if (uri == "using:sample.Colors") WinRTXamlDesignResource("""<ResourceDictionary $namespaces x:Class="sample.Colors"><SolidColorBrush x:Key="Accent" Color="Blue"/></ResourceDictionary>""", "Colors.xaml") else null },
+            sdkType = { uri, _ -> uri == "using:Microsoft.UI.Xaml.Controls" })
+        val document = parse(result.markup)
+        assertEquals(1, document.getElementsByTagNameNS("using:Microsoft.UI.Xaml.Controls", "TextBlock").length)
+        val placeholder = document.getElementsByTagNameNS("*", "Border").item(0) as org.w3c.dom.Element
+        assertEquals("Custom", placeholder.getAttributeNS(io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog.XAML, "Name"))
+        assertEquals("180", placeholder.getAttribute("Width"))
+        assertTrue(result.markup, result.markup.contains("Text=\"Sample item\""))
+        assertTrue(result.markup, result.markup.contains("Color=\"Blue\""))
+        assertFalse(result.markup, result.markup.contains("local:Colors"))
+        assertFalse(result.markup, result.markup.contains("{Binding Value"))
+        assertFalse(result.markup, result.markup.contains("TargetType=\"local:Custom\""))
+        assertFalse(result.markup, result.markup.contains("local:Attached.Value"))
+        assertFalse(result.markup, result.markup.contains("x:Class"))
+    }
     @OptIn(ExperimentalJewelApi::class)
     @Test fun preview_pixels_preserve_premultiplied_alpha_and_hit_testing_selects_the_deepest_visible_node() {
         val image = bgraImage(WinRTXamlVisualImage(2, 1, byteArrayOf(0, 0, -1, -1, 0, -128, 0, -128)))

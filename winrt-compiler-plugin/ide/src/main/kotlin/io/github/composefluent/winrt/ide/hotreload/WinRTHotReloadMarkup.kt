@@ -22,6 +22,8 @@ import javax.xml.transform.stream.StreamResult
 /** Compare markup, then use the compiler-owned accessors and WinUI's resource parser. */
 internal class WinRTHotReloadMarkup private constructor(val text: String, private val root: XamlElement) {
     val className: String = root.attributes[Name(WinRTXamlCatalog.XAML, "Class")].orEmpty()
+    val isApplication: Boolean = root.type == Name(WinRTXamlCatalog.PRESENTATION, "Application")
+    val isResourceDictionary: Boolean = root.type == Name(WinRTXamlCatalog.PRESENTATION, "ResourceDictionary")
     val hash: String = WinRTXamlDeclarations.sourceFingerprint(text)
 
     private data class Name(val uri: String, val local: String)
@@ -306,7 +308,7 @@ internal class WinRTHotReloadMarkup private constructor(val text: String, privat
     companion object {
         fun parse(text: String): WinRTHotReloadMarkup {
             require(text.length <= 2 * 1024 * 1024) { "XAML is too large for a property update." }
-            val factory = DocumentBuilderFactory.newInstance().apply {
+            val factory = DocumentBuilderFactory.newDefaultInstance().apply {
                 isNamespaceAware = true
                 setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
                 setFeature("http://xml.org/sax/features/external-general-entities", false)

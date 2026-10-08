@@ -13,6 +13,51 @@ import javax.imageio.ImageIO
 /** Opt-in acceptance against a built, running WinUI development host. No mock
  * controls, screenshots of another application, or substituted layout engine. */
 class WinRTPreviewRuntimeTest {
+    @Test fun sdk_designer_renders_without_application_classes_and_reloads_source_resources() {
+        val folder = System.getProperty("winrt.ide.sdkPreviewSession")
+        assumeTrue("Supply the SDK-only WinUI designer session", !folder.isNullOrEmpty())
+        connect(folder!!).use { client ->
+            val before = client.request()
+            val root = before.roots.single { it.className == WinRTXamlHotReloadProtocol.PREVIEW_CLASS }
+            assertEquals(listOf(root), before.roots)
+            fun document(color: String, text: String) = WinRTXamlDesignDocument.prepare("""<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:local="using:broken.project" x:Class="broken.project.Window">
+              <StackPanel Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Spacing="20" Padding="24">
+              <TextBlock x:Name="Greeting" Text="{x:Bind MissingTitle}" d:Text="$text" FontSize="28" Foreground="{StaticResource PreviewBrush}"/>
+              <Button x:Name="Action" Content="SDK designer" Style="{StaticResource SubtleButtonStyle}" Click="MissingEvent"/>
+              <local:Custom x:Name="Custom" Width="160" Height="40"/>
+              <ListView><d:ListView.Items><d:TextBlock Text="Design item"/></d:ListView.Items></ListView>
+              </StackPanel></Window>""",
+                """<Application xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Application.Resources><ResourceDictionary Source="Styles/Colors.xaml"/></Application.Resources></Application>""",
+                resource = { uri, _ -> if (uri == "Styles/Colors.xaml") WinRTXamlDesignResource("""<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="PreviewBrush" Color="$color"/></ResourceDictionary>""", uri) else null },
+                sdkType = { _, _ -> false }) { _, type, member -> type == "Button" && member == "Click" }
+            val first = client.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath,
+                previewMarkup = document("Tomato", "No application build").markup, width = 640, height = 480, theme = "Light"))
+            assertEquals(first.message, WinRTXamlHotReloadProtocol.APPLIED, first.status)
+            val view = first.inspection!!
+            assertTrue(view.nodes.size > 8)
+            assertTrue(view.nodes.any { it.name == "Custom" && it.typeName.endsWith("Border") })
+            val greeting = view.nodes.single { it.name == "Greeting" }
+            val values = client.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath, selectedPath = greeting.path, capture = false))
+            assertEquals("No application build", values.inspection!!.properties.single { it.name == "Text" }.value)
+            val image = view.image!!
+            assertBoundedPixels(image)
+            System.getProperty("winrt.ide.previewOutput")?.let { output ->
+                val path = Path.of(output); Files.createDirectories(path.parent); ImageIO.write(bgraImage(image), "png", path.toFile())
+            }
+            val next = client.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath,
+                previewMarkup = document("Blue", "Unsaved source edit").markup, width = 320, height = 240, theme = "Dark"))
+            assertEquals(next.message, WinRTXamlHotReloadProtocol.APPLIED, next.status)
+            val nextGreeting = next.inspection!!.nodes.single { it.name == "Greeting" }
+            val nextValues = client.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath, selectedPath = nextGreeting.path, capture = false))
+            assertEquals("Unsaved source edit", nextValues.inspection!!.properties.single { it.name == "Text" }.value)
+            assertFalse(image.pixels.contentEquals(next.inspection!!.image!!.pixels))
+            assertEquals(root.version, next.roots.single().version)
+            val invalid = client.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath,
+                previewMarkup = "<ThisIsNotAControl xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>"))
+            assertEquals(WinRTXamlHotReloadProtocol.REJECTED, invalid.status)
+            assertEquals("Unsaved source edit", client.inspect(WinRTXamlInspectionRequest(root.className, root.resourcePath, selectedPath = nextGreeting.path, capture = false)).inspection!!.properties.single { it.name == "Text" }.value)
+        }
+    }
     @Test fun real_winui_templates_pixels_and_effective_properties_match_the_static_document() {
         val folder = System.getProperty("winrt.ide.previewSession")
         assumeTrue("Supply a real WinUI preview session", !folder.isNullOrEmpty())
@@ -99,13 +144,15 @@ class WinRTPreviewRuntimeTest {
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
         var latest = "No session file"
         while (System.nanoTime() < deadline) {
-            val file = Files.list(path).use { files -> files.filter { it.fileName.toString().endsWith(".session") }.findFirst().orElse(null) }
+            val file = Files.list(path).use { files -> files.filter { it.fileName.toString().endsWith(".session") }
+                .toList().maxByOrNull { Files.getLastModifiedTime(it).toMillis() } }
             if (file != null) {
                 val info = Properties().apply { Files.newInputStream(file).use(::load) }
                 val process = ProcessHandle.of(info.getProperty("pid").toLong()).orElse(null)
                 val command = process?.takeIf { it.isAlive }?.info()?.command()?.orElse(null)
                 latest = "PID ${info.getProperty("pid")}, alive=${process?.isAlive}, executable=${command != null}"
-                if (command != null) WinRTHotReloadClient.discover(path, command).singleOrNull()?.let { candidate ->
+                if (command != null) runCatching { WinRTHotReloadClient.read(file, command) }
+                    .onFailure { latest = it.message.orEmpty() }.getOrNull()?.let { candidate ->
                     val reply = candidate.request()
                     latest = "${reply.status}: ${reply.message}; loaded roots=${reply.roots.map { it.className }}"
                     if (reply.roots.isNotEmpty()) return candidate

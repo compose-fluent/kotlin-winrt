@@ -94,7 +94,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
     fun start(module: WinRTModuleData, launch: WinRTHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false) {
         if (disposed || project.isDisposed) return
-        require(launch in module.hotReloadLaunches) { "Synchronize Gradle before selecting this application." }
+        val sdkPreview = preview && launch == module.staticPreview?.launch()
+        require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
         FileDocumentManager.getInstance().saveAllDocuments()
         val request = beginRequest(WinRTHotReloadState("Preparing the development launch…", busy = true))
@@ -124,7 +125,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         } } })
                 }
                 if (!withCurrent(request) {
-                    display.value = WinRTHotReloadState("Building and waiting for the application. See Gradle Run output.", busy = true)
+                    display.value = WinRTHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
+                        else "Building and waiting for the application. See Gradle Run output.", busy = true)
                 }) return@launch
                 withTimeout(10 * 60_000L) {
                     while (isActive && isCurrent(request)) {
@@ -137,6 +139,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                     candidate.close(); return@withTimeout
                                 }
                                 refresh(candidate, request)
+                                if (sdkPreview) {
+                                    project.service<WinRTXamlCatalogService>().refresh()
+                                    project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
+                                }
                             }
                             break
                         }
@@ -149,6 +155,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { withCurrent(request) { display.value = WinRTHotReloadState(error.message.orEmpty(), pid = owned?.process?.takeIf { it.isAlive }?.pid()) } }
         }
+    }
+
+    /** Opening/switching a preview reuses its host; a failed launch needs an explicit retry. */
+    fun ensurePreview(module: WinRTModuleData, launch: WinRTHotReloadLaunchData) {
+        if (display.value.busy || (selectedModule == module && selectedLaunch == launch)) return
+        start(module, launch, restart = display.value.pid != null, preview = true)
     }
 
     fun reconnect() {
@@ -169,7 +181,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     val module = project.service<WinRTProjectService>().modules.value.singleOrNull {
                         Path.of(it.projectDirectory).toAbsolutePath().normalize() == Path.of(saved.moduleDirectory).toAbsolutePath().normalize()
                     } ?: error("Synchronize the module from the saved development launch before reconnecting.")
-                    val launch = module.hotReloadLaunches.singleOrNull { it.taskName == saved.taskName }
+                    val launch = (module.hotReloadLaunches + listOfNotNull(module.staticPreview?.launch())).singleOrNull { it.taskName == saved.taskName }
                         ?: error("The saved development launch is no longer configured. Synchronize Gradle and start a new session.")
                     val folder = Path.of(saved.sessionDirectory).toAbsolutePath().normalize()
                     val expected = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload").toAbsolutePath().normalize()

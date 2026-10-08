@@ -28,7 +28,7 @@ private class WinRTXamlPreviewPaneProvider : FileEditorProvider {
 }
 
 private class WinRTXamlEditorWithPreview(editor: TextEditor, private val preview: WinRTXamlPreviewEditor) :
-    TextEditorWithPreview(editor, preview, "Kotlin WinRT XAML", Layout.SHOW_EDITOR) {
+    TextEditorWithPreview(editor, preview, "Kotlin WinRT XAML", Layout.SHOW_EDITOR_AND_PREVIEW) {
     // Always expose Code / Split / Preview in the editor's top-right toolbar,
     // including when editor tabs are hidden. The content remains Compose/Jewel.
     override val isShowFloatingToolbar = false

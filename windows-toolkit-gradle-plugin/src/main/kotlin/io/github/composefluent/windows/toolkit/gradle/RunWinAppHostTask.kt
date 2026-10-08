@@ -26,6 +26,7 @@ abstract class RunWinAppHostTask @Inject constructor(
         jvmArgs.convention(emptyList())
         environmentVariables.convention(emptyMap())
         supportsXamlHotReload.convention(false)
+        sdkPreview.convention(false)
         designPreview.convention(project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
     }
 
@@ -48,6 +49,9 @@ abstract class RunWinAppHostTask @Inject constructor(
     /** Configuration fact exported to the IDE; the runtime still requires an explicit development session. */
     @get:Internal
     abstract val supportsXamlHotReload: org.gradle.api.provider.Property<Boolean>
+
+    @get:Internal
+    abstract val sdkPreview: org.gradle.api.provider.Property<Boolean>
 
     @get:Internal
     abstract val designPreview: org.gradle.api.provider.Property<Boolean>

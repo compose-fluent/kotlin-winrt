@@ -35,6 +35,7 @@ import com.intellij.psi.xml.XmlTag
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import io.github.composefluent.winrt.ide.hotreload.*
 import io.github.composefluent.winrt.ide.resources.WinRTResourceIndex
+import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.ui.*
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalogService
 import io.github.composefluent.winrt.runtime.*
@@ -62,7 +63,11 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
     val livePath by selection.path.collectAsState()
     var staticPath by remember { mutableStateOf<List<Int>>(emptyList()) }
     val selectedPath = if (static) staticPath else livePath
-    val module = selectedWinRTModule(project)
+    val modules by project.service<WinRTProjectService>().modules.collectAsState()
+    val selectedModule = selectedWinRTModule(project)
+    val module = staticFile?.let { path -> modules.filter { candidate -> runCatching {
+        Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(candidate.projectDirectory).toAbsolutePath().normalize())
+    }.getOrDefault(false) }.maxByOrNull { it.projectDirectory.length } } ?: selectedModule
     val declarations by project.service<WinRTXamlSnapshotService>().state.collectAsState()
     val pages = declarations.values.flatMap { it.declarations.pages }
     val applicationNames = pages.filter { it.isApplication }.map { it.className }.toSet()
@@ -74,12 +79,21 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
     var launchName by remember(module?.projectDirectory) { mutableStateOf<String?>(null) }
     val launches = module?.hotReloadLaunches.orEmpty().distinctBy { it.executable }
     val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
+    var projectCode by remember(module?.projectDirectory) { mutableStateOf(false) }
+    val designLaunch = if (projectCode) launch else module?.staticPreview?.launch()
+    val catalogService = project.service<WinRTXamlCatalogService>()
+    val catalogRevision by catalogService.changes.collectAsState()
+    val resourceRevision by project.service<WinRTResourceIndex>().changes.collectAsState()
+    LaunchedEffect(static, module, designLaunch, state.busy) {
+        if (static && module != null && designLaunch != null) design.ensurePreview(module, designLaunch)
+    }
     var automatic by remember { mutableStateOf(true) }
     var revision by remember { mutableLongStateOf(0) }
     var source by remember(module?.projectDirectory, staticFile) { mutableStateOf(staticFile ?: FileEditorManager.getInstance(project).selectedTextEditor
         ?.document?.let { FileDocumentManager.getInstance().getFile(it) }?.takeIf { it.extension.equals("xaml", true) }?.path.orEmpty()) }
     val files by produceState<List<String>>(emptyList(), module) {
-        value = withContext(Dispatchers.IO) { module?.xamlCompilations.orEmpty().flatMap { it.sourceRoots }.distinct().flatMap { directory ->
+        value = withContext(Dispatchers.IO) { (module?.xamlCompilations.orEmpty().flatMap { it.sourceRoots } +
+            module?.sourceSets.orEmpty().flatMap { it.kotlinRoots }).distinct().flatMap { directory ->
             val path = Path.of(directory)
             if (!Files.isDirectory(path)) emptyList() else Files.walk(path).use { stream -> stream.filter {
                 Files.isRegularFile(it) && it.fileName.toString().endsWith(".xaml", true)
@@ -105,20 +119,21 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
         }, disposable)
         onDispose { Disposer.dispose(disposable) }
     }
-    fun read(path: String): String = ReadAction.compute<String?, RuntimeException> {
-        LocalFileSystem.getInstance().findFileByPath(path)?.let { FileDocumentManager.getInstance().getCachedDocument(it)?.text }
-    } ?: Files.readString(Path.of(path))
-    LaunchedEffect(static, source, files, declarations, if (automatic) revision else 0L, manualRefresh, state.connected, width.text, height.text, theme) {
+    LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, if (automatic) revision else 0L, manualRefresh, state.connected, width.text, height.text, theme) {
         prepared = null; failure = null
-        if (static && state.connected && source.isNotEmpty()) {
+        if (static && state.connected && source.isNotEmpty() && module != null) {
             delay(350)
             try {
                 prepared = withContext(Dispatchers.IO) {
-                    val catalog = project.service<WinRTXamlCatalogService>().forFile(source) ?: error("Prepare XAML and wait for its SDK metadata before previewing.")
-                    val application = files.firstOrNull { path -> runCatching { WinRTHotReloadMarkup.parse(read(path)).className in applicationNames }.getOrDefault(false) }
-                    val lookup = project.service<WinRTResourceIndex>().forFile(source)
-                    fun target(path: String) = lookup?.entries?.firstOrNull { it.source.replace('\\', '/').equals(path, true) }?.target ?: Path.of(path).fileName.toString()
-                    WinRTXamlDesignDocument.prepare(read(source), application?.let(::read), target(source), application?.let(::target).orEmpty()) { uri, type, attribute ->
+                    val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
+                        ?: error("Waiting for the designer's SDK metadata…")
+                    val documents = WinRTXamlPreviewSources(project, module, files, source)
+                    val application = documents.application()
+                    if (!projectCode) documents.stageAssets()
+                    WinRTXamlDesignDocument.prepare(documents.read(source), application?.let(documents::read),
+                        documents.target(source), application?.let(documents::target).orEmpty(),
+                        resource = if (projectCode) null else documents::resolve,
+                        sdkType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type) != null }) { uri, type, attribute ->
                         catalog.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == attribute && member.isEvent } } == true
                     }
                 }
@@ -151,24 +166,27 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
         if (!treeOnly && staticFile == null) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RadioButtonRow("Live Preview", !static, { static = false }); RadioButtonRow("Static Preview", static, { static = true })
         }
-        if (!state.connected) {
+        if ((!state.connected && (!static || staticFile == null)) || static && projectCode) {
             @Composable fun buildOptions() {
                 WinRTModulePicker(project)
-                WinRTChoice(if (static) "Design host" else "Application", launches.map { it.taskName to if (it.taskName.startsWith("runWinAppPackage")) "JVM · Packaged" else "JVM · Unpackaged" }, launch?.taskName) { launchName = it }
+                if (!static || projectCode) WinRTChoice("Application", launches.map { it.taskName to if (it.taskName.startsWith("runWinAppPackage")) "JVM · Packaged" else "JVM · Unpackaged" }, launch?.taskName) { launchName = it }
             }
-            if (staticFile != null) WinRTDetails("build options") { buildOptions() } else buildOptions()
+            if (staticFile != null) WinRTDetails("project code options") { buildOptions() } else buildOptions()
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (!state.connected) DefaultButton(enabled = module != null && launch != null && !state.busy && state.pid == null,
-                onClick = { session.start(module!!, launch!!, preview = static) }) { Text(if (static) "Build & Refresh" else "Start application") }
+            if (!state.connected) DefaultButton(enabled = module != null && (if (static) designLaunch else launch) != null && !state.busy && state.pid == null,
+                onClick = { session.start(module!!, (if (static) designLaunch else launch)!!, preview = static) }) { Text(if (static) "Retry preview" else "Start application") }
+            if (static && projectCode && state.connected) DefaultButton(enabled = !state.busy,
+                onClick = { session.start(module!!, launch!!, restart = true, preview = true) }) { Text("Build project code") }
             DefaultButton(enabled = state.connected && !state.inspecting, onClick = { selectPath(emptyList()); manualRefresh++ }) { Text("Refresh") }
             if (staticFile == null || state.pid != null) DefaultButton(enabled = !state.busy, onClick = session::reconnect) { Text("Reconnect") }
             if (state.pid != null) DefaultButton(onClick = session::stop) { Text(if (static) "Stop preview" else "Stop application") }
         }
         Text(state.message)
-        if (staticFile != null && (module == null || launch == null))
-            Text("Synchronize a Kotlin WinRT application module, then select it in build options to preview this document.")
+        if (staticFile != null && (module == null || designLaunch == null))
+            Text("Synchronize a Kotlin WinRT module with a Windows App SDK reference to preview this document.")
         if (static) {
+            CheckboxRow("Enable project code (requires compilation)", projectCode, { projectCode = it }, enabled = launches.isNotEmpty())
             if (staticFile == null) WinRTChoice("XAML document", files.map { it to (module?.projectDirectory?.let { dir -> it.removePrefix(dir.replace('\\', '/') + "/") } ?: it) }, source) { source = it }
             else Text(Path.of(staticFile).fileName.toString())
             WinRTDetails("preview options") {

@@ -75,12 +75,20 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             restoreLockFiles = if (windows == null) emptyList() else
                 project.tasks.withType(RestoreWinAppDependenciesTask::class.java).map { it.winmdLockFile.get().asFile.absolutePath }.distinct().sorted(),
             hotReloadLaunches = if (windows == null) emptyList() else (
-                project.tasks.withType(RunWinAppHostTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
+                project.tasks.withType(RunWinAppHostTask::class.java).filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath)
                 } + project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath,
                         it.previewHostExecutable.get().asFile.absolutePath)
                 }).sortedBy { it.taskName },
+            staticPreview = if (windows?.packageReferences?.nugetPackages?.any {
+                    it.packageId.startsWith("Microsoft.WindowsAppSDK", true) } != true) null else
+                project.tasks.withType(RunWinAppHostTask::class.java).firstOrNull { it.sdkPreview.get() }?.let { task ->
+                    IdeStaticPreview(task.name, task.hostExecutable.get().asFile.absolutePath,
+                        task.workingDirectory.get().asFile.absolutePath,
+                        project.tasks.named("buildWinRTXamlSdkPreview", BuildWinRTXamlSdkPreviewTask::class.java)
+                            .get().metadataReferencesFile.get().asFile.absolutePath)
+                },
         )
     }
 }
@@ -102,10 +110,14 @@ private data class IdeModel(
     override val nuGetConfigDirectory: String,
     override val restoreLockFiles: List<String>,
     override val hotReloadLaunches: List<WinRTIdeModel.HotReloadLaunch>,
+    override val staticPreview: WinRTIdeModel.StaticPreview?,
 ) : WinRTIdeModel {
     override val schemaVersion get() = WinRTIdeModel.SCHEMA_VERSION
     override val isEnabled get() = enabled
 }
+
+private data class IdeStaticPreview(override val taskName: String, override val executable: String,
+    override val workingDirectory: String, override val metadataReferencesFile: String) : WinRTIdeModel.StaticPreview
 
 private data class IdeHotReloadLaunch(
     override val taskName: String,

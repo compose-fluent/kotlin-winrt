@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.*
 import com.intellij.openapi.fileEditor.TextEditorWithPreview.Layout
@@ -23,6 +24,16 @@ import org.jetbrains.jewel.bridge.theme.SwingBridgeTheme
 /** Editor integration follows the platform's TextEditorWithPreview contract;
  * the actual WinUI renderer is exercised separately by WinRTPreviewRuntimeTest. */
 class WinRTXamlPreviewEditorTest : BasePlatformTestCase() {
+    private var previousLayout: String? = null
+    override fun setUp() {
+        super.setUp()
+        previousLayout = PropertiesComponent.getInstance().getValue("Kotlin WinRT XAMLLayout")
+        PropertiesComponent.getInstance().unsetValue("Kotlin WinRT XAMLLayout")
+    }
+    override fun tearDown() {
+        try { PropertiesComponent.getInstance().setValue("Kotlin WinRT XAMLLayout", previousLayout) }
+        finally { super.tearDown() }
+    }
     private val markup = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Text="Preview"/></Page>"""
 
     fun testNativeEditorHasPersistentTopRightModeActionsAndKeepsItsXmlDocument() {
@@ -36,6 +47,7 @@ class WinRTXamlPreviewEditorTest : BasePlatformTestCase() {
         try {
             editor.component
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            assertEquals("New XAML documents open beside their automatic designer", Layout.SHOW_EDITOR_AND_PREVIEW, editor.getLayout())
             assertSame(FileDocumentManager.getInstance().getDocument(file), editor.editor.document)
             assertSame(editor, TextEditorWithPreview.getParentSplitEditor(editor.textEditor))
             assertSame(editor, TextEditorWithPreview.getParentSplitEditor(editor.previewEditor))
@@ -102,7 +114,7 @@ class WinRTXamlPreviewEditorTest : BasePlatformTestCase() {
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
-    fun testActualPreviewCompositionRendersItsBuildActionAndMissingModuleGuidance() {
+    fun testActualPreviewCompositionRendersItsRetryActionAndMissingModuleGuidance() {
         val file = myFixture.addFileToProject("Design.xaml", markup).virtualFile
         // Render this plugin's own UI offscreen; do not capture a user desktop.
         val scene = ImageComposeScene(800, 600, Density(1f))
@@ -112,8 +124,9 @@ class WinRTXamlPreviewEditorTest : BasePlatformTestCase() {
             fun text(node: SemanticsNode): List<String> = node.config.getOrNull(SemanticsProperties.Text)
                 .orEmpty().map { it.text } + node.children.flatMap(::text)
             val labels = scene.semanticsOwners.flatMap { text(it.unmergedRootSemanticsNode) }
-            assertContainsElements(labels, "Build & Refresh", "Design.xaml")
-            assertTrue(labels.toString(), labels.any { it.startsWith("Synchronize a Kotlin WinRT application module") })
+            assertContainsElements(labels, "Retry preview", "Design.xaml")
+            assertFalse(labels.contains("Build & Refresh"))
+            assertTrue(labels.toString(), labels.any { it.startsWith("Synchronize a Kotlin WinRT module") })
         } finally { scene.close() }
     }
 }

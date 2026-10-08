@@ -1,8 +1,100 @@
 package io.github.composefluent.winrt.compiler.xaml
 
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeCandidate
+import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringTypeDetailsRenderer
+import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegistrarName
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
+import io.github.composefluent.winrt.metadata.WinRTXamlNamespaces
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
+
+/** SDK calls shared by application inspection and the project-independent designer. */
+internal fun xamlDevelopmentConfigurationSource(inspector: String): String = """
+    io.github.composefluent.winrt.runtime.configureWinRTXamlHotReload(
+      dispatcherFactory = {
+        val queue = microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()
+        val enqueue: (() -> Unit) -> Boolean = { action ->
+          queue.tryEnqueue(microsoft.ui.dispatching.DispatcherQueueHandler { action() })
+        }
+        enqueue
+      },
+      sdkConvert = { type, text -> microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text) },
+      loadResources = { markup -> requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(markup))
+        .asWinRT<microsoft.ui.xaml.ResourceDictionary>() },
+      loadElement = { markup -> requireNotNull(microsoft.ui.xaml.markup.XamlReader.load(markup))
+        .asWinRT<microsoft.ui.xaml.UIElement>() },
+      inspector = $inspector(),
+    )
+""".trimIndent()
+
+/**
+ * Uses the same generated SDK projection as CsWinRT's WinUIDesktopSample, with no
+ * project declarations, event handlers or user entry point. The fixed designer
+ * Application receives OnLaunched through the normal generated authoring ABI,
+ * after WinUI has initialized its resources (WinUIDesktopSample/App.xaml.cs).
+ */
+fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
+    val sdkNamespaces = WinRTXamlNamespaces.namespaces(WinRTXamlNamespaces.PRESENTATION).toSet()
+    val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
+    // The property inspector visits visual nodes, not SDK event args or metadata
+    // helper classes. Its member tables follow the real UIElement base hierarchy.
+    val names = model.namespaces.filter { it.name in sdkNamespaces && it.name.startsWith("Microsoft.UI.Xaml") }
+        .flatMap { it.types }.filter { type ->
+            generateSequence(type) { definitions[it.baseTypeName] }.any { it.qualifiedName == "Microsoft.UI.Xaml.UIElement" }
+        }.map { it.qualifiedName }.toSet()
+    val hostPackage = "io.github.composefluent.winrt.generated.xaml"
+    val hostAssembly = "SdkPreviewHost"
+    val overrides = requireNotNull(definitions["Microsoft.UI.Xaml.Application"])
+        .implementedInterfaces.filter { it.isOverridable }.map { it.interfaceName }
+    require(overrides.isNotEmpty()) { "The selected WinUI SDK does not expose Application overrides for the design host." }
+    KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(listOf(KotlinWinRTAuthoredTypeCandidate(
+        packageName = hostPackage,
+        className = "KotlinWinRTXamlPreviewApplication",
+        sourceTypeName = "$hostPackage.KotlinWinRTXamlPreviewApplication",
+        winRTBaseClassName = "Microsoft.UI.Xaml.Application",
+        winRTInterfaceNames = overrides,
+        overridableInterfaceNames = overrides,
+        isPublic = false,
+    )), model, root.resolve("designer-authoring"), hostAssembly)
+    val accessors = writeXamlProjectedTypeRegistrationSource(root, model, names, "SdkPreview")
+    writeXamlMemberConversionSource(root)
+    val inspector = writeXamlVisualInspectorSource(root, "SdkPreview", false, emptyList())
+    root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinRTXamlPreviewHost.kt").writeText("""
+        package io.github.composefluent.winrt.generated.xaml
+        import microsoft.ui.xaml.*
+        import io.github.composefluent.winrt.runtime.*
+        internal class KotlinWinRTXamlPreviewApplication : Application() {
+          override fun onLaunched(args: LaunchActivatedEventArgs) {
+            try { KotlinWinRTXamlPreviewHost.showWindow() }
+            catch (error: Throwable) { error.printStackTrace(); throw error }
+          }
+        }
+        object KotlinWinRTXamlPreviewHost {
+          private var application: Application? = null
+          private var window: Window? = null
+          @kotlin.jvm.JvmStatic fun main(args: Array<String>) {
+            WinRTProjectionSupportIntrinsic.ensureInitialized()
+            Application.start {
+              ${xamlDevelopmentConfigurationSource(inspector).prependIndent("              ").trimStart()}
+              ${accessors?.let { "$it()" }.orEmpty()}
+              io.github.composefluent.winrt.projections.support.${authoringTypeDetailsRegistrarName(hostAssembly)}.register()
+              application = KotlinWinRTXamlPreviewApplication()
+            }
+            window = null; application = null
+          }
+          internal fun showWindow() {
+            requireNotNull(application).resources.mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
+            window = Window().apply {
+              title = "Kotlin WinRT XAML Preview"
+              content = microsoft.ui.xaml.controls.Grid().apply { width = 800.0; height = 600.0 }
+              activate()
+              completeWinRTXamlHotReloadComponent(this, WinRTXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
+            }
+          }
+        }
+    """.trimIndent())
+}
 
 /** Typed WinUI SDK adaptation follows CSharpTypeInfoPass2's generated SDK calls.
  * VisualTreeHelper and RenderTargetBitmap own traversal/rendering; no substitute renderer.

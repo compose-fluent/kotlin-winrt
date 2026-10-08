@@ -6,6 +6,21 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
 
+/** The SDK owns literal conversion for both project and SDK designer accessors. */
+internal fun writeXamlMemberConversionSource(root: Path) {
+    val file = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlMemberValue.kt")
+    Files.createDirectories(file.parent)
+    file.writeText("""
+        package io.github.composefluent.winrt.generated.xaml
+        internal inline fun <reified T> kotlinWinRTXamlMemberValue(value: Any?): T {
+          if (value is T || value !is String) return value as T
+          return io.github.composefluent.winrt.runtime.convertWinRTXamlLiteral(T::class, value) { type, text ->
+            microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text)
+          } as T
+        }
+    """.trimIndent() + "\n")
+}
+
 /** CSharpTypeInfoPass2 creates typed activators for referenced WinMD classes too.
  * Non-bindable library classes may be absent from the library's native type table.
  * These entries supplement that provider; they do not export Kotlin components.
@@ -18,6 +33,12 @@ internal fun writeXamlProjectedTypeRegistrationSource(
 ): String? {
     if (names.isEmpty()) return null
     val model = WinRTMetadataLoader.loadSources(references.map(WinRTMetadataSource::path))
+    return writeXamlProjectedTypeRegistrationSource(root, model, names, assemblyName)
+}
+
+internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMetadataModel,
+    names: Set<String>, assemblyName: String?): String? {
+    if (names.isEmpty()) return null
     val semantics = model.semanticHelpers()
     val specialTypes = model.specialTypeResolver()
     val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
@@ -46,7 +67,6 @@ internal fun writeXamlProjectedTypeRegistrationSource(
         appendLine("@file:Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\")")
         appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
         appendLine("package $packageName")
-        appendLine("internal fun $register() {")
         fun emit(type: WinRTTypeDefinition, development: Boolean) {
             val name = type.qualifiedName
             val owner = xamlTypeClassId(name).asSingleFqName().asString()
@@ -61,7 +81,14 @@ internal fun writeXamlProjectedTypeRegistrationSource(
             appendLine("    isBindable = false,")
             appendLine("    members = listOf(")
             val convert: (String, String) -> String = { value, target -> "kotlinWinRTXamlMemberValue<$target>($value)" }
+            val inherited = definitions[type.baseTypeName]?.let { semantics.classMemberMergeDescriptor(it).mergedProperties }
+                .orEmpty().associateBy { it.propertyName }
             for (member in semantics.classMemberMergeDescriptor(type).mergedProperties.filter { it.isPublic && !it.isPrivate && it.getterTarget != null }) {
+                // The runtime walks base definitions. SDK inspection should not
+                // duplicate the same inherited accessor on every derived class.
+                if (development && inherited[member.propertyName]?.let {
+                    it.getterTarget == member.getterTarget && it.setterTarget == member.setterTarget
+                } == true) continue
                 val ref = WinRTTypeRef.fromDisplayName(member.propertyTypeName)
                 val property = WinRTXamlApplicationProperty(member.propertyName, ref, isReadOnly = member.setterTarget == null)
                 // Match the projection's shared property nullability and collection mappings.
@@ -74,10 +101,18 @@ internal fun writeXamlProjectedTypeRegistrationSource(
             appendLine("    )," )
             appendLine("  ))")
         }
-        types.filterNot(::sdk).forEach { emit(it, false) }
+        // Keep SDK-wide registration below JVM method limits. Each helper owns
+        // one type, just as generated XamlTypeInfo owns its member table.
+        types.forEachIndexed { index, type ->
+            appendLine("private fun ${register}_$index() {")
+            emit(type, sdk(type))
+            appendLine("}")
+        }
+        appendLine("internal fun $register() {")
+        types.forEachIndexed { index, type -> if (!sdk(type)) appendLine("  ${register}_$index()") }
         if (types.any(::sdk)) {
             appendLine("  if (io.github.composefluent.winrt.runtime.isWinRTXamlHotReloadEnabled()) {")
-            types.filter(::sdk).forEach { emit(it, true) }
+            types.forEachIndexed { index, type -> if (sdk(type)) appendLine("    ${register}_$index()") }
             appendLine("  }")
         }
         appendLine("}")

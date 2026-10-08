@@ -64,6 +64,7 @@ class WinRTIdeModelBuilderTest {
         val windows = project.extensions.getByType(WindowsExtension::class.java)
         windows.packageReferences.windowsSdk("10.0.26100.0")
         windows.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        windows.packageReferences.nugetPackage("Sample.ProjectDependency", "1.0.0")
         windows.application.appxManifest("src/desktopMain/appxResources/AppxManifest.xml")
         project.tasks.register("analyzeWinRTXamlFixture", CompileWinRTXamlTask::class.java) { task ->
             task.sourceRoots.from(project.file("src/desktopMain/kotlin"))
@@ -81,8 +82,22 @@ class WinRTIdeModelBuilderTest {
         assertEquals(listOf("desktop", "metadata", "windowsNative"), model.targets.map { it.name })
         assertEquals("jvm", model.targets.single { it.name == "desktop" }.platform)
         assertEquals("native", model.targets.single { it.name == "windowsNative" }.platform)
-        assertEquals(listOf("Microsoft.WindowsAppSDK"), model.nuGetPackages.map { it.id })
-        assertEquals("2.2.0", model.nuGetPackages.single().version)
+        assertEquals(listOf("Microsoft.WindowsAppSDK", "Sample.ProjectDependency"), model.nuGetPackages.map { it.id })
+        assertEquals("2.2.0", model.nuGetPackages.first().version)
+        assertEquals("runWinRTXamlSdkPreview", model.staticPreview!!.taskName)
+        assertTrue(model.staticPreview!!.executable.endsWith("KotlinWinRTXamlPreview.exe"))
+        assertFalse("The SDK designer must not become a user application run configuration",
+            model.hotReloadLaunches.any { it.taskName == model.staticPreview!!.taskName })
+        val sdk = project.tasks.named("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java).get()
+        assertTrue("The designer projection must never scan application source", sdk.sourceRoots.files.isEmpty())
+        assertFalse(sdk.preparedMetadataManifest.isPresent)
+        assertFalse(sdk.authoringCandidatesFile.isPresent)
+        assertFalse(sdk.nugetPackages.get().any { it.startsWith("Sample.ProjectDependency") })
+        assertEquals(setOf("buildWinRTXamlSdkPreview"), project.tasks.named("stageWinRTXamlSdkPreviewRuntime",
+            StageWindowsPackageRuntimeAssetsTask::class.java).get().applicationCompilationTasks.get())
+        val sdkAssets = project.tasks.named("stageWinRTXamlSdkPreviewRuntime", StageWindowsPackageRuntimeAssetsTask::class.java).get()
+        assertTrue("WinUI's own theme PRIs must be merged for the isolated self-contained host", sdkAssets.generateProjectPri.get())
+        assertFalse("Application resources must be read from source, not staged by an application build", sdkAssets.enableDefaultProjectPriResources.get())
         val desktop = model.sourceSets.single { it.name == "desktopMain" }
         assertEquals(
             listOf("commonMain", "winuiMain", "desktopMain"),
@@ -101,6 +116,7 @@ class WinRTIdeModelBuilderTest {
         assertEquals(model.projectDirectory, restored.projectDirectory)
         assertEquals(desktop.appxResourceRoots, restored.sourceSets.single { it.name == "desktopMain" }.appxResourceRoots)
         assertEquals(xaml.compilerDirectory, restored.xamlCompilations.single().compilerDirectory)
+        assertEquals(model.staticPreview, restored.staticPreview)
     }
 
     @Test
@@ -113,5 +129,6 @@ class WinRTIdeModelBuilderTest {
         assertTrue(model.sourceSets.isEmpty())
         assertTrue(model.targets.isEmpty())
         assertTrue(model.nuGetPackages.isEmpty())
+        assertEquals(null, model.staticPreview)
     }
 }

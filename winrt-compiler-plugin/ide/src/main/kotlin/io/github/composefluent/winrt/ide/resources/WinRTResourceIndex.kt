@@ -25,6 +25,7 @@ internal data class WinRTResourceLookup(val module: WinRTModuleData, val entries
 /** File enumeration/staging-report IO never runs in PSI reference or completion requests. */
 @Service(Service.Level.PROJECT)
 class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : Disposable {
+    internal val changes = kotlinx.coroutines.flow.MutableStateFlow(0L)
     @Volatile private var lookups = emptyList<WinRTResourceLookup>()
     private data class FrameworkKeys(val modified: Long, val size: Long, val keys: List<WinRTFrameworkResourceKey>)
     private val frameworkKeys = ConcurrentHashMap<String, FrameworkKeys>()
@@ -33,7 +34,8 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
             val projects = project.service<WinRTProjectService>()
             projects.refreshFromGradleCache()
             val changes = project.service<WinRTResourceChanges>()
-            combine(projects.modules, changes.revision, projects.dependencyRevision) { modules, revision, dependencyRevision ->
+            combine(projects.modules, changes.revision, projects.dependencyRevision,
+                project.service<io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalogService>().changes) { modules, revision, dependencyRevision, _ ->
                 Triple(modules, revision, dependencyRevision)
             }.collectLatest { (modules, revision, dependencyRevision) ->
                 delay(250)
@@ -56,6 +58,7 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
     internal fun publish(next: List<WinRTResourceLookup>) {
         if (lookups == next) return
         lookups = next.toList()
+        changes.value += 1
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) DaemonCodeAnalyzer.getInstance(project).restart("WinRT resource candidates changed")
         }
@@ -63,8 +66,8 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
 
     internal fun read(module: WinRTModuleData, modules: List<WinRTModuleData>): WinRTResourceLookup {
         val staged = module.packageLayouts.map { WinRTResourceCatalog.staged(module, it, modules) }.filter { it.error == null }
-        val inputs = module.xamlCompilations.mapNotNull { compilation -> runCatching {
-            Json.parseToJsonElement(Files.readString(Path.of(compilation.inputFile))).jsonObject
+        val inputs = (module.xamlCompilations.map { it.inputFile } + listOfNotNull(module.staticPreview?.metadataReferencesFile)).mapNotNull { input -> runCatching {
+            Json.parseToJsonElement(Files.readString(Path.of(input))).jsonObject
         }.getOrNull() }
         // XAMLC owns package-relative XAML paths (MSBuild_Link), including
         // dictionaries outside a Kotlin source root and referenced libraries.
@@ -83,7 +86,7 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
         val entries = (module.sourceSets.flatMap { WinRTResourceCatalog.sourceSet(module, it).entries } +
             staged.flatMap { it.entries } + markup)
             .distinctBy { it.target.lowercase() to it.source.lowercase() }
-        val files = module.xamlCompilations.flatMap { it.sourceRoots }.distinct().flatMap { root ->
+        val files = (module.xamlCompilations.flatMap { it.sourceRoots } + module.sourceSets.flatMap { it.kotlinRoots }).distinct().flatMap { root ->
             val directory = Path.of(root)
             if (!Files.isDirectory(directory)) emptyList() else Files.walk(directory).use { paths -> paths.filter {
                 Files.isRegularFile(it) && it.fileName.toString().endsWith(".xaml", true)
