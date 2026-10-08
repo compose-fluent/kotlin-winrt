@@ -5,12 +5,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.ui.component.*
 
 @Composable
@@ -35,15 +35,18 @@ internal fun WinRTModulePicker(project: Project) {
 }
 
 @Composable
+@OptIn(ExperimentalJewelApi::class)
 internal fun WinRTChoice(label: String, choices: List<Pair<String, String>>, selected: String?, onSelect: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label)
-        Dropdown(modifier = Modifier.fillMaxWidth().semantics { contentDescription = label }, enabled = choices.isNotEmpty(),
-            menuContent = {
-                choices.forEach { (key, title) -> selectableItem(selected = selected == key, onClick = { onSelect(key) }) { Text(title) } }
-            }) {
-            Text(choices.firstOrNull { it.first == selected }?.second ?: "Select…", maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        ListComboBox(
+            items = choices.map { it.second },
+            selectedIndex = choices.indexOfFirst { it.first == selected },
+            onSelectedItemChange = { index -> choices.getOrNull(index)?.let { onSelect(it.first) } },
+            itemKeys = { index, _ -> choices[index].first },
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
+            enabled = choices.isNotEmpty(),
+        )
     }
 }
 

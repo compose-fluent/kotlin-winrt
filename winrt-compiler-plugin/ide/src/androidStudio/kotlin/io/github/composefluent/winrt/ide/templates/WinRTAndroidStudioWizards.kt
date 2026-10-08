@@ -11,6 +11,7 @@ import com.android.tools.idea.npw.module.ModuleDescriptionProvider
 import com.android.tools.idea.npw.module.ModuleGalleryEntry
 import com.android.tools.idea.npw.project.AndroidProjectEntryProvider
 import com.android.tools.idea.npw.project.ChooseAndroidProjectEntry
+import com.android.tools.idea.npw.project.ProjectEntryListCell
 import com.android.tools.idea.observable.core.BoolValueProperty
 import com.android.tools.idea.wizard.model.SkippableWizardStep
 import com.android.tools.idea.wizard.model.WizardModel
@@ -43,8 +44,8 @@ internal class WinRTAndroidProjectEntry : ChooseAndroidProjectEntry {
     override val canGoForward: State<Boolean> = mutableStateOf(false)
 
     @Composable
-    override fun AndroidProjectListEntry(selected: Boolean, enabled: Boolean) {
-        Text("Kotlin WinRT", modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+    override fun AndroidProjectListEntry(isSelected: Boolean, isFocused: Boolean) {
+        ProjectEntryListCell("Kotlin WinRT", null, isSelected, isFocused)
     }
 
     @Composable

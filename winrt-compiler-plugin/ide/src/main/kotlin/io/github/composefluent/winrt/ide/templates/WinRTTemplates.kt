@@ -7,12 +7,12 @@ import java.nio.file.Path
 import java.util.zip.ZipInputStream
 
 enum class WinRTTemplateKind(val title: String, val application: Boolean = false, val xaml: Boolean = false) {
-    ConsoleApplication("WinRT console application", application = true),
-    WinUIApplication("WinUI XAML application", application = true, xaml = true),
-    WinRTLibrary("WinRT library"),
-    WinUIControlLibrary("WinUI control library", xaml = true),
-    ResourceLibrary("AppX resource library"),
-    ProjectionLibrary("Shared SDK projection library"),
+    ConsoleApplication("WinRT Console Application", application = true),
+    WinUIApplication("WinUI XAML Application", application = true, xaml = true),
+    WinRTLibrary("WinRT Library"),
+    WinUIControlLibrary("WinUI Control Library", xaml = true),
+    ResourceLibrary("AppX Resource Library"),
+    ProjectionLibrary("Shared SDK Projection Library"),
 }
 
 data class WinRTTemplateOptions(

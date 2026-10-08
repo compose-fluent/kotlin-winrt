@@ -158,8 +158,7 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                 TextField(packageName, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Kotlin package" })
                 Text("JDK 25 installation")
                 TextField(jdk, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "JDK 25 installation" })
-                Text("Windows SDK version")
-                WinRTChoice("Locally installed Windows SDK", installed.sdks.map { it.version to "${it.version} · installed" }, sdk.text.toString()) {
+                WinRTChoice("Windows SDK version", installed.sdks.map { it.version to "${it.version} · installed" }, sdk.text.toString()) {
                     sdk.edit { replace(0, length, it) }
                 }
                 Text("The selected Windows SDK must be installed on this machine, including headers, libraries, WinRT metadata and packaging tools.")
@@ -170,8 +169,7 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                     CheckboxRow("Include WinUI projections", checked = includeWinUI, onCheckedChange = { includeWinUI = it })
                 }
                 if (kind.xaml || (kind == WinRTTemplateKind.ProjectionLibrary && includeWinUI)) {
-                    Text("Windows App SDK version")
-                    WinRTChoice("Windows App SDK (NuGet)", appSdkVersions.map { it to it }, appSdk.text.toString()) {
+                    WinRTChoice("Windows App SDK version", appSdkVersions.map { it to it }, appSdk.text.toString()) {
                         appSdk.edit { replace(0, length, it) }
                     }
                     Text("Windows App SDK is restored from NuGet. The Windows SDK selected above must be installed locally.")
