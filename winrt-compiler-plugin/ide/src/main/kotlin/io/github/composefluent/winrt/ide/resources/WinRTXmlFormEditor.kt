@@ -85,25 +85,34 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
         var failure by remember { mutableStateOf<String?>(null) }
         val name = remember { TextFieldState() }
         val value = remember { TextFieldState() }
-        val extension = remember { TextFieldState(".txt") }
-        var restricted by remember { mutableStateOf(false) }
-        var device by remember { mutableStateOf(false) }
-        var application by remember { mutableIntStateOf(0) }
         fun command(action: () -> Unit) {
             ApplicationManager.getApplication().invokeLater {
-                if (!disposed) { failure = null; runCatching(action).onFailure { failure = it.message }; refresh() }
+                if (!project.isDisposed && virtualFile.isValid) { failure = null; runCatching(action).onFailure { failure = it.message }; refresh() }
             }
+        }
+        if (!resw) {
+            WinRTManifestDesigner(
+                snapshot = snapshot,
+                errors = snapshot.errors + listOfNotNull(failure),
+                windowsVersions = module?.packageLayouts?.distinctBy { it.variant }?.map { "${it.variant}: Windows ${it.minWindowsVersion} · tested ${it.maxVersionTested}" }.orEmpty(),
+                windowsVersionsFromGradle = module?.packageLayouts?.isNotEmpty() == true,
+                onEdit = { field, text -> command { WinRTXmlForms.set(project, virtualFile, field, text) } },
+                onRemove = { field -> command { WinRTXmlForms.removeEntry(project, virtualFile, field) } },
+                onCapability = { text, restricted, device -> command { WinRTXmlForms.addCapability(project, virtualFile, text, restricted, device) } },
+                onExtension = { application, text, extension -> command { WinRTXmlForms.addExtension(project, virtualFile, application, text, extension) } },
+                onContentUri = { application, match, type -> command { WinRTXmlForms.addContentUriRule(project, virtualFile, application, match, type) } },
+                onGradle = { module?.let { project.service<WinRTProjectService>().openFile("${it.projectDirectory}/build.gradle.kts") } },
+                onBrowse = { field -> WinRTManifestAssets.choose(project, virtualFile) { asset ->
+                    command { val relative = WinRTManifestAssets.import(project, virtualFile, asset); WinRTXmlForms.set(project, virtualFile, field, relative) }
+                } },
+                assetPath = { text -> WinRTManifestAssets.resolve(virtualFile.toNioPath().parent, text) },
+            )
+            return
         }
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Text(if (resw) ".resw resources" else "AppX manifest")
                 (snapshot.errors + listOfNotNull(failure)).forEach { Text(it) }
-                if (!resw) {
-                    module?.packageLayouts?.distinctBy { it.variant }?.forEach { layout ->
-                        Text("${layout.variant}: Windows ${layout.minWindowsVersion} · tested ${layout.maxVersionTested} (Gradle configuration)")
-                    }
-                    module?.let { DefaultButton(onClick = { project.service<WinRTProjectService>().openFile("${it.projectDirectory}/build.gradle.kts") }) { Text("Windows version configuration") } }
-                }
             }
             items(snapshot.fields, key = { it.id }) { field ->
                 val buffer = remember(field.id, field.value) { TextFieldState(field.value) }
@@ -122,26 +131,12 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
                 }
             }
             item {
-                Text(if (resw) "Add resource key/value" else "Add capability or application extension")
+                Text("Add resource key/value")
                 TextField(name, placeholder = { Text("Name") }, modifier = Modifier.fillMaxWidth().semantics {
                     contentDescription = if (resw) "Resource key" else "Capability or extension name"
                 })
-                if (resw) {
-                    TextField(value, placeholder = { Text("Value") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Resource value" })
-                    DefaultButton(onClick = { command { WinRTXmlForms.addResw(project, virtualFile, name.text.toString(), value.text.toString()) } }) { Text("Add key") }
-                } else {
-                    CheckboxRow("Restricted capability", restricted, { restricted = it; if (it) device = false })
-                    CheckboxRow("Device capability", device, { device = it; if (it) restricted = false })
-                    DefaultButton(onClick = { command { WinRTXmlForms.addCapability(project, virtualFile, name.text.toString(), restricted, device) } }) { Text("Add capability") }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        repeat(snapshot.applicationCount) { index ->
-                            RadioButtonRow("Application ${index + 1}", application == index, { application = index })
-                        }
-                    }
-                    DefaultButton(onClick = { command { WinRTXmlForms.addExtension(project, virtualFile, application, name.text.toString(), null) } }) { Text("Add protocol") }
-                    TextField(extension, placeholder = { Text("File extension") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "File extension" })
-                    DefaultButton(onClick = { command { WinRTXmlForms.addExtension(project, virtualFile, application, name.text.toString(), extension.text.toString()) } }) { Text("Add file association") }
-                }
+                TextField(value, placeholder = { Text("Value") }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Resource value" })
+                DefaultButton(onClick = { command { WinRTXmlForms.addResw(project, virtualFile, name.text.toString(), value.text.toString()) } }) { Text("Add key") }
             }
         }
     }

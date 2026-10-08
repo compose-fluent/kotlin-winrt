@@ -62,6 +62,9 @@ class WinRTXamlCatalogService(private val project: Project, private val scope: C
     private suspend fun load() {
         val request = revision.incrementAndGet()
         val current = referenceFiles().distinct()
+        // Opening a manifest in an ordinary project needs no XAML catalog
+        // invalidation. Avoid restarting its highlighting during initial load.
+        if (current.isEmpty() && catalogs.isEmpty()) return
         val next = current.mapNotNull { referenceFile ->
             coroutineContext.ensureActive()
             val catalog = runCatching {

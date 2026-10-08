@@ -57,7 +57,7 @@ object WinRTXmlForms {
                         if (tag.subTags.isEmpty() && tag.value.text.isNotBlank()) text(tag)
                         tag.subTags.forEach(::visit)
                     }
-                    app.subTags.filter { it.localName in listOf("VisualElements", "Extensions") }.forEach(::visit)
+                    app.subTags.filter { it.localName in listOf("VisualElements", "Extensions", "ApplicationContentUriRules") }.forEach(::visit)
                 }
                 "Capabilities", "Extensions" -> {
                     fun visit(tag: XmlTag) { attributes(tag); tag.subTags.forEach(::visit) }
@@ -80,7 +80,7 @@ object WinRTXmlForms {
 
     fun removeEntry(project: Project, file: VirtualFile, field: WinRTXmlField) = edit(project, file, "Remove XML entry") { root ->
         val tag = resolve(root, field.path) ?: error("The XML node changed. Refresh the form.")
-        require(tag.localName in listOf("data", "Capability", "DeviceCapability", "Protocol", "FileTypeAssociation", "Resource"))
+        require(tag.localName in listOf("data", "Capability", "DeviceCapability", "Protocol", "FileTypeAssociation", "Resource", "Rule"))
         require(field.attribute?.let { tag.getAttributeValue(it).orEmpty() } == field.value) { "The XML value changed. Refresh the form." }
         val parent = tag.parentTag
         if (parent?.localName == "Extension" && parent.subTags.size == 1) parent.delete() else tag.delete()
@@ -93,6 +93,18 @@ object WinRTXmlForms {
         data.setAttribute("name", key)
         setLeafText(data.findFirstSubTag("value")!!, value)
         root.addSubTag(data, false)
+    }
+
+    fun addContentUriRule(project: Project, file: VirtualFile, application: Int, match: String, type: String) = edit(project, file, "Add content URI rule") { root ->
+        require(match.isNotBlank() && match.none { it == '\r' || it == '\n' } && type in listOf("include", "exclude")) { "Enter a URI and choose Include or Exclude." }
+        val app = root.findFirstSubTag("Applications")?.findSubTags("Application")?.getOrNull(application) ?: error("Select an application entry.")
+        val rules = child(app, "ApplicationContentUriRules", UAP)
+        require(rules.subTags.none { it.getAttributeValue("Match") == match && it.getAttributeValue("Type") == type }) { "The URI rule already exists." }
+        val prefix = prefix(root, UAP, "uap")
+        val rule = XmlElementFactory.getInstance(project).createTagFromText("<$prefix:Rule xmlns:$prefix=\"$UAP\"/>")
+        rule.setAttribute("Match", match)
+        rule.setAttribute("Type", type)
+        rules.addSubTag(rule, false)
     }
 
     fun addCapability(project: Project, file: VirtualFile, name: String, restricted: Boolean, device: Boolean = false) = edit(project, file, "Add AppX capability") { root ->
