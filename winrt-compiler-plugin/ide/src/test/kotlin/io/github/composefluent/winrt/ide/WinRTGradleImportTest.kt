@@ -94,9 +94,12 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
     fun testTemplateGradleImportAutomaticallyRegistersApplicationsBeforeWinRTUiOpened() = importTemplate(checkEditor = false)
 
     fun testIdeRunAutomaticallyConnectsAndAppliesXamlWithoutOpeningTheWinrtToolWindow() =
-        importTemplate(checkEditor = false, runApplication = true)
+        importTemplate(checkEditor = false, runApplication = "unpackaged")
 
-    private fun importTemplate(checkEditor: Boolean, runApplication: Boolean = false) {
+    fun testIdePackagedRunAutomaticallyConnectsAndAppliesXamlWithoutOpeningTheWinrtToolWindow() =
+        importTemplate(checkEditor = false, runApplication = "packaged")
+
+    private fun importTemplate(checkEditor: Boolean, runApplication: String? = null) {
         val requested = System.getProperty("winrt.ide.importProject")
         assumeTrue("Requires a prepared standalone WinUI template", requested != null)
         val root = Path.of(requested).toAbsolutePath().normalize()
@@ -157,7 +160,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             val service = imported.service<WinRTProjectService>()
             assertTrue(service.modules.value.toString(), service.modules.value.any { it.projectPath == ":app" })
             val app = service.modules.value.single { it.projectPath == ":app" }
-            if (runApplication) assertIdeRun(imported, app)
+            if (runApplication != null) assertIdeRun(imported, app, runApplication)
             if (checkEditor) {
                 assertEditingReady(imported, root)
                 assertLiveEditing(imported, root, phase == "import")
@@ -275,9 +278,9 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         }
     }
 
-    private fun assertIdeRun(imported: Project, app: WinRTModuleData) {
+    private fun assertIdeRun(imported: Project, app: WinRTModuleData, deployment: String) {
         val settings = RunManager.getInstance(imported).allSettings.single {
-            it.configuration is WinRTApplicationRunConfiguration && it.name.contains("[jvm, unpackaged]")
+            it.configuration is WinRTApplicationRunConfiguration && it.name.contains("[jvm, $deployment]")
         }
         assertNull("Opening the WinRT tool window must not be a prerequisite", imported.getServiceIfCreated(WinRTHotReloadService::class.java))
         ProgramRunnerUtil.executeConfiguration(settings, DefaultRunExecutor.getRunExecutorInstance())
