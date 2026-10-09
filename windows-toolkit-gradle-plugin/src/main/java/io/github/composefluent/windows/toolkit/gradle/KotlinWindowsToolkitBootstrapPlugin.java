@@ -7,7 +7,6 @@ import org.gradle.api.Project;
 /** Keeps an inactive plugin declaration usable in builds running on JDK 21. */
 public final class KotlinWindowsToolkitBootstrapPlugin implements Plugin<Project> {
     @Override
-    @SuppressWarnings("unchecked")
     public void apply(Project project) {
         if (Runtime.version().feature() < 25) {
             throw new GradleException(
@@ -23,7 +22,7 @@ public final class KotlinWindowsToolkitBootstrapPlugin implements Plugin<Project
                 true,
                 getClass().getClassLoader()
             );
-            ((Plugin<Project>) implementation.getDeclaredConstructor().newInstance()).apply(project);
+            project.getPluginManager().apply(implementation);
         } catch (ReflectiveOperationException exception) {
             throw new GradleException("Could not load the Windows toolkit implementation.", exception);
         }
