@@ -753,8 +753,10 @@ internal fun dependencyInternalProjectedTypeNames(
     model: WinRTMetadataModel,
     identityFiles: Iterable<File>,
 ): Set<String> {
-    val types = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
-    val helpers = io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers(model)
+    // Current identities carry visibility directly. Only legacy identities need
+    // another metadata index; building it eagerly duplicates a full SDK model.
+    val types by lazy { model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName } }
+    val helpers by lazy { io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers(model) }
     val context = WinRTMetadataProjectionContext(sources = emptyList())
     return identityFiles.flatMap { file ->
         val identity = readProjectionSurfaceIdentity(file)
