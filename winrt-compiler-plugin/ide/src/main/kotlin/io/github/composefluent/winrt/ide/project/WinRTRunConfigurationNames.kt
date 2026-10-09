@@ -3,19 +3,20 @@ package io.github.composefluent.winrt.ide.project
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunManagerListener
 import com.intellij.execution.RunnerAndConfigurationSettings
-import com.intellij.execution.impl.RunManagerImpl
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunConfiguration
+import com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings
+import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import org.jetbrains.plugins.gradle.util.GradleConstants
 import java.nio.file.Path
 
-/** Keep Gradle's runner/debugger, and name only its automatic configurations. */
+/** Import runnable applications using Gradle's runner/debugger and preserve user configurations. */
 @Service(Service.Level.PROJECT)
 class WinRTRunConfigurationNames(private val project: Project) : Disposable {
     private var updating = false
@@ -23,7 +24,7 @@ class WinRTRunConfigurationNames(private val project: Project) : Disposable {
 
     init {
         project.messageBus.connect(this).subscribe(RunManagerListener.TOPIC, object : RunManagerListener {
-            override fun runConfigurationAdded(settings: RunnerAndConfigurationSettings) = refresh()
+            override fun runConfigurationAdded(settings: RunnerAndConfigurationSettings) { if (!updating) refresh() }
             override fun runConfigurationChanged(settings: RunnerAndConfigurationSettings) { if (!updating) refresh() }
             override fun stateLoaded(runManager: RunManager, isFirstLoad: Boolean) = refresh()
         })
@@ -35,14 +36,62 @@ class WinRTRunConfigurationNames(private val project: Project) : Disposable {
         ApplicationManager.getApplication().invokeLater {
             scheduled = false
             if (!project.isDisposed) {
-                val manager = RunManager.getInstanceIfCreated(project) ?: return@invokeLater
                 val modules = project.service<WinRTProjectService>().modules.value
+                val manager = if (modules.isNotEmpty()) RunManager.getInstance(project) else RunManager.getInstanceIfCreated(project) ?: return@invokeLater
                 updating = true
-                try { manager.allSettings.forEach { settings ->
-                    if (rename(settings, modules)) (manager as? RunManagerImpl)?.fireRunConfigurationChanged(settings)
-                } } finally { updating = false }
+                try {
+                    val selected = manager.selectedConfiguration
+                    manager.allSettings.forEach { settings ->
+                    // addConfiguration updates the platform's name-based key as
+                    // well as publishing the change; a notification alone does not.
+                    if (rename(settings, modules)) manager.addConfiguration(settings)
+                }
+                    if (selected != null) manager.selectedConfiguration = selected
+                    registerApplications(manager, modules)
+                } finally { updating = false }
             }
         }
+    }
+
+    private fun registerApplications(manager: RunManager, modules: List<WinRTModuleData>) {
+        val previousSelection = manager.selectedConfiguration
+        var firstCreated: RunnerAndConfigurationSettings? = null
+        modules.forEach { module ->
+            val root = project.service<WinRTProjectService>().buildRootFor(module) ?: return@forEach
+            // Prefer a concrete main/debug task over the same target's lifecycle aliases.
+            module.runTasks.mapNotNull { task -> taskName(module, task)?.let { it to task } }.groupBy { it.first }
+                .toSortedMap(compareBy<String> { !it.contains("[jvm,") }.thenBy { !it.contains("packaged]") }.thenBy { it })
+                .forEach { (name, candidates) ->
+                    val task = candidates.map { it.second }.sortedWith(compareBy<String> { it.contains("ReleaseExecutable") }
+                        .thenBy { !it.contains("Main", true) }.thenByDescending { it.length }).first()
+                    val qualified = (module.projectPath.takeUnless { it == ":" }.orEmpty() + ":" + task)
+                    val existing = manager.allSettings.any { settings ->
+                        val config = settings.configuration as? ExternalSystemRunConfiguration
+                        config != null && config.settings.externalSystemIdString == GradleConstants.SYSTEM_ID.id &&
+                            FileUtil.pathsEqual(config.settings.externalProjectPath, root) && config.settings.taskNames.size == 1 &&
+                            (config.settings.taskNames.single() == qualified || config.settings.taskNames.single().let { value ->
+                                value.substringBeforeLast(':', "") == module.projectPath &&
+                                    taskName(module, value.substringAfterLast(':')) == name
+                            })
+                    }
+                    if (!existing) {
+                        val execution = ExternalSystemTaskExecutionSettings().apply {
+                            externalProjectPath = FileUtil.toSystemIndependentName(root)
+                            externalSystemIdString = GradleConstants.SYSTEM_ID.id
+                            taskNames = listOf(qualified)
+                            executionName = name
+                        }
+                        ExternalSystemUtil.createExternalSystemRunnerAndConfigurationSettings(execution, project, GradleConstants.SYSTEM_ID)?.let { settings ->
+                            settings.configuration.name = name
+                            manager.addConfiguration(settings)
+                            if (firstCreated == null) firstCreated = settings
+                        }
+                    }
+                }
+        }
+        // The platform may select every newly added configuration. Restore the
+        // user's selection, or choose the first application after the full import.
+        (previousSelection ?: firstCreated)?.let { manager.selectedConfiguration = it }
     }
 
     internal fun rename(settings: RunnerAndConfigurationSettings, modules: List<WinRTModuleData>): Boolean {

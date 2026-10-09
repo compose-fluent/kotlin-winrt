@@ -22,6 +22,8 @@ interface WinRTIdeModel : Serializable {
     val restoreLockFiles: List<String>
     val hotReloadLaunches: List<HotReloadLaunch>
     val staticPreview: StaticPreview?
+    /** Concrete application tasks, excluding SDK designers and aggregate aliases. */
+    val runTasks: List<String>
 
     /** Fixed SDK-only designer, independent of every application's build output. */
     interface StaticPreview : Serializable {
@@ -80,6 +82,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 6
+        const val SCHEMA_VERSION: Int = 7
     }
 }

@@ -89,6 +89,13 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                         project.tasks.named("buildWinRTXamlSdkPreview", BuildWinRTXamlSdkPreviewTask::class.java)
                             .get().metadataReferencesFile.get().asFile.absolutePath)
                 },
+            runTasks = if (windows == null) emptyList() else (
+                project.tasks.withType(RunWinAppHostTask::class.java).filter { !it.sdkPreview.get() && it.supportsXamlHotReload.get() }.map { it.name } +
+                project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.packageType.get() == WindowsPackageType.Packaged.name }.map { it.name } +
+                if (windows.application.packageType.get() == WindowsPackageType.None) project.tasks.names.filter {
+                    it.startsWith("runDebugExecutable") || it.startsWith("runReleaseExecutable")
+                } else emptyList()
+            ).distinct().sorted(),
         )
     }
 }
@@ -111,6 +118,7 @@ private data class IdeModel(
     override val restoreLockFiles: List<String>,
     override val hotReloadLaunches: List<WinRTIdeModel.HotReloadLaunch>,
     override val staticPreview: WinRTIdeModel.StaticPreview?,
+    override val runTasks: List<String>,
 ) : WinRTIdeModel {
     override val schemaVersion get() = WinRTIdeModel.SCHEMA_VERSION
     override val isEnabled get() = enabled

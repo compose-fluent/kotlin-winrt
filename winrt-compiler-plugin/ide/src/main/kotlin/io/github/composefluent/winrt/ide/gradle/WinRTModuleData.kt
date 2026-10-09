@@ -25,6 +25,7 @@ data class WinRTModuleData(
     val restoreLockFiles: List<String> = emptyList(),
     val hotReloadLaunches: List<WinRTHotReloadLaunchData> = emptyList(),
     val staticPreview: WinRTStaticPreviewData? = null,
+    val runTasks: List<String> = emptyList(),
 ) : AbstractExternalEntityData(GradleConstants.SYSTEM_ID) {
     companion object {
         val KEY: Key<WinRTModuleData> = Key.create(WinRTModuleData::class.java, ProjectKeys.MODULE.processingWeight + 1)
@@ -47,6 +48,7 @@ data class WinRTModuleData(
                 model.nuGetConfigFile, model.nuGetConfigDirectory, model.restoreLockFiles.toList(),
                 model.hotReloadLaunches.map { WinRTHotReloadLaunchData(it.taskName, it.executable, it.workingDirectory, it.previewExecutable) },
                 model.staticPreview?.let { WinRTStaticPreviewData(it.taskName, it.executable, it.workingDirectory, it.metadataReferencesFile) },
+                model.runTasks.toList(),
             )
         }
     }

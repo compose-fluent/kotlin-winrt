@@ -35,6 +35,10 @@ class WinRTIdeModelBuilderTest {
         val run = project.tasks.named("runWinAppPackageDesktopMain", RunWinAppPackageTask::class.java).get()
         assertTrue("Configured packaged JVM run must support Hot Reload", run.supportsXamlHotReload.get())
         val launch = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single()
+        val runTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
+        assertTrue(runTasks.toString(), runTasks.contains("runWinAppPackageDesktopMain"))
+        assertTrue(runTasks.toString(), runTasks.any { it.startsWith("runWinAppPackageMingwX64") })
+        assertFalse(runTasks.any { it.startsWith("runWinAppHost") || it.startsWith("runDebugExecutable") || "Preview" in it })
         assertEquals(run.name, launch.taskName)
         assertEquals(run.deploymentDirectory.file("packaged-app.exe").get().asFile.absolutePath, launch.executable)
         assertEquals(run.deploymentDirectory.get().asFile.absolutePath, launch.workingDirectory)
@@ -48,6 +52,10 @@ class WinRTIdeModelBuilderTest {
             builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.map { it.taskName })
         val unpackaged = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single()
         assertEquals(unpackaged.executable, unpackaged.previewExecutable)
+        val unpackagedTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
+        assertTrue(unpackagedTasks.contains("runWinAppHostDesktopMain"))
+        assertTrue(unpackagedTasks.toString(), unpackagedTasks.any { it.startsWith("runDebugExecutable") })
+        assertFalse(unpackagedTasks.any { it.startsWith("runWinAppPackage") })
     }
 
     @Test
@@ -117,6 +125,7 @@ class WinRTIdeModelBuilderTest {
         assertEquals(desktop.appxResourceRoots, restored.sourceSets.single { it.name == "desktopMain" }.appxResourceRoots)
         assertEquals(xaml.compilerDirectory, restored.xamlCompilations.single().compilerDirectory)
         assertEquals(model.staticPreview, restored.staticPreview)
+        assertTrue("Library modules must not produce run configurations", model.runTasks.isEmpty())
     }
 
     @Test
@@ -130,5 +139,6 @@ class WinRTIdeModelBuilderTest {
         assertTrue(model.targets.isEmpty())
         assertTrue(model.nuGetPackages.isEmpty())
         assertEquals(null, model.staticPreview)
+        assertTrue(model.runTasks.isEmpty())
     }
 }

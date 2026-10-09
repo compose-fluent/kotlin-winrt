@@ -27,6 +27,9 @@ class WinRTRunConfigurationNamesTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
+        val manager = RunManager.getInstance(project)
+        manager.allSettings.toList().forEach(manager::removeConfiguration)
+        manager.selectedConfiguration = null
         project.service<WinRTProjectService>().replaceBuildModels(root, listOf(moduleData))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
@@ -61,8 +64,43 @@ class WinRTRunConfigurationNamesTest : BasePlatformTestCase() {
         assertNull(WinRTRunConfigurationNames.taskName(moduleData, "runWinAppPackageUnknownTargetMain"))
     }
 
+    fun testImportCreatesRunnableApplicationsOnceAndSelectsPackagedJvm() {
+        val imported = moduleData.copy(runTasks = listOf("runWinAppPackageWinuiJvmMain", "runDebugExecutableMingwX64",
+            "runReleaseExecutableMingwX64", "runWinAppHostWinuiJvmMain", "runWinAppHost"))
+        project.service<WinRTProjectService>().replaceBuildModels(root, listOf(imported))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        val manager = RunManager.getInstance(project)
+        assertEquals(setOf("winui-gallery:Run[jvm, packaged]", "winui-gallery:Run[jvm, unpackaged]", "winui-gallery:Run[mingwX64, unpackaged]"), manager.allSettings.map { it.name }.toSet())
+        assertEquals("winui-gallery:Run[jvm, packaged]", manager.selectedConfiguration!!.name)
+        val native = manager.allSettings.single { it.name.contains("mingwX64") }.configuration as ExternalSystemRunConfiguration
+        assertEquals(listOf(":winui-gallery:runDebugExecutableMingwX64"), native.settings.taskNames)
+        project.service<WinRTProjectService>().replaceBuildModels(root, listOf(imported))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals(3, manager.allSettings.size)
+        assertEquals(3, manager.allSettings.map { (it.configuration as ExternalSystemRunConfiguration).settings.taskNames }.toSet().size)
+    }
+
+    fun testImportKeepsTheExistingCustomRunAndItsSelectionAndEnvironment() {
+        val custom = configuration("runWinAppPackageWinuiJvmMain")
+        custom.configuration.name = "My gallery"
+        (custom.configuration as ExternalSystemRunConfiguration).settings.env = mapOf("MY_OPTION" to "kept")
+        val manager = RunManager.getInstance(project)
+        manager.addConfiguration(custom); manager.selectedConfiguration = custom
+        project.service<WinRTProjectService>().replaceBuildModels(root, listOf(moduleData.copy(runTasks = listOf("runWinAppPackageWinuiJvmMain"))))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals(listOf(custom), manager.allSettings)
+        assertSame(custom, manager.selectedConfiguration)
+        assertEquals("My gallery", custom.name)
+        assertEquals("kept", (custom.configuration as ExternalSystemRunConfiguration).settings.env["MY_OPTION"])
+    }
+
     override fun tearDown() {
-        try { project.service<WinRTProjectService>().replaceBuildModels(root, emptyList()) }
+        try {
+            project.service<WinRTProjectService>().replaceBuildModels(root, emptyList())
+            val manager = RunManager.getInstance(project)
+            manager.allSettings.toList().forEach(manager::removeConfiguration)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        }
         finally { super.tearDown() }
     }
 }
