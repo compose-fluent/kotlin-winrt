@@ -163,6 +163,15 @@ class RestoreWinAppDependenciesTaskTest {
 
     @Test
     fun restore_uses_a_disposable_base_without_mutating_the_project_directory() {
+        verifyDisposableRestore(includeRuntimeAssets = true)
+    }
+
+    @Test
+    fun metadata_only_restore_discards_copied_runtime_architectures() {
+        verifyDisposableRestore(includeRuntimeAssets = false)
+    }
+
+    private fun verifyDisposableRestore(includeRuntimeAssets: Boolean) {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
         }
@@ -187,6 +196,10 @@ class RestoreWinAppDependenciesTaskTest {
             if /I "%~1"=="restore" (
               > "%~dp0restore.cwd" echo %CD%
               if not exist .winapp mkdir .winapp
+              mkdir .winapp\bin\x64
+              mkdir .winapp\bin\arm64
+              > .winapp\bin\x64\Sample.dll echo x64
+              > .winapp\bin\arm64\Sample.dll echo arm64
               > .winapp\winmds.lock.json echo {"schema": 3, "packages": []}
               exit /b 0
             )
@@ -207,6 +220,7 @@ class RestoreWinAppDependenciesTaskTest {
             registeredTask.dependencyIdentityFiles.from(project.files())
             registeredTask.restoreEnabled.set(true)
             registeredTask.includeToolingPackages.set(true)
+            registeredTask.includeRuntimeAssets.set(includeRuntimeAssets)
             registeredTask.offline.set(false)
         }.get()
 
@@ -215,6 +229,8 @@ class RestoreWinAppDependenciesTaskTest {
         assertTrue(Files.isRegularFile(lockfile))
         assertEquals(emptyList<WinAppRestoredPackage>(), WinAppRestoreLockfileReader.read(lockfile).packages)
         assertTrue(Files.isRegularFile(projectMarker))
+        assertEquals(includeRuntimeAssets, Files.isRegularFile(winAppDirectory.resolve("bin/x64/Sample.dll")))
+        assertEquals(includeRuntimeAssets, Files.isRegularFile(winAppDirectory.resolve("bin/arm64/Sample.dll")))
         val restoreWorkingDirectory = Path.of(Files.readString(workspace.resolve("restore.cwd")).trim())
             .toAbsolutePath()
             .normalize()

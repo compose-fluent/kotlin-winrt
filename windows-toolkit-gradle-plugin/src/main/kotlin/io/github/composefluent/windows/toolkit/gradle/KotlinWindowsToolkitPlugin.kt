@@ -2257,6 +2257,7 @@ private fun configureWinRTGeneration(
             task.nugetPackages.set(project.provider { allNuGetPackageSpecs(extension.packageReferences) })
             task.restoreEnabled.set(extension.restoreNuGetPackages)
             task.includeToolingPackages.set(includeWinAppToolingPackages)
+            task.includeRuntimeAssets.set(extension.applicationEnabled)
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
             task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
             task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)

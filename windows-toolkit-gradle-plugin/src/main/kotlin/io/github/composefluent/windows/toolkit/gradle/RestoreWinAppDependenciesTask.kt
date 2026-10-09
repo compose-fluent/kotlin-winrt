@@ -78,6 +78,10 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     @get:Input
     abstract val includeToolingPackages: Property<Boolean>
 
+    /** Metadata libraries publish package identities; applications stage their runtime payload. */
+    @get:Input
+    abstract val includeRuntimeAssets: Property<Boolean>
+
     @get:Input
     abstract val winAppCliVersion: Property<String>
 
@@ -100,6 +104,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
         nugetPackages.convention(emptyList())
         restoreEnabled.convention(true)
         includeToolingPackages.convention(false)
+        includeRuntimeAssets.convention(true)
         offline.convention(false)
     }
 
@@ -203,6 +208,12 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
 
             val restoredOutput = restoreWorkspace.resolve(".winapp")
             validateRestore(restoredOutput.resolve("winmds.lock.json"), packageSpecs)
+            if (!includeRuntimeAssets.get()) {
+                // CsWinRT's projection inputs are WinMD references. A metadata-only
+                // library does not need WinApp's copies of every runtime architecture.
+                GradleFileOperations.deleteDirectory(restoredOutput.resolve("bin"))
+                Files.createDirectories(restoredOutput.resolve("bin"))
+            }
             writeRestoreContext(
                 restoredOutput,
                 config,
@@ -297,6 +308,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
             "nugetConfigSha256" to effectiveNuGetConfigFingerprint(restoreBase),
             "packageSpecs" to packageSpecs.joinToString("\u001f"),
             "includeToolingPackages" to includeToolingPackages.get().toString(),
+            "includeRuntimeAssets" to includeRuntimeAssets.get().toString(),
             "winAppCliVersion" to winAppCliVersion.get(),
             "winAppCliPackageSha512" to winAppCliPackageSha512.get(),
             // Dependency schemas and compiled type ownership do not change NuGet restore.
