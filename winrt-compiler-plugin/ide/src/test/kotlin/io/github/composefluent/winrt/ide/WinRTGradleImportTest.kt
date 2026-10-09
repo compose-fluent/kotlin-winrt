@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.ide
 import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.lookup.LookupManager
+import com.intellij.execution.RunManager
 import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -45,6 +46,7 @@ import com.intellij.workspaceModel.ide.impl.WorkspaceModelCacheImpl
 import com.intellij.workspaceModel.ide.impl.WorkspaceModelImpl
 import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.ide.run.WinRTApplicationRunConfiguration
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadClient
 import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadService
@@ -85,7 +87,11 @@ import java.util.concurrent.atomic.AtomicReference
  */
 @OptIn(KaExperimentalApi::class, KaAllowAnalysisOnEdt::class)
 class WinRTGradleImportTest : BasePlatformTestCase() {
-    fun testTemplateGradleImportProvidesRealSdkAndXamlFirBeforeApplicationBuild() {
+    fun testTemplateGradleImportProvidesRealSdkAndXamlFirBeforeApplicationBuild() = importTemplate(checkEditor = true)
+
+    fun testTemplateGradleImportAutomaticallyRegistersApplicationsBeforeWinRTUiOpened() = importTemplate(checkEditor = false)
+
+    private fun importTemplate(checkEditor: Boolean) {
         val requested = System.getProperty("winrt.ide.importProject")
         assumeTrue("Requires a prepared standalone WinUI template", requested != null)
         val root = Path.of(requested).toAbsolutePath().normalize()
@@ -124,10 +130,13 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             if (phase == "reopen") {
                 val previousProcess = Files.readString(root.resolve("app/build/ide-validation/import-process.txt")).trim().toLong()
                 assertTrue("Recovery must run in a new IDE host process", previousProcess != ProcessHandle.current().pid())
-                assertWorkspaceRecovered(imported, root)
-                assertNavigation(imported, root, "Greeting")
-                assertCompletion(imported, root, "Greeting")
-                assertRunningTemplate(imported, root)
+                assertAutomaticApplications(imported)
+                assertWorkspaceRecovered(imported, root, checkEditor)
+                if (checkEditor) {
+                    assertNavigation(imported, root, "Greeting")
+                    assertCompletion(imported, root, "Greeting")
+                    assertRunningTemplate(imported, root)
+                }
                 return
             }
             ApplicationManager.getApplication().runWriteAction {
@@ -139,17 +148,21 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 gradleJvm = sdk.name
             })
             sync(imported, root)
+            assertAutomaticApplications(imported)
             val service = imported.service<WinRTProjectService>()
             assertTrue(service.modules.value.toString(), service.modules.value.any { it.projectPath == ":app" })
             val app = service.modules.value.single { it.projectPath == ":app" }
-            assertEditingReady(imported, root)
-            assertLiveEditing(imported, root, phase == "import")
-            assertTrue(app.xamlCompilations.toString(), app.xamlCompilations.all { Files.isRegularFile(Path.of(it.declarationsFile)) })
+            if (checkEditor) {
+                assertEditingReady(imported, root)
+                assertLiveEditing(imported, root, phase == "import")
+                assertTrue(app.xamlCompilations.toString(), app.xamlCompilations.all { Files.isRegularFile(Path.of(it.declarationsFile)) })
+            }
             // A real second synchronization exercises replacement of model nodes,
             // compiler configuration and source roots, not a manual service call.
             sync(imported, root)
+            assertAutomaticApplications(imported)
             assertEquals(app.projectDirectory, service.modules.value.single { it.projectPath == ":app" }.projectDirectory)
-            assertEditingReady(imported, root)
+            if (checkEditor) assertEditingReady(imported, root)
             assertTrue("Native Gradle cache must contain WinRT nodes: ${cacheKeys(imported)}", cacheModules(imported).isNotEmpty())
             ProjectDataManager.getInstance().getExternalProjectsData(imported, GradleConstants.SYSTEM_ID).forEach { info ->
                 assertEquals("The native cache validates this exact path equality on reopen", info.externalProjectPath,
@@ -157,7 +170,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             }
             // Optional actual WinUI process: persist the plugin through the
             // platform component store, then reconnect from a new project service.
-            val savedLaunch = System.getProperty("winrt.ide.recoveredHotReloadSession")?.let { session ->
+            val savedLaunch = System.getProperty("winrt.ide.recoveredHotReloadSession")?.takeIf { checkEditor }?.let { session ->
                 val clients = WinRTHotReloadClient.discover(Path.of(session))
                 require(clients.size == 1)
                 clients.single().use { client ->
@@ -177,6 +190,14 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             }
             // Unit-test mode suppresses the automatic save scheduler. Persist
             // through the actual platform stores before closing this project.
+            if (phase == "import") {
+                // Cold recovery must import applications from the cached model,
+                // rather than succeeding only because RunManager saved them.
+                PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+                val runs = RunManager.getInstance(imported)
+                runs.allSettings.filter { it.configuration is WinRTApplicationRunConfiguration }.forEach(runs::removeConfiguration)
+                runs.selectedConfiguration = null
+            }
             PlatformTestUtil.saveProject(imported, true)
             ExternalProjectsDataStorage.getInstance(imported).doSave()
             val workspaceCache = requireNotNull(WorkspaceModelCache.getInstance(imported))
@@ -194,6 +215,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 runConfigurators = false
                 beforeInit = { it.putUserData(IProjectStore.COMPONENT_STORE_LOADING_ENABLED, true) }
             })!!
+            assertAutomaticApplications(imported)
             // Query the service as an editor would after reopening; this must
             // recover persisted native Gradle data without another sync.
             val restored = imported.service<WinRTProjectService>()
@@ -204,7 +226,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 }, 10)
             } catch (error: AssertionError) { throw AssertionError("Restored cache: ${cacheKeys(imported)}", error) }
             assertTrue("Restored cache: ${cacheKeys(imported)}", cacheModules(imported).isNotEmpty())
-            assertWorkspaceRecovered(imported, root)
+            assertWorkspaceRecovered(imported, root, checkEditor)
             if (savedLaunch != null) {
                 val hot = imported.service<WinRTHotReloadService>()
                 assertEquals("Native workspace store must restore the previous development launch", savedLaunch, hot.getState())
@@ -259,7 +281,19 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         failure.get()?.let { throw AssertionError(message, it) }
     }
 
-    private fun assertWorkspaceRecovered(project: Project, root: Path) {
+    private fun assertAutomaticApplications(project: Project) {
+        // Do not access a WinRT service or open its UI: startup/sync owns import.
+        val runs = RunManager.getInstance(project)
+        PlatformTestUtil.waitWithEventsDispatching("Automatic WinRT application profiles", {
+            runs.allSettings.any { it.configuration is WinRTApplicationRunConfiguration && it.name.startsWith("app:Run[") }
+        }, 30)
+        val applications = runs.allSettings.filter { it.configuration is WinRTApplicationRunConfiguration }
+        assertTrue(applications.all { !it.isTemporary })
+        assertEquals(applications.size, applications.map { it.name }.distinct().size)
+        assertInstanceOf(runs.selectedConfiguration!!.configuration, WinRTApplicationRunConfiguration::class.java)
+    }
+
+    private fun assertWorkspaceRecovered(project: Project, root: Path, checkEditor: Boolean = true) {
         assertTrue("Source roots and facets must be deserialized from the native workspace cache",
             (WorkspaceModel.getInstance(project) as WorkspaceModelImpl).loadedFromCache)
         val service = project.service<WinRTProjectService>()
@@ -268,7 +302,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             service.modules.value.any { it.projectPath == ":app" }
         }, 30)
         assertTrue(cacheModules(project).isNotEmpty())
-        assertEditingReady(project, root)
+        if (checkEditor) assertEditingReady(project, root)
     }
 
     private fun assertRunningTemplate(project: Project, root: Path) {

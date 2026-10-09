@@ -249,12 +249,19 @@ library and a shared SDK projection library. A new project's `winrt-projections`
 module owns SDK generation; all consumer modules reference it, following
 the shared projection ownership in `.cswinrt/src/Projections`. Consumers exclude
 SDK interop additions from local generation as well as using metadata-only SDK
-references. New projects
-reference a local Kotlin WinRT toolchain checkout, reuse its Gradle wrapper and
-composite build, and select a full JDK 25. New modules add a
+references. New projects use the plugin's bundled Maven toolchain and Gradle
+wrapper and select a full JDK 25. An optional local toolchain checkout is available
+under Advanced for toolchain development. New modules add a
 literal Gradle include to the existing settings document through an IDE command;
 existing files are rejected. Module references use explicit Gradle project paths.
-Application run configurations invoke the existing `runWindows` Gradle task.
+Gradle synchronization and project startup import permanent **Kotlin WinRT
+Application** profiles into the IDE's Run configuration list, with a Windows
+application icon and a Compose editor for application selection and launch options.
+Available JVM/Native and packaged/unpackaged variants use the existing Gradle
+launch tasks. Aliases are collapsed and native debug executables are preferred
+over release executables. Recognized legacy Gradle application profiles migrate
+to this type while retaining custom names, selection, environment variables,
+runner options and storage location. Other Gradle profiles remain unchanged.
 Unpackaged WinUI applications explicitly select SelfContained deployment so
 their activation manifest and local runtime DLLs form a complete launch layout.
 Optional preparation runs after the first successful model import.

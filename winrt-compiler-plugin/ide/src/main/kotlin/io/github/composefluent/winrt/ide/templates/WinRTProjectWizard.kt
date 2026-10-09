@@ -44,6 +44,7 @@ import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.Panel
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
+import io.github.composefluent.winrt.ide.run.WinRTApplicationConfigurationType
 import io.github.composefluent.winrt.ide.ui.WinRTChoice
 import io.github.composefluent.winrt.ide.ui.WinRTDetails
 import io.github.composefluent.winrt.ide.nuget.WinRTNuGetBrowser
@@ -256,8 +257,7 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                 executionName = io.github.composefluent.winrt.ide.project.WinRTRunConfigurationNames.displayName(moduleName, "jvm", selected.packaged)
                 taskNames = listOf(":$moduleName:${if (selected.packaged) "runWinAppPackage" else "runWindows"}")
             }
-            ExternalSystemUtil.createExternalSystemRunnerAndConfigurationSettings(execution, project, GradleConstants.SYSTEM_ID)?.let {
-                it.configuration.name = requireNotNull(execution.executionName)
+            WinRTApplicationConfigurationType.create(project, execution).let {
                 RunManager.getInstance(project).addConfiguration(it)
                 RunManager.getInstance(project).selectedConfiguration = it
             }
