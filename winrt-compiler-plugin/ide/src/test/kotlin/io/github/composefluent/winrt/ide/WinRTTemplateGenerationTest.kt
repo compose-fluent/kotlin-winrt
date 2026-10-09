@@ -47,7 +47,7 @@ class WinRTTemplateGenerationTest : BasePlatformTestCase() {
                     WinRTTemplateWriter.create(project, root.resolve(name),
                         WinRTTemplates.module(WinRTTemplateOptions(name, "sample.$name", template)), root)
                 }
-                val source = root.resolve("app/src/main/kotlin/sample/hello/MainWindow.xaml")
+                val source = root.resolve("app/src/winuiMain/kotlin/sample/hello/MainWindow.xaml")
                 val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
                 val document = FileDocumentManager.getInstance().getDocument(file)!!
                 WriteCommandAction.runWriteCommandAction(project) {
@@ -63,6 +63,24 @@ class WinRTTemplateGenerationTest : BasePlatformTestCase() {
                 dependencies.forEach { assertTrue(settings, settings.contains("include(\"$it\")")) }
                 assertFalse("Editing preparation must precede application compilation", Files.exists(root.resolve("app/build")))
             }
+        }
+    }
+
+    fun testCreateTargetSelectionsForRealGradleConsumers() {
+        val checkout = Path.of(System.getProperty("winrt.ide.toolchain")).toRealPath()
+        val root = Path.of(requireNotNull(System.getProperty("winrt.ide.templateOutput"))).resolve("targets").toAbsolutePath().normalize()
+        require(root.startsWith(checkout.resolve(".gradle")) && !Files.exists(root))
+        listOf("both" to (true to true), "jvm" to (true to false), "mingw" to (false to true)).forEach { (name, targets) ->
+            val options = WinRTTemplateOptions(name, "sample.$name", WinRTTemplateKind.ConsoleApplication,
+                packaged = false, jvm = targets.first, mingwX64 = targets.second)
+            val target = root.resolve(name)
+            WinRTTemplateWriter.create(project, target, WinRTTemplates.project(options))
+            WinRTTemplateWriter.create(project, target.resolve("library"),
+                WinRTTemplates.module(options.copy(name = "library", kind = WinRTTemplateKind.WinRTLibrary)), target)
+            WinRTTemplateWriter.create(project, target.resolve("controls"),
+                WinRTTemplates.module(options.copy(name = "controls", kind = WinRTTemplateKind.WinUIControlLibrary)), target)
+            FileDocumentManager.getInstance().saveAllDocuments()
+            assertTrue(Files.isRegularFile(target.resolve("app/src/${options.mainSourceSet}/kotlin/sample/$name/Main.kt")))
         }
     }
 }

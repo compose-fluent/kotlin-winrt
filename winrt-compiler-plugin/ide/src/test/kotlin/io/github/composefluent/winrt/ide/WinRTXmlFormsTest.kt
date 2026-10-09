@@ -12,7 +12,7 @@ import io.github.composefluent.winrt.ide.templates.WinRTTemplates
 
 class WinRTXmlFormsTest : BasePlatformTestCase() {
     fun testManifestEditsPreserveUnknownXmlAndUndoWithTheSourceDocument() {
-        val original = WinRTTemplates.module(WinRTTemplateOptions("app", "sample.app", WinRTTemplateKind.WinUIApplication))
+        val original = WinRTTemplates.module(WinRTTemplateOptions("app", "sample.app", WinRTTemplateKind.WinUIApplication, mingwX64 = false))
             .getValue("src/main/appxResources/AppxManifest.xml").toString(Charsets.UTF_8)
             .replace("</Package>", "<!--Keep this exact comment--><custom:Unknown xmlns:custom=\"urn:custom\" Attribute=\"keep\"/>\n</Package>")
         val xml = myFixture.addFileToProject("AppxManifest.xml", original) as XmlFile

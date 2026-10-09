@@ -243,11 +243,17 @@ steps. New Module uses Studio's normal Next/Finish flow with the same form and
 template writer. WinRT creation does not require an Android SDK or activity.
 
 Its configuration
-page uses the platform Compose/Jewel bridge. JVM templates cover console and WinUI
+page uses the platform Compose/Jewel bridge. Templates cover console and WinUI
 XAML applications, a WinRT library, a WinUI control library and an AppX resource
 library and a shared SDK projection library. A new project's `winrt-projections`
 module owns SDK generation; all consumer modules reference it, following
-the shared projection ownership in `.cswinrt/src/Projections`. Consumers exclude
+the shared projection ownership in `.cswinrt/src/Projections`. Both project and
+module wizards select JVM and mingwX64 by default and require at least one target.
+Selecting mingwX64 produces a Kotlin Multiplatform module with shared Kotlin,
+XAML and AppX resources in `src/winuiMain`; JVM-only modules retain `src/main`.
+The shared SDK module uses the same targets as the new project. The bundled
+toolchain includes both JVM and mingwX64 runtime and authoring publications.
+Consumers exclude
 SDK interop additions from local generation as well as using metadata-only SDK
 references. New projects use the plugin's bundled Maven toolchain and Gradle
 wrapper and select a full JDK 25. An optional local toolchain checkout is available

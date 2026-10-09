@@ -26,8 +26,13 @@ data class WinRTTemplateOptions(
     val displayName: String = name,
     val projectionModule: String = ":winrt-projections",
     val includeWinUI: Boolean = kind.xaml,
+    val jvm: Boolean = true,
+    val mingwX64: Boolean = true,
 ) {
+    val mainSourceSet: String get() = if (mingwX64) "winuiMain" else "main"
+
     fun validate() {
+        require(jvm || mingwX64) { "Select at least one target: JVM or mingwX64." }
         require(name.matches(Regex("[A-Za-z](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?")) && name.substringBefore('.').uppercase() !in reservedNames) {
             "Use a project/module name starting with a letter and containing letters, digits, dots, hyphens or underscores."
         }
@@ -72,6 +77,7 @@ object WinRTTemplates {
                     }
                     plugins {
                         kotlin("jvm") version "2.4.0"
+                        kotlin("multiplatform") version "2.4.0"
                         id("io.github.compose-fluent.windows-toolkit") version "${WinRTBundledToolchain.VERSION}"
                     }
                 }
@@ -115,7 +121,10 @@ object WinRTTemplates {
                 pluginManagement {
                     includeBuild($toolkit)
                     repositories { mavenCentral(); gradlePluginPortal() }
-                    plugins { kotlin("jvm") version "2.4.0" }
+                    plugins {
+                        kotlin("jvm") version "2.4.0"
+                        kotlin("multiplatform") version "2.4.0"
+                    }
                 }
                 rootProject.name = ${kotlinString(options.name)}
                 include(":$module")
@@ -141,7 +150,8 @@ object WinRTTemplates {
 
     fun module(options: WinRTTemplateOptions): Map<String, ByteArray> {
         options.validate()
-        val root = "src/main/kotlin/${options.packageName.replace('.', '/')}"
+        val root = "src/${options.mainSourceSet}/kotlin/${options.packageName.replace('.', '/')}"
+        val resources = "src/${options.mainSourceSet}/appxResources"
         return buildMap {
             text("build.gradle.kts", buildScript(options))
             when (options.kind) {
@@ -225,7 +235,7 @@ object WinRTTemplates {
                         </UserControl>
                     """.trimIndent())
                 }
-                WinRTTemplateKind.ResourceLibrary -> text("src/main/appxResources/Strings/en-US/Resources.resw", """
+                WinRTTemplateKind.ResourceLibrary -> text("$resources/Strings/en-US/Resources.resw", """
                     <?xml version="1.0" encoding="utf-8"?>
                     <root>
                         <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
@@ -239,34 +249,52 @@ object WinRTTemplates {
             }
             if (options.kind.application) {
                 val assets = applicationAssets()
-                assets.forEach { (path, bytes) -> put("src/main/appxResources/$path", bytes) }
-                put("src/main/appxResources/Assets/Application.ico", launcherIcon(assets))
-                text("src/main/appxResources/AppxManifest.xml", manifest(options))
+                assets.forEach { (path, bytes) -> put("$resources/$path", bytes) }
+                put("$resources/Assets/Application.ico", launcherIcon(assets))
+                text("$resources/AppxManifest.xml", manifest(options))
             }
         }
     }
 
     private fun buildScript(options: WinRTTemplateOptions): String = buildString {
+        val dependencies = (options.dependencies + listOfNotNull(options.projectionModule.takeIf {
+            it.isNotEmpty() && options.kind != WinRTTemplateKind.ProjectionLibrary
+        })).distinct()
         appendLine("import io.github.composefluent.windows.toolkit.gradle.WindowsPackageType")
         if (options.kind == WinRTTemplateKind.WinUIApplication && !options.packaged) {
             appendLine("import io.github.composefluent.windows.toolkit.gradle.WindowsAppSdkDeployment")
         }
         appendLine()
         appendLine("plugins {")
-        appendLine("    kotlin(\"jvm\")")
+        appendLine("    kotlin(\"${if (options.mingwX64) "multiplatform" else "jvm"}\")")
         appendLine("    id(\"io.github.compose-fluent.windows-toolkit\")")
         appendLine("}")
         appendLine()
         appendLine("kotlin {")
-        appendLine("    jvmToolchain(25)")
-        if (options.kind == WinRTTemplateKind.ProjectionLibrary) appendLine("    compilerOptions { freeCompilerArgs.add(\"-Xno-optimize\") }")
+        if (options.jvm) appendLine("    jvmToolchain(25)")
+        if (options.mingwX64) {
+            if (options.jvm) {
+                if (options.kind == WinRTTemplateKind.ProjectionLibrary) {
+                    appendLine("    jvm { compilerOptions { freeCompilerArgs.add(\"-Xno-optimize\") } }")
+                } else appendLine("    jvm()")
+            }
+            if (options.kind.application) {
+                appendLine("    mingwX64 { binaries { executable { entryPoint = ${kotlinString("${options.packageName}.main")} } } }")
+            } else appendLine("    mingwX64()")
+            if (dependencies.isNotEmpty()) {
+                appendLine("    sourceSets {")
+                appendLine("        getByName(\"winuiMain\").dependencies {")
+                dependencies.forEach { appendLine("            implementation(project(${kotlinString(it)}))") }
+                appendLine("        }")
+                appendLine("    }")
+            }
+        } else if (options.kind == WinRTTemplateKind.ProjectionLibrary) {
+            appendLine("    compilerOptions { freeCompilerArgs.add(\"-Xno-optimize\") }")
+        }
         appendLine("}")
-        val dependencies = options.dependencies + listOfNotNull(options.projectionModule.takeIf {
-            it.isNotEmpty() && options.kind != WinRTTemplateKind.ProjectionLibrary
-        })
-        if (dependencies.isNotEmpty()) {
+        if (!options.mingwX64 && dependencies.isNotEmpty()) {
             appendLine("dependencies {")
-            dependencies.distinct().forEach { appendLine("    implementation(project(${kotlinString(it)}))") }
+            dependencies.forEach { appendLine("    implementation(project(${kotlinString(it)}))") }
             appendLine("}")
         }
         appendLine()
@@ -279,9 +307,9 @@ object WinRTTemplates {
             if (options.kind == WinRTTemplateKind.WinUIApplication && !options.packaged) {
                 appendLine("        windowsAppSdkDeployment = WindowsAppSdkDeployment.SelfContained")
             }
-            appendLine("        launcherIcon = layout.projectDirectory.file(\"src/main/appxResources/Assets/Application.ico\")")
+            appendLine("        launcherIcon = layout.projectDirectory.file(\"src/${options.mainSourceSet}/appxResources/Assets/Application.ico\")")
             if (options.kind == WinRTTemplateKind.ConsoleApplication) appendLine("        console = true")
-            appendLine("        runTask(\"runWindows\")")
+            if (options.jvm) appendLine("        runTask(\"runWindows\")")
             appendLine("    }")
         }
         if (!options.kind.xaml) appendLine("    xaml { exportLibrarySchema = false }")

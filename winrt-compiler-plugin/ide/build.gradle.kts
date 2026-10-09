@@ -135,7 +135,7 @@ val bundleWinRTToolchain by tasks.registering(Zip::class) {
         producer.task(":publishKotlinWindowsToolkitPluginMarkerMavenPublicationToIdeToolchainRepository"),
         producer.task(":ide-model:publishMavenPublicationToIdeToolchainRepository"))
     listOf("winrt-runtime", "winrt-authoring").forEach { module ->
-        listOf("Jvm", "KotlinMultiplatform").forEach { publication ->
+        listOf("Jvm", "MingwX64", "KotlinMultiplatform").forEach { publication ->
             dependsOn(producer.task(":$module:publish${publication}PublicationToIdeToolchainRepository"))
         }
     }

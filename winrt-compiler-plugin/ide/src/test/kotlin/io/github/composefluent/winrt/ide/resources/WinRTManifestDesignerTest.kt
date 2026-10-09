@@ -26,7 +26,7 @@ import java.nio.file.Path
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalJewelApi::class)
 class WinRTManifestDesignerTest : BasePlatformTestCase() {
     fun testTabsCommitPendingEditsAndCapabilitiesPreserveSource() {
-        val original = WinRTTemplates.module(WinRTTemplateOptions("app", "sample.app", WinRTTemplateKind.WinUIApplication))
+        val original = WinRTTemplates.module(WinRTTemplateOptions("app", "sample.app", WinRTTemplateKind.WinUIApplication, mingwX64 = false))
             .getValue("src/main/appxResources/AppxManifest.xml").toString(Charsets.UTF_8)
             .replace("</Package>", "<!-- keep --><custom:Unknown xmlns:custom=\"urn:custom\"/>\n</Package>")
         val xml = myFixture.addFileToProject("AppxManifest.xml", original) as XmlFile

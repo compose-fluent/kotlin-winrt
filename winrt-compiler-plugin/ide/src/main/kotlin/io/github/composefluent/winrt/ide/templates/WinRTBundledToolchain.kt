@@ -23,5 +23,7 @@ internal object WinRTBundledToolchain {
         }
         require(keys.any { it.contains("windows-toolkit-gradle-plugin/$VERSION/") && it.endsWith(".pom") }) { "The bundled Gradle plugin publication is missing." }
         require(keys.any { it.contains("winrt-runtime-jvm/$VERSION/") && it.endsWith(".jar") }) { "The bundled JVM runtime is missing." }
+        require(keys.any { it.contains("winrt-runtime-mingwx64/$VERSION/") && it.endsWith(".klib") }) { "The bundled mingwX64 runtime is missing." }
+        require(keys.any { it.contains("winrt-authoring-mingwx64/$VERSION/") && it.endsWith(".klib") }) { "The bundled mingwX64 authoring support is missing." }
     }
 }

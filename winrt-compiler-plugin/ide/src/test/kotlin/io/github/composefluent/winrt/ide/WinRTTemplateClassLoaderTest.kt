@@ -33,9 +33,11 @@ class WinRTTemplateClassLoaderTest {
                     String::class.java, String::class.java, kindType, String::class.java, String::class.java,
                     Boolean::class.javaPrimitiveType, List::class.java, String::class.java, String::class.java,
                     Boolean::class.javaPrimitiveType,
+                    Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
                 ).newInstance(
                     "hello", "sample.hello", kindType.getField("WinUIApplication").get(null),
                     "10.0.26100.0", "2.5.1", true, emptyList<String>(), "hello", ":winrt-projections", true,
+                    true, true,
                 )
                 val templatesType = plugin.loadClass("io.github.composefluent.winrt.ide.templates.WinRTTemplates")
                 val files = templatesType.getMethod("project", optionsType)
@@ -46,9 +48,10 @@ class WinRTTemplateClassLoaderTest {
                 assertTrue(paths.any { it.contains("windows-toolkit-gradle-plugin/0.1.0-SNAPSHOT/") && it.endsWith(".pom") })
                 assertTrue(paths.contains("gradle/wrapper/gradle-wrapper.jar"))
                 assertEquals(122, paths.count { it.endsWith(".png") })
-                assertNotNull(ImageIO.read(ByteArrayInputStream(files["app/src/main/appxResources/Assets/AppList.scale-100.png"] as ByteArray)))
-                assertTrue(paths.contains("app/src/main/appxResources/AppxManifest.xml"))
-                assertTrue(paths.contains("app/src/main/kotlin/sample/hello/MainWindow.kt"))
+                assertTrue(paths.any { it.contains("winrt-runtime-mingwx64/0.1.0-SNAPSHOT/") && it.endsWith(".klib") })
+                assertNotNull(ImageIO.read(ByteArrayInputStream(files["app/src/winuiMain/appxResources/Assets/AppList.scale-100.png"] as ByteArray)))
+                assertTrue(paths.contains("app/src/winuiMain/appxResources/AppxManifest.xml"))
+                assertTrue(paths.contains("app/src/winuiMain/kotlin/sample/hello/MainWindow.kt"))
                 assertTrue(paths.none { it.endsWith(".java") })
             }
         }

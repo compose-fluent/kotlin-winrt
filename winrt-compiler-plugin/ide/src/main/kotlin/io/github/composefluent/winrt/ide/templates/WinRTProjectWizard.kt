@@ -92,6 +92,8 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
     private val projections = TextFieldState(":winrt-projections")
     private val buildRoot = TextFieldState(context.project?.let { GradleSettings.getInstance(it).linkedProjectsSettings.firstOrNull()?.externalProjectPath }.orEmpty())
     private var kind by mutableStateOf(initialKind)
+    private var jvm by mutableStateOf(true)
+    private var mingwX64 by mutableStateOf(true)
     private var packaged by mutableStateOf(true)
     private var prepare by mutableStateOf(true)
     private var useSourceToolchain by mutableStateOf(false)
@@ -104,7 +106,7 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
     private fun options() = WinRTTemplateOptions(base.name, packageName.text.toString().trim(), kind,
         sdk.text.toString().trim(), appSdk.text.toString().trim(), packaged,
         dependencies.text.toString().split(',').map(String::trim).filter(String::isNotEmpty),
-        projectionModule = projections.text.toString().trim(), includeWinUI = includeWinUI)
+        projectionModule = projections.text.toString().trim(), includeWinUI = includeWinUI, jvm = jvm, mingwX64 = mingwX64)
 
     private fun error(): String? = runCatching {
         require(!installedSdks.state.value.loading) { "Detecting locally installed Windows SDK versions…" }
@@ -152,13 +154,18 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                 finally { appSdkLoading = false }
             }
             LaunchedEffect(Unit) {
-                snapshotFlow { listOf(checkout.text, packageName.text, jdk.text, sdk.text, appSdk.text, dependencies.text, buildRoot.text, projections.text, kind, packaged, includeWinUI, useSourceToolchain) }
+                snapshotFlow { listOf(checkout.text, packageName.text, jdk.text, sdk.text, appSdk.text, dependencies.text, buildRoot.text, projections.text, kind, packaged, includeWinUI, useSourceToolchain, jvm, mingwX64) }
                     .collect { validate(); validationChanged() }
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Template · Kotlin/JVM · JDK 25")
+                Text("Template")
                 WinRTTemplateKind.entries.forEach { template ->
                     RadioButtonRow(template.title, selected = kind == template, onClick = { kind = template })
+                }
+                Text("Targets")
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    CheckboxRow("JVM", checked = jvm, onCheckedChange = { jvm = it })
+                    CheckboxRow("mingwX64", checked = mingwX64, onCheckedChange = { mingwX64 = it })
                 }
                 Text("Kotlin package")
                 TextField(packageName, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Kotlin package" })
@@ -254,8 +261,14 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
             val execution = ExternalSystemTaskExecutionSettings().apply {
                 externalProjectPath = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(root.toString())
                 externalSystemIdString = GradleConstants.SYSTEM_ID.id
-                executionName = io.github.composefluent.winrt.ide.project.WinRTRunConfigurationNames.displayName(moduleName, "jvm", selected.packaged)
-                taskNames = listOf(":$moduleName:${if (selected.packaged) "runWinAppPackage" else "runWindows"}")
+                executionName = io.github.composefluent.winrt.ide.project.WinRTRunConfigurationNames.displayName(moduleName,
+                    if (selected.jvm) "jvm" else "mingwX64", selected.packaged)
+                val task = if (selected.jvm) {
+                    if (selected.packaged) "runWinAppPackage" else "runWindows"
+                } else {
+                    if (selected.packaged) "runWinAppPackageMingwX64MainDebugExecutable" else "runDebugExecutableMingwX64"
+                }
+                taskNames = listOf(":$moduleName:$task")
             }
             WinRTApplicationConfigurationType.create(project, execution).let {
                 RunManager.getInstance(project).addConfiguration(it)

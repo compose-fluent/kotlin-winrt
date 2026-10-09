@@ -16,7 +16,7 @@ import javax.imageio.ImageIO
  * image-family and Windows API validations, not projection/runtime rules. */
 class WinRTManifestFeaturesTest : BasePlatformTestCase() {
     private fun manifest() = myFixture.addFileToProject("AppxManifest.xml", WinRTTemplates.module(
-        WinRTTemplateOptions("app", "sample.app", WinRTTemplateKind.WinUIApplication))
+        WinRTTemplateOptions("app", "sample.app", WinRTTemplateKind.WinUIApplication, mingwX64 = false))
         .getValue("src/main/appxResources/AppxManifest.xml").toString(Charsets.UTF_8)
         .replace("</Package>", "<!--keep--></Package>")) as XmlFile
 
