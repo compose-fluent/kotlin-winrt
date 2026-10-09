@@ -102,7 +102,12 @@ internal class WindowsNativeToolchainDiscovery(
             // Start from the pre-VS environment so a different target/instance cannot leak CRT libraries.
             val cleanEnvironment = environment.toMutableMap().apply {
                 keys.removeAll { (it in TOOLCHAIN_ENVIRONMENT_KEYS && it !in COMPILER_OPTION_KEYS) || it.startsWith("VSCMD_") || it.startsWith("__VSCMD") || it.startsWith("__VCVARS") }
-                put("PATH", environment["__VSCMD_PREINIT_PATH"] ?: environment["PATH"].orEmpty())
+                // VsDevCmd also invokes vswhere by name. Discovery can find it in
+                // the Installer directory even when that directory is absent from PATH.
+                put("PATH", listOfNotNull(
+                    vswhere?.parent?.toString(),
+                    environment["__VSCMD_PREINIT_PATH"] ?: environment["PATH"].orEmpty(),
+                ).joinToString(";"))
                 put("KOTLIN_WINRT_VSDEVCMD", script.toString())
             }
             val command = "call \"%KOTLIN_WINRT_VSDEVCMD%\" -no_logo -arch=$target -host_arch=$host -winsdk=${sdk.version} -app_platform=Desktop -startdir=none" +

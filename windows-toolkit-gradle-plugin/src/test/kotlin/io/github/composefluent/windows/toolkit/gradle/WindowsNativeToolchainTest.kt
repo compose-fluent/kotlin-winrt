@@ -30,6 +30,10 @@ class WindowsNativeToolchainTest {
         val setup = fixture.calls[1]
         assertTrue(setup.arguments.last().contains("-arch=x64 -host_arch=x64 -winsdk=${fixture.sdk.version}"))
         assertEquals(instance.resolve("Common7/Tools/VsDevCmd.bat").toString(), setup.environment["KOTLIN_WINRT_VSDEVCMD"])
+        assertEquals(
+            "${fixture.installerDirectory};${fixture.baseEnvironment.getValue("PATH")}",
+            setup.environment["PATH"],
+        )
         assertEquals(Charsets.UTF_16LE, setup.charset)
     }
 
@@ -71,6 +75,10 @@ class WindowsNativeToolchainTest {
         assertTrue(fixture.calls[1].arguments.last().contains("-arch=arm64 -host_arch=x64"))
         assertFalse(fixture.calls[1].environment.containsKey("LIB"))
         assertFalse(fixture.calls[1].environment.containsKey("VSCMD_VER"))
+        assertEquals(
+            "${fixture.installerDirectory};${fixture.baseEnvironment.getValue("PATH")}",
+            fixture.calls[1].environment["PATH"],
+        )
         assertEquals("/DUSER_OPTION=1", fixture.calls[1].environment["CL"])
         assertEquals(prepared.getValue("LIB"), toolchain.environment["LIB"])
     }
@@ -163,6 +171,7 @@ class WindowsNativeToolchainTest {
         val root: Path = Files.createTempDirectory("winrt-native-toolchain-")
         val sdk = WindowsSdkLayout(root.resolve("SDK"), "10.0.26100.0", root.resolve("include"), root.resolve("lib"), root.resolve("bin"))
         private val vswhere = file("Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe")
+        val installerDirectory: Path = vswhere.parent
         val baseEnvironment = mapOf(
             "PATH" to root.resolve("system32").toString(),
             "PROGRAMFILES(X86)" to vswhere.parent.parent.parent.toString(),
