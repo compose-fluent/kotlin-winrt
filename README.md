@@ -251,6 +251,15 @@ Automatic native runtime staging omits PDB symbols and linker intermediates (`.l
 
 Projection-only modules keep their WinApp metadata inventory without copying runtime payloads for every architecture. Application modules prepare those payloads. Custom library staging workflows can opt in with `tasks.named<RestoreWinAppDependenciesTask>("restoreWinAppDependencies") { includeRuntimeAssets.set(true) }`.
 
+New IDE project templates enable Gradle's build cache and configuration cache. Existing projects can enable them in `gradle.properties`:
+
+```properties
+org.gradle.caching=true
+org.gradle.configuration-cache=true
+```
+
+JVM SDK projection bytecode can be reused across project directories and root project names when the projection module's artifact name, SDK inputs, Kotlin compiler, JVM target, and compiler settings match. The first compilation of a new SDK/compiler combination still compiles the generated declarations; later projects can restore that task's output from the build cache. IDE import prepares XAML analysis and projection sources. The compiled SDK preview host is prepared when a preview is opened, and successful preview compilation removes its temporary class files.
+
 ## WinApp CLI and NuGet Restore
 
 The Gradle plugin translates project and dependency `packageReferences { nugetPackage(...) }` declarations into an internal `build/generated/kotlin-winrt/winapp/winapp.yaml`. Do not create or maintain that file manually. With the default `packageReferences { restoreNuGetPackages = true }`, `restoreWinAppDependencies` runs `winapp restore`, validates its schema-3 lockfile, and uses the resolved WinMD files for projection generation. The same lockfile and `.winapp/bin/<architecture>` output drive DLL, PRI, asset, and manifest staging after compilation; explicit local `packageReferences { winmd(...) }` inputs remain part of the projection input set.
