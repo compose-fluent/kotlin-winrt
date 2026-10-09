@@ -7,6 +7,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.XmlAttribute
 import com.intellij.psi.xml.XmlAttributeValue
 import com.intellij.psi.xml.XmlTag
+import com.intellij.psi.xml.XmlTokenType
 import com.intellij.util.ProcessingContext
 import io.github.composefluent.winrt.metadata.WinRTFundamentalType
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
@@ -17,7 +18,11 @@ class WinRTXamlCompletionContributor : CompletionContributor() {
             override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
                 val file = parameters.originalFile
                 if (!WinRTXamlSymbols.isXaml(file)) return
-                val value = PsiTreeUtil.getParentOfType(parameters.position, XmlAttributeValue::class.java, false) ?: return
+                val value = PsiTreeUtil.getParentOfType(parameters.position, XmlAttributeValue::class.java, false)
+                if (value == null) {
+                    completeTag(parameters, result)
+                    return
+                }
                 val attribute = value.parent as? XmlAttribute ?: return
                 val tag = attribute.parent
                 val binding = WinRTXamlBindingAnalysis.forValue(value)
@@ -69,5 +74,30 @@ class WinRTXamlCompletionContributor : CompletionContributor() {
                 values.distinct().forEach { result.addElement(LookupElementBuilder.create(it)) }
             }
         })
+    }
+
+    private fun completeTag(parameters: CompletionParameters, result: CompletionResultSet) {
+        val position = parameters.position
+        if (position.node.elementType != XmlTokenType.XML_NAME ||
+            position.prevSibling?.node?.elementType != XmlTokenType.XML_START_TAG_START) return
+        val tag = PsiTreeUtil.getParentOfType(position, XmlTag::class.java, false) ?: return
+        val parent = tag.parentTag
+        val context = parent ?: tag
+        val properties = parent?.let(WinRTXamlSymbols::propertyElements).orEmpty()
+        val names = context.descriptor?.getElementsDescriptors(context).orEmpty().map { it.name } +
+            if (parent == null && tag.namespace.isBlank()) WinRTXamlSymbols.catalog(parameters.originalFile)
+                ?.candidates(WinRTXamlCatalog.PRESENTATION).orEmpty().map { it.name } else emptyList()
+        names.distinct().filter { !it.substringAfter(':').contains('.') || it in properties }.forEach { name ->
+            var item = LookupElementBuilder.create(name).withInsertHandler(XmlTagInsertHandler.INSTANCE)
+            properties[name]?.let { member ->
+                // Match the property itself and camel-word suffixes as well as
+                // its qualified form: Backdrop -> Window.SystemBackdrop.
+                val words = member.name.split(Regex("(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])"))
+                item = item.withLookupStrings(words.indices.map { words.drop(it).joinToString("") })
+                    .withTypeText(member.typeName.substringAfterLast('.').takeIf(String::isNotEmpty) ?: "Property")
+            }
+            result.addElement(item)
+        }
+        result.stopHere()
     }
 }

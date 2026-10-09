@@ -16,6 +16,11 @@ import com.intellij.psi.xml.XmlTag
 import io.github.composefluent.winrt.ide.fir.WinRTIdeTypeNames
 import org.jetbrains.kotlin.idea.stubindex.KotlinFullClassNameIndex
 import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
+import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.symbols.KaNamedClassSymbol
+import org.jetbrains.kotlin.analysis.api.symbols.KaVariableSymbol
+import org.jetbrains.kotlin.analysis.api.types.KaClassType
 
 internal object WinRTXamlSymbols {
     fun isXaml(file: PsiFile?) = file?.name?.endsWith(".xaml", true) == true
@@ -61,6 +66,39 @@ internal object WinRTXamlSymbols {
         val catalog = catalog(tag.containingFile) ?: return emptyList()
         val type = catalog.resolve(tag.namespace, tag.localName.substringBefore('.')) ?: return emptyList()
         return catalog.members(type)
+    }
+
+    /** XAML property elements use the enclosing type as owner, including its
+     * inherited properties. Attached owners retain their declared XML prefix. */
+    @OptIn(KaExperimentalApi::class)
+    fun propertyElements(tag: XmlTag): Map<String, WinRTXamlMember> {
+        if (tag.localName.contains('.')) return emptyMap()
+        val catalog = catalog(tag.containingFile)
+        val properties = members(tag).filterNot { it.isEvent }.toMutableList()
+        tagClass(tag)?.let { owner ->
+            analyze(owner) {
+                val scope = (owner.classSymbol as? KaNamedClassSymbol)?.defaultType?.scope
+                scope?.getCallableSignatures { true }?.forEach { signature ->
+                    val variable = signature.symbol as? KaVariableSymbol ?: return@forEach
+                    val name = variable.name.asString().takeUnless { it.startsWith('<') } ?: return@forEach
+                    if (properties.none { it.name.equals(name, true) }) properties += WinRTXamlMember(
+                        name.replaceFirstChar(Char::uppercase),
+                        (signature.returnType as? KaClassType)?.classId?.asSingleFqName()?.asString().orEmpty(),
+                        owner.fqName?.asString().orEmpty())
+                }
+            }
+        }
+        return buildMap {
+            properties.forEach { put("${tag.name}.${it.name}", it) }
+            tag.knownNamespaces().forEach { uri ->
+                val prefix = tag.getPrefixByNamespace(uri)?.takeIf(String::isNotEmpty)?.plus(":").orEmpty()
+                catalog?.candidates(uri).orEmpty().forEach { owner ->
+                    catalog?.attachedMembers(owner).orEmpty().forEach { member ->
+                        put("$prefix${owner.name}.${member.name}", member)
+                    }
+                }
+            }
+        }
     }
 
     fun member(tag: XmlTag, attributeName: String): WinRTXamlMember? {

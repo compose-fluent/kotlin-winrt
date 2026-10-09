@@ -93,8 +93,14 @@ private class WinRTXamlElementDescriptor(private val tag: XmlTag, private val el
             .any { it.name == name.substringAfter('.') } }
     }
     override fun getDependencies(): Array<Any> = arrayOf(tag.project.service<WinRTXamlCatalogService>().modificationTracker, tag.containingFile)
-    override fun getElementsDescriptors(context: XmlTag?): Array<XmlElementDescriptor> = (context ?: tag).knownNamespaces()
-        .flatMap { WinRTXamlNamespaceDescriptor(tag.containingFile, it).getRootElementsDescriptors(null).toList() }.toTypedArray()
+    override fun getElementsDescriptors(context: XmlTag?): Array<XmlElementDescriptor> {
+        val current = context ?: tag
+        val types = current.knownNamespaces().flatMap {
+            WinRTXamlNamespaceDescriptor(tag.containingFile, it).getRootElementsDescriptors(null).toList()
+        }
+        val properties = WinRTXamlSymbols.propertyElements(current).keys.map { WinRTXamlElementDescriptor(current, it) }
+        return (types + properties).distinctBy { it.name }.toTypedArray()
+    }
     override fun getElementDescriptor(child: XmlTag, context: XmlTag?) = WinRTXamlElementDescriptor(child, child.name)
     override fun getAttributesDescriptors(context: XmlTag?): Array<XmlAttributeDescriptor> {
         val current = context ?: tag

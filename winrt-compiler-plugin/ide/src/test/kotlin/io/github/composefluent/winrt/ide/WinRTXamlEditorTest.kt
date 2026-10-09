@@ -57,6 +57,8 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Controls", listOf(
             WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Control"),
             WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.Controls.Control"),
+            WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Grid", "Microsoft.UI.Xaml.Controls.Control"),
+            WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Window"),
             WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Visibility", enumEntries = listOf("Visible", "Collapsed")),
         ), mapOf(
             "Microsoft.UI.Xaml.Controls.Control" to WinRTXamlApplicationTypeMembers(properties = listOf(
@@ -67,6 +69,13 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
                 properties = listOf(WinRTXamlApplicationProperty("Content", WinRTTypeRef.named("String"))),
                 events = listOf(WinRTXamlApplicationEvent("Click", WinRTTypeRef.named("Sample.ClickHandler"))),
             ),
+            "Microsoft.UI.Xaml.Controls.Grid" to WinRTXamlApplicationTypeMembers(properties = listOf(
+                WinRTXamlApplicationProperty("RowDefinitions", WinRTTypeRef.named("String")),
+            )),
+            "Microsoft.UI.Xaml.Window" to WinRTXamlApplicationTypeMembers(properties = listOf(
+                WinRTXamlApplicationProperty("SystemBackdrop", WinRTTypeRef.named("String")),
+                WinRTXamlApplicationProperty("Title", WinRTTypeRef.named("String")),
+            )),
         ), metadata, mapOf("Sample.ClickHandler" to "Sample", "Windows.Foundation.EventRegistrationToken" to "Windows.Foundation.FoundationContract"))
         val input = directory.resolve("input.json")
         Files.writeString(input, buildJsonObject { put("ReferenceAssemblies", buildJsonArray {
@@ -101,6 +110,44 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         myFixture.complete(CompletionType.BASIC)
         val variants = myFixture.lookupElementStrings.orEmpty()
         assertTrue(variants.toString(), variants.containsAll(listOf("Content", "Width", "Click")))
+    }
+
+    fun testPropertyElementsCompleteFromPropertyNamesAndCamelWordSuffixes() {
+        configure("""<Window xmlns="${WinRTXamlCatalog.PRESENTATION}"><Backdrop<caret></Window>""")
+        val automatic = com.intellij.codeInsight.CodeInsightSettings.getInstance().AUTOCOMPLETE_ON_CODE_COMPLETION
+        com.intellij.codeInsight.CodeInsightSettings.getInstance().AUTOCOMPLETE_ON_CODE_COMPLETION = false
+        try {
+            val items = allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }.orEmpty()
+            val item = items.single { it.lookupString == "Window.SystemBackdrop" }
+            myFixture.lookup.currentItem = item
+            myFixture.finishLookup('>')
+            assertTrue(myFixture.file.text, myFixture.file.text.contains("<Window.SystemBackdrop>"))
+            assertTrue(myFixture.file.text, myFixture.file.text.contains("</Window.SystemBackdrop>"))
+        } finally { com.intellij.codeInsight.CodeInsightSettings.getInstance().AUTOCOMPLETE_ON_CODE_COMPLETION = automatic }
+    }
+
+    fun testPropertyElementsIncludeAllParentTypesInheritedMembersAndCustomProperties() {
+        val file = configure("""<Grid xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:local="using:sample"><Definitions<caret>></Grid>""")
+        val names = allowAnalysisOnEdt { file.rootTag!!.descriptor!!.getElementsDescriptors(file.rootTag).map { it.name } }
+        assertTrue(names.toString(), names.containsAll(listOf("Grid.RowDefinitions", "Grid.Width", "Grid.Visibility")))
+        assertFalse(names.toString(), "Button.Content" in names || "Grid.Click" in names)
+        allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }
+        assertTrue(myFixture.file.text, "Grid.RowDefinitions" in myFixture.lookupElementStrings.orEmpty() ||
+            myFixture.file.text.contains("<Grid.RowDefinitions>"))
+        myFixture.configureByText("Shell.xaml", """<Grid xmlns="${WinRTXamlCatalog.PRESENTATION}" xmlns:local="using:sample"><local:Widget><Inherited<caret>></local:Widget></Grid>""")
+        val items = allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }.orEmpty()
+        assertTrue(items.joinToString { it.lookupString }, items.any { it.lookupString == "local:Widget.Inherited" } ||
+            myFixture.file.text.contains("<local:Widget.Inherited>"))
+    }
+
+    fun testQualifiedPropertyCompletionAndRootWindowTypeRemainAvailable() {
+        configure("""<Window xmlns="${WinRTXamlCatalog.PRESENTATION}"><Window.Sys<caret>></Window>""")
+        allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }
+        assertTrue(myFixture.file.text, "Window.SystemBackdrop" in myFixture.lookupElementStrings.orEmpty() ||
+            myFixture.file.text.contains("<Window.SystemBackdrop>"))
+        myFixture.configureByText("Shell.xaml", """<Win<caret> xmlns="${WinRTXamlCatalog.PRESENTATION}"/>""")
+        allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }
+        assertTrue(myFixture.file.text, "Window" in myFixture.lookupElementStrings.orEmpty() || myFixture.file.text.startsWith("<Window"))
     }
 
     fun testNativeXmlHighlightingAcceptsXamlNamespacesSdkTypesAndLanguageObjects() {
