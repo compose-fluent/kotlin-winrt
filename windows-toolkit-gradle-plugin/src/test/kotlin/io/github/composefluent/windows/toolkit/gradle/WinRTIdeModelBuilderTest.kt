@@ -47,6 +47,8 @@ class WinRTIdeModelBuilderTest {
             launch.previewExecutable)
         application.selfContained()
         assertTrue(builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.isEmpty())
+        assertTrue("WinApp CLI cannot launch self-contained packages, so IDE import must not offer them",
+            builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks.isEmpty())
         application.packageType.set(WindowsPackageType.None)
         assertEquals(listOf("runWinAppHostDesktopMain"),
             builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.map { it.taskName })

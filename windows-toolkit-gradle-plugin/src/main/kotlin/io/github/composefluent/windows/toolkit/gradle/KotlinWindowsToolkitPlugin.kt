@@ -1534,6 +1534,9 @@ private fun configureWinAppTasks(
                 it == WindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
+            task.supportsDevelopmentRun.set(options.packageType.zip(options.windowsAppSdkDeployment) { packageType, deployment ->
+                packageType == WindowsPackageType.Packaged && deployment != WindowsAppSdkDeployment.SelfContained
+            })
             task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
                 packageType == WindowsPackageType.Packaged && variant.kind == WinAppVariantKind.Jvm
             }.zip(options.windowsAppSdkDeployment) { jvmPackage, deployment ->

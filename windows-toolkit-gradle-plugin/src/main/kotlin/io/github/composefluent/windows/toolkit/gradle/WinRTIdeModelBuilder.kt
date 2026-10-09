@@ -91,7 +91,7 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                 },
             runTasks = if (windows == null) emptyList() else (
                 project.tasks.withType(RunWinAppHostTask::class.java).filter { !it.sdkPreview.get() && it.supportsXamlHotReload.get() }.map { it.name } +
-                project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.packageType.get() == WindowsPackageType.Packaged.name }.map { it.name } +
+                project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.supportsDevelopmentRun.get() }.map { it.name } +
                 if (windows.application.packageType.get() == WindowsPackageType.None) project.tasks.names.filter {
                     it.startsWith("runDebugExecutable") || it.startsWith("runReleaseExecutable")
                 } else emptyList()

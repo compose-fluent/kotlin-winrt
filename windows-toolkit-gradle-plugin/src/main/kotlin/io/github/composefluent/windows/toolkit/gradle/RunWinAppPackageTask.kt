@@ -80,6 +80,10 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal
     abstract val supportsXamlHotReload: Property<Boolean>
 
+    /** Configuration-only IDE hint; Auto deployment is resolved when the run executes. */
+    @get:Internal
+    abstract val supportsDevelopmentRun: Property<Boolean>
+
     @get:Internal
     abstract val designPreview: Property<Boolean>
 
@@ -102,6 +106,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
         offline.convention(false)
         developmentSessionDirectory.convention(project.providers.environmentVariable(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY))
         supportsXamlHotReload.convention(false)
+        supportsDevelopmentRun.convention(packageType.zip(selfContained) { type, bundled ->
+            type == WindowsPackageType.Packaged.name && !bundled
+        })
         designPreview.convention(project.providers.environmentVariable(WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
         previewHostExecutable.convention(hostExecutable)
         outputs.upToDateWhen { false }
