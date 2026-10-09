@@ -10,6 +10,32 @@ import org.junit.Test
 
 class WinRTXamlLibraryPipelineTest {
     @Test
+    fun header_reuses_type_selection_when_only_literal_markup_changes() {
+        // XAMLC DirectUISchemaContext owns namespace aliases; the Kotlin header only selects
+        // application types. Unlike XBF, its schema is independent of literal property values.
+        val root = writeLibrary("kotlin-winrt-xaml-header-inputs-", """
+            tasks.named('generateWinRTXamlApplicationHeader') { emitSources = false }
+        """.trimIndent(), plainJvm = true)
+        val markup = root.resolve("src/main/kotlin/Theme.xaml")
+        val original = """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:local="using:sample"><local:Model title="Before" /></ResourceDictionary>"""
+        write(markup, original)
+        assertEquals(TaskOutcome.SUCCESS, run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+            .task(":generateWinRTXamlApplicationHeader")?.outcome)
+        // The first restore creates its lock; warm the resulting configuration once.
+        run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+        write(markup, original.replace("Before", "After"))
+        val literal = run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+        assertEquals(TaskOutcome.UP_TO_DATE, literal.task(":generateWinRTXamlApplicationHeader")?.outcome)
+        assertTrue(literal.output, literal.output.contains("Reusing configuration cache"))
+        write(markup, original.replace("local:Model", "local:Other"))
+        assertEquals(TaskOutcome.SUCCESS, run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+            .task(":generateWinRTXamlApplicationHeader")?.outcome)
+        write(root.resolve("src/main/kotlin/sample/Model.kt"), "package sample; class Model { var title: Int = 0 }")
+        assertEquals(TaskOutcome.SUCCESS, run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+            .task(":generateWinRTXamlApplicationHeader")?.outcome)
+    }
+
+    @Test
     fun sdk_preview_preparation_serializes_without_capturing_other_tasks() {
         // The SDK-only designer mirrors CsWinRT's reusable projection/SDK resource ownership.
         // Skip native/compiler execution to exercise serialization of the actual preview task graph.

@@ -68,8 +68,6 @@ import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.streams.asSequence
-import javax.xml.stream.XMLInputFactory
-import javax.xml.stream.XMLStreamConstants
 
 object KotlinWinRTAuthoringScannerCli {
     @JvmStatic
@@ -238,39 +236,13 @@ object KotlinWinRTAuthoringScannerCli {
 
     /** Namespace discovery only; XamlCompiler remains responsible for parsing XAML and binding paths. */
     private fun referencedXamlTypes(roots: List<Path>, names: Set<String>): Set<String> = buildSet {
-        val factory = XMLInputFactory.newFactory().apply {
-            setProperty(XMLInputFactory.SUPPORT_DTD, false)
-            setProperty("javax.xml.stream.isSupportingExternalEntities", false)
-        }
         roots.flatMap { root ->
             if (Files.isDirectory(root)) Files.walk(root).use { stream ->
                 stream.filter { Files.isRegularFile(it) && it.extension.equals("xaml", true) }.toList()
             } else emptyList()
         }.distinct().sorted().forEach { path ->
-            Files.newInputStream(path).use { input ->
-                val xml = factory.createXMLStreamReader(input)
-                try { while (xml.hasNext()) {
-                    if (xml.next() != XMLStreamConstants.START_ELEMENT) continue
-                    fun include(namespace: String?, local: String) {
-                        WinRTXamlNamespaces.namespaces(namespace.orEmpty()).firstNotNullOfOrNull { ns ->
-                            "$ns.${local.substringBefore('.')}".takeIf { it in names }
-                        }?.let(::add)
-                    }
-                    include(xml.namespaceURI, xml.localName)
-                    // Conditional namespaces refer to condition types in the URI query.
-                    // This discovers their headers; XamlCompiler parses and validates the condition.
-                    for (i in 0 until xml.namespaceCount) {
-                        Regex("""\b([\w]+):([\w]+)\(""").findAll(xml.getNamespaceURI(i).orEmpty().substringAfter('?', "")).forEach { match ->
-                            include(xml.getNamespaceURI(match.groupValues[1]), match.groupValues[2])
-                        }
-                    }
-                    for (i in 0 until xml.attributeCount) {
-                        include(xml.getAttributeNamespace(i), xml.getAttributeLocalName(i))
-                        Regex("""\b([\w]+):([\w]+)""").findAll(xml.getAttributeValue(i)).forEach { match ->
-                            include(xml.getNamespaceURI(match.groupValues[1]), match.groupValues[2])
-                        }
-                    }
-                } } finally { xml.close() }
+            WinRTXamlNamespaces.typeReferences(path).forEach { candidates ->
+                candidates.firstOrNull { it in names }?.let(::add)
             }
         }
     }

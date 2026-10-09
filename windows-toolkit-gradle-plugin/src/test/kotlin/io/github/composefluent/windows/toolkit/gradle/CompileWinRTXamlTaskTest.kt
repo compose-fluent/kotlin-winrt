@@ -82,6 +82,14 @@ class CompileWinRTXamlTaskTest {
         assertEquals(WinRTXamlDeclarations.sourceFingerprint(page.readText()), index.pages.single().sourceHash)
         assertEquals(index, WinRTXamlDeclarations.readCompilerOutput(task.implementationFile.get().asFile.toPath()))
         val originalMarkup = page.readText()
+        // XAMLC's harvester contract stays stable while the runtime/IDE fingerprint tracks
+        // the current source. The isolated Kotlin semantic compiler consumes only the former.
+        val semanticBefore = task.semanticDeclarationsFile.get().asFile.readText()
+        page.writeText(originalMarkup.replace("IsChecked=\"True\"", "IsChecked=\"False\""))
+        task.compile()
+        assertEquals(semanticBefore, task.semanticDeclarationsFile.get().asFile.readText())
+        assertNotEquals(index.pages.single().sourceHash,
+            WinRTXamlDeclarations.parse(task.declarationsFile.get().asFile.readText()).pages.single().sourceHash)
         page.writeText(originalMarkup.replace("x:Name=\"checked\"", "x:Name=\"renamedControl\""))
         task.compile()
         val modified = WinRTXamlDeclarations.parse(task.declarationsFile.get().asFile.readText())
@@ -89,6 +97,7 @@ class CompileWinRTXamlTaskTest {
         assertNotEquals(index.pages.single().sourceHash, modified.pages.single().sourceHash)
         assertTrue(modified.pages.single().connections.any { it.fieldName == "renamedControl" })
         assertTrue(modified.pages.single().connections.none { it.fieldName == "checked" })
+        assertNotEquals(semanticBefore, task.semanticDeclarationsFile.get().asFile.readText())
         val renamed = File(page.parentFile, "RenamedPage.xaml")
         page.copyTo(renamed)
         page.delete()
@@ -106,5 +115,6 @@ class CompileWinRTXamlTaskTest {
         page.writeText("<Page invalid")
         assertTrue(runCatching { task.compile() }.isFailure)
         assertFalse(task.declarationsFile.get().asFile.exists())
+        assertFalse(task.semanticDeclarationsFile.get().asFile.exists())
     }
 }

@@ -174,7 +174,7 @@ internal fun configureWinRTXamlPipeline(
             task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml/$suffix/declarations"))
         }
         analyzeAll.configure { it.dependsOn(declarations) }
-        candidates.configure { it.compilationXamlDeclarations.from(declarations.flatMap { it.declarationsFile }) }
+        candidates.configure { it.compilationXamlDeclarations.from(declarations.flatMap { it.semanticDeclarationsFile }) }
         return WinRTXamlCompilationInputs(header, declarations)
     }
     candidates.configure { task ->
@@ -230,7 +230,7 @@ internal fun configureWinRTXamlPipeline(
                 moduleName.set("${project.name}-xaml-semantic")
                 freeCompilerArgs.set(business.compilerOptions.freeCompilerArgs.map(::withoutKotlinWinRTCompilerPluginOptions))
                 freeCompilerArgs.addAll(project.provider {
-                    listOf("xamlDeclarations=${declarations.get().declarationsFile.get().asFile.absolutePath}",
+                    listOf("xamlDeclarations=${declarations.get().semanticDeclarationsFile.get().asFile.absolutePath}",
                         "metadataIndex=${metadataIndex.get().asFile.absolutePath}",
                         "xamlSemanticOutput=${symbols.get().asFile.absolutePath}",
                         "xamlApplicationHeader=${header.get().outputFile.get().asFile.absolutePath}",
@@ -255,7 +255,7 @@ internal fun configureWinRTXamlPipeline(
                 targetStructure.defaultFragmentName.set(sourceStructure.defaultFragmentName)
                 task.destinationDirectory.set(semanticRoot.map { it.dir("classes") })
                 (task as org.jetbrains.kotlin.gradle.tasks.KotlinCompile).incremental = false
-                task.inputs.file(declarations.flatMap { it.declarationsFile })
+                task.inputs.file(declarations.flatMap { it.semanticDeclarationsFile })
                 task.inputs.file(metadataManifest)
                 task.outputs.file(symbols)
                 task.outputs.file(semanticRoot.map { it.file("KotlinXaml.winmd") })

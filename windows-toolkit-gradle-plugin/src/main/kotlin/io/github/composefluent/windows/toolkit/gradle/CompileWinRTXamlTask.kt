@@ -82,6 +82,8 @@ abstract class CompileWinRTXamlTask @Inject constructor(
     abstract val applicationHeaderWinmd: RegularFileProperty
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
     @get:Internal val declarationsFile get() = outputDirectory.file("declarations.json")
+    /** XAMLC's type/binding contract, without the IDE/runtime source-content fingerprint. */
+    @get:Internal val semanticDeclarationsFile get() = outputDirectory.file("semantic-declarations.json")
     @get:Internal val implementationFile get() = outputDirectory.file("output.json")
 
     init {
@@ -93,6 +95,7 @@ abstract class CompileWinRTXamlTask @Inject constructor(
         output.mkdirs()
         // Invalid invocations must never leave a consumable previous plan.
         declarationsFile.get().asFile.delete()
+        semanticDeclarationsFile.get().asFile.delete()
         implementationFile.get().asFile.delete()
         fileSystem.delete { it.delete(File(output, "compiled")) }
         File(output, "state.xml").delete()
@@ -174,13 +177,18 @@ abstract class CompileWinRTXamlTask @Inject constructor(
         val declarations = WinRTXamlDeclarations.canonicalText(fingerprinted)
         val compilerOutput = Json.parseToJsonElement(implementationFile.get().asFile.readText()).jsonObject
         if (finalPass) require(compilerOutput.getValue("KotlinImplementation").jsonObject
-            .getValue("DeclarationFingerprint").jsonPrimitive.content == WinRTXamlDeclarations.fingerprint(fingerprinted)) {
+            .getValue("DeclarationFingerprint").jsonPrimitive.content == WinRTXamlDeclarations.fingerprint(plan)) {
             "XAML source or declarations changed between semantic and final compilation. Rebuild the XAML semantic symbols."
         }
         // XAMLC preserves the Kotlin semantic fingerprint but does not own source hashing.
         // Keep both output artifacts identical, retaining all compiler logs and implementation fields.
-        val enriched = JsonObject(compilerOutput + ("KotlinDeclarations" to Json.parseToJsonElement(declarations)))
+        val enriched = JsonObject(compilerOutput + buildMap {
+            put("KotlinDeclarations", Json.parseToJsonElement(declarations))
+            if (finalPass) put("KotlinImplementation", JsonObject(compilerOutput.getValue("KotlinImplementation").jsonObject +
+                ("DeclarationFingerprint" to JsonPrimitive(WinRTXamlDeclarations.fingerprint(fingerprinted)))))
+        })
         GradleFileOperations.writeStringIfChanged(implementationFile.get().asFile.toPath(), enriched.toString())
         GradleFileOperations.writeStringIfChanged(declarationsFile.get().asFile.toPath(), declarations)
+        GradleFileOperations.writeStringIfChanged(semanticDeclarationsFile.get().asFile.toPath(), WinRTXamlDeclarations.canonicalText(plan))
     }
 }

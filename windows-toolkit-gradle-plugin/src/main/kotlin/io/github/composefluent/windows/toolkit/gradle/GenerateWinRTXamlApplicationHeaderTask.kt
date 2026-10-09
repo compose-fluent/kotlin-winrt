@@ -1,5 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.metadata.WinRTXamlNamespaces
+
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -21,8 +23,22 @@ abstract class GenerateWinRTXamlApplicationHeaderTask @Inject constructor(
     private val fileSystem: FileSystemOperations,
     private val objects: ObjectFactory,
 ) : DefaultTask() {
-    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:Internal
     abstract val sourceRoots: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    val inputKotlinFiles get() = objects.fileCollection().from(sourceRoots.elements.map { roots ->
+        roots.map { it.asFile }.filterNot { isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it.toPath()) }
+    }).asFileTree.matching { it.include("**/*.kt") }
+
+    // Header selection depends on page paths and namespace-qualified type references,
+    // never on literal text, layout, source positions or compiled binding expressions.
+    // Share discovery with the source scanner so the incremental key cannot drift.
+    @get:Input
+    val inputXamlTypeReferences get() = sourceRoots.files.filter { it.isDirectory &&
+        !isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it.toPath()) }
+        .flatMap { root -> root.walkTopDown().filter { it.isFile && it.extension.equals("xaml", true) }.toList() }
+        .associate { it.absolutePath to WinRTXamlNamespaces.typeReferences(it.toPath()) }.toSortedMap()
 
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val metadataIndex: RegularFileProperty
