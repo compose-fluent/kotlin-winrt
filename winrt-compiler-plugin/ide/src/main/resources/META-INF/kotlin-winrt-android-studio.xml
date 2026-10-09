@@ -1,0 +1,6 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.android">
+        <androidProjectEntryProvider implementation="io.github.composefluent.winrt.ide.templates.WinRTAndroidProjectEntryProvider"/>
+        <moduleDescriptionProvider implementation="io.github.composefluent.winrt.ide.templates.WinRTAndroidModuleDescriptionProvider"/>
+    </extensions>
+</idea-plugin>

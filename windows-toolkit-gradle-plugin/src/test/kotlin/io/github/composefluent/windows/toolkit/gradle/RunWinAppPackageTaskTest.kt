@@ -84,11 +84,12 @@ class RunWinAppPackageTaskTest {
         task.developmentIdentity.set(true)
         task.minWindowsVersion.set("10.0.19041.0")
         task.windowsSdkVersion.set("10.0.26100.0")
-        repeat(2) {
+        listOf("dev", "preview", "preview").forEach { suffix ->
+            task.developmentIdentitySuffix.set(suffix)
             task.stage()
             val staged = Files.readString(root.resolve("output/AppxManifest.xml"))
-            assertTrue(staged, staged.contains("Name=\"KotlinWinRT.RunTest.dev\""))
-            assertTrue(staged, staged.contains("ms-resource://KotlinWinRT.RunTest.dev/Resources/AppName"))
+            assertTrue(staged, staged.contains("Name=\"KotlinWinRT.RunTest.$suffix\""))
+            assertTrue(staged, staged.contains("ms-resource://KotlinWinRT.RunTest.$suffix/Resources/AppName"))
             assertTrue(staged, staged.contains("Id=\"App\""))
             assertEquals(original, Files.readString(input.resolve("AppxManifest.xml")))
         }
@@ -148,6 +149,7 @@ class RunWinAppPackageTaskTest {
                 winAppCliExecutable = file('fake-winapp.cmd').absolutePath
                 winAppCliCacheDirectory = layout.buildDirectory.dir('winapp-cache')
                 winAppWorkspace = layout.projectDirectory
+                supportsXamlHotReload = true
             }
         """.trimIndent())
         write(root.resolve("fake-winapp.cmd"), """
@@ -166,8 +168,11 @@ class RunWinAppPackageTaskTest {
         write(root.resolve("build output/App.exe"), "test executable")
         write(root.resolve("build output/Assets/Logo.png"), "test logo")
 
-        fun runner(options: List<String> = listOf("--detach", "--args=hello world")) =
+        fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null, preview: Boolean = false) =
             GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW") } +
+                    (session?.let { mapOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" to it) } ?: emptyMap()) +
+                    if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1") else emptyMap())
                 .withArguments(listOf("runFixture", "--configuration-cache", "--offline", "--stacktrace") + options)
         val first = runner().build()
         assertEquals(TaskOutcome.SUCCESS, first.task(":runFixture")?.outcome)
@@ -197,6 +202,23 @@ class RunWinAppPackageTaskTest {
         assertTrue(registerInvocation, registerInvocation.contains("--no-launch"))
         assertFalse(registerInvocation, registerInvocation.contains("--args"))
         assertFalse(registerInvocation, registerInvocation.contains("--detach"))
+        val firstSession = root.resolve("sessions with spaces/first").toString()
+        runner(session = firstSession).build()
+        val developmentInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
+        assertTrue(developmentInvocation, developmentInvocation.contains("$WINAPP_HOT_RELOAD_ARGUMENT$firstSession"))
+        assertTrue(developmentInvocation, developmentInvocation.contains("hello world"))
+        val nextSession = root.resolve("sessions with spaces/next").toString()
+        runner(session = nextSession).build()
+        val nextInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
+        assertTrue(nextInvocation, nextInvocation.contains(nextSession))
+        assertFalse(nextInvocation, nextInvocation.contains(firstSession))
+        runner(session = nextSession, preview = true).build()
+        val previewInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
+        assertTrue(previewInvocation, previewInvocation.contains("--kotlin-winrt-xaml-preview"))
+        assertTrue(previewInvocation, previewInvocation.contains(nextSession))
+        assertFalse(previewInvocation, previewInvocation.contains("hello world"))
+        runner(listOf("--no-launch"), session = nextSession).build()
+        assertFalse(Files.readAllLines(root.resolve("invocations.log")).last().contains(WINAPP_HOT_RELOAD_ARGUMENT))
         runner(listOf("--no-launch", "-PsdkApi=10.0.28000.0", "-Pminimum=10.0.22000.0")).build()
         val staged = Files.readString(root.resolve("build/development-input/AppxManifest.xml"))
         assertTrue(staged, staged.contains("MinVersion=\"10.0.22000.0\""))
@@ -211,6 +233,36 @@ class RunWinAppPackageTaskTest {
     private fun write(path: Path, content: String) {
         Files.createDirectories(path.parent)
         Files.writeString(path, content)
+    }
+
+    @Test
+    fun development_opt_in_preserves_user_arguments_and_requires_an_absolute_directory() {
+        assertEquals("--user=\"value with spaces\"", winAppDevelopmentArguments("--user=\"value with spaces\"", null))
+        val directory = Files.createTempDirectory("winrt session ").resolve("中文").toString()
+        assertEquals("\"$WINAPP_HOT_RELOAD_ARGUMENT$directory\" --user=\"value with spaces\"",
+            winAppDevelopmentArguments("--user=\"value with spaces\"", directory))
+        assertTrue(runCatching { winAppDevelopmentArguments("", "relative/session") }.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun native_winapp_parser_accepts_embedded_crt_quotes_as_one_argument() {
+        assumeTrue(isWindowsHost())
+        val cache = System.getenv("GRADLE_USER_HOME") ?: return
+        val cli = Path.of(cache, "caches/kotlin-winrt/winapp-cli", WinAppCliDefaults.VERSION,
+            WinAppCliDefaults.PACKAGE_SHA512.take(16), "win-x64/winapp.exe")
+        assumeTrue("Requires the cached native WinApp CLI", Files.isRegularFile(cli))
+        // A nonexistent input guarantees no registration/launch side effects.
+        val missing = Files.createTempDirectory("winrt-argument-parser-").resolve("missing input")
+        val arguments = winAppDevelopmentArguments("\"visible argument\" \"trailing\\\\\"", missing.resolve("中文 session").toString())
+        val process = ProcessBuilder(winAppCliCommandLine(cli.toString(), listOf("run", missing.toString(),
+            winAppRunArgumentsOption(arguments), "--no-launch"))).redirectErrorStream(true).start()
+        try {
+            assertTrue(process.waitFor(20, java.util.concurrent.TimeUnit.SECONDS))
+            val output = process.inputStream.bufferedReader().readText()
+            assertFalse(output, output.contains("Unrecognized argument"))
+            assertTrue(output, output.contains("not exist", true) || output.contains("not found", true))
+            assertEquals(output, 1, process.exitValue())
+        } finally { if (process.isAlive) process.destroyForcibly() }
     }
 
     private val manifest = """

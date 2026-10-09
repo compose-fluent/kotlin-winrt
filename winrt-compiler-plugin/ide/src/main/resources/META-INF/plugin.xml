@@ -1,0 +1,84 @@
+<idea-plugin>
+    <id>io.github.composefluent.winrt.ide</id>
+    <name>Kotlin WinRT</name>
+    <vendor>Compose Fluent</vendor>
+    <description><![CDATA[Kotlin WinRT project integration and XAML tooling.]]></description>
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+    <depends>com.intellij.modules.xml</depends>
+    <depends>org.jetbrains.kotlin</depends>
+    <depends>com.intellij.gradle</depends>
+    <!-- ANDROID_STUDIO_EXTENSION -->
+    <dependencies>
+        <module name="intellij.platform.compose"/>
+        <module name="intellij.platform.jewel.ideLafBridge"/>
+        <module name="intellij.platform.jewel.markdown.core"/>
+        <module name="intellij.platform.jewel.markdown.ideLafBridgeStyling"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <configurationType implementation="io.github.composefluent.winrt.ide.run.WinRTApplicationConfigurationType"/>
+        <applicationConfigurable id="KotlinWinRT.Settings" parentId="tools" displayName="Kotlin WinRT"
+                                 instance="io.github.composefluent.winrt.ide.settings.WinRTIdeConfigurable"/>
+        <postStartupActivity implementation="io.github.composefluent.winrt.ide.project.WinRTProjectActivity"/>
+        <fileType name="WinRT AppX XML" language="XML" extensions="resw;appxmanifest"
+                  implementationClass="io.github.composefluent.winrt.ide.resources.WinRTAppxXmlFileType" fieldName="INSTANCE"/>
+        <fileEditorProvider implementation="io.github.composefluent.winrt.ide.resources.WinRTXmlFormEditorProvider"/>
+        <!-- Preview is temporarily unavailable; keep XAML in the native text editor. -->
+        <xml.schemaProvider implementation="io.github.composefluent.winrt.ide.resources.WinRTManifestSchemaProvider"/>
+        <newProjectWizard.generator implementation="io.github.composefluent.winrt.ide.templates.WinRTProjectWizard"/>
+        <fileType name="WinRT XAML" language="XML" extensions="xaml"
+                  implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlFileType" fieldName="INSTANCE"/>
+        <xml.elementDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlDescriptorProvider"/>
+        <xml.implicitNamespaceDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNamespaceProvider"/>
+        <xml.schemaProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlSchemaProvider"/>
+        <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlCompletionContributor"/>
+        <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlReferenceContributor"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlEventAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlBindingAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlMarkupAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeAnnotator"/>
+        <colorSettingsPage implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlColorSettingsPage"/>
+        <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceContributor"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceAnnotator"/>
+        <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceCompletion"/>
+        <codeInsight.lineMarkerProvider language="kotlin" implementationClass="io.github.composefluent.winrt.ide.xaml.WinRTXamlRelatedMarker"/>
+        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation"/>
+        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeNavigation"/>
+        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameReferencesSearch"/>
+        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlKotlinReferencesSearch"/>
+        <implicitUsageProvider implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlImplicitUsageProvider"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameProcessor"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlClassRenameProcessor" order="last"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlKotlinRenameProcessor" order="last"/>
+        <renameHandler implementation="io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameHandler" order="first"/>
+        <toolWindow id="Kotlin WinRT" anchor="right"
+                    factoryClass="io.github.composefluent.winrt.ide.ui.WinRTToolWindowFactory"/>
+        <externalProjectDataService implementation="io.github.composefluent.winrt.ide.gradle.WinRTProjectDataService"/>
+    </extensions>
+    <extensions defaultExtensionNs="org.jetbrains.plugins.gradle">
+        <projectResolve implementation="io.github.composefluent.winrt.ide.gradle.WinRTProjectResolver"/>
+    </extensions>
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK1="false" supportsK2="true"/>
+        <bundledFirCompilerPluginProvider implementation="io.github.composefluent.winrt.ide.analysis.WinRTBundledFirProvider"/>
+        <firCompilerPluginConfigurationProvider implementation="io.github.composefluent.winrt.ide.analysis.WinRTFirConfigurationProvider"/>
+    </extensions>
+    <projectListeners>
+        <listener class="io.github.composefluent.winrt.ide.run.WinRTApplicationExecutionListener"
+                  topic="com.intellij.execution.ExecutionListener"/>
+    </projectListeners>
+    <actions>
+        <action id="KotlinWinRT.NewXamlPage" class="io.github.composefluent.winrt.ide.templates.WinRTNewXamlPageAction"
+                text="XAML Page" description="Create a Kotlin WinRT Page with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">
+            <add-to-group group-id="NewGroup" anchor="last"/>
+        </action>
+        <action id="KotlinWinRT.NewXamlUserControl" class="io.github.composefluent.winrt.ide.templates.WinRTNewXamlUserControlAction"
+                text="XAML UserControl" description="Create a Kotlin WinRT UserControl with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">
+            <add-to-group group-id="NewGroup" anchor="last"/>
+        </action>
+        <action id="KotlinWinRT.NewXamlResources" class="io.github.composefluent.winrt.ide.templates.WinRTNewXamlResourcesAction"
+                text="XAML ResourceDictionary" description="Create a XAML resource dictionary" icon="AllIcons.FileTypes.Xml">
+            <add-to-group group-id="NewGroup" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

@@ -13,6 +13,8 @@ import kotlin.streams.asSequence
 internal data class AppxResourceInput(
     val source: Path,
     val relativePath: Path,
+    val sourceArchive: Path? = null,
+    val overriddenSources: List<Path> = emptyList(),
 ) {
     val relativePathString: String
         get() = relativePath.toString().replace('\\', '/')
@@ -42,7 +44,9 @@ internal fun collectAppxResourceInputs(resourceRoots: Iterable<Path>): List<Appx
                     }
                     .sortedBy { it.relativePathString.lowercase() }
                     .forEach { input ->
-                        selected[input.relativePathKey()] = input
+                        val previous = selected[input.relativePathKey()]
+                        selected[input.relativePathKey()] = input.copy(overriddenSources =
+                            previous?.let { it.overriddenSources + listOf(it.source) }.orEmpty())
                     }
             }
         }

@@ -21,6 +21,7 @@ java {
 
 dependencies {
     compileOnly(gradleApi())
+    implementation(project(":ide-model"))
     implementation(projects.winrtAuthoring)
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)

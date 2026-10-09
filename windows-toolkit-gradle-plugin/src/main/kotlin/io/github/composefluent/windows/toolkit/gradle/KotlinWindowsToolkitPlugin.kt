@@ -72,8 +72,12 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.relativeTo
 
-class KotlinWindowsToolkitPlugin : Plugin<Project> {
+abstract class KotlinWindowsToolkitPlugin : Plugin<Project> {
+    @get:javax.inject.Inject
+    abstract val toolingModelRegistry: org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
+
     override fun apply(project: Project) {
+        toolingModelRegistry.register(WinRTIdeModelBuilder())
         val extension = project.extensions.create("windows", WindowsExtension::class.java, project)
         val windowsSdkRegistryRoots = windowsSdkRegistryRootsProvider(project)
         extension.windowsSdkVersion.convention(project.providers.of(WindowsSdkVersionValueSource::class.java) {
@@ -737,6 +741,7 @@ private fun Project.registerWinAppHostRunTask(
             task.description = "Runs the native Kotlin/WinRT JVM application host."
             task.hostExecutable.set(applicationHostExecutable)
             task.workingDirectory.set(applicationHostTask.flatMap { it.outputDirectory })
+            task.supportsXamlHotReload.set(applicationHostTask.flatMap { it.packageType }.map { it == WindowsPackageType.None.name })
             task.dependsOn(applicationHostTask)
             task.onlyIf {
                 System.getProperty("os.name").contains("Windows", ignoreCase = true)
@@ -1464,6 +1469,9 @@ private fun configureWinAppTasks(
     )
     runApplicationHostTask.configure { task ->
         task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.Jvm }
+        task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+            packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.Jvm
+        })
     }
     if (bindRunTasks) {
         options.bindRunTasks { registration ->
@@ -1471,7 +1479,11 @@ private fun configureWinAppTasks(
                 registration.name,
                 applicationHostTask,
                 registration.action,
-            )
+            ).configure { task ->
+                task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+                    packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.Jvm
+                })
+            }
         }
     }
     val applicationPackageDirectory = project.provider {
@@ -1482,12 +1494,15 @@ private fun configureWinAppTasks(
         }
     }
     val developmentPackageTask = registerApplicationPackageStage("stageWinAppDevelopmentPackage")
+    val designPreview = project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT)
+        .map { it == "1" }.orElse(false)
     developmentPackageTask.configure { task ->
         task.description = "Stages an isolated development identity and regenerates its application PRI."
         task.runtimeAssetsDirectory.set(applicationPackageDirectory)
         task.developmentIdentity.set(true)
+        task.developmentIdentitySuffix.set(designPreview.map { if (it) "preview" else "dev" })
         task.outputDirectory.set(project.layout.buildDirectory.dir(
-            selectedVariant.map { "kotlin-winrt/application-run/${it.id.toSafeDirectoryName()}/input" },
+            selectedVariant.zip(designPreview) { variant, preview -> "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.id.toSafeDirectoryName()}/input" },
         ))
         task.resourceResolutionReport.set(project.layout.buildDirectory.file(
             selectedVariant.map { "kotlin-winrt/reports/${it.id.toSafeDirectoryName()}/development-appx-resource-resolution.json" },
@@ -1511,7 +1526,7 @@ private fun configureWinAppTasks(
             task.packageDirectory.set(developmentPackageTask.flatMap { it.outputDirectory })
             task.deploymentDirectory.set(
                 project.layout.buildDirectory.dir(
-                    selectedVariant.map { "kotlin-winrt/application-run/${it.id.toSafeDirectoryName()}/AppX" },
+                    selectedVariant.zip(designPreview) { variant, preview -> "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.id.toSafeDirectoryName()}/AppX" },
                 ),
             )
             task.packageType.set(options.packageType.map { it.name })
@@ -1519,6 +1534,18 @@ private fun configureWinAppTasks(
                 it == WindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
+            task.supportsDevelopmentRun.set(options.packageType.zip(options.windowsAppSdkDeployment) { packageType, deployment ->
+                packageType == WindowsPackageType.Packaged && deployment != WindowsAppSdkDeployment.SelfContained
+            })
+            task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+                packageType == WindowsPackageType.Packaged && variant.kind == WinAppVariantKind.Jvm
+            }.zip(options.windowsAppSdkDeployment) { jvmPackage, deployment ->
+                jvmPackage && deployment != WindowsAppSdkDeployment.SelfContained
+            })
+            task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
+            task.previewHostExecutable.set(project.layout.buildDirectory.dir(
+                selectedVariant.map { "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/AppX" }
+            ).flatMap { directory -> applicationHostTask.flatMap { it.executableBaseName }.map { directory.file("$it.exe") } })
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
             task.winAppCliCacheDirectory.set(
                 project.layout.dir(project.provider {
@@ -2366,6 +2393,58 @@ private fun configureWinRTGeneration(
     prepareMetadataTask.configure { task ->
         task.nugetPackages.set(generateTask.flatMap { it.nugetPackages })
     }
+    val previewSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml-sdk-preview/projections")
+    val previewProjection = project.tasks.register("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java) { task ->
+        configureProjectionTask(task, previewSources,
+            project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml-sdk-preview/authoring"), prepareMetadataOnly = false)
+        task.sourceRoots.setFrom(emptyList<Any>())
+        task.metadataInputs.set(extension.metadataInputs.map { inputs -> inputs.filter {
+            WinRTMetadataSource.parse(it) is WinRTMetadataSource.WindowsSdk
+        } })
+        task.metadataInputFiles.setFrom(emptyList<Any>())
+        task.includeNamespaces.set(listOf("Microsoft.UI.Xaml"))
+        task.includeTypes.set(listOf("Microsoft.UI.Dispatching.DispatcherQueue", "Microsoft.UI.Dispatching.DispatcherQueueHandler"))
+        task.excludeNamespaces.set(emptyList())
+        task.excludeTypes.set(emptyList())
+        task.additionExcludeNamespaces.set(emptyList())
+        task.generateWindowsSdkProjection.set(true)
+        task.projectModel.set("application")
+        task.authoringAssemblyName.set("KotlinWinRTXamlSdkPreview")
+        task.authoringTargetArtifactName.set("KotlinWinRTXamlSdkPreview.jar")
+        task.generateSdkPreviewSources.set(true)
+        task.nugetPackages.set(project.provider {
+            allNuGetPackageSpecs(extension.packageReferences).filter { it.substringBefore('@').startsWith("Microsoft.WindowsAppSDK", true) }
+        })
+        task.dependsOn(restoreWinAppDependenciesTask)
+    }
+    val previewRuntime = project.configurations.create("kotlinWinRTXamlSdkPreviewRuntimeClasspath") { configuration ->
+        configuration.isCanBeConsumed = false
+        configuration.isCanBeResolved = true
+        configuration.attributes.attribute(org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.attribute,
+            org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.jvm)
+        configuration.attributes.attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage::class.java, Usage.JAVA_RUNTIME))
+        configuration.dependencies.add(project.dependencies.create(kotlinWinRTRuntimeClasspathDependency(project)))
+        configuration.dependencies.add(project.dependencies.create(kotlinWinRTAuthoringRuntimeClasspathDependency(project)))
+        configuration.dependencies.add(project.dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:${project.getKotlinPluginVersion()}"))
+        // Local/plugin-under-test runtime artifacts are file dependencies, so
+        // their published transitive dependencies are not resolved by Gradle.
+        // Use the exact libraries loaded by this toolkit's runtime dependency.
+        listOf("kotlinx.coroutines.CoroutineScope", "kotlinx.io.files.Path", "kotlinx.io.bytestring.ByteString").forEach { type ->
+            val library = requireNotNull(kotlinWinRTCodeSourceFile(type)) { "The toolkit runtime is missing $type" }
+            configuration.dependencies.add(project.dependencies.create(project.files(library)))
+        }
+    }
+    val previewCompiler = project.configurations.create("kotlinWinRTXamlSdkPreviewCompilerClasspath") { configuration ->
+        configuration.isCanBeConsumed = false
+        configuration.isCanBeResolved = true
+        configuration.dependencies.add(project.dependencies.create("org.jetbrains.kotlin:kotlin-compiler-embeddable:${project.getKotlinPluginVersion()}"))
+        configuration.dependencies.add(project.dependencies.create("org.jetbrains:annotations:13.0"))
+    }
+    previewProjection.configure { task -> task.generatorWorkerClasspath.from(previewCompiler) }
+    configureWinRTXamlSdkPreview(project, extension, previewProjection,
+        previewCompiler, compilerPluginClasspath, previewRuntime,
+        previewProjection.flatMap { it.nugetPackages }, windowsSdkRegistryRoots,
+        configuredJvmToolchainHome(project, extension.application), currentWindowsRuntimeIdentifier())
     // A build script may narrow the legacy generateWinRTProjections.sourceRoots
     // collection after plugin application. Resolve that collection lazily from the
     // scanner task so the compatibility DSL still controls the source scan without
@@ -3356,7 +3435,9 @@ private fun registerWinRTNativeAuthoringExportValidation(
             task.dependsOn(project.tasks.named(linkTaskName))
         }
         project.tasks.withType(StageWindowsPackageRuntimeAssetsTask::class.java).configureEach { task ->
-            task.dependsOn(exportValidationTask)
+            task.dependsOn(task.applicationCompilationTasks.map { names ->
+                if (names.isEmpty() || compileTaskName in names) listOf(exportValidationTask) else emptyList()
+            })
         }
         project.tasks.withType(StageWinAppPackageTask::class.java).configureEach { task ->
             task.dependsOn(exportValidationTask)
@@ -3945,6 +4026,10 @@ private fun kotlinWinRTLocalGenerationRequired(project: Project): Provider<Boole
     project.extensions.extraProperties.properties["kotlinWinRTLocalGenerationRequired"] as? Provider<Boolean>
         ?: project.provider { false }
 
+@Suppress("UNCHECKED_CAST")
+private fun kotlinWinRTXamlSourcesPresent(project: Project): Boolean =
+    (project.extensions.extraProperties.properties["kotlinWinRTXamlSourcesPresent"] as? Provider<Boolean>)?.get() == true
+
 private fun windowsSdkRegistryRootsProvider(project: Project): Provider<List<String>> =
     project.providers.of(WindowsSdkRegistryRootsValueSource::class.java) {}
 
@@ -4090,7 +4175,7 @@ private fun kotlinWinRTLocalCompilerSupportDependencies(
     mergeCompilerSupportTask: TaskProvider<MergeWinRTCompilerSupportTask>,
 ): Provider<List<TaskProvider<MergeWinRTCompilerSupportTask>>> =
     project.provider {
-        if (kotlinWinRTLocalGenerationRequired(project).get()) {
+        if (kotlinWinRTLocalGenerationRequired(project).get() || kotlinWinRTXamlSourcesPresent(project)) {
             listOf(mergeCompilerSupportTask)
         } else {
             emptyList()
@@ -5060,6 +5145,14 @@ private fun addWinRTCompilerPluginOptions(
                     "projectionSupportOwnerArtifactName=${projectionSupportOwnerArtifactName.get()}",
                     "projectionSupportMode=$supportMode",
                 )
+            } else if (kotlinWinRTXamlSourcesPresent(project)) {
+                // Metadata-only consumers still own authored/XAML classes. Their
+                // registrars and dependency support belong to the merged manifest
+                // even when SDK projection emission is owned by another module.
+                listOf(
+                    "compilerSupportManifest=${compilerSupportManifest.get().asFile.absolutePath}",
+                    "projectionSupportMode=external",
+                )
             } else {
                 emptyList()
             }
@@ -5156,7 +5249,7 @@ private fun localAuthoredHostManifestFiles(project: Project, manifestFile: Provi
     project.files(manifestFile)
         .filter(::authoredHostManifestDeclaresActivatableClasses)
 
-private fun existingWinAppPackageContentRoots(lockFiles: List<File>): List<File> =
+internal fun existingWinAppPackageContentRoots(lockFiles: List<File>): List<File> =
     lockFiles.filter(File::isFile).flatMap { lock ->
         // A stale restore must reach the restore task so it can repair its output.
         // Consumers validate the resulting lock strictly before using package inputs.

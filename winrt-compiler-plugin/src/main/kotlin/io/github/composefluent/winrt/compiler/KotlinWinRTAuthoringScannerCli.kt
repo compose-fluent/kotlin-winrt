@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.metadata.WinRTXamlNamespaces
+
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.KotlinImports
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredRuntimeClassAnnotation
@@ -35,6 +37,9 @@ import io.github.composefluent.winrt.compiler.xaml.xamlCollectionRegistrationSou
 import io.github.composefluent.winrt.compiler.xaml.xamlCreateFromStringMethodSource
 import io.github.composefluent.winrt.compiler.xaml.XamlStaticAccessor
 import io.github.composefluent.winrt.compiler.xaml.writeXamlProjectedTypeRegistrationSource
+import io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource
+import io.github.composefluent.winrt.compiler.xaml.xamlDevelopmentConfigurationSource
+import io.github.composefluent.winrt.compiler.xaml.writeXamlMemberConversionSource
 import io.github.composefluent.winrt.metadata.WinRTTypeRefKind
 import io.github.composefluent.winrt.metadata.winRTArrayElementForKotlinType
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
@@ -220,7 +225,7 @@ object KotlinWinRTAuthoringScannerCli {
                 .mapTo(mutableSetOf()) { it.qualifiedName },
         )
         options.xamlHeaderSources?.let { writeXamlRegistrationSources(it, applicationClasses, schemas, superInterfaces, options.xamlAssemblyName,
-            options.references, referencedXamlTypes(options.sourceRoots, index.keys)) }
+            options.references, referencedXamlTypes(options.sourceRoots, index.keys), options.xamlPreviewHost, options.xamlPreviewRegistrars) }
     }
 
     private data class XamlHeaderClass(val source: KotlinLightSource, val klass: LighterASTNode,
@@ -247,10 +252,9 @@ object KotlinWinRTAuthoringScannerCli {
                 try { while (xml.hasNext()) {
                     if (xml.next() != XMLStreamConstants.START_ELEMENT) continue
                     fun include(namespace: String?, local: String) {
-                        if (namespace?.startsWith("using:") == true) {
-                            val name = "${namespace.removePrefix("using:")}.${local.substringBefore('.')}"
-                            if (name in names) add(name)
-                        }
+                        WinRTXamlNamespaces.namespaces(namespace.orEmpty()).firstNotNullOfOrNull { ns ->
+                            "$ns.${local.substringBefore('.')}".takeIf { it in names }
+                        }?.let(::add)
                     }
                     include(xml.namespaceURI, xml.localName)
                     // Conditional namespaces refer to condition types in the URI query.
@@ -300,6 +304,8 @@ object KotlinWinRTAuthoringScannerCli {
         assemblyName: String? = null,
         references: List<Path> = emptyList(),
         projectedNames: Set<String> = emptySet(),
+        previewHost: Boolean = false,
+        previewRegistrars: List<String> = emptyList(),
     ) {
         Files.createDirectories(root)
         val registrations = pages.map { type ->
@@ -381,31 +387,22 @@ object KotlinWinRTAuthoringScannerCli {
             root.resolve("registrars.tsv").writeText("className\n")
             return
         }
-        val converter = supportRoot.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlMemberValue.kt")
-        Files.createDirectories(converter.parent)
-        converter.writeText(buildString {
-            appendLine("package io.github.composefluent.winrt.generated.xaml")
-            // XamlTypeExtensions.GetStringToTypeConversion uses the same SDK
-            // converter when a XAML literal has not already been boxed as its
-            // target type. Keep parsing out of application code and runtime ABI.
-            appendLine("internal inline fun <reified T> kotlinWinRTXamlMemberValue(value: Any?): T {")
-            appendLine("  if (value is T || value !is String) return value as T")
-            appendLine("  return io.github.composefluent.winrt.runtime.convertWinRTXamlLiteral(T::class, value) { type, text ->")
-            appendLine("    microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text)")
-            appendLine("  } as T")
-            appendLine("}")
-        })
+        writeXamlMemberConversionSource(supportRoot)
         val registrarNames = registrations.groupBy { it.first }.toSortedMap(compareBy { it.orEmpty() })
             .map { (owner, entries) ->
                 val ownerRoot = owner?.let { root.resolve("sourceSets/$it") } ?: root
                 val moduleSuffix = assemblyName?.replace(Regex("[^A-Za-z0-9_]"), "_")?.let { "_$it" }.orEmpty()
                 val registryName = "KotlinXamlApplicationDefinitions$moduleSuffix" + (owner?.let { "_$it" } ?: "")
+                val inspector = writeXamlVisualInspectorSource(ownerRoot, listOfNotNull(assemblyName, owner).joinToString("_"),
+                    previewHost && owner == projectedOwner, previewRegistrars + registryName)
                 val registry = ownerRoot.resolve("io/github/composefluent/winrt/generated/xaml/$registryName.kt")
                 Files.createDirectories(registry.parent)
                 registry.writeText(buildString {
                     appendLine("package io.github.composefluent.winrt.generated.xaml")
+                    appendLine("import io.github.composefluent.winrt.runtime.asWinRT")
                     appendLine("object $registryName {")
                     appendLine("  private val registration: Unit = run {")
+                    appendLine(xamlDevelopmentConfigurationSource(inspector).prependIndent("    "))
                     entries.forEach { appendLine("    ${it.second}()") }
                     appendLine("  }")
                     appendLine("  fun registerAll() { registration }")
@@ -723,6 +720,8 @@ object KotlinWinRTAuthoringScannerCli {
         val xamlHeaderSources: Path?,
         val sourceRootOwners: Map<Path, String>,
         val xamlAssemblyName: String?,
+        val xamlPreviewHost: Boolean,
+        val xamlPreviewRegistrars: List<String>,
     ) {
         companion object {
             fun parse(args: Array<String>): CliOptions {
@@ -732,6 +731,8 @@ object KotlinWinRTAuthoringScannerCli {
                 val sourceRootOwners = linkedMapOf<Path, String>()
                 var xamlAssemblyName: String? = null
                 var xamlHeader = false
+                var xamlPreviewHost = false
+                val xamlPreviewRegistrars = mutableListOf<String>()
                 val references = mutableListOf<Path>()
                 var xamlHeaderSources: Path? = null
                 val sourceRoots = mutableListOf<Path>()
@@ -762,6 +763,12 @@ object KotlinWinRTAuthoringScannerCli {
                             index += 3
                         }
                         "--xaml-header" -> { xamlHeader = true; index += 1 }
+                        "--xaml-preview-host" -> { xamlPreviewHost = true; index += 1 }
+                        "--xaml-preview-registrar" -> {
+                            val name = argumentValue(args, index)
+                            require(name.matches(Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+"))) { "Invalid XAML registrar" }
+                            xamlPreviewRegistrars += name; index += 2
+                        }
                         "--xaml-assembly-name" -> { xamlAssemblyName = argumentValue(args, index); index += 2 }
                         "--reference" -> { references.add(Path.of(argumentValue(args, index))); index += 2 }
                         "--xaml-header-sources" -> { xamlHeaderSources = Path.of(argumentValue(args, index)); index += 2 }
@@ -778,6 +785,8 @@ object KotlinWinRTAuthoringScannerCli {
                     xamlHeaderSources = xamlHeaderSources,
                     sourceRootOwners = sourceRootOwners,
                     xamlAssemblyName = xamlAssemblyName,
+                    xamlPreviewHost = xamlPreviewHost,
+                    xamlPreviewRegistrars = xamlPreviewRegistrars,
                 )
             }
 

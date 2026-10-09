@@ -42,6 +42,7 @@ abstract class GenerateWinRTXamlApplicationHeaderTask @Inject constructor(
     @get:Input abstract val scannerJvmArgs: ListProperty<String>
     @get:Input abstract val sourceRootOwners: MapProperty<String, String>
     @get:Input abstract val emitSources: Property<Boolean>
+    @get:Input abstract val previewHost: Property<Boolean>
     @get:Input abstract val assemblyName: Property<String>
     @get:OutputFile abstract val outputFile: RegularFileProperty
     @get:OutputDirectory abstract val sourceOutputDirectory: DirectoryProperty
@@ -50,6 +51,7 @@ abstract class GenerateWinRTXamlApplicationHeaderTask @Inject constructor(
         scannerJvmArgs.convention(emptyList())
         sourceRootOwners.convention(emptyMap())
         emitSources.convention(true)
+        previewHost.convention(false)
         assemblyName.convention(project.name)
     }
 
@@ -75,6 +77,12 @@ abstract class GenerateWinRTXamlApplicationHeaderTask @Inject constructor(
             spec.jvmArgs(scannerJvmArgs.get() + "-Djava.io.tmpdir=${output.parent}")
             spec.args(buildList {
                 add("--xaml-header")
+                if (previewHost.get()) {
+                    add("--xaml-preview-host")
+                    dependencyXamlRegistrarNames(dependencyIdentityFiles.files).forEach {
+                        add("--xaml-preview-registrar"); add(it)
+                    }
+                }
                 add("--xaml-assembly-name"); add(assemblyName.get())
                 add("--metadata-index"); add(metadataIndex.get().asFile.absolutePath)
                 add("--output"); add(output.toString())

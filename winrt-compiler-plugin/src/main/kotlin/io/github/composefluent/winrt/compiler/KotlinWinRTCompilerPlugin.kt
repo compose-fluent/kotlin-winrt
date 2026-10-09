@@ -330,12 +330,14 @@ class KotlinWinRTIrGenerationExtension(
         )
         val projectionSupportOwnerIdentity = projectionSupportOwnerArtifactName
             ?.takeIf(String::isNotBlank)
-            ?: authoringTargetArtifactName
-            ?.takeIf(String::isNotBlank)
             ?: compilerSupportEntries
                 .filter { entry -> entry.kind == "projection-registrar" }
                 .maxByOrNull(KotlinWinRTCompilerSupportManifestEntry::entries)
-                ?.owner
+                ?.owner?.takeIf(String::isNotBlank)
+            // Authored consumers can have no local projection. The dependency's
+            // compiled initializer belongs to its recorded projection owner.
+            ?: authoringTargetArtifactName
+                ?.takeIf(String::isNotBlank)
                 .orEmpty()
         val authoringRegistrarEntries = readAuthoringTypeDetailsRegistrarEntries(compilerSupportEntries)
         val emitProjectionSupport = when (projectionSupportMode?.lowercase()) {
@@ -1410,7 +1412,7 @@ class KotlinWinRTIrGenerationExtension(
         allowMissingRegistrar: Boolean,
     ) {
         val lookupFile = moduleFragment.files.firstOrNull()
-        val registrars = authoringTypeDetailsRegistrarRegisters(pluginContext, lookupFile, manifestEntries)
+        val registrars = authoringTypeDetailsRegistrarRegisters(pluginContext, lookupFile, manifestEntries, moduleFragment)
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitCall(expression: IrCall): IrExpression {
@@ -1463,7 +1465,7 @@ class KotlinWinRTIrGenerationExtension(
         val registrars = requireCompilerSupportPrerequisite(
             description = "authoring type-details registrar",
             prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
-            value = authoringTypeDetailsRegistrarRegisters(pluginContext, moduleFragment.files.firstOrNull(), manifestEntries)
+            value = authoringTypeDetailsRegistrarRegisters(pluginContext, moduleFragment.files.firstOrNull(), manifestEntries, moduleFragment)
                 .takeIf(List<*>::isNotEmpty),
         )
         moduleFragment.transformChildrenVoid(
@@ -1500,13 +1502,20 @@ class KotlinWinRTIrGenerationExtension(
         pluginContext: IrPluginContext,
         fromFile: IrFile?,
         manifestEntries: List<KotlinWinRTAuthoringTypeDetailsRegistrarEntry>,
+        moduleFragment: IrModuleFragment,
     ): List<AuthoringTypeDetailsRegistrar> {
         val currentRegistrarName = authoringTypeDetailsRegistrarName(authoringAssemblyName)
         val classNames = (manifestEntries.map(KotlinWinRTAuthoringTypeDetailsRegistrarEntry::className) +
             "io.github.composefluent.winrt.projections.support.$currentRegistrarName")
             .distinct()
+        // A KMP module's first file can belong to the isolated projection fragment.
+        // Its FIR finder cannot see consumer-fragment registrars even though they
+        // are already in this IR module. Resolve owned declarations directly.
+        val local = moduleFragment.files.asSequence().flatMap { file ->
+            file.declarations.asSequence().flatMap { classContextsIn(it).asSequence() }
+        }.mapNotNull { context -> context.klass.fqNameWhenAvailable?.asString()?.let { it to context.klass.symbol } }.toMap()
         return classNames.mapNotNull { className ->
-            authoringTypeDetailsRegistrarRegister(pluginContext, fromFile, className)
+            authoringTypeDetailsRegistrarRegister(pluginContext, fromFile, className, local[className])
         }
     }
 
@@ -1515,8 +1524,9 @@ class KotlinWinRTIrGenerationExtension(
         pluginContext: IrPluginContext,
         fromFile: IrFile?,
         className: String,
+        localClass: IrClassSymbol? = null,
     ): AuthoringTypeDetailsRegistrar? {
-        val registrarClass = pluginContext.findClassSymbol(
+        val registrarClass = localClass ?: pluginContext.findClassSymbol(
             ClassId.topLevel(FqName(className)),
             fromFile,
         ) ?: return null

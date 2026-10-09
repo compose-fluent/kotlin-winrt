@@ -8,6 +8,21 @@ class WinRTXamlDeclarationsTest {
     private fun fixture() = javaClass.getResource("/xaml/declarations-v1.json")!!.readText().removePrefix("\uFEFF")
 
     @Test
+    fun source_fingerprint_survives_document_normalization_and_index_round_trips() {
+        val plain = "<Page>\n  <TextBlock Text=\"Hello\"/>\n</Page>"
+        val hash = WinRTXamlDeclarations.sourceFingerprint(plain)
+        assertEquals(hash, WinRTXamlDeclarations.sourceFingerprint("\uFEFF" + plain.replace("\n", "\r\n")))
+        assertNotEquals(hash, WinRTXamlDeclarations.sourceFingerprint(plain.replace("Hello", "Changed")))
+        val original = WinRTXamlDeclarations.parse(fixture())
+        val updated = original.copy(pages = original.pages.map { it.copy(sourceHash = hash) })
+        assertEquals(hash, WinRTXamlDeclarations.parse(WinRTXamlDeclarations.canonicalText(updated)).pages.single().sourceHash)
+        assertEquals("", original.pages.single().sourceHash)
+        assertThrows(IllegalArgumentException::class.java) {
+            WinRTXamlDeclarations.canonicalText(updated.copy(pages = updated.pages.map { it.copy(sourceHash = "invalid") }))
+        }
+    }
+
+    @Test
     fun reads_real_fork_harvester_output_without_guessing_kotlin_projection_names() {
         val index = WinRTXamlDeclarations.parse(fixture())
         val page = index.pages.single()

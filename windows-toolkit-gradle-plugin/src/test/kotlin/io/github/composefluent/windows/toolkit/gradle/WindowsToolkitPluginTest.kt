@@ -911,6 +911,41 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun metadata_only_xaml_compilation_reads_fragment_and_dependency_registrars() {
+        val root = Files.createTempDirectory("kotlin-winrt-xaml-consumer-")
+        val page = root.resolve("src/winuiMain/kotlin/sample/Page.xaml")
+        Files.createDirectories(page.parent)
+        Files.writeString(page, """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Page"/>""")
+        Files.writeString(page.resolveSibling("Page.kt"), "package sample\nclass Page : microsoft.ui.xaml.controls.Page()")
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("winuiJvm")
+            mingwX64("winuiMingw")
+        }
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        // The toolkit attaches winuiMain and XAML sources after evaluation, just
+        // as a consumer build does before resolving its compiler arguments.
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+        assertEquals(false, (project.extensions.extraProperties.get("kotlinWinRTLocalGenerationRequired") as org.gradle.api.provider.Provider<*>).get())
+        assertEquals(winRTSourceRootOwners(project).toString(), true,
+            (project.extensions.extraProperties.get("kotlinWinRTXamlSourcesPresent") as org.gradle.api.provider.Provider<*>).get())
+        listOf("compileKotlinWinuiJvm", "compileKotlinWinuiMingw").forEach { name ->
+            val compile = project.tasks.named(name).get()
+            val args = when (compile) {
+                is KotlinJvmCompile -> compile.compilerOptions.freeCompilerArgs.get()
+                is KotlinNativeCompile -> compile.compilerOptions.freeCompilerArgs.get()
+                else -> error("Unexpected compiler task")
+            }
+            assertTrue(args.toString(), args.any { it.contains(":compilerSupportManifest=") })
+            assertTrue(args.toString(), args.any { it.endsWith("projectionSupportMode=external") })
+            assertFalse(args.toString(), args.any { it.contains(":compilerSupportClassOutputDirectory=") })
+            assertTrue(taskDependencyNames(compile).toString(), "mergeWinRTCompilerSupport" in taskDependencyNames(compile))
+        }
+        assertFalse(project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get().emitProjectionSources.get())
+    }
+
+    @Test
     fun metadata_tasks_follow_the_projection_outputs_of_this_and_the_dependency_projects() {
         // KGP's metadata compilations read the generated authoring sources of every WinRT source
         // set, and its metadata transforms inspect the projection KLIBs, including those that the

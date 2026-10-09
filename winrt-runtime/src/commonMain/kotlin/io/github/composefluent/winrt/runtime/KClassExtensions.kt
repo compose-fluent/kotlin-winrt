@@ -46,14 +46,13 @@ internal expect fun isErasedReferenceArrayType(
     erasedArrayType: KClass<*>,
 ): Boolean
 
-/** Cross-platform assignability: target is a supertype of candidate if candidate is registered
- *  as an exception and target is the generic Exception marker, or falls back to identity. */
+/** Cross-platform assignability uses registered exception and projection inheritance metadata. */
 internal fun isAssignableFrom(targetType: KClass<*>, candidateType: KClass<*>): Boolean =
     when {
         targetType == candidateType -> true
         // Exception hierarchy: check via isExceptionType registration
         targetType == Exception::class -> candidateType.registeredWinRTType()?.isExceptionType == true
-        else -> false
+        else -> TypeNameSupport.isProjectionAssignableFrom(targetType, candidateType)
     }
 
 // ---------------------------------------------------------------------------

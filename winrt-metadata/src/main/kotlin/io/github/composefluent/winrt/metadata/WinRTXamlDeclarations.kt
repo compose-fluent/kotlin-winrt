@@ -25,6 +25,8 @@ data class WinRTXamlPageDeclaration(
     @SerialName("Features") val features: List<String>,
     @SerialName("Connections") val connections: List<WinRTXamlConnectionDeclaration>,
     @SerialName("Properties") val properties: List<WinRTXamlPropertyDeclaration> = emptyList(),
+    /** Added by the build owner from the exact source passed to XAMLC; absent on older indexes. */
+    @SerialName("SourceHash") val sourceHash: String = "",
 )
 
 @Serializable
@@ -152,6 +154,11 @@ object WinRTXamlDeclarations {
         .digest(canonicalText(index).toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
 
+    /** Native IDE documents normalize line endings and omit a UTF-8 BOM. */
+    fun sourceFingerprint(text: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(text.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n').toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+
     private fun validate(index: WinRTXamlDeclarationIndex) {
         require(index.schemaVersion in 1..SCHEMA_VERSION) { "Unsupported Kotlin XAML schema ${index.schemaVersion}." }
         require(index.pages.map { it.className }.distinct().size == index.pages.size) { "Duplicate x:Class." }
@@ -160,6 +167,7 @@ object WinRTXamlDeclarations {
         require(paths.map { it.lowercase(java.util.Locale.ROOT) }.distinct().size == paths.size) { "Duplicate XAML resource path." }
         for (page in index.pages) {
             require(page.className.isNotBlank() && page.baseTypeName.isNotBlank()) { "Missing XAML class or base type." }
+            require(page.sourceHash.isEmpty() || Regex("[0-9a-f]{64}").matches(page.sourceHash)) { "Invalid XAML source fingerprint in ${page.resourcePath}." }
             require(page.features.all { it in supportedFeatures }) { "Unsupported Kotlin XAML features: ${page.features - supportedFeatures}" }
             require(page.connections.map { it.id }.distinct().size == page.connections.size) { "Duplicate connection ID in ${page.resourcePath}." }
             val fields = page.connections.filterNot { it.isTemplateChild }.mapNotNull { it.fieldName }

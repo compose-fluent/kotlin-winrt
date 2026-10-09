@@ -160,6 +160,12 @@ internal class XamlPageBodies(private val index: WinRTXamlDeclarationIndex, priv
                     +bindings.lifecycleSubscription(this, klass, page, function(xamlBindingsLoadingName), irGet(requireNotNull(load.dispatchReceiverParameter)), true)
                     +bindings.lifecycleSubscription(this, klass, page, function(xamlBindingsUnloadedName), irGet(requireNotNull(load.dispatchReceiverParameter)), false)
                 }
+                +irCall(runtime("completeWinRTXamlHotReloadComponent")).apply {
+                    arguments[0] = irGet(requireNotNull(load.dispatchReceiverParameter))
+                    arguments[1] = irString(page.className)
+                    arguments[2] = irString(page.resourcePath)
+                    arguments[3] = irString(page.sourceHash)
+                }
             }
             val initialize = function(xamlInitializeName)
             val stateLoad = stateClass.functions.single { it.name.asString() == "load" }
@@ -230,6 +236,18 @@ internal class XamlPageBodies(private val index: WinRTXamlDeclarationIndex, priv
                                 connection.storageName()?.let { fieldName ->
                                     +irSetField(irGet(requireNotNull(connect.dispatchReceiverParameter)),
                                         requireNotNull(properties.getValue(fieldName).backingField), irGet(target))
+                                }
+                                if (!bindingOnly && !connection.isTemplateChild) {
+                                    (connection.elementName ?: connection.fieldName)?.let { name ->
+                                        +irCall(runtime("registerWinRTXamlHotReloadElement")).apply {
+                                            arguments[0] = irGet(requireNotNull(connect.dispatchReceiverParameter))
+                                            arguments[1] = irString(page.className)
+                                            arguments[2] = irString(page.resourcePath)
+                                            arguments[3] = irString(page.sourceHash)
+                                            arguments[4] = irString(name)
+                                            arguments[5] = irGet(target)
+                                        }
+                                    }
                                 }
                                 for (event in if (bindingOnly) emptyList() else connection.events) {
                                     val handler = xamlIrFunctions(klass, event.handlerName).single()
