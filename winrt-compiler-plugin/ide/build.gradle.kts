@@ -41,6 +41,7 @@ dependencies {
         bundledPlugins("com.intellij.java", "org.jetbrains.kotlin", "com.intellij.gradle")
         if (androidStudioSdk) bundledPlugin("org.jetbrains.android")
         composeUI()
+        bundledModules("intellij.platform.jewel.markdown.core", "intellij.platform.jewel.markdown.ideLafBridgeStyling")
         testFramework(TestFrameworkType.Platform)
     }
     testImplementation("junit:junit:4.13.2")

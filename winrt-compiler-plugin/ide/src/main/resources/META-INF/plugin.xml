@@ -12,6 +12,8 @@
     <dependencies>
         <module name="intellij.platform.compose"/>
         <module name="intellij.platform.jewel.ideLafBridge"/>
+        <module name="intellij.platform.jewel.markdown.core"/>
+        <module name="intellij.platform.jewel.markdown.ideLafBridgeStyling"/>
     </dependencies>
     <extensions defaultExtensionNs="com.intellij">
         <fileType name="WinRT AppX XML" language="XML" extensions="resw;appxmanifest"
