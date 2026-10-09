@@ -79,10 +79,11 @@ internal fun configureWinRTXamlSdkPreview(
         task.runtimeIdentifier.set(runtimeIdentifier)
         task.windowsSdkVersion.set(extension.windowsSdkVersion)
         task.windowsSdkRegistryRoots.set(sdkRegistryRoots)
-        task.doFirst {
-            check(assets.get().outputDirectory.file("resources.pri").get().asFile.isFile) {
+        task.doFirst { currentTask ->
+            val currentHost = currentTask as BuildWinAppHostTask
+            check(currentHost.runtimeAssetsDirectory.files.any { it.resolve("resources.pri").isFile }) {
                 "The WinUI designer requires its merged SDK theme resources. Install the selected Windows SDK " +
-                    "${task.windowsSdkVersion.get()} including makepri.exe, then retry preview preparation."
+                    "${currentHost.windowsSdkVersion.get()} including makepri.exe, then retry preview preparation."
             }
         }
     }

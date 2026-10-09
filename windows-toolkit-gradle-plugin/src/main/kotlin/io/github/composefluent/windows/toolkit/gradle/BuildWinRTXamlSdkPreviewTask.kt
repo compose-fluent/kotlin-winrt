@@ -123,6 +123,9 @@ abstract class BuildWinRTXamlSdkPreviewTask @Inject constructor(private val exec
         GradleFileOperations.writeStringIfChanged(metadata, "{\"ReferenceAssemblies\":[" + references.joinToString(",") {
             "{\"FullPath\":${listOf(it.toString()).toJsonArray().removePrefix("[").removeSuffix("]")}}"
         } + "]}")
+        // The immutable cached JAR is the reusable artifact. Thousands of compiler
+        // class files are scratch output and need not remain in every application.
+        GradleFileOperations.deleteDirectory(work)
     }
 }
 

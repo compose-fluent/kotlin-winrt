@@ -10,6 +10,21 @@ import org.junit.Test
 
 class WinRTXamlLibraryPipelineTest {
     @Test
+    fun sdk_preview_preparation_serializes_without_capturing_other_tasks() {
+        // The SDK-only designer mirrors CsWinRT's reusable projection/SDK resource ownership.
+        // Skip native/compiler execution to exercise serialization of the actual preview task graph.
+        val root = writeLibrary("kotlin-winrt-sdk-preview-cache-", """
+            windows { application { } }
+            tasks.configureEach { enabled = false }
+        """.trimIndent(), plainJvm = true)
+        val first = run(root, "prepareWinRTXamlSdkPreview", "--configuration-cache")
+        assertEquals(TaskOutcome.SKIPPED, first.task(":prepareWinRTXamlSdkPreview")?.outcome)
+        assertTrue("The preview must not schedule business compilation", first.task(":compileKotlin") == null)
+        val reused = run(root, "prepareWinRTXamlSdkPreview", "--configuration-cache")
+        assertTrue(reused.output, reused.output.contains("Reusing configuration cache"))
+    }
+
+    @Test
     fun plain_jvm_xaml_main_compilation_has_distinct_tasks_and_reuses_configuration_cache() {
         val root = writeLibrary("kotlin-winrt-xaml-jvm-main-", "windows { application { } }", plainJvm = true)
         write(root.resolve("src/main/kotlin/sample/Model.xaml"), """
