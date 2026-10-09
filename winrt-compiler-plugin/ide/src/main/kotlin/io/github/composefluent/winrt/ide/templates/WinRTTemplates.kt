@@ -59,6 +59,9 @@ data class WinRTTemplateOptions(
 
 /** Templates consume the Gradle/runtime/compiler owners; no generated projection is maintained here. */
 object WinRTTemplates {
+    private const val projectGradleProperties = "org.gradle.jvmargs=-Xmx4g\n" +
+        "org.gradle.caching=true\norg.gradle.configuration-cache=true\n" +
+        "kotlin.compiler.execution.strategy=in-process"
     /** Normal projects resolve the packaged Maven toolchain without a source checkout. */
     fun project(options: WinRTTemplateOptions): Map<String, ByteArray> {
         options.validate()
@@ -96,7 +99,7 @@ object WinRTTemplates {
                     }
                 }
             """.trimIndent())
-            text("gradle.properties", "org.gradle.jvmargs=-Xmx4g\nkotlin.compiler.execution.strategy=in-process")
+            text("gradle.properties", projectGradleProperties)
             text(".gitignore", ".gradle/\n.kotlin/\n.idea/\n**/build/\n*.iml")
             module(options.copy(name = module, projectionModule = ":winrt-projections")).forEach { (path, bytes) -> put("$module/$path", bytes) }
             if (module != "winrt-projections") module(options.copy(name = "winrt-projections", kind = WinRTTemplateKind.ProjectionLibrary,
@@ -138,7 +141,7 @@ object WinRTTemplates {
                 }
             """.trimIndent())
             text("build.gradle.kts", "allprojects { repositories { mavenCentral() } }")
-            text("gradle.properties", "org.gradle.jvmargs=-Xmx4g\nkotlin.compiler.execution.strategy=in-process")
+            text("gradle.properties", projectGradleProperties)
             text(".gitignore", ".gradle/\n.kotlin/\n.idea/\n**/build/\n*.iml")
             listOf("gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties")
                 .forEach { put(it, Files.readAllBytes(checkout.resolve(it))) }
