@@ -24,7 +24,7 @@
 
   <xs:import namespace="http://schemas.microsoft.com/appx/manifest/types"/>
   <xs:import namespace="http://schemas.microsoft.com/appx/manifest/foundation/windows10"/>
-  
+
   <xs:element name="Capability" substitutionGroup="f:CapabilityChoice">
     <xs:complexType>
       <xs:attribute name="Name" type="t:ST_Capability_Windows_Restricted_Party" use="required"/>

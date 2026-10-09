@@ -237,4 +237,3 @@ private fun discoverWinmdFiles(packageRoot: Path): List<Path> {
         }
     }.getOrDefault(emptyList())
 }
-
