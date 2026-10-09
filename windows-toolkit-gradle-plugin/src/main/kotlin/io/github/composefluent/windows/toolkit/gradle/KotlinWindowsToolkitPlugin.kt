@@ -5408,16 +5408,16 @@ private fun configureWinAppRestoreInputFiles(
     })
     task.nugetConfigHierarchyFiles.from(
         project.providers.of(NuGetConfigHierarchyValueSource::class.java) {
-            it.parameters.baseDirectory.set(project.layout.dir(project.provider {
-                extension.nugetConfigDirectory.orNull?.asFile
-                    ?: extension.nugetConfigFile.orNull?.asFile?.parentFile
-                    ?: project.projectDir
-            }))
-            it.parameters.userConfigFile.set(project.layout.file(
+            it.parameters.baseDirectory.set(
+                extension.nugetConfigDirectory.map { directory -> directory.asFile.absolutePath }
+                    .orElse(extension.nugetConfigFile.map { file -> file.asFile.parentFile.absolutePath })
+                    .orElse(project.projectDir.absolutePath),
+            )
+            it.parameters.userConfigFile.set(
                 project.providers.environmentVariable("APPDATA").filter(String::isNotBlank).map { appData ->
-                    File(appData, "NuGet/NuGet.Config")
+                    File(appData, "NuGet/NuGet.Config").absolutePath
                 },
-            ))
+            )
         },
     )
 }
