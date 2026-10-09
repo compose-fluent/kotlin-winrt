@@ -9,6 +9,7 @@ import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.imageio.ImageIO
+import javax.xml.parsers.DocumentBuilderFactory
 
 class WinRTTemplatesTest {
     @Test fun normalProjectUsesAPortableMavenToolchain() {
@@ -82,6 +83,21 @@ class WinRTTemplatesTest {
                 val sourceSet = if (mingw) "winuiMain" else "main"
                 assertTrue(files.keys.filter { it.startsWith("src/") }.all { it.startsWith("src/$sourceSet/") })
                 assertTrue(files.keys.none { it.endsWith(".java") })
+                if (kind == WinRTTemplateKind.WinUIApplication) {
+                    val application = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+                        .newDocumentBuilder().parse(ByteArrayInputStream(files.getValue("src/$sourceSet/kotlin/sample/hello/App.xaml")))
+                    assertEquals("sample.hello.App", application.documentElement.getAttributeNS("http://schemas.microsoft.com/winfx/2006/xaml", "Class"))
+                    val resources = application.getElementsByTagNameNS("using:Microsoft.UI.Xaml.Controls", "XamlControlsResources")
+                    assertEquals(1, resources.length)
+                    assertEquals("ResourceDictionary.MergedDictionaries", resources.item(0).parentNode.localName)
+                    val window = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+                        .newDocumentBuilder().parse(ByteArrayInputStream(files.getValue("src/$sourceSet/kotlin/sample/hello/MainWindow.xaml")))
+                    assertEquals("hello", window.documentElement.getAttribute("Title"))
+                    val backdrop = window.getElementsByTagNameNS("http://schemas.microsoft.com/winfx/2006/xaml/presentation", "MicaBackdrop")
+                    assertEquals(1, backdrop.length)
+                    assertEquals("Window.SystemBackdrop", backdrop.item(0).parentNode.localName)
+                    assertTrue(script.contains("type(\"Microsoft.UI.Xaml.Media.MicaBackdrop\")"))
+                }
             }
             val project = WinRTTemplates.project(WinRTTemplateOptions("hello", "sample.hello", WinRTTemplateKind.WinUIApplication,
                 jvm = jvm, mingwX64 = mingw))
@@ -91,7 +107,18 @@ class WinRTTemplatesTest {
                 assertEquals(jvm, script.contains("jvmToolchain"))
             }
             assertTrue(project.getValue("settings.gradle.kts").toString(Charsets.UTF_8).contains("kotlin(\"multiplatform\") version"))
+            val sourceSet = if (mingw) "winuiMain" else "main"
+            assertTrue(project.getValue("app/src/$sourceSet/kotlin/sample/hello/MainWindow.xaml")
+                .toString(Charsets.UTF_8).contains("Title=\"hello\""))
         }
+    }
+
+    @Test fun windowTitlePreservesTheProjectNameAndEscapesXaml() {
+        val files = WinRTTemplates.module(WinRTTemplateOptions("app", "sample.app", WinRTTemplateKind.WinUIApplication,
+            displayName = "Project & \"Gallery\""))
+        val window = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder()
+            .parse(ByteArrayInputStream(files.getValue("src/winuiMain/kotlin/sample/app/MainWindow.xaml")))
+        assertEquals("Project & \"Gallery\"", window.documentElement.getAttribute("Title"))
     }
 
 }

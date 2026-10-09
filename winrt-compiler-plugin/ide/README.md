@@ -253,6 +253,9 @@ Selecting mingwX64 produces a Kotlin Multiplatform module with shared Kotlin,
 XAML and AppX resources in `src/winuiMain`; JVM-only modules retain `src/main`.
 The shared SDK module uses the same targets as the new project. The bundled
 toolchain includes both JVM and mingwX64 runtime and authoring publications.
+WinUI applications include `App.xaml` with `XamlControlsResources` merged into
+the application dictionary. `MainWindow.xaml` uses the project's display name
+as its title and declares `MicaBackdrop` through `Window.SystemBackdrop`.
 Consumers exclude
 SDK interop additions from local generation as well as using metadata-only SDK
 references. New projects use the plugin's bundled Maven toolchain and Gradle

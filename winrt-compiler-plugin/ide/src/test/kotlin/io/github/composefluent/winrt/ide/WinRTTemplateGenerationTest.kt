@@ -83,4 +83,15 @@ class WinRTTemplateGenerationTest : BasePlatformTestCase() {
             assertTrue(Files.isRegularFile(target.resolve("app/src/${options.mainSourceSet}/kotlin/sample/$name/Main.kt")))
         }
     }
+
+    fun testCreateWinUiApplicationWithDefaultResourcesAndBackdrop() {
+        val checkout = Path.of(System.getProperty("winrt.ide.toolchain")).toRealPath()
+        val root = Path.of(requireNotNull(System.getProperty("winrt.ide.templateOutput"))).resolve("winui-default").toAbsolutePath().normalize()
+        require(root.startsWith(checkout.resolve(".gradle")) && !Files.exists(root))
+        WinRTTemplateWriter.create(project, root, WinRTTemplates.project(
+            WinRTTemplateOptions("WinUIExample", "sample.winui", WinRTTemplateKind.WinUIApplication, packaged = false, mingwX64 = false)))
+        FileDocumentManager.getInstance().saveAllDocuments()
+        assertTrue(Files.isRegularFile(root.resolve("app/src/main/kotlin/sample/winui/App.xaml")))
+        assertTrue(Files.isRegularFile(root.resolve("app/src/main/kotlin/sample/winui/MainWindow.xaml")))
+    }
 }

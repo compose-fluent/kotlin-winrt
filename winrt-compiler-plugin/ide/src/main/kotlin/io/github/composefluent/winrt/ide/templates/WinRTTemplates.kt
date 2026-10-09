@@ -195,6 +195,21 @@ object WinRTTemplates {
                             }
                         }
                     """.trimIndent())
+                    // .cswinrt/src/Samples/AuthoringDemo/WinUI3CppApp/App.xaml installs
+                    // the framework's default control styles through application resources.
+                    text("$root/App.xaml", """
+                        <Application x:Class="${options.packageName}.App"
+                                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                            <Application.Resources>
+                                <ResourceDictionary>
+                                    <ResourceDictionary.MergedDictionaries>
+                                        <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                                    </ResourceDictionary.MergedDictionaries>
+                                </ResourceDictionary>
+                            </Application.Resources>
+                        </Application>
+                    """.trimIndent())
                     text("$root/MainWindow.kt", """
                         package ${options.packageName}
 
@@ -205,7 +220,11 @@ object WinRTTemplates {
                     text("$root/MainWindow.xaml", """
                         <Window x:Class="${options.packageName}.MainWindow"
                                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                                Title="${xml(options.displayName)}">
+                            <Window.SystemBackdrop>
+                                <MicaBackdrop />
+                            </Window.SystemBackdrop>
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                                 <TextBlock x:Name="Greeting" Text="Hello from Kotlin WinRT" FontSize="28" />
                             </StackPanel>
@@ -328,6 +347,7 @@ object WinRTTemplates {
             appendLine("        nugetPackage(\"Microsoft.WindowsAppSDK\", ${kotlinString(options.appSdkVersion)}) { generateProjection = $ownsProjections }")
             appendLine("        namespace(\"Microsoft.UI.Xaml\")")
             appendLine("        namespace(\"Microsoft.UI.Xaml.Controls\")")
+            appendLine("        type(\"Microsoft.UI.Xaml.Media.MicaBackdrop\")")
         }
         if (ownsProjections || options.projectionModule.isEmpty()) appendLine("        type(\"Windows.Foundation.Uri\")")
         appendLine("    }")
