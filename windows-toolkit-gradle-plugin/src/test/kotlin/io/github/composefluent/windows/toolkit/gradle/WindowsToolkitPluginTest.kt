@@ -101,7 +101,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
             """.trimIndent(),
@@ -692,6 +692,16 @@ class WindowsToolkitPluginTest {
         extension.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003") { pkg ->
             pkg.generateProjection = true
         }
+
+        // Package content comes from WinApp's authoritative lock, not a cache scan.
+        listOf(thirdPartyPackageRoot, preprojectedPackageRoot).forEach { packageRoot ->
+            Files.writeString(packageRoot.resolve("fixture.nuspec"), "<package />")
+        }
+        writeWinAppRestoreFixture(app.projectDir.toPath().resolve("nuget-cache"))
+        val lock = app.tasks.named("restoreWinAppDependencies", RestoreWinAppDependenciesTask::class.java)
+            .get().winmdLockFile.get().asFile.toPath()
+        Files.createDirectories(lock.parent)
+        Files.copy(app.projectDir.toPath().resolve("nuget-cache/fixture-lock.json"), lock)
 
         val generationTask = app.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get()
         val mergeTask = app.tasks.named("mergeWinRTCompilerSupport", MergeWinRTCompilerSupportTask::class.java).get()
@@ -1957,7 +1967,7 @@ class WindowsToolkitPluginTest {
             producer.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "maven-publish"
                 id "io.github.compose-fluent.windows-toolkit"
             }
@@ -1977,9 +1987,9 @@ class WindowsToolkitPluginTest {
             }
 
             windows {
-                application {
-                    runtimeAsset "UpstreamComponent.dll"
-                }
+                // The producer exports library identity; enabling application mode
+                // intentionally skips that library packaging identity.
+                application.runtimeAsset("UpstreamComponent.dll")
             }
 
             publishing {
@@ -2081,7 +2091,7 @@ class WindowsToolkitPluginTest {
             consumer.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -2251,7 +2261,13 @@ class WindowsToolkitPluginTest {
         val project = ProjectBuilder.builder().build()
         val authoredWinmd = project.layout.buildDirectory.file("authoring/SampleComponent.winmd").get().asFile.toPath()
         Files.createDirectories(authoredWinmd.parent)
-        Files.writeString(authoredWinmd, "sample-winmd")
+        WinRTPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = "SampleComponent",
+            runtimeClasses = listOf(WinRTAuthoredRuntimeClassDescriptor(
+                runtimeClassName = "SampleComponent.Widget", interfaceNames = listOf("SampleComponent.IWidget"),
+            )),
+            outputFile = authoredWinmd,
+        )
 
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
@@ -2261,7 +2277,8 @@ class WindowsToolkitPluginTest {
         val json = Files.readString(task.outputFile.get().asFile.toPath())
         assertTrue(json.contains("\"authoredMetadataRecords\": ["))
         assertTrue(json.contains("\"fileName\":\"SampleComponent.winmd\""))
-        assertTrue(json.contains("\"contentBase64\":\"${Base64.getEncoder().encodeToString("sample-winmd".toByteArray())}\""))
+        assertTrue(json.contains("\"contentBase64\":\"${Base64.getEncoder().encodeToString(Files.readAllBytes(authoredWinmd))}\""))
+        assertTrue(json.contains("\"authoredTypes\": [\"SampleComponent.Widget\"]"))
         assertFalse(json.contains("\"authoredMetadata\""))
         assertFalse(json.contains(authoredWinmd.toString().replace("\\", "\\\\")))
     }
@@ -9815,7 +9832,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -9933,7 +9950,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -10107,7 +10124,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle.kts"),
             """
             plugins {
-                kotlin("multiplatform") version "2.3.20"
+                kotlin("multiplatform") version "2.4.0"
                 id("io.github.compose-fluent.windows-toolkit")
             }
 
@@ -10186,7 +10203,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle.kts"),
             """
             plugins {
-                kotlin("multiplatform") version "2.3.20"
+                kotlin("multiplatform") version "2.4.0"
                 id("io.github.compose-fluent.windows-toolkit")
             }
 
@@ -10267,7 +10284,7 @@ class WindowsToolkitPluginTest {
             @file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi::class)
 
             plugins {
-                kotlin("multiplatform") version "2.3.20"
+                kotlin("multiplatform") version "2.4.0"
                 id("io.github.compose-fluent.windows-toolkit")
             }
 
@@ -10378,7 +10395,7 @@ class WindowsToolkitPluginTest {
             import io.github.composefluent.windows.toolkit.gradle.winui
 
             plugins {
-                kotlin("multiplatform") version "2.3.20"
+                kotlin("multiplatform") version "2.4.0"
                 id("io.github.compose-fluent.windows-toolkit")
             }
 
@@ -10464,7 +10481,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -10596,7 +10613,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -10719,7 +10736,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -10958,7 +10975,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -11088,7 +11105,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -11260,7 +11277,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -11382,7 +11399,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -11676,7 +11693,8 @@ class WindowsToolkitPluginTest {
                 )
             }
             tasks.named("generateWinRTProjections") {
-                generatorWorkerJvmArgs.set(["-Xmx512m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
+                // This fixture projects every COM-adapter namespace in the full SDK.
+                generatorWorkerJvmArgs.set(["-Xmx768m", "-XX:+UseSerialGC", "-Dfile.encoding=UTF-8"])
             }
             """.trimIndent(),
         )
@@ -12065,7 +12083,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -12400,7 +12418,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -12495,7 +12513,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.jvm" version "2.3.20"
+                id "org.jetbrains.kotlin.jvm" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
             """.trimIndent(),
@@ -12909,7 +12927,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -13123,7 +13141,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
@@ -13208,7 +13226,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
             }
 
             apply plugin: "io.github.compose-fluent.windows-toolkit"
@@ -13449,7 +13467,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("winrt-base-library/build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
             }
 
             $generatorWorkerSetup
@@ -13485,7 +13503,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("winrt-library/build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
             }
 
             $generatorWorkerSetup
@@ -13532,7 +13550,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("winrt-app/build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
             }
 
             $generatorWorkerSetup
@@ -14041,7 +14059,7 @@ class WindowsToolkitPluginTest {
             projectDir.resolve("build.gradle"),
             """
             plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.3.20"
+                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
                 id "io.github.compose-fluent.windows-toolkit"
             }
 
