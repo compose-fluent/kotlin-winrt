@@ -5407,44 +5407,19 @@ private fun configureWinAppRestoreInputFiles(
         existingWinAppPackageContentRoots(listOf(task.winmdLockFile.get().asFile))
     })
     task.nugetConfigHierarchyFiles.from(
-        project.provider {
-            discoverNuGetConfigHierarchyFiles(
-                project = project,
-                extension = extension,
-            )
+        project.providers.of(NuGetConfigHierarchyValueSource::class.java) {
+            it.parameters.baseDirectory.set(project.layout.dir(project.provider {
+                extension.nugetConfigDirectory.orNull?.asFile
+                    ?: extension.nugetConfigFile.orNull?.asFile?.parentFile
+                    ?: project.projectDir
+            }))
+            it.parameters.userConfigFile.set(project.layout.file(
+                project.providers.environmentVariable("APPDATA").filter(String::isNotBlank).map { appData ->
+                    File(appData, "NuGet/NuGet.Config")
+                },
+            ))
         },
     )
-}
-
-private fun discoverNuGetConfigHierarchyFiles(
-    project: Project,
-    extension: PackageReferencesConfiguration,
-): List<File> {
-    val base = extension.nugetConfigDirectory.orNull?.asFile?.toPath()
-        ?: extension.nugetConfigFile.orNull?.asFile?.parentFile?.toPath()
-        ?: project.projectDir.toPath()
-    val files = linkedSetOf<Path>()
-    var current: Path? = base.toAbsolutePath().normalize()
-    while (current != null) {
-        if (Files.isDirectory(current)) {
-            Files.list(current).use { entries ->
-                entries
-                    .filter { path ->
-                        Files.isRegularFile(path) &&
-                            path.fileName.toString().equals("NuGet.Config", ignoreCase = true)
-                    }
-                    .forEach { path -> files.add(path.toAbsolutePath().normalize()) }
-            }
-        }
-        current = current.parent
-    }
-    project.providers.environmentVariable("APPDATA").orNull
-        ?.takeIf(String::isNotBlank)
-        ?.let { appData ->
-            val userConfig = Path.of(appData).resolve("NuGet").resolve("NuGet.Config")
-            if (Files.isRegularFile(userConfig)) files.add(userConfig.toAbsolutePath().normalize())
-        }
-    return files.sortedBy { it.toString().lowercase() }.map(Path::toFile)
 }
 
 private fun Project.hasKotlinWinRTIdentityMetadata(): Boolean =
