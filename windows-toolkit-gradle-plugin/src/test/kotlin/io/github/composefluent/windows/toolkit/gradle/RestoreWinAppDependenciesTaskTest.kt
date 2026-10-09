@@ -10,6 +10,65 @@ import java.nio.file.Path
 
 class RestoreWinAppDependenciesTaskTest {
     @Test
+    fun verified_restore_detects_native_inventory_changes_and_metadata_changes_with_preserved_timestamps() {
+        // .cswinrt/nuget/Microsoft.Windows.CsWinRT.targets consumes metadata;
+        // native payload content is fingerprinted by the Gradle staging tasks.
+        val project = ProjectBuilder.builder().build()
+        val workspace = project.layout.buildDirectory.dir("restore-inventory").get().asFile.toPath()
+        val cache = workspace.resolve("nuget")
+        val packageRoot = cache.resolve("sample.native/1.0.0")
+        Files.createDirectories(packageRoot)
+        val metadata = packageRoot.resolve("Sample.winmd")
+        val native = packageRoot.resolve("Sample.dll")
+        Files.writeString(metadata, "original")
+        Files.writeString(native, "native")
+        Files.writeString(packageRoot.resolve("Sample.Native.nuspec"),
+            "<package><metadata><id>Sample.Native</id><version>1.0.0</version></metadata></package>")
+        val originalMetadataTime = Files.getLastModifiedTime(metadata)
+        val originalNativeTime = Files.getLastModifiedTime(native)
+        val lock = workspace.resolve("fixture-lock.json")
+        Files.writeString(lock, """
+            {"schema":3,"nuget_cache_dir":"${cache.toString().replace('\\', '/')}",
+             "packages":[{"name":"Sample.Native","version":"1.0.0","winmds":[]}]}
+        """.trimIndent())
+        val config = workspace.resolve("winapp.yaml")
+        Files.writeString(config, "packages:\n  - name: Sample.Native\n    version: 1.0.0\n")
+        val fakeCli = workspace.resolve("fake-winapp.cmd")
+        Files.writeString(fakeCli, """
+            @echo off
+            if /I "%~1"=="--version" (
+              echo 0.6.0
+              exit /b 0
+            )
+            if not exist .winapp mkdir .winapp
+            copy /Y "%~dp0fixture-lock.json" ".winapp\winmds.lock.json" > nul
+            exit /b 0
+        """.trimIndent() + System.lineSeparator())
+        val output = workspace.resolve(".winapp")
+        val task = project.tasks.register("restoreInventoryFixture", RestoreWinAppDependenciesTask::class.java) {
+            it.configurationFile.set(config.toFile())
+            it.restoreBaseDirectory.set(workspace.toFile())
+            it.winAppDirectory.set(output.toFile())
+            it.winmdLockFile.set(output.resolve("winmds.lock.json").toFile())
+            it.nugetPackages.set(listOf("Sample.Native@1.0.0"))
+            it.winAppCliExecutable.set(fakeCli.toString())
+            it.winAppCliCacheDirectory.set(workspace.resolve("cli-cache").toFile())
+        }.get()
+        task.restore()
+        task.offline.set(true)
+        task.winAppCliExecutable.set(workspace.resolve("missing-winapp.exe").toString())
+        task.restore()
+        Files.writeString(native, "changed native layout")
+        assertTrue(runCatching { task.restore() }.exceptionOrNull() is org.gradle.api.GradleException)
+        Files.writeString(native, "native")
+        Files.setLastModifiedTime(native, originalNativeTime)
+        task.restore()
+        Files.writeString(metadata, "modified")
+        Files.setLastModifiedTime(metadata, originalMetadataTime)
+        assertTrue(runCatching { task.restore() }.exceptionOrNull() is org.gradle.api.GradleException)
+    }
+
+    @Test
     fun empty_package_set_writes_an_empty_lockfile_without_resolving_the_cli() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

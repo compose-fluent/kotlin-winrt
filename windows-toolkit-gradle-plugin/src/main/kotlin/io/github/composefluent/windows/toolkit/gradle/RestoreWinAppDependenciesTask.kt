@@ -292,7 +292,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     private fun restoreContext(config: Path, restoreBase: Path, packageSpecs: List<String>, lock: Path): String {
         val inventory = if (lock.isRegularFile()) packageInventory(lock) else "pending"
         val lines = linkedMapOf(
-            "schema" to "1",
+            "schema" to "2",
             "configurationSha256" to sha256(config),
             "nugetConfigSha256" to effectiveNuGetConfigFingerprint(restoreBase),
             "packageSpecs" to packageSpecs.joinToString("\u001f"),
@@ -339,7 +339,18 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
                 stream.filter(Files::isRegularFile).sorted().forEach { file ->
                     digest.update(root.relativize(file).toString().replace('\\', '/').toByteArray())
                     digest.update(0.toByte())
-                    digest.update(sha256(file).toByteArray())
+                    // Gradle already fingerprints packageContentFiles. The restore
+                    // context needs the extracted inventory, not a second full read
+                    // of every SDK library, tool binary and native symbol file.
+                    // Metadata and package descriptors still use content hashes;
+                    // selected runtime payloads are also inputs of their own stages.
+                    val attributes = Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes::class.java)
+                    digest.update("${attributes.size()}:${attributes.lastModifiedTime()}".toByteArray())
+                    val name = file.fileName.toString().lowercase()
+                    if (name.endsWith(".winmd") || name.endsWith(".nuspec") ||
+                        name.endsWith(".sha512") || name == ".nupkg.metadata") {
+                        digest.update(sha256(file).toByteArray())
+                    }
                     digest.update(0.toByte())
                 }
             }
