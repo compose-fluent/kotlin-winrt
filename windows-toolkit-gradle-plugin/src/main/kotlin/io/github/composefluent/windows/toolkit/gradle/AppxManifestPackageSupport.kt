@@ -31,6 +31,24 @@ internal object AppxManifestPackageSupport {
     private const val ACTIVATABLE_CLASS_NAME = "ActivatableClass"
     private const val PACKAGE_DEPENDENCY_CATEGORY = "windows.activatableClass.inProcessServer"
 
+    /** Build output naming also owns AppX Executable references, including COM notification servers. */
+    fun useApplicationExecutable(manifest: Path, executableName: String) {
+        if (!manifest.isRegularFile()) return
+        val document = requireNotNull(readXml(manifest)) { "Cannot read AppX manifest: $manifest" }
+        val application = document.documentElement.childElements("Applications").firstOrNull()
+            ?.childElements("Application")?.firstOrNull() ?: return
+        val original = application.getAttribute("Executable").replace('\\', '/')
+        if (original.isBlank()) return
+        val elements = document.getElementsByTagName("*")
+        for (index in 0 until elements.length) {
+            val element = elements.item(index) as? Element ?: continue
+            if (element.getAttribute("Executable").replace('\\', '/').equals(original, ignoreCase = true)) {
+                element.setAttribute("Executable", executableName)
+            }
+        }
+        writeXml(manifest, document)
+    }
+
     /** CsWinRT's TargetPlatformMinVersion and SDK target belong to the build, not a second manifest setting. */
     fun applyWindowsVersions(manifest: Path, minWindowsVersion: String, maxVersionTested: String) {
         if (!manifest.isRegularFile()) return

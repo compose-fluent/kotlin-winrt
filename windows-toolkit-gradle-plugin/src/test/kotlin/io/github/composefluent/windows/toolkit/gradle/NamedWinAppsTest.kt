@@ -229,12 +229,14 @@ class NamedWinAppsTest {
                     create('first') {
                         variantName = 'desktop:main:firstReleaseExecutable'
                         mainClass = 'sample.first'
+                        executableBaseName = 'native-first'
                         appxManifest('payload/first.xml')
                         packagePayload('payload/Logo.png', 'Assets/Logo.png')
                     }
                     create('second') {
                         variantName = 'desktop:main:secondReleaseExecutable'
                         mainClass = 'sample.second'
+                        executableBaseName = 'native-second'
                         appxManifest('payload/second.xml')
                         packagePayload('payload/Logo.png', 'Assets/Logo.png')
                     }
@@ -288,11 +290,12 @@ class NamedWinAppsTest {
             val id = "${name.lowercase()}--desktop_main_${name.lowercase()}ReleaseExecutable"
             val packageFile = root.resolve("build/kotlin-winrt/packages/native-variants-$id.msix")
             ZipFile(packageFile.toFile()).use { zip ->
-                assertTrue(zip.getEntry("${name.lowercase()}.exe") != null)
+                assertTrue(zip.getEntry("native-${name.lowercase()}.exe") != null)
+                assertFalse(zip.getEntry("${name.lowercase()}.exe") != null)
                 assertTrue(zip.getEntry("Assets/Logo.png") != null)
                 assertFalse(zip.entries().asSequence().any { it.name.startsWith("appxResources/") })
             }
-            val executable = root.resolve("build/kotlin-winrt/application-layout/$id/package/${name.lowercase()}.exe")
+            val executable = root.resolve("build/kotlin-winrt/application-layout/$id/package/native-${name.lowercase()}.exe")
             val process = ProcessBuilder(executable.toString()).directory(root.toFile()).redirectErrorStream(true).start()
             try {
                 assertTrue(process.waitFor(20, TimeUnit.SECONDS))

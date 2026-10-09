@@ -760,6 +760,7 @@ private fun configureWinAppTasks(
     observeVariantDependenciesImmediately: Boolean,
 ) {
     fun taskName(base: String): String = base + taskSuffix
+    val executableBaseName = options.executableBaseName.map(::validateWinAppExecutableBaseName)
     val namedOutputPath = "/variant-$taskSuffix"
     val configurationSuffix = "Application$taskSuffix"
     val identityConfigurationName = KOTLIN_WINRT_IDENTITY_CONFIGURATION + configurationSuffix
@@ -848,7 +849,6 @@ private fun configureWinAppTasks(
             })
         }
     dependencyAppxResourceArchives.builtBy(dependencyAppxResourceView.files)
-    val projectName = project.name
     // Attribute the optional resource graph only after the final application variant is known.
     // KMP producers only expose target-specific artifacts. A generic artifact is reserved for
     // a genuinely target-independent Java/JVM producer.
@@ -1126,7 +1126,7 @@ private fun configureWinAppTasks(
             task.projectPriExcludedFromBuildPaths.set(options.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
             task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
                 spec.include("*.dll")
@@ -1319,14 +1319,17 @@ private fun configureWinAppTasks(
                 options.packageType.get() == WindowsPackageType.Packaged &&
                     resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent
             })
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
+            task.rewriteApplicationExecutable.set(true)
             task.deferredManifestPayloadPaths.set(
-                hasMingwReleaseExecutable.map { hasNativeExecutable ->
-                    if (hasNativeExecutable) emptyList() else listOf("$projectName.exe")
+                hasMingwReleaseExecutable.zip(executableBaseName) { hasNativeExecutable, name ->
+                    if (hasNativeExecutable) emptyList() else listOf("$name.exe")
                 },
             )
             task.reservedPackageFiles.set(
-                hasMingwReleaseExecutable.map { native -> if (native) emptyList() else listOf("$projectName.exe") },
+                hasMingwReleaseExecutable.zip(executableBaseName) { native, name ->
+                    if (native) emptyList() else listOf("$name.exe")
+                },
             )
             task.reservedPackageDirectories.set(
                 hasMingwReleaseExecutable.map { native -> if (native) emptyList() else listOf("runtime", "lib") },
@@ -1359,6 +1362,7 @@ private fun configureWinAppTasks(
         selectedVariant,
         options.console,
         launcherIconTask,
+        executableBaseName,
     )
     val launcherCompileTask = project.tasks.register(
         taskName("compileWinAppLauncher"),
@@ -1388,7 +1392,7 @@ private fun configureWinAppTasks(
             task.packageType.set(project.provider { options.packageType.get().name })
             task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.console.set(options.console)
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
             task.expectedJavaMajor.set(options.jvmToolchainVersion)
             task.jvmRuntimeMode.set(options.jvmRuntimeMode.map { it.name })
@@ -1427,7 +1431,7 @@ private fun configureWinAppTasks(
             task.packageType.set(project.provider { options.packageType.get().name })
             task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.console.set(options.console)
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
             task.expectedJavaMajor.set(options.jvmToolchainVersion)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
@@ -1439,7 +1443,7 @@ private fun configureWinAppTasks(
             task.runtimeImageDirectory.set(prepareJvmRuntimeImageTask.flatMap { it.outputDirectory })
             task.launcherExecutable.set(
                 launcherCompileTask.flatMap { launcher ->
-                    launcher.outputDirectory.file("${project.name}.exe")
+                    launcher.outputDirectory.file(executableBaseName.map { "$it.exe" })
                 },
             )
             task.externalJvmHome.set(
@@ -1922,14 +1926,12 @@ private fun configureMingwApplicationEntry(
     selectedVariant: Provider<WinAppVariant>,
     console: Provider<Boolean>,
     launcherIconTask: TaskProvider<CompileWinAppIconTask>,
+    executableBaseName: Provider<String>,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    val applicationLayoutDirectory = project.provider {
-        project.layout.buildDirectory
-            .dir("kotlin-winrt/application-layout/${selectedVariant.get().id.toSafeDirectoryName()}/package")
-            .get()
-            .asFile
-    }
+    val applicationLayoutDirectory = project.layout.buildDirectory.dir(
+        selectedVariant.map { "kotlin-winrt/application-layout/${it.id.toSafeDirectoryName()}/package" },
+    ).map { it.asFile }
     project.afterEvaluate {
         val variant = selectedVariant.get()
         if (variant.kind != WinAppVariantKind.MingwX64) return@afterEvaluate
@@ -1956,24 +1958,30 @@ private fun configureMingwApplicationEntry(
                 task.inputs.file(resource).withPathSensitivity(PathSensitivity.NONE)
             }
         }
-        // Kotlin/Native's model name (for example, releaseExecutable) is not the staged file
-        // name. Keep the output file Provider as the single source for payload, manifest and run
-        // task wiring so custom binary names and target-specific base names remain consistent.
+        // The linked Kotlin/Native binary keeps its own baseName. The application model owns
+        // the staged launcher name, just as it does for JVM, without renaming the binary model.
         val executableOutputFile = project.provider { executable.outputFile }
-        val executableOutputName = executableOutputFile.map { outputFile -> outputFile.name }
-        val executableOutputBaseName = executableOutputFile.map { outputFile -> outputFile.nameWithoutExtension }
+        val executableOutputName = executableBaseName.map { "$it.exe" }
         executable.linkTaskProvider.configure { task -> task.dependsOn(entryTask) }
-        stageRuntimeAssetsTask.configure { task -> task.executableBaseName.set(executableOutputBaseName) }
         stageApplicationPackageTask.configure { task ->
             task.dependsOn(executable.linkTaskProvider)
             task.rootPackagePayloadFiles.from(executableOutputFile)
-            task.executableBaseName.set(executableOutputBaseName)
+            task.projectPriTargetPaths.putAll(executableOutputFile.zip(executableOutputName) { file, name ->
+                mapOf(file.toPath().toAbsolutePath().normalize().toString() to name)
+            })
         }
         executable.runTaskProvider?.configure { task ->
             task.dependsOn(stageRuntimeAssetsTask)
             task.dependsOn(stageApplicationPackageTask)
             task.workingDir(applicationLayoutDirectory.get())
             task.executable(applicationLayoutDirectory.get().resolve(executableOutputName.get()).absolutePath)
+            val launcherPath = applicationLayoutDirectory.zip(executableOutputName) { directory, name ->
+                directory.resolve(name).absolutePath
+            }
+            // ExecSpec stores a String executable, so refresh it after all app modules have
+            // registered, including when this run task was realized during configuration.
+            task.inputs.property("winAppLauncherPath", launcherPath)
+            task.doFirst { run -> (run as org.gradle.api.tasks.Exec).executable(launcherPath.get()) }
             task.environment(
                 "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
                 stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,

@@ -339,6 +339,10 @@ windows {
 
 `application.launcherIcon` accepts a Win32 `.ico` file, matching C# `ApplicationIcon` and C++ `ICON` resources. The plugin compiles it with the selected Windows SDK's `rc.exe` and embeds it in both the JVM launcher and the `mingwX64` executable. Multi-size ICOs, including PNG-compressed images inside the ICO, are preserved; standalone PNG and SVG files must first be converted to ICO. Named applications inherit this property and may override it. To also use the icon with `AppWindow.setIcon`, include the ICO in `appxResources` and set the window icon separately; AppX logo settings remain independent.
 
+Set `application { executableBaseName = "animeko-desktop" }` to choose the launcher's filename without `.exe`. By default, a build with one application module uses the root project name (`animeko.exe`). When multiple modules enable `windows.application`, each appends its module name (`animeko-app2.exe` for module `app2`). Libraries and additional target or named application variants in the same module do not increase the module count. Named applications inherit the setting and may override it. The name applies to JVM launchers and staged `mingwX64` executables, their run tasks, and their application manifests. The first AppX `Application` is the primary launcher; references to its original executable, including extension registrations, follow the configured name. Kotlin/Native's linked binary retains its own `baseName`.
+
+With Gradle's configure-on-demand enabled, application naming evaluates the remaining modules to determine the full application module count.
+
 The dual-target project exposes separate JVM and Native task graphs automatically. Run the JVM host with:
 
 ```text

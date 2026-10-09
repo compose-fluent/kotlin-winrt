@@ -92,6 +92,10 @@ abstract class StageWinAppPackageTask : DefaultTask() {
     @get:Input
     abstract val executableBaseName: Property<String>
 
+    /** Application-model stages bind the primary AppX launcher and its matching extension references. */
+    @get:Input
+    abstract val rewriteApplicationExecutable: Property<Boolean>
+
     @get:Input
     abstract val projectPriTargetPaths: MapProperty<String, String>
 
@@ -219,6 +223,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
         reservedPackageDirectories.convention(emptyList())
         defaultAppxResourceRoots.convention(emptyList())
         executableBaseName.convention("app")
+        rewriteApplicationExecutable.convention(false)
         applicationVariant.convention("default")
         includeFrameworkPackageDependencies.convention(true)
         resourceResolutionReport.convention(
@@ -253,6 +258,11 @@ abstract class StageWinAppPackageTask : DefaultTask() {
                 GradleFileOperations.copyFile(decision.source, outputRoot.resolve(decision.target))
             }
         stageAppxManifest(outputRoot)
+        if (rewriteApplicationExecutable.get()) {
+            AppxManifestPackageSupport.useApplicationExecutable(
+                outputRoot.resolve("AppxManifest.xml"), "${executableBaseName.get()}.exe",
+            )
+        }
         AppxManifestPackageSupport.applyWindowsVersions(
             outputRoot.resolve("AppxManifest.xml"), minWindowsVersion.get(), maxVersionTested.get(),
         )
@@ -370,7 +380,11 @@ abstract class StageWinAppPackageTask : DefaultTask() {
     private fun reservedPayloadPaths(): Set<Path> = buildSet {
         add(Path.of("${executableBaseName.get()}.exe.manifest"))
         if (generateProjectPri.get()) add(Path.of("resources.pri"))
-        rootPackagePayloadFiles.files.forEach { add(Path.of(it.name)) }
+        val targetPaths = projectPriTargetPaths.get()
+        rootPackagePayloadFiles.files.forEach {
+            val configuredTarget = targetPaths[it.toPath().toAbsolutePath().normalize().toString()]
+            add(configuredTarget?.toSafeRelativePath("selected executable target path") ?: Path.of(it.name))
+        }
         reservedPackageFiles.get().forEach { add(it.toSafeRelativePath("reserved package file")) }
         val runtimeRoot = runtimeAssetsDirectory.get().asFile.toPath()
         if (runtimeRoot.isDirectory()) {
