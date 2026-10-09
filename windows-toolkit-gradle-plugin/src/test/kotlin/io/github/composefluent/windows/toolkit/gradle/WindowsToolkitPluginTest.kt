@@ -712,7 +712,10 @@ class WindowsToolkitPluginTest {
             generationTask.nugetPackages.get().toSet(),
         )
         assertEquals(
-            setOf(thirdPartyPackageRoot.toFile(), preprojectedPackageRoot.toFile()),
+            listOf(thirdPartyPackageRoot, preprojectedPackageRoot).flatMap { root ->
+                root.toFile().walkTopDown().filter { it.isFile &&
+                    (it.extension.equals("winmd", true) || it.extension.equals("nuspec", true)) }.toList()
+            }.toSet(),
             generationTask.nugetPackageContentFiles.files,
         )
         assertTrue(generationTask.dependencyIdentityFiles.files.isNotEmpty())

@@ -2331,7 +2331,10 @@ private fun configureWinRTGeneration(
         task.nugetPackages.set(project.provider { projectionNuGetPackageSpecs(extension.packageReferences) })
         task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
         task.nugetPackageContentFiles.from(project.provider {
+            // Projection generation consumes WinMDs and package identities. Native
+            // payloads belong to runtime staging and must not invalidate projections.
             existingWinAppPackageContentRoots(listOf(restoreWinAppDependenciesTask.get().winmdLockFile.get().asFile))
+                .map { root -> project.fileTree(root) { it.include("**/*.winmd", "**/*.WinMD", "**/*.nuspec") } }
         })
         task.projectModel.set(
             project.provider {
@@ -5321,27 +5324,7 @@ private fun windowsSdkMetadataInputFiles(
     )
     return roots
         .filter(Files::isDirectory)
-        .flatMap { root ->
-            val rootFiles = linkedSetOf<File>()
-            // The SDK resolver consumes these metadata locations; keeping the file tree narrow
-            // avoids making unrelated headers, libraries, and tools projection inputs.
-            Files.walk(root).use { stream ->
-                stream
-                    .filter(Files::isRegularFile)
-                    .filter { file ->
-                        val relative = root.relativize(file).toString().replace('\\', '/')
-                        relative.startsWith("Platforms/UAP/", ignoreCase = true) &&
-                            relative.endsWith("/Platform.xml", ignoreCase = true) ||
-                            relative.startsWith("References/", ignoreCase = true) &&
-                            relative.endsWith(".winmd", ignoreCase = true) ||
-                            relative.startsWith("Extension SDKs/", ignoreCase = true) &&
-                            (relative.endsWith("/SDKManifest.xml", ignoreCase = true) ||
-                                relative.endsWith(".winmd", ignoreCase = true))
-                    }
-                    .forEach { file -> rootFiles.add(file.toFile()) }
-            }
-            rootFiles
-        }
+        .flatMap(::windowsSdkMetadataFiles)
         .distinctBy { file -> file.toPath().toAbsolutePath().normalize().toString().lowercase() }
         .sortedBy { file -> file.toPath().toAbsolutePath().normalize().toString().lowercase() }
 }
