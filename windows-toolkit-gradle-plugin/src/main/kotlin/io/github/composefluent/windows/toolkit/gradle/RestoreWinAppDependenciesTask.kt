@@ -78,9 +78,13 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     @get:Input
     abstract val includeToolingPackages: Property<Boolean>
 
-    /** Metadata libraries publish package identities; applications stage their runtime payload. */
+    /** Retains WinApp's copied runtime payloads for custom CLI-based workflows. */
     @get:Input
     abstract val includeRuntimeAssets: Property<Boolean>
+
+    /** Retains WinApp's C++ headers, import libraries and shared native build inputs. */
+    @get:Input
+    abstract val includeNativeBuildFiles: Property<Boolean>
 
     @get:Input
     abstract val winAppCliVersion: Property<String>
@@ -105,6 +109,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
         restoreEnabled.convention(true)
         includeToolingPackages.convention(false)
         includeRuntimeAssets.convention(true)
+        includeNativeBuildFiles.convention(true)
         offline.convention(false)
     }
 
@@ -209,10 +214,15 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
             val restoredOutput = restoreWorkspace.resolve(".winapp")
             validateRestore(restoredOutput.resolve("winmds.lock.json"), packageSpecs)
             if (!includeRuntimeAssets.get()) {
-                // CsWinRT's projection inputs are WinMD references. A metadata-only
-                // library does not need WinApp's copies of every runtime architecture.
+                // CsWinRT consumes package references directly. Gradle's runtime stages
+                // likewise read the validated NuGet roots, without architecture copies.
                 GradleFileOperations.deleteDirectory(restoredOutput.resolve("bin"))
                 Files.createDirectories(restoredOutput.resolve("bin"))
+            }
+            if (!includeNativeBuildFiles.get()) {
+                listOf("include", "lib", "share").forEach {
+                    GradleFileOperations.deleteDirectory(restoredOutput.resolve(it))
+                }
             }
             writeRestoreContext(
                 restoredOutput,
@@ -309,6 +319,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
             "packageSpecs" to packageSpecs.joinToString("\u001f"),
             "includeToolingPackages" to includeToolingPackages.get().toString(),
             "includeRuntimeAssets" to includeRuntimeAssets.get().toString(),
+            "includeNativeBuildFiles" to includeNativeBuildFiles.get().toString(),
             "winAppCliVersion" to winAppCliVersion.get(),
             "winAppCliPackageSha512" to winAppCliPackageSha512.get(),
             // Dependency schemas and compiled type ownership do not change NuGet restore.

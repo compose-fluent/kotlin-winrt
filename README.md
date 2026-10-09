@@ -249,7 +249,7 @@ Reusable WinRT libraries may declare `packageReferences { nugetPackage(...) }` o
 
 Automatic native runtime staging omits PDB symbols and linker intermediates (`.lib`, `.exp`, `.obj`). Add a symbol file with `runtimeAsset(...)` when native debugging requires it; explicit NuGet copy-local payloads are also preserved.
 
-Projection-only modules keep their WinApp metadata inventory without copying runtime payloads for every architecture. Application modules prepare those payloads. Custom library staging workflows can opt in with `tasks.named<RestoreWinAppDependenciesTask>("restoreWinAppDependencies") { includeRuntimeAssets.set(true) }`.
+Gradle modules keep the WinApp metadata inventory and select runtime payloads directly from the resolved NuGet cache. They discard WinApp's redundant copies of runtime architectures, C++ headers and import libraries. Custom CLI workflows can retain them with `tasks.named<RestoreWinAppDependenciesTask>("restoreWinAppDependencies") { includeRuntimeAssets.set(true); includeNativeBuildFiles.set(true) }`.
 
 New IDE project templates enable Gradle's build cache and configuration cache. Existing projects can enable them in `gradle.properties`:
 
@@ -262,7 +262,7 @@ JVM SDK projection bytecode can be reused across project directories and root pr
 
 ## WinApp CLI and NuGet Restore
 
-The Gradle plugin translates project and dependency `packageReferences { nugetPackage(...) }` declarations into an internal `build/generated/kotlin-winrt/winapp/winapp.yaml`. Do not create or maintain that file manually. With the default `packageReferences { restoreNuGetPackages = true }`, `restoreWinAppDependencies` runs `winapp restore`, validates its schema-3 lockfile, and uses the resolved WinMD files for projection generation. The same lockfile and `.winapp/bin/<architecture>` output drive DLL, PRI, asset, and manifest staging after compilation; explicit local `packageReferences { winmd(...) }` inputs remain part of the projection input set.
+The Gradle plugin translates project and dependency `packageReferences { nugetPackage(...) }` declarations into an internal `build/generated/kotlin-winrt/winapp/winapp.yaml`. Do not create or maintain that file manually. With the default `packageReferences { restoreNuGetPackages = true }`, `restoreWinAppDependencies` runs `winapp restore`, validates its schema-3 lockfile, and uses the resolved WinMD files for projection generation. The same lockfile's NuGet package roots drive DLL, PRI, asset, and manifest staging after compilation; explicit local `packageReferences { winmd(...) }` inputs remain part of the projection input set.
 
 WinApp CLI provisioning is automatic and does not use WinGet, modify `PATH`, or require an administrator install. The plugin first probes `winAppCliExecutable` (default: `winapp`) and uses it only when it reports the required version, currently `0.6.0`. Otherwise it downloads `Microsoft.Windows.SDK.BuildTools.WinApp` from NuGet, verifies the pinned SHA-512 checksum, and caches the extracted host tools below the Gradle user home. A custom system location can be selected without changing `PATH`:
 

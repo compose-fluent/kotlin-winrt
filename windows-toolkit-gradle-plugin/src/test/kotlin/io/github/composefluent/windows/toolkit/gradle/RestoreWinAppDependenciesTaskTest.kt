@@ -171,7 +171,12 @@ class RestoreWinAppDependenciesTaskTest {
         verifyDisposableRestore(includeRuntimeAssets = false)
     }
 
-    private fun verifyDisposableRestore(includeRuntimeAssets: Boolean) {
+    @Test
+    fun gradle_restore_retains_the_lock_without_copied_native_build_inputs() {
+        verifyDisposableRestore(includeRuntimeAssets = false, includeNativeBuildFiles = false)
+    }
+
+    private fun verifyDisposableRestore(includeRuntimeAssets: Boolean, includeNativeBuildFiles: Boolean = true) {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
         }
@@ -200,6 +205,12 @@ class RestoreWinAppDependenciesTaskTest {
               mkdir .winapp\bin\arm64
               > .winapp\bin\x64\Sample.dll echo x64
               > .winapp\bin\arm64\Sample.dll echo arm64
+              mkdir .winapp\include
+              mkdir .winapp\lib
+              mkdir .winapp\share
+              > .winapp\include\Sample.h echo header
+              > .winapp\lib\Sample.lib echo library
+              > .winapp\share\Sample.txt echo shared
               > .winapp\winmds.lock.json echo {"schema": 3, "packages": []}
               exit /b 0
             )
@@ -221,6 +232,7 @@ class RestoreWinAppDependenciesTaskTest {
             registeredTask.restoreEnabled.set(true)
             registeredTask.includeToolingPackages.set(true)
             registeredTask.includeRuntimeAssets.set(includeRuntimeAssets)
+            registeredTask.includeNativeBuildFiles.set(includeNativeBuildFiles)
             registeredTask.offline.set(false)
         }.get()
 
@@ -231,6 +243,9 @@ class RestoreWinAppDependenciesTaskTest {
         assertTrue(Files.isRegularFile(projectMarker))
         assertEquals(includeRuntimeAssets, Files.isRegularFile(winAppDirectory.resolve("bin/x64/Sample.dll")))
         assertEquals(includeRuntimeAssets, Files.isRegularFile(winAppDirectory.resolve("bin/arm64/Sample.dll")))
+        assertEquals(includeNativeBuildFiles, Files.isRegularFile(winAppDirectory.resolve("include/Sample.h")))
+        assertEquals(includeNativeBuildFiles, Files.isRegularFile(winAppDirectory.resolve("lib/Sample.lib")))
+        assertEquals(includeNativeBuildFiles, Files.isRegularFile(winAppDirectory.resolve("share/Sample.txt")))
         val restoreWorkingDirectory = Path.of(Files.readString(workspace.resolve("restore.cwd")).trim())
             .toAbsolutePath()
             .normalize()
