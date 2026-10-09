@@ -2,6 +2,8 @@ package io.github.composefluent.winrt.ide.templates
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -159,7 +161,8 @@ internal fun WinRTNewXamlForm(kind: WinRTXamlFileKind, directory: String, name: 
             onCreate(); true
         } else false
     }
-    Column(Modifier.width(460.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.width(460.dp).height(340.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (kind.kotlinBase == null) "Resource name" else "Class name")
         TextField(name, enabled = !creating, modifier = Modifier.fillMaxWidth().focusRequester(focus).then(submitOnEnter).semantics { contentDescription = "XAML name" })
         if (kind.kotlinBase != null) {
@@ -169,7 +172,8 @@ internal fun WinRTNewXamlForm(kind: WinRTXamlFileKind, directory: String, name: 
         Text("Location: $directory")
         if (name.text.isNotBlank()) Text("Files: ${name.text}.xaml${if (kind.kotlinBase != null) " + ${name.text}.kt" else ""}")
         if (name.text.isNotBlank()) problem?.let { Text(it) }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        }
+        Row(Modifier.heightIn(min = 32.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DefaultButton(enabled = valid && !creating, onClick = onCreate) { Text(if (creating) "Creating…" else "Create") }
             OutlinedButton(enabled = !creating, onClick = onCancel) { Text("Cancel") }
         }

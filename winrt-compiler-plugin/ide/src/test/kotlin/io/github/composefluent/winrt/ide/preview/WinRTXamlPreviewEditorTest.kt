@@ -36,12 +36,16 @@ class WinRTXamlPreviewEditorTest : BasePlatformTestCase() {
     }
     private val markup = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Text="Preview"/></Page>"""
 
+    fun testPreviewIsNotRegisteredWhileTemporarilyDisabled() {
+        val file = myFixture.addFileToProject("Disabled.xaml", markup).virtualFile
+        assertTrue(FileEditorProviderManager.getInstance().getProviders(project, file).none { it is WinRTXamlPreviewEditorProvider })
+    }
+
     fun testNativeEditorHasPersistentTopRightModeActionsAndKeepsItsXmlDocument() {
         val file = myFixture.addFileToProject("Page.xaml", markup).virtualFile
         // LightFileEditorManager deliberately bypasses editor providers. Use
         // the actual registered provider and its native split-editor factory.
-        val provider = FileEditorProviderManager.getInstance().getProviders(project, file)
-            .filterIsInstance<WinRTXamlPreviewEditorProvider>().single()
+        val provider = WinRTXamlPreviewEditorProvider()
         val editor = provider.createEditor(project, file) as TextEditorWithPreview
         editor.selectNotify()
         try {
