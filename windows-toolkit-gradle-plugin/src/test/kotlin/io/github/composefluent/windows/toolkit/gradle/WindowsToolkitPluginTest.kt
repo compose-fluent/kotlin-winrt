@@ -946,6 +946,62 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun metadata_tasks_follow_the_projection_outputs_of_this_and_the_dependency_projects() {
+        // KGP's metadata compilations read the generated authoring sources of every WinRT source
+        // set, and its metadata transforms inspect the projection KLIBs, including those that the
+        // dependency projects publish, whether or not the consumer applies this plugin. Neither
+        // declares the producer, so the plugin wires them.
+        val root = ProjectBuilder.builder().withName("consumer").build()
+        val library = ProjectBuilder.builder().withName("library").withParent(root).build()
+        val plainConsumer = ProjectBuilder.builder().withName("plain-consumer").withParent(root).build()
+        val plainTransform = plainConsumer.tasks.register(
+            "transformCommonMainDependenciesMetadata",
+            org.gradle.api.DefaultTask::class.java,
+        )
+        for (project in listOf(library, root)) {
+            project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+            project.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64()
+            project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+            val winmd = project.file("Sample.winmd").toPath()
+            WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+                assemblyName = "Sample",
+                interfaces = listOf(WinRTPortableExecutableInterfaceDescriptor(
+                    interfaceName = "Sample.IProbe",
+                    iid = "00000000-0000-0000-0000-000000000001",
+                )),
+                runtimeClasses = emptyList(),
+                outputFile = winmd,
+            )
+            project.extensions.getByType(WindowsExtension::class.java).packageReferences.apply {
+                metadataInputs.set(listOf(winmd.toString()))
+                type("Sample.IProbe")
+            }
+        }
+        root.dependencies.add("commonMainImplementation", library)
+        val metadataCompile = root.tasks.register("compileCommonMainKotlinMetadata", org.gradle.api.DefaultTask::class.java)
+        val metadataTransform = root.tasks.register("transformCommonMainDependenciesMetadata", org.gradle.api.DefaultTask::class.java)
+        val cinteropTransform = root.tasks.register(
+            "transformCommonMainCInteropDependenciesMetadata",
+            org.gradle.api.DefaultTask::class.java,
+        )
+        (library as org.gradle.api.internal.project.ProjectInternal).evaluate()
+        (root as org.gradle.api.internal.project.ProjectInternal).evaluate()
+
+        val generate = root.tasks.getByName("generateWinRTProjections")
+        val ownProjection = root.tasks.getByName("compileWinRTProjectionKotlinMingwX64")
+        val libraryProjection = library.tasks.getByName("compileWinRTProjectionKotlinMingwX64")
+        val compileTask = metadataCompile.get()
+        assertTrue(generate in compileTask.taskDependencies.getDependencies(compileTask))
+        for (transform in listOf(metadataTransform.get(), cinteropTransform.get())) {
+            val predecessors = transform.mustRunAfter.getDependencies(transform)
+            assertTrue(transform.name, ownProjection in predecessors)
+            assertTrue(transform.name, libraryProjection in predecessors)
+        }
+        val plainTask = plainTransform.get()
+        assertTrue(libraryProjection in plainTask.mustRunAfter.getDependencies(plainTask))
+    }
+
+    @Test
     fun runtime_only_multiplatform_native_compilation_keeps_authoring_options_without_projection_support() {
         val project = ProjectBuilder.builder().build()
 
