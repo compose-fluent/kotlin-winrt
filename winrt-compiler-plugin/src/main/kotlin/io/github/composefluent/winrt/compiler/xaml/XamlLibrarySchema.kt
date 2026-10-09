@@ -22,7 +22,6 @@ import org.jetbrains.kotlin.ir.util.isNullable
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.expressions.IrGetEnumValue
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.name.Name
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
@@ -203,6 +202,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
 @OptIn(UnsafeDuringIrConstructionAPI::class)
 private fun xamlLibraryDeclarationAccessible(declaration: IrDeclaration): Boolean {
     val annotation = (declaration as? IrAnnotationContainer)?.getAnnotation(FqName("kotlin.Deprecated")) ?: return true
-    val level = (annotation.getValueArgument(Name.identifier("level")) as? IrGetEnumValue)?.symbol?.owner?.name?.asString()
+    val levelIndex = annotation.symbol.owner.parameters.indexOfFirst { it.name.asString() == "level" }
+    val level = (annotation.arguments.getOrNull(levelIndex) as? IrGetEnumValue)?.symbol?.owner?.name?.asString()
     return level != "ERROR" && level != "HIDDEN"
 }

@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.metadata.projectionInventory
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
 import org.gradle.api.Action
+import org.gradle.api.artifacts.Configuration
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
@@ -74,6 +75,11 @@ import kotlin.io.path.relativeTo
 
 class KotlinWindowsToolkitPlugin : Plugin<Project> {
     override fun apply(project: Project) {
+        listOf("org.jetbrains.kotlin.jvm", "org.jetbrains.kotlin.multiplatform").forEach { kotlinPlugin ->
+            project.pluginManager.withPlugin(kotlinPlugin) {
+                KotlinWinRTCompilerVersions.validate(project.getKotlinPluginVersion())
+            }
+        }
         val extension = project.extensions.create("windows", WindowsExtension::class.java, project)
         val windowsSdkRegistryRoots = windowsSdkRegistryRootsProvider(project)
         extension.windowsSdkVersion.convention(project.providers.of(WindowsSdkVersionValueSource::class.java) {
@@ -3414,10 +3420,7 @@ private fun configureKotlinWinRTCompilerPluginClasspath(project: Project) {
         }
         .configureEach { configuration ->
             if (configuredConfigurations.add(configuration.name)) {
-                project.dependencies.add(configuration.name, kotlinWinRTCompilerPluginDependency(project))
-                kotlinWinRTCompilerPluginRuntimeDependencies(project).forEach { dependency ->
-                    project.dependencies.add(configuration.name, dependency)
-                }
+                addKotlinWinRTCompilerPluginDependencies(project, configuration)
             }
         }
 }
@@ -3427,11 +3430,17 @@ private fun kotlinWinRTCompilerPluginClasspath(project: Project) =
         ?: project.configurations.create(KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION).also { configuration ->
             configuration.isCanBeConsumed = false
             configuration.isCanBeResolved = true
-            project.dependencies.add(configuration.name, kotlinWinRTCompilerPluginDependency(project))
-            kotlinWinRTCompilerPluginRuntimeDependencies(project).forEach { dependency ->
-                project.dependencies.add(configuration.name, dependency)
-            }
+            addKotlinWinRTCompilerPluginDependencies(project, configuration)
         }
+
+private fun addKotlinWinRTCompilerPluginDependencies(project: Project, configuration: Configuration) {
+    // The toolkit may be applied before KGP. Select only when the classpath is requested,
+    // after the consumer's Kotlin plugin is present, and retain project artifact build dependencies.
+    configuration.dependencies.addAllLater(project.provider {
+        (listOf(kotlinWinRTCompilerPluginDependency(project)) + kotlinWinRTCompilerPluginRuntimeDependencies(project))
+            .map(project.dependencies::create)
+    })
+}
 
 /** Fixed plugin dependencies can prepare an import without resolving task-produced artifacts. */
 internal fun kotlinWinRTPreparedGeneratorClasspath(project: Project): org.gradle.api.file.FileCollection {
@@ -3526,15 +3535,18 @@ private fun kotlinWinRTPluginClasspathLocation(project: Project): Any =
     }
 
 private fun kotlinWinRTCompilerPluginDependency(project: Project): Any {
-    kotlinWinRTPluginMetadataArtifact(project, "winrt-compiler-plugin")?.let { artifact ->
+    val kotlinVersion = project.getKotlinPluginVersion()
+    val moduleName = KotlinWinRTCompilerVersions.artifact("winrt-compiler-plugin", kotlinVersion)
+    kotlinWinRTPluginMetadataArtifact(project, moduleName)?.let { artifact ->
         return artifact
     }
-    val localCompilerPlugin = project.rootProject.findProject(":winrt-compiler-plugin")
+    val localCompilerPlugin = project.rootProject.findProject(
+        KotlinWinRTCompilerVersions.projectPath(":winrt-compiler-plugin", kotlinVersion),
+    )
     return if (localCompilerPlugin != null) {
         project.dependencies.project(mapOf("path" to localCompilerPlugin.path))
     } else {
-        kotlinWinRTCompilerPluginClasspathJar(project)
-            ?: "io.github.compose-fluent:winrt-compiler-plugin:${kotlinWinRTPluginVersion()}"
+        "io.github.compose-fluent:$moduleName:${kotlinWinRTPluginVersion()}"
     }
 }
 
@@ -3605,6 +3617,7 @@ private fun kotlinWinRTLocalOrPluginUnderTestDependency(
 }
 
 private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List<Any> {
+    val kotlinVersion = project.getKotlinPluginVersion()
     val runtimeDependencies = mutableListOf<Any>()
     runtimeDependencies += kotlinWinRTCompilerPluginSupportDependency(
         project = project,
@@ -3613,8 +3626,8 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
     )
     runtimeDependencies += kotlinWinRTCompilerPluginSupportDependency(
         project = project,
-        projectPath = ":winrt-compiler-plugin:callsite-lowering",
-        moduleName = "callsite-lowering",
+        projectPath = KotlinWinRTCompilerVersions.projectPath(":winrt-compiler-plugin:callsite-lowering", kotlinVersion),
+        moduleName = KotlinWinRTCompilerVersions.artifact("callsite-lowering", kotlinVersion),
     )
     runtimeDependencies += kotlinWinRTRuntimeClasspathDependency(project)
     runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
@@ -3690,22 +3703,26 @@ private fun kotlinWinRTPluginMetadataGeneratorWorkerClasspath(): List<File>? {
 
 private fun kotlinWinRTPluginUnderTestMetadataFile(): File? {
     val codeSource = kotlinWinRTCodeSourceFile(KotlinWindowsToolkitPlugin::class.java) ?: return null
-    var current = codeSource.canonicalFile
+    val sourcePath = codeSource.canonicalFile.toPath()
+    var current = sourcePath.toFile()
     if (current.isFile) {
         current = current.parentFile ?: return null
     }
     while (current != current.parentFile) {
-        val metadataFile = current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
-        if (metadataFile.isFile) {
-            return metadataFile
+        // Maven caches can live below a build directory (notably TestKit's work directory).
+        // Only this producer's classes/libs outputs may consume its test metadata; otherwise
+        // a published Native consumer would receive the producer's JVM-only runtime JARs.
+        val outputKind = current.toPath().relativize(sourcePath).firstOrNull()?.toString()
+        if (outputKind in setOf("classes", "libs", "resources")) {
+            val metadataFile = current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
+            if (metadataFile.isFile) return metadataFile
         }
         if (current.name == "build") {
             break
         }
         current = current.parentFile ?: break
     }
-    return current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
-        .takeIf(File::isFile)
+    return null
 }
 
 private fun kotlinWinRTPluginMetadataArtifact(project: Project, moduleName: String): Any? {
@@ -3722,7 +3739,9 @@ private fun kotlinWinRTPluginMetadataArtifact(project: Project, moduleName: Stri
         .mapNotNull { path -> path.takeIf(String::isNotBlank)?.let(::File) }
         .firstOrNull { file ->
             val name = file.name
-            name.startsWith(moduleName) && name.endsWith(".jar") && file.isFile
+            (name == "$moduleName.jar" || name.startsWith("$moduleName-")) && name.endsWith(".jar") &&
+                !name.endsWith("-sources.jar") && !name.endsWith("-javadoc.jar") &&
+                ("-kotlin-" in moduleName || !name.startsWith("$moduleName-kotlin-")) && file.isFile
         }
         ?.let(project::files)
 }
@@ -3748,11 +3767,16 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
         ?: return emptyList()
     return moduleNames
         .flatMap { moduleName ->
-            val moduleRoot = when (moduleName) {
+            val baseModuleName = moduleName.substringBefore("-kotlin-")
+            val baseModuleRoot = when (baseModuleName) {
                 "callsite-contract", "callsite-lowering" ->
-                    includedRoot.resolve("winrt-compiler-plugin").resolve(moduleName)
-                else -> includedRoot.resolve(moduleName)
+                    includedRoot.resolve("winrt-compiler-plugin").resolve(baseModuleName)
+                else -> includedRoot.resolve(baseModuleName)
             }
+            val moduleRoot = if (baseModuleName != moduleName) {
+                val variant = if (baseModuleName == "callsite-lowering") "lowering" else "compiler"
+                baseModuleRoot.resolve("$variant-kotlin-${moduleName.substringAfter("-kotlin-").replace('.', '-')}")
+            } else baseModuleRoot
             val prefix = when (moduleName) {
                 "winrt-runtime" -> "winrt-runtime-jvm-"
                 "winrt-authoring" -> "winrt-authoring-jvm-"
@@ -3767,6 +3791,8 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
                         .filter { path ->
                             Files.isRegularFile(path) &&
                                 path.fileName.toString().startsWith(prefix) &&
+                                !path.fileName.toString().endsWith("-sources.jar") &&
+                                !path.fileName.toString().endsWith("-javadoc.jar") &&
                                 path.fileName.toString().endsWith(".jar", ignoreCase = true)
                         }
                         .sorted()
@@ -3823,10 +3849,6 @@ private fun kotlinWinRTCachedCompilerEmbeddable(project: Project, kotlinCompiler
         .firstOrNull { file ->
             file.isFile && file.name == "kotlin-compiler-embeddable-$kotlinCompilerVersion.jar"
         }
-}
-
-private fun kotlinWinRTCompilerPluginClasspathJar(project: Project): Any? {
-    return kotlinWinRTPluginMetadataArtifact(project, "winrt-compiler-plugin")
 }
 
 private fun kotlinWinRTCodeSourceFile(type: Class<*>): File? {

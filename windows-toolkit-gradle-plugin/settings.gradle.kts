@@ -41,6 +41,8 @@ include(
     ":winrt-compiler-plugin",
     ":winrt-compiler-plugin:callsite-contract",
     ":winrt-compiler-plugin:callsite-lowering",
+    ":winrt-compiler-plugin:compiler-kotlin-2-4-20",
+    ":winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20",
 )
 
 project(":winrt-runtime").projectDir = file("../winrt-runtime")
@@ -50,3 +52,5 @@ project(":winrt-generator").projectDir = file("../winrt-generator")
 project(":winrt-compiler-plugin").projectDir = file("../winrt-compiler-plugin")
 project(":winrt-compiler-plugin:callsite-contract").projectDir = file("../winrt-compiler-plugin/callsite-contract")
 project(":winrt-compiler-plugin:callsite-lowering").projectDir = file("../winrt-compiler-plugin/callsite-lowering")
+project(":winrt-compiler-plugin:compiler-kotlin-2-4-20").projectDir = file("../winrt-compiler-plugin/kotlin-2.4.20")
+project(":winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20").projectDir = file("../winrt-compiler-plugin/callsite-lowering/kotlin-2.4.20")

@@ -69,6 +69,7 @@ jobs:
             :winrt-generator:assemble \
             :winrt-authoring:assemble \
             :winrt-compiler-plugin:assemble \
+            :winrt-compiler-plugin:compiler-kotlin-2-4-20:assemble \
             :winrt-projections:assemble \
             --no-configuration-cache
 
@@ -85,10 +86,17 @@ jobs:
             :winrt-authoring:jvmTest \
             :winrt-authoring:mingwX64Test \
             :winrt-compiler-plugin:test \
+            :winrt-compiler-plugin:compiler-kotlin-2-4-20:test \
+            :winrt-compiler-plugin:callsite-lowering:test \
+            :winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20:test \
             :winrt-projections:jvmTest \
             :winrt-projections:mingwX64Test \
             -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.2.0 \
             --no-configuration-cache
+
+      - name: Test Kotlin compiler compatibility
+        shell: pwsh
+        run: ./gradlew.bat -p windows-toolkit-gradle-plugin :compilerCompatibilityTest --no-configuration-cache --max-workers=2
 
       - name: Verify Publish to Maven Local
         # Verify that the publication artifacts can be generated locally without signing.
@@ -101,8 +109,10 @@ jobs:
             :winrt-generator:publishToMavenLocal \
             :winrt-authoring:publishToMavenLocal \
             :winrt-compiler-plugin:publishToMavenLocal \
+            :winrt-compiler-plugin:compiler-kotlin-2-4-20:publishToMavenLocal \
             :winrt-compiler-plugin:callsite-contract:publishToMavenLocal \
             :winrt-compiler-plugin:callsite-lowering:publishToMavenLocal \
+            :winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20:publishToMavenLocal \
             --no-configuration-cache
           ./gradlew -p windows-toolkit-gradle-plugin :publishToMavenLocal --no-configuration-cache
 
@@ -141,7 +151,9 @@ jobs:
             :winrt-generator:publishAllPublicationsToMavenCentralRepository \
             :winrt-authoring:publishAllPublicationsToMavenCentralRepository \
             :winrt-compiler-plugin:publishAllPublicationsToMavenCentralRepository \
+            :winrt-compiler-plugin:compiler-kotlin-2-4-20:publishAllPublicationsToMavenCentralRepository \
             :winrt-compiler-plugin:callsite-contract:publishAllPublicationsToMavenCentralRepository \
             :winrt-compiler-plugin:callsite-lowering:publishAllPublicationsToMavenCentralRepository \
+            :winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20:publishAllPublicationsToMavenCentralRepository \
             --no-configuration-cache
           ./gradlew -p windows-toolkit-gradle-plugin :publishAllPublicationsToMavenCentralRepository --no-configuration-cache
