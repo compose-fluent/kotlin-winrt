@@ -6,10 +6,11 @@ import java.util.zip.ZipInputStream
 internal object WinRTBundledToolchain {
     const val VERSION = "0.1.0-SNAPSHOT"
     const val DIRECTORY = ".kotlin-winrt/toolchain"
-    fun available() = javaClass.getResource("/templates/toolchain.zip") != null
+    fun available() = WinRTBundledToolchain::class.java.getResource("/templates/toolchain.zip") != null
 
     fun files(): Map<String, ByteArray> = buildMap {
-        val stream = requireNotNull(javaClass.getResourceAsStream("/templates/toolchain.zip")) { "The IDE plugin's bundled Kotlin WinRT toolchain is missing. Reinstall the plugin." }
+        // buildMap's receiver belongs to the IDE's Kotlin stdlib, not this plugin.
+        val stream = requireNotNull(WinRTBundledToolchain::class.java.getResourceAsStream("/templates/toolchain.zip")) { "The IDE plugin's bundled Kotlin WinRT toolchain is missing. Reinstall the plugin." }
         ZipInputStream(stream).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break

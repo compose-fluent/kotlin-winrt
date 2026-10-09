@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.ComposedJarTask
 import org.jetbrains.intellij.platform.gradle.tasks.PatchPluginXmlTask
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
 import java.util.zip.ZipFile
@@ -169,6 +170,9 @@ tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
 }
 
 tasks.withType<Test>().configureEach {
+    val pluginJar = tasks.named<ComposedJarTask>("composedJar")
+    dependsOn(pluginJar)
+    systemProperty("winrt.ide.pluginJar", pluginJar.flatMap { it.archiveFile }.get().asFile.absolutePath)
     // Native import indexes the real SDK and included toolchain alongside the
     // distribution's own plugins; a light fixture's 2 GiB budget is insufficient.
     if (providers.gradleProperty("winrt.ide.importProject").isPresent || providers.gradleProperty("winrt.ide.sdkPreviewProject").isPresent) maxHeapSize = "4g"

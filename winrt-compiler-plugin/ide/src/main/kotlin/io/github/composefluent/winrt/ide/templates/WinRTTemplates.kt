@@ -334,7 +334,9 @@ object WinRTTemplates {
     """.trimIndent()
 
     private fun applicationAssets(): Map<String, ByteArray> = buildMap {
-        val resource = requireNotNull(javaClass.getResourceAsStream("/templates/application-assets.zip"))
+        val resource = requireNotNull(WinRTTemplates::class.java.getResourceAsStream("/templates/application-assets.zip")) {
+            "The IDE plugin's default application assets are missing. Reinstall the plugin."
+        }
         ZipInputStream(resource).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
