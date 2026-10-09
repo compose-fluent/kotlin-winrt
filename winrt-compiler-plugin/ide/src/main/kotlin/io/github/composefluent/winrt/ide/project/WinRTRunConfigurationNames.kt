@@ -113,7 +113,7 @@ class WinRTRunConfigurationNames(private val project: Project) : Disposable {
         return true
     }
 
-    private fun applicationModule(configuration: ExternalSystemRunConfiguration, modules: List<WinRTModuleData>): WinRTModuleData? {
+    internal fun applicationModule(configuration: ExternalSystemRunConfiguration, modules: List<WinRTModuleData>): WinRTModuleData? {
         val execution = configuration.settings
         if (execution.externalSystemIdString != GradleConstants.SYSTEM_ID.id || execution.taskNames.size != 1) return null
         val task = execution.taskNames.single()

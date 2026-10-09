@@ -11,6 +11,19 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 
 class WinRTPreviewTest {
     private val namespaces = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
+    @Test fun visual_tree_selects_the_main_window_without_requiring_a_picker_and_preserves_an_explicit_choice() {
+        val primary = WinRTXamlHotReloadRoot("sample.MainWindow", "MainWindow.xaml", "hash", 0, emptyList())
+        val secondary = primary.copy(className = "sample.SettingsWindow", resourcePath = "SettingsWindow.xaml")
+        val selection = WinRTVisualInspectionSelection()
+        assertSame(primary, selection.resolve(listOf(secondary, primary)))
+        selection.selectRoot(WinRTVisualInspectionSelection.key(secondary))
+        selection.path.value = listOf(0)
+        assertSame(secondary, selection.resolve(listOf(primary, secondary)))
+        selection.reset()
+        assertNull(selection.root.value)
+        assertEquals(emptyList<Int>(), selection.path.value)
+        assertSame(primary, selection.resolve(listOf(secondary, primary)))
+    }
     @Test fun preview_state_uses_the_single_shared_protocol_model_without_compose_abi_fields() {
         // The development wire model belongs to winrt-runtime, also bundled
         // for isolated FIR metadata loading; it is not a Compose UI model.

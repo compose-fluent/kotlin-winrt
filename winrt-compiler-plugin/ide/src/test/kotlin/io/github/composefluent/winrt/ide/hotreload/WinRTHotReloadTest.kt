@@ -3,6 +3,8 @@ package io.github.composefluent.winrt.ide.hotreload
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalog
 import io.github.composefluent.winrt.ide.xaml.WinRTXamlContentMember
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter
+import io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeDescriptor
 import io.github.composefluent.winrt.runtime.*
 import kotlinx.serialization.json.*
 import org.junit.Assert.*
@@ -19,6 +21,31 @@ import java.util.concurrent.TimeUnit
 class WinRTHotReloadTest {
     private val source = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><StackPanel><TextBlock x:Name="Greeting" Text="Hello" Width="100"/></StackPanel></Window>"""
     private fun root(text: String = source) = WinRTXamlHotReloadRoot("probe.Window", "Window.xaml", WinRTHotReloadMarkup.parse(text).hash, 0, listOf("Greeting"))
+
+    @Test fun visual_tree_window_roots_follow_the_metadata_hierarchy_for_custom_window_types() {
+        val folder = Files.createTempDirectory("winrt-window-hierarchy-")
+        val metadata = folder.resolve("Windows.winmd")
+        try {
+            // Use the normalized metadata owner, including the same hierarchy
+            // as Gallery's WindowEx, rather than recognizing class-name suffixes.
+            WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Windows", listOf(
+                WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Window"),
+                WinRTXamlApplicationTypeDescriptor("Sample.WindowEx", "Microsoft.UI.Xaml.Window"),
+                WinRTXamlApplicationTypeDescriptor("Sample.GalleryShell", "Sample.WindowEx"),
+                WinRTXamlApplicationTypeDescriptor("Sample.WindowNamedControl"),
+            ), emptyMap(), metadata, emptyMap())
+            val catalog = WinRTXamlCatalog(WinRTMetadataLoader.load(listOf(metadata)))
+            fun markup(name: String) = WinRTHotReloadMarkup.parse("""<local:$name xmlns:local="using:Sample"/>""")
+            assertTrue(markup("GalleryShell").isWindow(catalog))
+            assertTrue(markup("WindowEx").isWindow(catalog))
+            assertFalse(markup("WindowNamedControl").isWindow(catalog))
+            assertTrue(markup("Unknown").isWindow(catalog, "Sample.WindowEx"))
+            assertTrue(WinRTHotReloadMarkup.parse(source).isWindow(null))
+        } finally {
+            Files.deleteIfExists(metadata)
+            Files.delete(folder)
+        }
+    }
 
     @Test fun literal_changes_decode_xml_and_keep_compiler_fingerprint_and_version() {
         val before = WinRTHotReloadMarkup.parse(source)

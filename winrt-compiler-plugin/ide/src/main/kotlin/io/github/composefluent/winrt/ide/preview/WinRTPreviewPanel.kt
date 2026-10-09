@@ -69,13 +69,13 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
         Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(candidate.projectDirectory).toAbsolutePath().normalize())
     }.getOrDefault(false) }.maxByOrNull { it.projectDirectory.length } } ?: selectedModule
     val declarations by project.service<WinRTXamlSnapshotService>().state.collectAsState()
-    val pages = declarations.values.flatMap { it.declarations.pages }
-    val applicationNames = pages.filter { it.isApplication }.map { it.className }.toSet()
-    val roots = state.roots.filter { it.className !in applicationNames }
+    val roots = state.inspectionRoots
     val root = if (static) roots.firstOrNull { it.className == WinRTXamlHotReloadProtocol.PREVIEW_CLASS } else
-        roots.firstOrNull { WinRTVisualInspectionSelection.key(it) == rootKey } ?: roots.firstOrNull { candidate ->
-            pages.any { it.className == candidate.className && it.baseTypeName == "Microsoft.UI.Xaml.Window" }
-        } ?: roots.firstOrNull()
+        remember(roots, rootKey) { selection.resolve(roots) }
+    LaunchedEffect(root, static) {
+        if (!static && root != null && rootKey != WinRTVisualInspectionSelection.key(root))
+            selection.selectRoot(WinRTVisualInspectionSelection.key(root))
+    }
     var launchName by remember(module?.projectDirectory) { mutableStateOf<String?>(null) }
     val launches = module?.hotReloadLaunches.orEmpty().distinctBy { it.executable }
     val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
@@ -200,7 +200,7 @@ fun WinRTPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Bo
             }
             if (notes.isNotEmpty()) Text("Design values and control defaults replace compiled bindings and event handlers. See preview options for details.")
         } else {
-            WinRTChoice("Loaded component", roots.map { WinRTVisualInspectionSelection.key(it) to it.className.substringAfterLast('.') }, root?.let(WinRTVisualInspectionSelection::key)) { selection.selectRoot(it) }
+            if (roots.size > 1) WinRTChoice("Window", roots.map { WinRTVisualInspectionSelection.key(it) to it.className.substringAfterLast('.') }, root?.let(WinRTVisualInspectionSelection::key)) { selection.selectRoot(it) }
             if ((root?.instances ?: 0) > 1) WinRTChoice("Instance", (0 until root!!.instances).map { it.toString() to "Instance ${it + 1}" }, instance.toString()) {
                 selection.instance.value = it.toInt(); selection.path.value = emptyList()
             }

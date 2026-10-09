@@ -10,6 +10,10 @@ internal class WinRTVisualInspectionSelection {
     val instance = MutableStateFlow(0)
     val path = MutableStateFlow<List<Int>>(emptyList())
     fun selectRoot(value: String) { root.value = value; instance.value = 0; path.value = emptyList() }
+    fun reset() { root.value = null; instance.value = 0; path.value = emptyList() }
+    fun resolve(roots: List<WinRTXamlHotReloadRoot>): WinRTXamlHotReloadRoot? =
+        roots.firstOrNull { key(it) == root.value } ?:
+        roots.firstOrNull { it.className.substringAfterLast('.').equals("MainWindow", true) } ?: roots.firstOrNull()
     companion object {
         fun key(root: WinRTXamlHotReloadRoot) = root.className + "\n" + root.resourcePath
         fun hit(nodes: List<WinRTXamlVisualNode>, x: Double, y: Double): WinRTXamlVisualNode? = nodes.filter { node ->

@@ -33,6 +33,38 @@ import java.util.concurrent.atomic.AtomicReference
 class WinRTHotReloadServiceTest : BasePlatformTestCase() {
     private val markup = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><TextBlock x:Name="Greeting" Text="Hello"/></Window>"""
 
+    fun testIdeLaunchAttachesWithoutAnEarlierToolWindowSessionAndAutomaticallyAppliesEditorChanges() = session { fixture ->
+        val service = fixture.service(WinRTHotReloadLaunchState())
+        service.attach(fixture.module, fixture.module.hotReloadLaunches.single(), fixture.directory)
+        fixture.connected(service)
+        assertTrue(service.automatic.value)
+        assertEquals("probe.Window", service.state.value.inspectionRoots.single().className)
+        assertEquals(fixture.directory.toString(), service.getState().sessionDirectory)
+        val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(fixture.source)!!
+        val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)!!
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            document.setText(markup.replace("Hello", "Edited after IDE Run"))
+        }
+        PlatformTestUtil.waitWithEventsDispatching("Default automatic Hot Reload sends editor changes", {
+            service.state.value.roots.singleOrNull()?.version == 1L && !service.state.value.busy
+        }, 10)
+        assertEquals("Edited after IDE Run", fixture.lastPatch.get()!!.changes.single().literal)
+        assertEquals(1, fixture.patches.get())
+    }
+
+    fun testFailedIdeLaunchCancelsOnlyItsOwnPendingConnection() = session { fixture ->
+        val service = fixture.service(WinRTHotReloadLaunchState())
+        val folder = fixture.directory.parent.resolve(UUID.randomUUID().toString())
+        service.attach(fixture.module, fixture.module.hotReloadLaunches.single(), folder)
+        service.launchFailed(fixture.directory)
+        assertTrue(service.state.value.busy)
+        service.launchFailed(folder)
+        fixture.completedRequests()
+        assertFalse(service.state.value.busy)
+        assertTrue(service.state.value.message, service.state.value.message.contains("failed or stopped"))
+        assertEquals(0, fixture.requests.get())
+    }
+
     fun testInspectionCoalescesNewSelectionsAndKeepsThePendingDesignDocument() = session { fixture ->
         val service = fixture.service()
         service.reconnect(); fixture.connected(service)
@@ -244,8 +276,8 @@ class WinRTHotReloadServiceTest : BasePlatformTestCase() {
         private val activeRequests = AtomicInteger()
         private val liveRoot = AtomicReference(WinRTXamlHotReloadRoot("probe.Window", "Window.xaml",
             WinRTHotReloadMarkup.parse(markup).hash, 0, listOf("Greeting")))
-        private val directory = root.resolve("build/kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}")
-        private val module = WinRTModuleData(":app", root.toString(), root.resolve("build").toString(), "2.4.0", "",
+        val directory = root.resolve("build/kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}")
+        val module = WinRTModuleData(":app", root.toString(), root.resolve("build").toString(), "2.4.0", "",
             emptyList(), emptyList(), emptyList(), emptyList(),
             listOf(WinRTXamlCompilationData("analyzeWinRTXaml", listOf(root.toString()),
                 root.resolve("declarations.json").toString(), root.resolve("input.json").toString(), root.toString(), "")),

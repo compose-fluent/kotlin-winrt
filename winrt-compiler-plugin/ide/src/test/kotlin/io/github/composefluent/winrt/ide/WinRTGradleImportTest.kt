@@ -4,6 +4,8 @@ import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.lookup.LookupManager
 import com.intellij.execution.RunManager
+import com.intellij.execution.ProgramRunnerUtil
+import com.intellij.execution.executors.DefaultRunExecutor
 import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -91,7 +93,10 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
 
     fun testTemplateGradleImportAutomaticallyRegistersApplicationsBeforeWinRTUiOpened() = importTemplate(checkEditor = false)
 
-    private fun importTemplate(checkEditor: Boolean) {
+    fun testIdeRunAutomaticallyConnectsAndAppliesXamlWithoutOpeningTheWinrtToolWindow() =
+        importTemplate(checkEditor = false, runApplication = true)
+
+    private fun importTemplate(checkEditor: Boolean, runApplication: Boolean = false) {
         val requested = System.getProperty("winrt.ide.importProject")
         assumeTrue("Requires a prepared standalone WinUI template", requested != null)
         val root = Path.of(requested).toAbsolutePath().normalize()
@@ -152,6 +157,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             val service = imported.service<WinRTProjectService>()
             assertTrue(service.modules.value.toString(), service.modules.value.any { it.projectPath == ":app" })
             val app = service.modules.value.single { it.projectPath == ":app" }
+            if (runApplication) assertIdeRun(imported, app)
             if (checkEditor) {
                 assertEditingReady(imported, root)
                 assertLiveEditing(imported, root, phase == "import")
@@ -266,6 +272,51 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 ProjectJdkTable.getInstance().allJdks.filterNot { it in previousSdks }
                     .forEach { ProjectJdkTable.getInstance().removeJdk(it) }
             }
+        }
+    }
+
+    private fun assertIdeRun(imported: Project, app: WinRTModuleData) {
+        val settings = RunManager.getInstance(imported).allSettings.single {
+            it.configuration is WinRTApplicationRunConfiguration && it.name.contains("[jvm, unpackaged]")
+        }
+        assertNull("Opening the WinRT tool window must not be a prerequisite", imported.getServiceIfCreated(WinRTHotReloadService::class.java))
+        ProgramRunnerUtil.executeConfiguration(settings, DefaultRunExecutor.getRunExecutorInstance())
+        PlatformTestUtil.waitWithEventsDispatching("Native IDE Run connects automatically to the actual WinUI process", {
+            imported.getServiceIfCreated(WinRTHotReloadService::class.java)?.state?.value?.connected == true
+        }, 300)
+        val hot = imported.service<WinRTHotReloadService>()
+        try {
+            assertTrue(hot.automatic.value)
+            assertTrue(hot.state.value.pid!! > 0)
+            try {
+                PlatformTestUtil.waitWithEventsDispatching("Application finishes constructing its Window", {
+                    hot.state.value.inspectionRoots.any { it.className == "sample.winui.MainWindow" }
+                }, 30)
+            } catch (error: AssertionError) { throw AssertionError("Window state: ${hot.state.value}; sources: ${app.xamlCompilations}", error) }
+            val window = hot.state.value.inspectionRoots.single()
+            assertEquals("sample.winui.MainWindow", window.className)
+            assertTrue(hot.state.value.roots.any { it.className == "sample.winui.App" })
+            val source = Path.of(hot.sourcePath(window)!!)
+            val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source)!!
+            val document = FileDocumentManager.getInstance().getDocument(file)!!
+            val original = document.text
+            try {
+                WriteCommandAction.runWriteCommandAction(imported) {
+                    document.setText(original.replace("Hello from Kotlin WinRT", "Changed by IDE Run Hot Reload"))
+                }
+                PlatformTestUtil.waitWithEventsDispatching("Editor changes reach the actual running WinUI control", {
+                    hot.state.value.roots.any { it.className == window.className && it.version > 0 } && !hot.state.value.busy
+                }, 30)
+                assertTrue(hot.state.value.values.toString(), hot.state.value.values.any { it.property == "Text" && it.value == "Changed by IDE Run Hot Reload" })
+                assertFalse("Run must not open the WinRT tool window", com.intellij.openapi.wm.ToolWindowManager.getInstance(imported)
+                    .getToolWindow("Kotlin WinRT")?.isVisible == true)
+            } finally {
+                hot.automatic.value = false
+                WriteCommandAction.runWriteCommandAction(imported) { document.setText(original) }
+            }
+        } finally {
+            hot.stop()
+            PlatformTestUtil.waitWithEventsDispatching("Validation application stops", { !hot.state.value.busy && hot.state.value.pid == null }, 20)
         }
     }
 
@@ -602,7 +653,8 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 }
             }))
         PlatformTestUtil.waitWithEventsDispatching("Native Gradle import", { done.get() }, 600)
-        assertNull(failure.get(), failure.get())
+        assertNull("${failure.get()}\nCurrent project: ${project.name}:${project.locationHash}; disposed: ${project.isDisposed}; " +
+            "open projects: ${ProjectManagerEx.getInstanceEx().openProjects.map { it.name + ':' + it.locationHash }}", failure.get())
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
         awaitSmart(project)
     }

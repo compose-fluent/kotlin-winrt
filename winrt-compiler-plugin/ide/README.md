@@ -169,6 +169,10 @@ class index within the module's dependency scope. There is no separate list of
 WinUI controls. Enum/Boolean values, namespaces, classes and event handlers are
 completion candidates. Static accessors resolve attached values, including
 getter-only collections such as `VisualStateManager.VisualStateGroups`.
+Tag completion also offers the enclosing type's inherited property elements and
+prefix-qualified attached properties. It matches qualified names, property names
+and camel-word suffixes, so `Backdrop` inside `Window` offers
+`Window.SystemBackdrop`; the same rules apply to SDK and Kotlin control types.
 
 PSI references resolve `x:Class` and event handlers to Kotlin, and descriptors
 navigate custom controls and projected types. Kotlin class gutter markers link
@@ -393,7 +397,13 @@ misspelled keys still produce the normal unresolved-resource diagnostic.
 
 ## Preview and Visual Tree
 
-The Kotlin WinRT tool window contains **Preview** and **Visual Tree** tabs.
+Preview is temporarily disabled: its tool-window tab, XAML editor modes and
+preview actions are not registered. **Visual Tree** remains available and connects
+to applications launched through IDE Run/Debug. Window roots are identified from
+their XAML and metadata inheritance, excluding the Application and nested controls.
+A single Window is selected automatically; multiple Windows expose a picker.
+
+The following describes the retained, disabled preview implementation.
 Live Preview captures a connected development application's actual WinUI content;
 clicking its image selects the deepest visual at that position. Both tabs share
 component, instance and visual selection. The expandable Jewel tree supports
@@ -475,7 +485,15 @@ adapters are shared Kotlin; the development transport currently supports JVM.
 
 ## XAML Hot Reload
 
-The Compose **Hot Reload** tab starts an imported JVM application's
+IDE **Run** and **Debug** automatically connect imported JVM WinUI application
+profiles to XAML Hot Reload. This is enabled by default and can be disabled under
+**Settings → Tools → Kotlin WinRT**. Each execution adds a fresh session directory
+to its native Gradle state without changing the saved configuration's environment.
+The native runner retains build output, debugger settings and cancellation.
+The **Hot Reload** tab provides session status and explicit lifecycle actions;
+opening the tab or pressing Launch is not required for IDE application runs.
+
+The tab can also start an imported JVM application's
 actual Gradle launch task with a fresh development session. Gradle owns the build,
 Run output and build cancellation. The panel applies unsaved XAML document changes
 automatically or on request, reports property results and source versions, and

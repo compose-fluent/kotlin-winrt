@@ -17,6 +17,8 @@
     </dependencies>
     <extensions defaultExtensionNs="com.intellij">
         <configurationType implementation="io.github.composefluent.winrt.ide.run.WinRTApplicationConfigurationType"/>
+        <applicationConfigurable id="KotlinWinRT.Settings" parentId="tools" displayName="Kotlin WinRT"
+                                 instance="io.github.composefluent.winrt.ide.settings.WinRTIdeConfigurable"/>
         <postStartupActivity implementation="io.github.composefluent.winrt.ide.project.WinRTProjectActivity"/>
         <fileType name="WinRT AppX XML" language="XML" extensions="resw;appxmanifest"
                   implementationClass="io.github.composefluent.winrt.ide.resources.WinRTAppxXmlFileType" fieldName="INSTANCE"/>
@@ -61,6 +63,10 @@
         <bundledFirCompilerPluginProvider implementation="io.github.composefluent.winrt.ide.analysis.WinRTBundledFirProvider"/>
         <firCompilerPluginConfigurationProvider implementation="io.github.composefluent.winrt.ide.analysis.WinRTFirConfigurationProvider"/>
     </extensions>
+    <projectListeners>
+        <listener class="io.github.composefluent.winrt.ide.run.WinRTApplicationExecutionListener"
+                  topic="com.intellij.execution.ExecutionListener"/>
+    </projectListeners>
     <actions>
         <action id="KotlinWinRT.NewXamlPage" class="io.github.composefluent.winrt.ide.templates.WinRTNewXamlPageAction"
                 text="XAML Page" description="Create a Kotlin WinRT Page with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">

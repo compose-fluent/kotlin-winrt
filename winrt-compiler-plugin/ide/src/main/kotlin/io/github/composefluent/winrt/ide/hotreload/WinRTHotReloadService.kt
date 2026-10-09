@@ -37,7 +37,8 @@ import java.util.concurrent.atomic.AtomicLong
 data class WinRTHotReloadState(val message: String = "Start a JVM application with XAML Hot Reload to update its properties.",
     val connected: Boolean = false, val busy: Boolean = false, val pid: Long? = null,
     val roots: List<WinRTXamlHotReloadRoot> = emptyList(), val values: List<WinRTXamlHotReloadValue> = emptyList(),
-    val inspection: WinRTXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null)
+    val inspection: WinRTXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
+    val inspectionRoots: List<WinRTXamlHotReloadRoot> = emptyList())
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinRTHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
@@ -137,32 +138,74 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     display.value = WinRTHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
                         else "Building and waiting for the application. See Gradle Run output.", busy = true)
                 }) return@launch
-                withTimeout(10 * 60_000L) {
-                    while (isActive && isCurrent(request)) {
-                        val found = WinRTHotReloadClient.discover(directory!!, if (preview) launch.previewExecutable else launch.executable)
-                        require(found.size <= 1) { "Multiple development processes use this session directory. Stop them before reconnecting." }
-                        val candidate = found.singleOrNull()
-                        if (candidate != null) {
-                            mutex.withLock {
-                                if (!withCurrent(request) { client = candidate; owned = candidate }) {
-                                    candidate.close(); return@withTimeout
-                                }
-                                refresh(candidate, request)
-                                if (sdkPreview) {
-                                    project.service<WinRTXamlCatalogService>().refresh()
-                                    project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
-                                }
-                            }
-                            break
-                        }
-                        delay(750)
-                    }
+                awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable)
+                if (sdkPreview && isCurrent(request)) {
+                    project.service<WinRTXamlCatalogService>().refresh()
+                    project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
                 }
                 watch(request)
             } catch (error: TimeoutCancellationException) {
                 withCurrent(request) { display.value = WinRTHotReloadState("The application did not publish a development session in time. See Gradle Run output.") }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { withCurrent(request) { display.value = WinRTHotReloadState(error.message.orEmpty(), pid = owned?.process?.takeIf { it.isAlive }?.pid()) } }
+        }
+    }
+
+    /** Observe an application already being launched by the IDE's native
+     * runner. This must not schedule another Gradle execution or stop an
+     * application from an earlier Run window. */
+    fun attach(module: WinRTModuleData, launch: WinRTHotReloadLaunchData, sessionDirectory: Path) {
+        if (disposed || project.isDisposed) return
+        require(launch in module.hotReloadLaunches) { "Synchronize Gradle before selecting this application." }
+        val folder = sessionDirectory.toAbsolutePath().normalize()
+        val expected = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload").toAbsolutePath().normalize()
+        require(folder.parent == expected && runCatching { UUID.fromString(folder.fileName.toString()) }.isSuccess) {
+            "The development session does not belong to this module."
+        }
+        val request = beginRequest(WinRTHotReloadState("Building and waiting for the application. See Gradle Run output.", busy = true))
+        withCurrent(request) { savedLaunch = WinRTHotReloadLaunchState(module.projectDirectory, launch.taskName, folder.toString()) }
+        worker = scope.launch(Dispatchers.IO) {
+            try {
+                mutex.withLock {
+                    if (!isCurrent(request)) return@launch
+                    owned?.close(); owned = null
+                    sources = loadSources()
+                    baselines.clear(); attempted.clear(); uncertain = false
+                    selectedModule = module; selectedLaunch = launch; directory = folder
+                    Files.createDirectories(folder)
+                    withCurrent(request) { savedLaunch = WinRTHotReloadLaunchState(module.projectDirectory, launch.taskName, folder.toString()) }
+                }
+                awaitConnection(request, folder, launch.executable)
+                watch(request)
+            } catch (error: TimeoutCancellationException) {
+                withCurrent(request) { display.value = WinRTHotReloadState("The application did not publish a development session in time. See Gradle Run output.") }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { withCurrent(request) { display.value = WinRTHotReloadState(error.message.orEmpty()) } }
+        }
+    }
+
+    fun launchFailed(sessionDirectory: Path) = synchronized(lifecycle) {
+        if (!disposed && savedLaunch.sessionDirectory == sessionDirectory.toAbsolutePath().normalize().toString() &&
+            client == null && display.value.pid == null)
+            beginRequest(WinRTHotReloadState("The Gradle launch failed or stopped. See its Run output."))
+        Unit
+    }
+
+    private suspend fun awaitConnection(request: Long, folder: Path, executable: String) = withTimeout(10 * 60_000L) {
+        while (isActive && isCurrent(request)) {
+            val found = WinRTHotReloadClient.discover(folder, executable)
+            require(found.size <= 1) { "Multiple development processes use this session directory. Stop them before reconnecting." }
+            val candidate = found.singleOrNull()
+            if (candidate != null) {
+                mutex.withLock {
+                    if (!withCurrent(request) { client = candidate; owned = candidate }) {
+                        candidate.close(); return@withTimeout
+                    }
+                    refresh(candidate, request)
+                }
+                return@withTimeout
+            }
+            delay(750)
         }
     }
 
@@ -244,6 +287,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private fun refresh(connection: WinRTHotReloadClient, request: Long) {
         val reply = connection.request()
         if (!isCurrent(request) || client !== connection) return
+        val pages = project.service<io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService>()
+            .state.value.values.flatMap { it.declarations.pages }.associateBy { it.className }
+        val visualRoots = reply.roots.filterNot { root ->
+            pages[root.className]?.isApplication == true || sources.any { it.markup.className == root.className && it.markup.isApplication }
+        }
+        val windows = visualRoots.filter { root -> sources.any { source -> source.markup.className == root.className &&
+            source.markup.isWindow(project.service<WinRTXamlCatalogService>().forFile(source.path), pages[root.className]?.baseTypeName) } }
         val nextBaselines = baselines.toMutableMap()
         if (reply.status == WinRTXamlHotReloadProtocol.APPLIED) {
             val classes = reply.roots.map { it.className }.toSet()
@@ -273,7 +323,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             } else
                 "Source does not match ${missing.joinToString { it.className }}. Rebuild and restart before updating.",
                 connected = reply.status == WinRTXamlHotReloadProtocol.APPLIED, busy = reply.status == WinRTXamlHotReloadProtocol.UNAVAILABLE,
-                pid = connection.process.pid(), roots = reply.roots)
+                pid = connection.process.pid(), roots = reply.roots, inspectionRoots = windows.ifEmpty { visualRoots })
         }
     }
 

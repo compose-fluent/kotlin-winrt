@@ -26,6 +26,17 @@ internal class WinRTHotReloadMarkup private constructor(val text: String, privat
     val isResourceDictionary: Boolean = root.type == Name(WinRTXamlCatalog.PRESENTATION, "ResourceDictionary")
     val hash: String = WinRTXamlDeclarations.sourceFingerprint(text)
 
+    fun isWindow(catalog: WinRTXamlCatalog?, baseTypeName: String? = null): Boolean {
+        if (root.type == Name(WinRTXamlCatalog.PRESENTATION, "Window")) return true
+        val seen = hashSetOf<String>()
+        var type = catalog?.resolve(root.type.uri, root.type.local) ?: baseTypeName?.let { catalog?.types?.get(it) }
+        while (type != null && seen.add(type.qualifiedName)) {
+            if (type.qualifiedName in setOf("Microsoft.UI.Xaml.Window", "Windows.UI.Xaml.Window")) return true
+            type = type.baseTypeName?.let { catalog?.types?.get(it) }
+        }
+        return baseTypeName in setOf("Microsoft.UI.Xaml.Window", "Windows.UI.Xaml.Window")
+    }
+
     private data class Name(val uri: String, val local: String)
     private class XamlElement(val type: Name, val attributes: Map<Name, String>, val content: List<Any>, val node: Element) {
         val elementName get() = attributes[Name(WinRTXamlCatalog.XAML, "Name")] ?: attributes[Name("", "Name")].orEmpty()
