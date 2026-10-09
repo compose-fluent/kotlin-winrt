@@ -48,6 +48,7 @@ val embeddedTools by configurations.creating {
     }
 }
 val toolProjects = listOf(
+    projects.ideModel,
     projects.winrtAuthoring, projects.winrtRuntime, projects.winrtMetadata, projects.winrtGenerator,
     projects.winrtCompilerPlugin, projects.winrtCompilerPlugin.callsiteContract,
     projects.winrtCompilerPlugin.callsiteLowering,
@@ -58,7 +59,6 @@ listOf("compileClasspath", "testCompileClasspath", "testRuntimeClasspath").forEa
 
 dependencies {
     compileOnly(gradleApi())
-    implementation(project(":ide-model"))
     toolProjects.forEach { tool ->
         compileOnly(tool)
         embeddedTools(tool)

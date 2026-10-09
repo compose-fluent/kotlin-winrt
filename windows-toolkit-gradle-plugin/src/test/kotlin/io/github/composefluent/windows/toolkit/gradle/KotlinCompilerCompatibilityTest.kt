@@ -1,11 +1,15 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.ide.model.WinRTIdeModel
+import org.gradle.tooling.GradleConnector
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
+import org.gradle.util.GradleVersion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.util.concurrent.TimeUnit
 import java.nio.file.Files
 import java.nio.file.Path
@@ -14,6 +18,41 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 
 /** CsWinRT SourceGenerator.props builds shared sources against each supported compiler API. */
 class KotlinCompilerCompatibilityTest {
+    @Test
+    fun published_plugin_imports_the_ide_model_without_a_separate_model_dependency() {
+        val fixture = fixture("2.4.0")
+        val repository = requireNotNull(System.getProperty("winrt.test.repository"))
+        // Test the published payload, not TestKit's injected model JAR. Block the
+        // old coordinate even if another local build previously published it.
+        write(fixture, "settings.gradle", """
+            pluginManagement {
+                repositories {
+                    maven { url = uri('$repository'); content { excludeModule 'io.github.composefluent.winrt', 'ide-model' } }
+                    mavenCentral { content { excludeModule 'io.github.composefluent.winrt', 'ide-model' } }
+                    gradlePluginPortal { content { excludeModule 'io.github.composefluent.winrt', 'ide-model' } }
+                }
+            }
+            rootProject.name = 'published-ide-model'
+        """)
+        Files.writeString(fixture.resolve("build.gradle"), "\n" + """
+            tasks.configureEach {
+                doFirst { throw new GradleException('IDE import must not execute tasks') }
+            }
+        """.trimIndent(), java.nio.file.StandardOpenOption.APPEND)
+        GradleConnector.newConnector().forProjectDirectory(fixture.toFile())
+            .useGradleVersion(GradleVersion.current().version).connect().use { connection ->
+                val model = connection.model(WinRTIdeModel::class.java)
+                    .setJavaHome(File(System.getProperty("java.home")))
+                    .withArguments("--no-configuration-cache", "--max-workers=1", "--stacktrace").get()
+                assertTrue(model.isEnabled)
+                assertEquals(WinRTIdeModel.SCHEMA_VERSION, model.schemaVersion)
+                assertEquals(":", model.projectPath)
+                assertEquals("2.4.0", model.kotlinVersion)
+                assertTrue(model.sourceSets.any { it.name == "main" })
+                assertTrue(model.targets.any { it.platform == "jvm" })
+            }
+    }
+
     @Test
     fun inactive_published_plugin_resolves_on_jdk_21_and_reuses_configuration_cache() {
         val fixture = fixture("2.4.20")

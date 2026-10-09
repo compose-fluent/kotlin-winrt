@@ -7,6 +7,12 @@ JVM 25 WinRT runtime. Its JVM getter signatures remain compatible with Gradle's
 model proxies. The IDE consumes ordinary configuration facts rather than
 loading the projection runtime or generator in its process.
 
+The Gradle plugin embeds this module's classes in its own JAR, following the
+build-support payload ownership in `.cswinrt/nuget/Microsoft.Windows.CsWinRT.nuspec`.
+Its published POM and Gradle module metadata do not depend on a separate
+`ide-model` artifact. The IDE still consumes the shared module directly so both
+ends use the same JVM 17 transport contract.
+
 The toolkit registers the model builder when its plugin is applied. Request the
 model by its fully qualified interface name. Projects without a `windows`
 extension return `enabled = false`. Consumers must check the schema version.
