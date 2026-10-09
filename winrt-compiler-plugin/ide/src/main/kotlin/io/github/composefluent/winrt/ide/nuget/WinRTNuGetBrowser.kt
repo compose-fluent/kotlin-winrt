@@ -13,8 +13,15 @@ import org.w3c.dom.Element
 
 class WinRTNuGetSource(val name: String, val address: String, val config: Path?, val requiresProvider: Boolean = false,
     private val authorization: String? = null) {
+    /** A Windows drive/UNC path is a file location, not an opaque URI scheme. */
+    val uri: URI get() = when {
+        address.startsWith("https://", true) || address.startsWith("http://", true) || address.startsWith("file:", true) -> URI(address)
+        else -> Path.of(address).toAbsolutePath().normalize().toUri()
+    }
+    val localDirectory: Path? get() = uri.takeIf { it.scheme == "file" }?.let(Path::of)
     internal fun authorize(endpoint: URI): String? {
-        val origin = URI(address)
+        if (authorization == null) return null
+        val origin = uri
         return authorization?.takeIf { origin.scheme == "https" && endpoint.scheme == origin.scheme &&
             endpoint.host.equals(origin.host, true) && endpoint.port == origin.port }
     }
@@ -63,7 +70,11 @@ object WinRTNuGetSources {
                                     val address = expand(item.getAttribute("value"))
                                     val uri = runCatching { URI(address) }.getOrNull()
                                     require(uri?.userInfo == null) { "Source '$key' contains credentials in its URL. Use NuGet source credentials." }
-                                    val value = if (uri?.scheme in listOf("https", "http")) address else file.parent.resolve(address).normalize().toString()
+                                    val value = when {
+                                        uri?.scheme in listOf("https", "http") -> address
+                                        address.startsWith("file:", true) -> Path.of(URI(address)).toString()
+                                        else -> file.parent.resolve(address).normalize().toString()
+                                    }
                                     sources[key.lowercase()] = WinRTNuGetSource(key, value, file)
                                 }
                             }
@@ -108,7 +119,19 @@ data class WinRTNuGetDependencyGroup(val framework: String, val dependencies: Li
 data class WinRTNuGetPackageDetails(val description: String, val authors: String, val projectUrl: String, val license: String,
     val published: String, val dependencies: List<WinRTNuGetDependencyGroup>, val deprecation: String = "")
 
-class WinRTNuGetBrowser(private val source: WinRTNuGetSource, private val load: (URI) -> JsonObject = { endpoint ->
+class WinRTNuGetBrowser(private val source: WinRTNuGetSource,
+    private val loadText: (URI) -> String? = { endpoint ->
+        require(endpoint.scheme in listOf("https", "http") && endpoint.userInfo == null) { "Invalid README URL." }
+        try {
+            HttpRequests.request(endpoint.toString()).connectTimeout(15_000).readTimeout(15_000).followRedirects(false)
+                .accept("text/markdown, text/plain").tuner { source.authorize(endpoint)?.let { value -> it.setRequestProperty("Authorization", value) } }
+                .connect { request -> request.inputStream.use { stream ->
+                    val bytes = stream.readNBytes(2 * 1024 * 1024 + 1)
+                    require(bytes.size <= 2 * 1024 * 1024) { "The package README exceeds 2 MiB." }
+                    bytes.toString(Charsets.UTF_8)
+                } }
+        } catch (error: HttpRequests.HttpStatusException) { if (error.statusCode == 404) null else throw error }
+    }, private val load: (URI) -> JsonObject = { endpoint ->
     require(endpoint.scheme in listOf("https", "http")) { "This source requires the NuGet CLI. Enter an exact package ID/version to add it." }
     require(endpoint.userInfo == null) { "Credentials in source URLs are not supported." }
     HttpRequests.request(endpoint.toString()).connectTimeout(15_000).readTimeout(15_000).followRedirects(false)
@@ -119,17 +142,20 @@ class WinRTNuGetBrowser(private val source: WinRTNuGetSource, private val load: 
             JsonParser.parseString(bytes.toString(Charsets.UTF_8)).asJsonObject
         }
 }) {
-    private val index by lazy { load(URI(source.address)) }
-    private fun resource(name: String): URI = index["resources"].asJsonArray.filter { value ->
+    private val local by lazy { source.localDirectory?.let(::WinRTNuGetLocalFeed) }
+    private val index by lazy { load(source.uri) }
+    private fun resourceAddress(name: String): String? = index["resources"].asJsonArray.filter { value ->
         val type = value.asJsonObject["@type"]
         (if (type.isJsonArray) type.asJsonArray.map { it.asString } else listOf(type.asString)).any { it.substringBefore('/') == name }
-    }.maxByOrNull { it.asJsonObject["@type"].toString().contains("3.6.0") }?.asJsonObject?.get("@id")?.asString?.let { URI(source.address).resolve(it) }
+    }.maxByOrNull { it.asJsonObject["@type"].toString().contains("3.6.0") }?.asJsonObject?.get("@id")?.asString
+    private fun resource(name: String): URI = resourceAddress(name)?.let { source.uri.resolve(it) }
         ?: error("Source '${source.name}' does not expose the NuGet V3 $name service.")
 
     fun search(query: String, prerelease: Boolean, skip: Int = 0): List<WinRTNuGetSearchResult> = searchPage(query, prerelease, skip).packages
 
     fun searchPage(query: String, prerelease: Boolean, skip: Int = 0): WinRTNuGetSearchPage {
         require(skip >= 0)
+        local?.let { return it.search(query, prerelease, skip) }
         val endpoint = resource("SearchQueryService").toString()
         val separator = if ('?' in endpoint) '&' else '?'
         val result = load(URI("$endpoint${separator}q=${URLEncoder.encode(query, Charsets.UTF_8)}&prerelease=$prerelease&semVerLevel=2.0.0&skip=$skip&take=40"))
@@ -145,6 +171,7 @@ class WinRTNuGetBrowser(private val source: WinRTNuGetSource, private val load: 
 
     fun versions(id: String, prerelease: Boolean): List<String> {
         require(Regex("[A-Za-z0-9_.-]+").matches(id)) { "Enter a valid package ID." }
+        local?.let { return it.versions(id, prerelease) }
         val root = resource("PackageBaseAddress").toString().trimEnd('/')
         return load(URI("$root/${id.lowercase()}/index.json"))["versions"].asJsonArray.map { it.asString }
             .filter { prerelease || '-' !in it }.sortedWith { a, b -> WinRTNuGetVersion.compare(b, a) }
@@ -153,6 +180,7 @@ class WinRTNuGetBrowser(private val source: WinRTNuGetSource, private val load: 
     /** Registration leaf -> catalog entry, including feeds that publish the entry as a URL. */
     fun details(id: String, version: String): WinRTNuGetPackageDetails {
         require(Regex("[A-Za-z0-9_.-]+").matches(id)) { "Enter a valid package ID." }
+        local?.let { return it.details(id, version) }
         val normalized = WinRTNuGetVersion.normalized(version)
         val root = resource("RegistrationsBaseUrl").toString().trimEnd('/')
         val leaf = load(URI("$root/${id.lowercase()}/${normalized.lowercase()}.json"))
@@ -167,6 +195,18 @@ class WinRTNuGetBrowser(private val source: WinRTNuGetSource, private val load: 
         return WinRTNuGetPackageDetails(entry.text("description"), entry.text("authors"), entry.text("projectUrl"),
             entry.text("licenseExpression").ifEmpty { entry.text("licenseUrl") }, entry.text("published"), groups,
             entry["deprecation"]?.takeUnless { it.isJsonNull }?.asJsonObject?.text("message").orEmpty())
+    }
+
+    /** NuGet's version-specific ReadmeUriTemplate avoids downloading a whole SDK package. */
+    fun readme(id: String, version: String, restored: Path? = null): String? {
+        require(Regex("[A-Za-z0-9_.-]+").matches(id)) { "Enter a valid package ID." }
+        val normalized = WinRTNuGetVersion.normalized(version)
+        restored?.let { WinRTNuGetLocalFeed.readRestoredReadme(it)?.let { text -> return text } }
+        local?.let { return it.readme(id, normalized) }
+        val template = resourceAddress("ReadmeUriTemplate") ?: return null
+        val endpoint = source.uri.resolve(template.replace("{lower_id}", id.lowercase(java.util.Locale.ROOT))
+            .replace("{lower_version}", normalized.lowercase(java.util.Locale.ROOT)))
+        return loadText(endpoint)?.takeIf(String::isNotBlank)
     }
 
     private fun JsonObject.text(name: String): String = get(name)?.takeUnless { it.isJsonNull }?.let {

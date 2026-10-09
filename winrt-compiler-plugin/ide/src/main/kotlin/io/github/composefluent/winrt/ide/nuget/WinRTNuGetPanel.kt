@@ -26,6 +26,8 @@ import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.ui.*
 import kotlinx.coroutines.*
 import org.jetbrains.jewel.ui.component.*
+import org.jetbrains.jewel.markdown.Markdown
+import org.jetbrains.jewel.intui.markdown.bridge.ProvideMarkdownStyling
 import org.jetbrains.plugins.gradle.util.GradleConstants
 import java.nio.file.Path
 
@@ -54,6 +56,9 @@ fun WinRTNuGetPanel(project: Project) {
     var failure by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
     var loadingDetails by remember { mutableStateOf(false) }
+    var readme by remember { mutableStateOf<String?>(null) }
+    var readmeError by remember { mutableStateOf<String?>(null) }
+    var loadingReadme by remember { mutableStateOf(false) }
     var prerelease by remember { mutableStateOf(false) }
     var projection by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("Browse") }
@@ -89,14 +94,16 @@ fun WinRTNuGetPanel(project: Project) {
             searching = true; failure = null
             try {
                 val page = runInterruptible(Dispatchers.IO) { WinRTNuGetBrowser(feed).searchPage(text, preview, offset) }
-                results = (if (append) results + page.packages else page.packages).distinctBy { it.id.lowercase() }; total = page.total
+                if (generation == searchGeneration) {
+                    results = (if (append) results + page.packages else page.packages).distinctBy { it.id.lowercase() }; total = page.total
+                }
             } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { failure = error.message }
+            catch (error: Exception) { if (generation == searchGeneration) failure = error.message }
             finally { if (generation == searchGeneration) searching = false }
         }
     }
     LaunchedEffect(module?.projectDirectory, source?.address, prerelease, tab, searchRevision, query.text) {
-        searchJob?.cancel()
+        searchGeneration++; searchJob?.cancel(); searching = false; failure = null
         if (tab == "Browse") { delay(350); search() }
     }
     LaunchedEffect(source?.address, packageId, prerelease) {
@@ -116,6 +123,18 @@ fun WinRTNuGetPanel(project: Project) {
             catch (error: CancellationException) { throw error }
             catch (error: Exception) { detailsError = "Version details unavailable: ${error.message}" }
             finally { loadingDetails = false }
+        }
+    }
+    LaunchedEffect(source?.address, packageId, version, installed?.root) {
+        readme = null; readmeError = null; loadingReadme = false
+        if (source != null && packageId.isNotEmpty() && version.isNotEmpty()) {
+            loadingReadme = true
+            try {
+                val restored = installed?.takeIf { WinRTNuGetVersion.compare(it.version, version) == 0 }?.root
+                readme = runInterruptible(Dispatchers.IO) { WinRTNuGetBrowser(source).readme(packageId, version, restored) }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { readmeError = "README unavailable: ${error.message}" }
+            finally { loadingReadme = false }
         }
     }
     LaunchedEffect(installed, rid) {
@@ -252,6 +271,8 @@ fun WinRTNuGetPanel(project: Project) {
                             content.copyLocal.forEach { (file, target) -> Text("$target ← ${file.fileName}") }
                         }
                     } }
+                    Divider(Orientation.Horizontal)
+                    WinRTNuGetReadme(project, readme, loadingReadme, readmeError)
                 }
             }
         }
@@ -278,6 +299,23 @@ fun WinRTNuGetPanel(project: Project) {
         if (manual) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextField(manualId, placeholder = { Text("Exact package ID") }, modifier = Modifier.weight(1f))
             DefaultButton(enabled = manualId.text.isNotBlank(), onClick = { select(manualId.text.toString().trim(), "") }) { Text("Find versions") }
+        }
+    }
+}
+
+@Composable
+internal fun WinRTNuGetReadme(project: Project, content: String?, loading: Boolean, error: String?) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("README", fontWeight = FontWeight.SemiBold)
+        when {
+            loading -> Text("Loading README…")
+            error != null -> Text(error)
+            content == null -> Text("This package version does not include a README.")
+            else -> ProvideMarkdownStyling(project) {
+                Markdown(content, onUrlClick = { url ->
+                    if (url.startsWith("https://") || url.startsWith("http://")) BrowserUtil.browse(url)
+                })
+            }
         }
     }
 }

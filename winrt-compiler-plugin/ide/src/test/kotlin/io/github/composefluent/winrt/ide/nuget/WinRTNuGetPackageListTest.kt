@@ -24,6 +24,23 @@ import java.nio.file.Path
 /** Offscreen interactions with the production Jewel package list. */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalJewelApi::class)
 class WinRTNuGetPackageListTest : BasePlatformTestCase() {
+    fun testReadmeUsesTheIdeMarkdownRenderer() {
+        val scene = ImageComposeScene(720, 600, Density(1f))
+        try {
+            scene.setContent { SwingBridgeTheme {
+                Box(Modifier.fillMaxSize().background(JewelTheme.globalColors.panelBackground)) {
+                    WinRTNuGetReadme(project, "# Package guide\n\nUse **native controls**.\n\n- Install the package\n- Add a reference", false, null)
+                }
+            } }
+            kotlinx.coroutines.runBlocking {
+                repeat(30) { scene.render().close(); kotlinx.coroutines.delay(20) }
+            }
+            assertNotNull(scene.textNode("Package guide"))
+            assertFalse(scene.nodes().any { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text.contains("**") } })
+            screenshot(scene, "nuget-readme.png")
+        } finally { scene.close() }
+    }
+
     fun testWholeRowsSelectPackagesButGroupHeadersDoNot() {
         var selected by mutableStateOf("Direct.Package")
         val packages = listOf(

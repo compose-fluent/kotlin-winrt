@@ -9,6 +9,52 @@ import java.net.URI
 import java.nio.file.Files
 
 class WinRTNuGetTest : BasePlatformTestCase() {
+    fun testWindowsLocalSourceAndHierarchicalPackagesWithReadme() {
+        val root = Files.createTempDirectory("winrt-local-feed-")
+        try {
+            val feed = Files.createDirectories(root.resolve("Program Files (x86)/Microsoft SDKs/NuGetPackages"))
+            fun archive(version: String) {
+                val folder = Files.createDirectories(feed.resolve("sample/$version"))
+                java.util.zip.ZipOutputStream(Files.newOutputStream(folder.resolve("Sample.$version.nupkg"))).use { zip ->
+                    mapOf("Sample.nuspec" to """<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"><metadata><id>Sample</id><version>$version</version><authors>Author</authors><description>Local controls</description><readme>docs/README.md</readme><dependencies><group targetFramework="native"><dependency id="Dependency" version="[1.0,2.0)"/></group></dependencies></metadata></package>""",
+                        "docs/README.md" to "# Sample $version\n\nLocal **README**.").forEach { (name, text) ->
+                        zip.putNextEntry(java.util.zip.ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry()
+                    }
+                }
+            }
+            archive("1.0.0"); archive("2.0.0-beta")
+            Files.writeString(root.resolve("NuGet.Config"), """<configuration><packageSources><clear/><add key="offline" value="${feed}"/></packageSources></configuration>""")
+            val source = WinRTNuGetSources.read(root, null, null).single()
+            assertEquals(feed, source.localDirectory)
+            assertNull(source.authorize(URI("https://api.nuget.org/query")))
+            val browser = WinRTNuGetBrowser(source)
+            assertEquals("1.0.0", browser.search("controls", false).single().version)
+            assertEquals(listOf("2.0.0-beta", "1.0.0"), browser.versions("sample", true))
+            assertEquals("native", browser.details("Sample", "1.0").dependencies.single().framework)
+            assertTrue(browser.readme("Sample", "1.0.0")!!.contains("# Sample 1.0.0"))
+            assertEquals("1.0.0", WinRTNuGetBrowser(WinRTNuGetSource("file", feed.toUri().toString(), null)).search("", false).single().version)
+            assertEquals("file", WinRTNuGetSource("VS offline", "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages", null).uri.scheme)
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    fun testVersionReadmeTemplateNormalizesAndRestoredReadmeStaysInPackage() {
+        val requests = mutableListOf<URI>()
+        val browser = WinRTNuGetBrowser(WinRTNuGetSource("test", "https://feed.test/index.json", null), loadText = {
+            requests += it; "# Native package\n\n```kotlin\nval value = 1\n```"
+        }) { JsonParser.parseString("""{"resources":[{"@type":"ReadmeUriTemplate/6.13.0","@id":"https://feed.test/readme/{lower_id}/{lower_version}"}]}""").asJsonObject }
+        assertTrue(browser.readme("Sample.Controls", "2.0.0.0+build")!!.startsWith("# Native"))
+        assertEquals("/readme/sample.controls/2.0.0", requests.single().path)
+        val root = Files.createTempDirectory("winrt-readme-")
+        try {
+            Files.writeString(root.resolve("sample.nuspec"), """<package><metadata><readme>README.md</readme></metadata></package>""")
+            Files.writeString(root.resolve("README.md"), "# Restored")
+            assertEquals("# Restored", browser.readme("Sample", "2.0", root))
+            assertEquals(1, requests.size)
+            Files.writeString(root.resolve("sample.nuspec"), """<package><metadata><readme>../outside.md</readme></metadata></package>""")
+            assertNotNull(runCatching { browser.readme("Sample", "2.0", root) }.exceptionOrNull())
+        } finally { root.toFile().deleteRecursively() }
+    }
+
     fun testDependencyUpdatePreservesOptionsAndUnsavedSourceWithUndo() {
         val original = """
             windows {
@@ -120,8 +166,10 @@ class WinRTNuGetTest : BasePlatformTestCase() {
             exchange.sendResponseHeaders(200, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }
         }
-        respond("/index.json", """{"resources":[{"@type":"SearchQueryService/3.5.0","@id":"$address/query"}]}""")
+        respond("/index.json", """{"resources":[{"@type":"SearchQueryService/3.5.0","@id":"$address/query"},{"@type":"ReadmeUriTemplate/6.13.0","@id":"$address/readme/{lower_id}/{lower_version}"}]}""")
         respond("/query", """{"data":[{"id":"Sample","version":"1.0.0","authors":[],"description":"Local HTTP"}]}""")
+        respond("/readme/sample/1.0.0", "# Package README")
+        server.createContext("/readme/missing/1.0.0") { it.sendResponseHeaders(404, -1); it.close() }
         server.createContext("/redirect") { exchange ->
             exchange.responseHeaders.add("Location", "$address/index.json")
             exchange.sendResponseHeaders(302, -1); exchange.close()
@@ -129,6 +177,8 @@ class WinRTNuGetTest : BasePlatformTestCase() {
         server.start()
         try {
             assertEquals("Sample", WinRTNuGetBrowser(WinRTNuGetSource("local", "$address/index.json", null)).search("Sample", false).single().id)
+            assertEquals("# Package README", WinRTNuGetBrowser(WinRTNuGetSource("local", "$address/index.json", null)).readme("Sample", "1.0"))
+            assertNull(WinRTNuGetBrowser(WinRTNuGetSource("local", "$address/index.json", null)).readme("Missing", "1.0"))
             assertNotNull(runCatching { WinRTNuGetBrowser(WinRTNuGetSource("local", "$address/redirect", null)).search("Sample", false) }.exceptionOrNull())
         }
         finally { server.stop(0) }
