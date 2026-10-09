@@ -13,10 +13,12 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 import org.gradle.process.ExecOperations
 import java.io.FileOutputStream
 import javax.inject.Inject
 
+@DisableCachingByDefault(because = "Runs an application against the local Windows environment")
 abstract class RunWinAppHostTask @Inject constructor(
     private val execOperations: ExecOperations,
 ) : DefaultTask() {
@@ -27,6 +29,7 @@ abstract class RunWinAppHostTask @Inject constructor(
     }
 
     @get:InputFile
+    @get:PathSensitive(PathSensitivity.ABSOLUTE)
     abstract val hostExecutable: RegularFileProperty
 
     @get:InputDirectory

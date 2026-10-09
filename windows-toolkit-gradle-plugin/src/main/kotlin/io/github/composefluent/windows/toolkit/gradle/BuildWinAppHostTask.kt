@@ -18,12 +18,14 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.inject.Inject
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
+@DisableCachingByDefault(because = "Uses the installed Windows C/C++ toolchain")
 abstract class BuildWinAppHostTask : DefaultTask() {
     @get:Inject
     protected abstract val providers: ProviderFactory

@@ -15,12 +15,14 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 
 /** Mirrors VC ResourceCompile and C# ApplicationIcon: one ICO becomes Win32 ICON/GROUP_ICON resources. */
+@DisableCachingByDefault(because = "Uses the installed Windows resource compiler")
 abstract class CompileWinAppIconTask : DefaultTask() {
     @get:Inject
     protected abstract val providers: ProviderFactory

@@ -12,7 +12,9 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
+@DisableCachingByDefault(because = "Verification task has no cacheable outputs")
 abstract class VerifyWinRTNativeAuthoringComponentFixtureTask : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -159,6 +161,7 @@ abstract class VerifyWinRTNativeAuthoringComponentFixtureTask : DefaultTask() {
     }
 }
 
+@DisableCachingByDefault(because = "Verification task has no cacheable outputs")
 abstract class VerifyWinRTNativeAuthoringConsumerFixtureTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
