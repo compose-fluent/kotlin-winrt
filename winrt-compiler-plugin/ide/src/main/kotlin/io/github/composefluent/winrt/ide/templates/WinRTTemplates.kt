@@ -54,6 +54,50 @@ data class WinRTTemplateOptions(
 
 /** Templates consume the Gradle/runtime/compiler owners; no generated projection is maintained here. */
 object WinRTTemplates {
+    /** Normal projects resolve the packaged Maven toolchain without a source checkout. */
+    fun project(options: WinRTTemplateOptions): Map<String, ByteArray> {
+        options.validate()
+        val module = primaryModule(options.kind)
+        val repository = "${WinRTBundledToolchain.DIRECTORY}/repository"
+        val groups = listOf("io.github.compose-fluent", "io.github.compose-fluent.windows-toolkit", "io.github.composefluent.winrt")
+            .joinToString("; ") { "includeGroup(${kotlinString(it)})" }
+        return buildMap {
+            putAll(WinRTBundledToolchain.files())
+            text("settings.gradle.kts", """
+                pluginManagement {
+                    repositories {
+                        maven(url = uri("$repository")) { content { $groups } }
+                        mavenCentral()
+                        gradlePluginPortal()
+                    }
+                    plugins {
+                        kotlin("jvm") version "2.4.0"
+                        id("io.github.compose-fluent.windows-toolkit") version "${WinRTBundledToolchain.VERSION}"
+                    }
+                }
+                rootProject.name = ${kotlinString(options.name)}
+                include(":$module")
+                ${if (module != "winrt-projections") "include(\":winrt-projections\")" else ""}
+            """.trimIndent())
+            text("build.gradle.kts", """
+                allprojects {
+                    repositories {
+                        exclusiveContent {
+                            forRepository { maven(url = rootProject.uri("$repository")) }
+                            filter { $groups }
+                        }
+                        mavenCentral()
+                    }
+                }
+            """.trimIndent())
+            text("gradle.properties", "org.gradle.jvmargs=-Xmx4g\nkotlin.compiler.execution.strategy=in-process")
+            text(".gitignore", ".gradle/\n.kotlin/\n.idea/\n**/build/\n*.iml")
+            module(options.copy(name = module, projectionModule = ":winrt-projections")).forEach { (path, bytes) -> put("$module/$path", bytes) }
+            if (module != "winrt-projections") module(options.copy(name = "winrt-projections", kind = WinRTTemplateKind.ProjectionLibrary,
+                dependencies = emptyList(), projectionModule = "", includeWinUI = options.kind.xaml)).forEach { (path, bytes) -> put("winrt-projections/$path", bytes) }
+        }
+    }
+
     fun validateToolchain(checkout: Path) {
         listOf("windows-toolkit-gradle-plugin/settings.gradle.kts", "gradlew.bat", "gradlew",
             "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties").forEach {

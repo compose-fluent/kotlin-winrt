@@ -25,6 +25,16 @@ fun resolveWinRTVersion() = providers
 group = "io.github.compose-fluent"
 version = resolveWinRTVersion().get()
 
+// IDE distributions carry the normal Maven publications for standalone JVM
+// projects. This repository is local; it never publishes to an external feed.
+extensions.configure<org.gradle.api.publish.PublishingExtension> {
+    repositories.maven {
+        name = "IdeToolchain"
+        url = uri(providers.gradleProperty("winrt.ide.repository").orElse(
+            rootProject.layout.projectDirectory.dir("../.gradle/ide-toolchain/repository").asFile.absolutePath).get())
+    }
+}
+
 mavenPublishing {
     publishToMavenCentral()
     // Sign only when a real in-memory key and password are present. GitHub Actions maps

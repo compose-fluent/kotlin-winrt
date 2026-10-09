@@ -126,6 +126,41 @@ tasks.processResources {
     if (!androidStudioSdk) exclude("META-INF/kotlin-winrt-android-studio.xml")
 }
 
+val toolchainRepository = layout.projectDirectory.dir("../../.gradle/ide-toolchain/repository")
+val bundleWinRTToolchain by tasks.registering(Zip::class) {
+    val producer = gradle.includedBuild("winrt-toolchain")
+    dependsOn(producer.task(":publishPluginMavenPublicationToIdeToolchainRepository"),
+        producer.task(":publishKotlinWindowsToolkitPluginMarkerMavenPublicationToIdeToolchainRepository"),
+        producer.task(":ide-model:publishMavenPublicationToIdeToolchainRepository"))
+    listOf("winrt-runtime", "winrt-authoring").forEach { module ->
+        listOf("Jvm", "KotlinMultiplatform").forEach { publication ->
+            dependsOn(producer.task(":$module:publish${publication}PublicationToIdeToolchainRepository"))
+        }
+    }
+    listOf("winrt-metadata", "winrt-generator", "winrt-compiler-plugin",
+        "winrt-compiler-plugin:callsite-contract", "winrt-compiler-plugin:callsite-lowering").forEach {
+        dependsOn(producer.task(":$it:publishMavenPublicationToIdeToolchainRepository"))
+    }
+    archiveFileName.set("toolchain.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("bundled-toolchain/templates"))
+    from(toolchainRepository) { into("repository") }
+    from(layout.projectDirectory.dir("../..")) {
+        include("gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties")
+    }
+    // Keep just the most recently published timestamp for each SNAPSHOT, so
+    // rebuilding distributions does not accumulate old toolchains in the ZIP.
+    eachFile {
+        if (relativePath.segments.firstOrNull() == "repository" && name.matches(Regex(".*-\\d{8}\\.\\d{6}-\\d+.*"))) {
+            val metadata = file.parentFile.resolve("maven-metadata.xml")
+            if (metadata.isFile) {
+                val current = Regex("<value>([^<]+)</value>").find(metadata.readText())?.groupValues?.get(1)
+                if (current != null && current !in name) exclude()
+            }
+        }
+    }
+}
+tasks.processResources { from(bundleWinRTToolchain.map { it.destinationDirectory.dir("..") }) }
+
 tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
     // The installed unified IDEA also bundles commercial startup services.
     // Platform tests exercise only this plugin and its declared dependencies.

@@ -11,6 +11,16 @@ import java.nio.ByteOrder
 import javax.imageio.ImageIO
 
 class WinRTTemplatesTest {
+    @Test fun normalProjectUsesAPortableMavenToolchain() {
+        val files = WinRTTemplates.project(WinRTTemplateOptions("hello", "sample.hello", WinRTTemplateKind.WinUIApplication))
+        val settings = files.getValue("settings.gradle.kts").toString(Charsets.UTF_8)
+        assertFalse(settings.contains("includeBuild"))
+        assertTrue(settings.contains("id(\"io.github.compose-fluent.windows-toolkit\") version"))
+        assertTrue(files.keys.any { it.contains("winrt-runtime-jvm/0.1.0-SNAPSHOT/") && it.endsWith(".jar") })
+        assertTrue(files.keys.any { it.contains("callsite-lowering/0.1.0-SNAPSHOT/") && it.endsWith(".jar") })
+        assertTrue(files.keys.none { it.contains("mingwx64", true) || it.endsWith(".java") })
+    }
+
     @Test fun applicationTemplatesPreserveQualifiedIconsAndManifestReferences() {
         listOf(WinRTTemplateKind.ConsoleApplication, WinRTTemplateKind.WinUIApplication).forEach { kind ->
             val files = WinRTTemplates.module(WinRTTemplateOptions("hello", "sample.hello", kind))

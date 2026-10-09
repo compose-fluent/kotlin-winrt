@@ -16,6 +16,20 @@ import java.nio.file.Path
  * or generated Kotlin stand-ins are added to make subsequent import tests pass.
  */
 class WinRTTemplateGenerationTest : BasePlatformTestCase() {
+    fun testCreatePortableProjectWithoutAToolchainCheckout() {
+        val checkout = Path.of(System.getProperty("winrt.ide.toolchain")).toRealPath()
+        val root = Path.of(requireNotNull(System.getProperty("winrt.ide.templateOutput"))).resolve("portable").toAbsolutePath().normalize()
+        require(root.startsWith(checkout.resolve(".gradle")) && !Files.exists(root))
+        WinRTTemplateWriter.create(project, root, WinRTTemplates.project(
+            WinRTTemplateOptions("portable", "sample.portable", WinRTTemplateKind.ConsoleApplication, packaged = false)))
+        FileDocumentManager.getInstance().saveAllDocuments()
+        val settings = Files.readString(root.resolve("settings.gradle.kts"))
+        assertFalse(settings.contains("includeBuild"))
+        assertFalse(settings.contains(checkout.toString()))
+        assertTrue(settings.contains(".kotlin-winrt/toolchain/repository"))
+        assertTrue(Files.isRegularFile(root.resolve("gradle/wrapper/gradle-wrapper.jar")))
+    }
+
     fun testCreateStandaloneApplicationsAndModulesThroughNativeCommands() {
         val checkout = Path.of(System.getProperty("winrt.ide.toolchain")).toRealPath()
         val directory = Path.of(requireNotNull(System.getProperty("winrt.ide.templateOutput")))

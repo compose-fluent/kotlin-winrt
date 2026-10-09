@@ -45,6 +45,7 @@ import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.Panel
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.ui.WinRTChoice
+import io.github.composefluent.winrt.ide.ui.WinRTDetails
 import io.github.composefluent.winrt.ide.nuget.WinRTNuGetBrowser
 import io.github.composefluent.winrt.ide.nuget.WinRTNuGetSources
 import kotlinx.coroutines.Dispatchers
@@ -92,6 +93,7 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
     private var kind by mutableStateOf(initialKind)
     private var packaged by mutableStateOf(true)
     private var prepare by mutableStateOf(true)
+    private var useSourceToolchain by mutableStateOf(false)
     private var includeWinUI by mutableStateOf(true)
     private var validate: () -> Unit = {}
     var validationChanged: () -> Unit = {}
@@ -114,7 +116,10 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
             java.nio.file.Files.readString(jdkPath.resolve("release")).contains(Regex("JAVA_VERSION=\"25(?:[.\"]|-)"))) {
             "Select a full JDK 25 installation, including JNI headers for the Windows launcher."
         }
-        if (context.isCreatingNewProject) WinRTTemplates.validateToolchain(Path.of(checkout.text.toString().trim()))
+        if (context.isCreatingNewProject) {
+            if (useSourceToolchain) WinRTTemplates.validateToolchain(Path.of(checkout.text.toString().trim()))
+            else require(WinRTBundledToolchain.available()) { "The bundled Kotlin WinRT toolchain is missing. Reinstall the IDE plugin." }
+        }
         else {
             val root = Path.of(buildRoot.text.toString().trim()).toAbsolutePath().normalize()
             require(java.nio.file.Files.isRegularFile(root.resolve("settings.gradle.kts"))) { "Select the existing Gradle build root." }
@@ -130,12 +135,12 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                     sdk.edit { replace(0, length, installed.sdks.firstOrNull()?.version.orEmpty()) }
                 validate(); validationChanged()
             }
-            LaunchedEffect(checkout.text, appSdkPrerelease, sdkRefresh) {
+            LaunchedEffect(checkout.text, useSourceToolchain, appSdkPrerelease, sdkRefresh) {
                 kotlinx.coroutines.delay(300)
                 appSdkLoading = true; appSdkError = null
                 try {
                     val available = withContext(Dispatchers.IO) {
-                        val basePath = checkout.text.toString().takeIf { it.isNotBlank() }?.let(Path::of) ?: Path.of(base.path)
+                        val basePath = checkout.text.toString().takeIf { useSourceToolchain && it.isNotBlank() }?.let(Path::of) ?: Path.of(base.path)
                         val feed = WinRTNuGetSources.read(basePath).firstOrNull { it.address.startsWith("https://") }
                             ?: error("No HTTPS NuGet source is configured. Choose a cached Windows App SDK version.")
                         WinRTNuGetBrowser(feed).versions("Microsoft.WindowsAppSDK", appSdkPrerelease)
@@ -146,7 +151,7 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                 finally { appSdkLoading = false }
             }
             LaunchedEffect(Unit) {
-                snapshotFlow { listOf(checkout.text, packageName.text, jdk.text, sdk.text, appSdk.text, dependencies.text, buildRoot.text, projections.text, kind, packaged, includeWinUI) }
+                snapshotFlow { listOf(checkout.text, packageName.text, jdk.text, sdk.text, appSdk.text, dependencies.text, buildRoot.text, projections.text, kind, packaged, includeWinUI, useSourceToolchain) }
                     .collect { validate(); validationChanged() }
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -179,6 +184,9 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                     appSdkError?.let { Text(it) }
                 }
                 if (context.isCreatingNewProject) {
+                    WinRTDetails("Advanced") {
+                    CheckboxRow("Use a local toolchain checkout (advanced)", useSourceToolchain, { useSourceToolchain = it })
+                    if (useSourceToolchain) {
                     Text("Kotlin WinRT toolchain checkout")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextField(checkout, modifier = Modifier.weight(1f).semantics { contentDescription = "Kotlin WinRT toolchain checkout" })
@@ -187,6 +195,8 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
                                 checkout.edit { replace(0, length, folder.path) }
                             }
                         }) { Text("Browse…") }
+                    }
+                    }
                     }
                 } else {
                     Text("Existing Gradle build root")
@@ -222,9 +232,11 @@ internal class WinRTWizardStep(private val base: NewProjectWizardBaseStep,
         val target = target()
         val root = if (newProject) target else Path.of(buildRoot.text.toString().trim()).toAbsolutePath().normalize()
         val moduleName = if (newProject) WinRTTemplates.primaryModule(kind) else selected.name
-        val files = if (newProject) WinRTTemplates.project(selected, Path.of(checkout.text.toString().trim())) else WinRTTemplates.module(selected)
+        val files = if (newProject) {
+            if (useSourceToolchain) WinRTTemplates.project(selected, Path.of(checkout.text.toString().trim())) else WinRTTemplates.project(selected)
+        } else WinRTTemplates.module(selected)
         WinRTTemplateWriter.create(project, target, files, if (newProject) null else root)
-        if (newProject) PropertiesComponent.getInstance().setValue("kotlin.winrt.toolchain.checkout", checkout.text.toString().trim())
+        if (newProject && useSourceToolchain) PropertiesComponent.getInstance().setValue("kotlin.winrt.toolchain.checkout", checkout.text.toString().trim())
         val jdkHome = jdk.text.toString().trim()
         val jdks = ProjectJdkTable.getInstance().allJdks
         val javaSdk = jdks.firstOrNull { com.intellij.openapi.util.io.FileUtil.pathsEqual(it.homePath, jdkHome) }
