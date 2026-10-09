@@ -32,11 +32,14 @@ abstract class GenerateWinRTXamlApplicationHeaderTask @Inject constructor(
 
     @get:Internal
     abstract val referenceFiles: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
+    abstract val referenceManifests: ConfigurableFileCollection
     @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.NONE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
     val inputReferenceFiles get() = objects.fileCollection().from(
-        preparedMetadataManifest.map { readPreparedMetadataCache(it.asFile.toPath()).files }, referenceFiles)
+        preparedMetadataManifest.map { readPreparedMetadataCache(it.asFile.toPath()).files }, referenceFiles,
+        referenceManifests.elements.map { files -> files.flatMap { it.asFile.readLines().filter(String::isNotBlank).map { path -> java.io.File(path) } } })
 
     @get:Classpath abstract val scannerClasspath: ConfigurableFileCollection
     @get:Input abstract val scannerJvmArgs: ListProperty<String>

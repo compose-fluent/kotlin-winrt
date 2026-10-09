@@ -63,17 +63,22 @@ internal fun configureWinRTXamlPipeline(
     // Projection-disabled packages still supply XAML compiler metadata and the
     // matching GenXbf. Resolve them through the existing authoritative restore.
     val restore = project.tasks.named("restoreWinAppDependencies", RestoreWinAppDependenciesTask::class.java)
-    val compilerPackageReferences = restore.flatMap { it.winmdLockFile }.map { lock ->
-        val packages = extension.packageReferences.nugetPackages.filterNot { it.generateProjection }
-            .map { "${it.packageId}@${it.version.get()}" }
-        if (packages.isEmpty()) emptyList<File>() else
-            readWinAppProjectionWinmdFiles(listOf(lock.asFile), packages).map { it.toFile() }
+    val compilerPackageReferences = project.tasks.register("resolveWinRTXamlReferences",
+        ResolveWinRTXamlReferencesTask::class.java) { task ->
+        task.group = "kotlin-winrt"
+        task.description = "Resolves compiler-only WinMD references after WinApp restore."
+        task.nugetPackages.set(project.provider {
+            extension.packageReferences.nugetPackages.filterNot { it.generateProjection }
+                .map { "${it.packageId}@${it.version.get()}" }
+        })
+        task.restoreLockFiles.from(restore.flatMap { it.winmdLockFile })
+        task.outputFile.set(project.layout.buildDirectory.file("intermediates/kotlin-winrt/xaml/compiler-references.txt"))
     }
     project.tasks.withType(GenerateWinRTXamlApplicationHeaderTask::class.java).configureEach {
-        it.referenceFiles.from(compilerPackageReferences)
+        it.referenceManifests.from(compilerPackageReferences.flatMap { task -> task.outputFile })
     }
     project.tasks.withType(CompileWinRTXamlTask::class.java).configureEach {
-        it.referenceFiles.from(compilerPackageReferences)
+        it.referenceManifests.from(compilerPackageReferences.flatMap { task -> task.outputFile })
     }
     val localCompilerDirectory = extension.xaml.compilerDirectory
     val sourceRootOwners = project.provider { winRTSourceRootOwners(project) }

@@ -39,6 +39,8 @@ abstract class CompileWinRTXamlTask @Inject constructor(
     abstract val preparedMetadataManifest: RegularFileProperty
     @get:Internal
     abstract val referenceFiles: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
+    abstract val referenceManifests: ConfigurableFileCollection
     @get:Internal
     abstract val windowsSdkFacadeFiles: ConfigurableFileCollection
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -49,7 +51,8 @@ abstract class CompileWinRTXamlTask @Inject constructor(
     // serialization can realize it before the metadata producer updates its manifest.
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
     val inputReferenceFiles get() = objects.fileCollection().from(
-        preparedMetadataManifest.map { readPreparedMetadataCache(it.asFile.toPath()).files }, referenceFiles)
+        preparedMetadataManifest.map { readPreparedMetadataCache(it.asFile.toPath()).files }, referenceFiles,
+        referenceManifests.elements.map { files -> files.flatMap { it.asFile.readLines().filter(String::isNotBlank).map(::File) } })
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
     val inputWindowsSdkFacadeFiles get() = objects.fileCollection().from(
         inputReferenceFiles.elements.map { windowsSdkUnionMetadataFiles(it.map { reference -> reference.asFile }) }, windowsSdkFacadeFiles)
