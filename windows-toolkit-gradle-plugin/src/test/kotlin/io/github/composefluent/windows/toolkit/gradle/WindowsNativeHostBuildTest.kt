@@ -32,11 +32,14 @@ class WindowsNativeHostBuildTest {
         }.toMutableMap()
         environment["PATH"] = (original["__VSCMD_PREINIT_PATH"] ?: original["PATH"].orEmpty()).split(';')
             .filter { directory ->
-                listOf("cl.exe", "clang-cl.exe").none { name ->
+                listOf("cl.exe", "clang-cl.exe", "vswhere.exe").none { name ->
                     runCatching { Files.isRegularFile(Path.of(directory.trim('"')).resolve(name)) }.getOrDefault(false)
                 }
             }.joinToString(";")
         val root = Files.createTempDirectory("winrt-native-build-")
+        val deepOutputPath = "nested-checkout-path/".repeat(13)
+        val dllOutput = root.resolve("build/${deepOutputPath}dll/Component.dll")
+        assertTrue(dllOutput.toString().length > 260)
         writeIcon(root.resolve("launcher.ico"), 0xff4466cc.toInt())
         Files.writeString(root.resolve("settings.gradle"), "rootProject.name = 'native-host-discovery'")
         Files.writeString(root.resolve("component.json"), """
@@ -85,8 +88,8 @@ class WindowsNativeHostBuildTest {
                 windowsSdkVersion.set('${sdk.version}')
                 windowsSdkRegistryRoots.set(['${sdk.root.toString().replace('\\', '/')}'])
                 authoredHostManifestFiles.from(componentManifest.flatMap { it.destinationDirectory }.map { it.file('component.json') })
-                outputDirectory.set(layout.buildDirectory.dir('dll'))
-                generatedSourceDirectory.set(layout.buildDirectory.dir('dll-source'))
+                outputDirectory.set(layout.buildDirectory.dir('${deepOutputPath}dll'))
+                generatedSourceDirectory.set(layout.buildDirectory.dir('${deepOutputPath}dll-source'))
                 commandWorkingDirectory.set(layout.projectDirectory)
             }
             tasks.register('emptyDll', io.github.composefluent.windows.toolkit.gradle.BuildWinRTAuthoringHostTask) {
@@ -107,7 +110,7 @@ class WindowsNativeHostBuildTest {
         val expectedMachine = if (System.getProperty("os.arch").lowercase() in setOf("aarch64", "arm64")) 0xAA64 else 0x8664
         assertEquals(expectedMachine, peMachine(root.resolve("build/exe/sample.exe")))
         assertTrue(peResourceTypes(root.resolve("build/exe/sample.exe")).containsAll(setOf(3, 14)))
-        assertEquals(expectedMachine, peMachine(root.resolve("build/dll/Component.dll")))
+        assertEquals(expectedMachine, peMachine(dllOutput))
 
         val second = runner(environment).build()
         assertTrue(second.output, second.output.contains("Reusing configuration cache"))

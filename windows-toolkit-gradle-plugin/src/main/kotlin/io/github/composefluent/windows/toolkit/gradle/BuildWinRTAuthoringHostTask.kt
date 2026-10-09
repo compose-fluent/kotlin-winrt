@@ -19,6 +19,7 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
@@ -164,34 +165,48 @@ abstract class BuildWinRTAuthoringHostTask : DefaultTask() {
         val jniHeaders = resolveJvmNativeHeaderDirectories(javaHome.get())
         val sdk = toolchain.sdk
         val architecture = windowsSdkArchitecture(runtimeIdentifier.get())
-        val arguments = listOf(toolchain.compiler) + toolchain.compilerArguments + listOf(
-            "/nologo",
-            "/LD",
-            source.toString(),
-            "/Fe:${output}",
-            "/I",
-            jniHeaders.includeDirectory.toString(),
-            "/I",
-            jniHeaders.platformIncludeDirectory.toString(),
-            "/I${sdk.includeRoot.resolve("shared")}",
-            "/I${sdk.includeRoot.resolve("um")}",
-            "/I${sdk.includeRoot.resolve("ucrt")}",
-            "/I${sdk.includeRoot.resolve("winrt")}",
-            "/link",
-            "/NOLOGO",
-            "/DLL",
-            "/DEF:${moduleDefinition}",
-            "/LIBPATH:${sdk.libRoot.resolve("um").resolve(architecture)}",
-            "/LIBPATH:${sdk.libRoot.resolve("ucrt").resolve(architecture)}",
-            "runtimeobject.lib",
-            "kernel32.lib",
-            "user32.lib",
-        )
-        val result = toolchain.compile(arguments, output.parent)
-        if (result.exitCode != 0) {
-            throw IllegalStateException(
-                "Kotlin/WinRT authoring host DLL build failed with exit code ${result.exitCode}.\n${result.output}",
+        // CsWinRT separates VC intermediates (IntDir) from the published host.
+        // MSVC still limits several intermediate paths to MAX_PATH. Keep the
+        // entire native compile/link workspace outside a potentially deep checkout,
+        // then materialize only the runtime DLL in the declared Gradle output.
+        val workspace = Files.createTempDirectory("kwinrt-host-")
+        try {
+            val localSource = Files.copy(source, workspace.resolve("host.c"))
+            val localDefinition = Files.copy(moduleDefinition, workspace.resolve("host.def"))
+            val localOutput = workspace.resolve(output.fileName)
+            val arguments = listOf(toolchain.compiler) + toolchain.compilerArguments + listOf(
+                "/nologo",
+                "/LD",
+                localSource.toString(),
+                "/Fe:${localOutput}",
+                "/Fo:${workspace.resolve("host.obj")}",
+                "/I",
+                jniHeaders.includeDirectory.toString(),
+                "/I",
+                jniHeaders.platformIncludeDirectory.toString(),
+                "/I${sdk.includeRoot.resolve("shared")}",
+                "/I${sdk.includeRoot.resolve("um")}",
+                "/I${sdk.includeRoot.resolve("ucrt")}",
+                "/I${sdk.includeRoot.resolve("winrt")}",
+                "/link",
+                "/NOLOGO",
+                "/DLL",
+                "/DEF:${localDefinition}",
+                "/LIBPATH:${sdk.libRoot.resolve("um").resolve(architecture)}",
+                "/LIBPATH:${sdk.libRoot.resolve("ucrt").resolve(architecture)}",
+                "runtimeobject.lib",
+                "kernel32.lib",
+                "user32.lib",
             )
+            val result = toolchain.compile(arguments, workspace)
+            if (result.exitCode != 0) {
+                throw IllegalStateException(
+                    "Kotlin/WinRT authoring host DLL build failed with exit code ${result.exitCode}.\n${result.output}",
+                )
+            }
+            Files.copy(localOutput, output, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            GradleFileOperations.deleteDirectory(workspace)
         }
     }
 
