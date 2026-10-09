@@ -1,0 +1,87 @@
+package io.github.composefluent.winrt.ide.model
+
+import java.io.Serializable
+
+/** Gradle Tooling API contract. Configuration facts, never resolved outputs or secrets. */
+interface WinRTIdeModel : Serializable {
+    val schemaVersion: Int
+    val isEnabled: Boolean
+    val projectPath: String
+    val projectDirectory: String
+    val buildDirectory: String
+    val kotlinVersion: String
+    val windowsSdkVersion: String
+    val sourceSets: List<SourceSet>
+    val targets: List<Target>
+    val nuGetPackages: List<NuGetPackage>
+    val manifestFiles: List<String>
+    val xamlCompilations: List<XamlCompilation>
+    val packageLayouts: List<PackageLayout>
+    val nuGetConfigFile: String
+    val nuGetConfigDirectory: String
+    val restoreLockFiles: List<String>
+    val hotReloadLaunches: List<HotReloadLaunch>
+    val staticPreview: StaticPreview?
+    /** Concrete application tasks, excluding SDK designers and aggregate aliases. */
+    val runTasks: List<String>
+
+    /** Fixed SDK-only designer, independent of every application's build output. */
+    interface StaticPreview : Serializable {
+        val taskName: String
+        val executable: String
+        val workingDirectory: String
+        val metadataReferencesFile: String
+    }
+
+    /** Development JVM launch tasks and isolated preview host paths. */
+    interface HotReloadLaunch : Serializable {
+        val taskName: String
+        val executable: String
+        val workingDirectory: String
+        val previewExecutable: String
+    }
+
+    /** Actual staging/restore outputs, which need not exist during synchronization. */
+    interface PackageLayout : Serializable {
+        val taskName: String
+        val variant: String
+        val packageDirectory: String
+        val resourceReportFile: String
+        val minWindowsVersion: String
+        val maxVersionTested: String
+    }
+
+    /** Paths to declaration-pass tasks; their outputs need not exist at sync time. */
+    interface XamlCompilation : Serializable {
+        val taskName: String
+        val sourceRoots: List<String>
+        val declarationsFile: String
+        val inputFile: String
+        val compilerDirectory: String
+        val metadataIndexFile: String
+    }
+
+    interface SourceSet : Serializable {
+        val name: String
+        val kotlinRoots: List<String>
+        val dependsOn: List<String>
+        /** Least to most specific, exactly as used by AppX resource staging. */
+        val appxResourceRoots: List<String>
+    }
+
+    interface Target : Serializable {
+        val name: String
+        val platform: String
+        val sourceSets: List<String>
+    }
+
+    interface NuGetPackage : Serializable {
+        val id: String
+        val version: String
+        val isGenerateProjection: Boolean
+    }
+
+    companion object {
+        const val SCHEMA_VERSION: Int = 7
+    }
+}

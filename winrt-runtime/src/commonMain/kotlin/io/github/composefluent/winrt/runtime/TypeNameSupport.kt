@@ -79,6 +79,21 @@ object TypeNameSupport {
         }
     }
 
+    /** Uses the generator's WinMD inheritance index on JVM and Native alike. */
+    internal fun isProjectionAssignableFrom(targetType: KClass<*>, candidateType: KClass<*>): Boolean {
+        var typeName = candidateType.registeredWinRTType()?.projectedTypeName ?: return false
+        val visited = mutableSetOf<String>()
+        while (visited.add(typeName)) {
+            if (findKClassByNameCached(typeName) == targetType) {
+                return true
+            }
+            typeName = projectionTypeNameToBaseTypeNameMappingsLock.withLock {
+                projectionTypeNameToBaseTypeNameMappings.firstNotNullOfOrNull { it[typeName] }
+            } ?: return false
+        }
+        return false
+    }
+
     fun registerReferenceArrayType(
         elementType: KClass<*>,
         arrayType: KClass<*>,

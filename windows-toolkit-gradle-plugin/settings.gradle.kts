@@ -34,6 +34,7 @@ dependencyResolutionManagement {
 }
 
 include(
+    ":ide-model",
     ":winrt-runtime",
     ":winrt-metadata",
     ":winrt-authoring",

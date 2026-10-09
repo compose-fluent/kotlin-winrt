@@ -71,6 +71,32 @@ class ApplicationPackagePayloadWriterTest {
         assertEquals(Path.of("Assets/Icon.png"), decisions.single().target)
         assertEquals("explicit packagePayload", decisions.single().origin)
         assertEquals(convention.toAbsolutePath().normalize(), decisions.single().overriddenSource)
+        assertEquals(listOf(dependency, convention), decisions.single().overriddenSources)
+    }
+
+    @Test
+    fun resource_provenance_retains_source_set_overrides_and_dependency_archive() {
+        // Shares the same AppX staging owner used by CSWinRTInApp.targets;
+        // provenance enriches the report without changing its selection rules.
+        val root = Files.createTempDirectory("kotlin-winrt-resource-provenance-")
+        val shared = root.resolve("common/Assets/Icon.png")
+        val target = root.resolve("desktop/assets/icon.PNG")
+        listOf(shared, target).forEach { Files.createDirectories(it.parent); Files.writeString(it, "image") }
+        val inputs = collectAppxResourceInputs(listOf(root.resolve("common"), root.resolve("desktop")))
+        assertEquals(target, inputs.single().source)
+        assertEquals(listOf(shared), inputs.single().overriddenSources)
+        val archive = root.resolve("library.appxresources.zip")
+        val decisions = ApplicationPackagePayloadWriter.resolvePackagePayloads(
+            conventionInputs = emptyList(), dependencyInputs = inputs.map { it.copy(sourceArchive = archive) },
+            explicitPayloadFiles = emptyList(), rootPayloadFiles = emptyList(), projectRoot = root,
+            targetPaths = emptyMap(), excludedPaths = emptySet())
+        val report = root.resolve("report.json")
+        ApplicationPackagePayloadWriter.writeResolutionReport(report, decisions)
+        val entry = kotlinx.serialization.json.Json.parseToJsonElement(Files.readString(report))
+            .let { it as kotlinx.serialization.json.JsonObject }["entries"]
+            .let { it as kotlinx.serialization.json.JsonArray }.single() as kotlinx.serialization.json.JsonObject
+        assertEquals(archive.toString(), (entry["sourceArchive"] as kotlinx.serialization.json.JsonPrimitive).content)
+        assertEquals(shared.toString(), ((entry["overriddenSources"] as kotlinx.serialization.json.JsonArray).single() as kotlinx.serialization.json.JsonPrimitive).content)
     }
 
     @Test

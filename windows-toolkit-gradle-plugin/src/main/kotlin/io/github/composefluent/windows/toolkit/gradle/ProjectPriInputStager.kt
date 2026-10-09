@@ -394,18 +394,6 @@ private const val APPX_RESOURCE_PRIORITY = 20
 private const val EXPLICIT_RESOURCE_PRIORITY = 30
 private const val COMPONENT_PRI_PRIORITY = 100
 
-internal fun String.toSafeRelativePath(label: String): Path {
-    val normalized = trim().replace('\\', '/')
-    if (normalized.isBlank()) return Path.of("")
-    val path = Path.of(normalized).normalize()
-    require(!normalized.startsWith("/") && !WINDOWS_DRIVE_PATH.matches(normalized) && !path.isAbsolute && !path.startsWith("..")) {
-        "$label must be a relative path inside the package root: $this"
-    }
-    return path
-}
-
-private val WINDOWS_DRIVE_PATH = Regex("""^[A-Za-z]:($|/.*)""")
-
 private fun isProjectPriLayoutFile(path: Path): Boolean =
     path.name.endsWith(".xaml", ignoreCase = true) || path.name.endsWith(".xbf", ignoreCase = true)
 

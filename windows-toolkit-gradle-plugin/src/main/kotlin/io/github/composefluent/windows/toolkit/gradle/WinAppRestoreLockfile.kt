@@ -3,72 +3,17 @@ package io.github.composefluent.windows.toolkit.gradle
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageIdentity
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageResolver
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.api.GradleException
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal data class WinAppRestoreLockfile(
-    val schema: Int,
-    val nugetCacheDirectory: Path?,
-    val packages: List<WinAppRestoredPackage>,
-) {
-    val winmdFiles: List<Path>
-        get() = packages
-            .flatMap(WinAppRestoredPackage::winmdFiles)
-            .distinctBy { path -> path.toAbsolutePath().normalize().toString().lowercase() }
-}
-
-internal data class WinAppRestoredPackage(
-    val name: String,
-    val version: String,
-    val winmdFiles: List<Path>,
-)
-
 internal object WinAppRestoreLockfileReader {
-    const val SUPPORTED_SCHEMA: Int = 3
-
-    fun read(path: Path): WinAppRestoreLockfile {
-        if (!Files.isRegularFile(path)) {
-            throw GradleException("WinApp restore did not produce $path.")
-        }
-        val root = runCatching {
-            Json.parseToJsonElement(Files.readString(path)).jsonObject
-        }.getOrElse { error ->
-            throw GradleException("Cannot parse WinApp restore lockfile $path: ${error.message}", error)
-        }
-        val schema = root.requiredInt("schema", path)
-        if (schema != SUPPORTED_SCHEMA) {
-            throw GradleException(
-                "Unsupported WinApp restore lockfile schema $schema in $path; expected $SUPPORTED_SCHEMA.",
-            )
-        }
-        val nugetCacheDirectory = root.optionalString("nuget_cache_dir")
-            ?.takeIf(String::isNotBlank)
-            ?.let(Path::of)
-        val packages = root.requiredArray("packages", path).mapIndexed { index, element ->
-            val packageObject = element as? JsonObject
-                ?: throw GradleException("WinApp restore lockfile $path has a non-object package at index $index.")
-            val name = packageObject.requiredString("name", path)
-            val version = packageObject.requiredString("version", path)
-            val winmds = packageObject.requiredArray("winmds", path).mapIndexed { winmdIndex, winmd ->
-                val value = runCatching { winmd.jsonPrimitive.content }.getOrNull()
-                    ?.takeIf(String::isNotBlank)
-                    ?: throw GradleException(
-                        "WinApp restore lockfile $path has an invalid winmd at package $name index $winmdIndex.",
-                    )
-                Path.of(value)
-            }
-            WinAppRestoredPackage(name, version, winmds)
-        }
-        return WinAppRestoreLockfile(schema, nugetCacheDirectory, packages)
+    const val SUPPORTED_SCHEMA: Int = WinAppRestoreLockfileCodec.SUPPORTED_SCHEMA
+    fun read(path: Path): WinAppRestoreLockfile = try {
+        WinAppRestoreLockfileCodec.read(path)
+    } catch (error: Exception) {
+        throw GradleException(error.message ?: "Cannot read WinApp restore lockfile $path.", error)
     }
 }
 
@@ -267,23 +212,8 @@ private fun restoredPackageRoot(
     lockfile: WinAppRestoreLockfile,
     pkg: WinAppRestoredPackage,
 ): Path {
-    val declaredCacheRoot = lockfile.nugetCacheDirectory
-    if (declaredCacheRoot == null || !declaredCacheRoot.isAbsolute) {
-        throw GradleException(
-            "WinApp restore lockfile $lockfilePath has packages but no absolute nuget_cache_dir.",
-        )
-    }
-    val cacheRoot = declaredCacheRoot.normalize()
-    val packageRoot = cacheRoot
-        .resolve(pkg.name.lowercase())
-        .resolve(pkg.version)
-        .normalize()
-    if (!packageRoot.startsWith(cacheRoot)) {
-        throw GradleException(
-            "WinApp restore lockfile $lockfilePath contains an unsafe package path for ${pkg.name} ${pkg.version}.",
-        )
-    }
-    return packageRoot
+    return try { lockfile.packageRoot(lockfilePath, pkg) }
+    catch (error: IllegalArgumentException) { throw GradleException(error.message.orEmpty(), error) }
 }
 
 /**
@@ -307,18 +237,3 @@ private fun discoverWinmdFiles(packageRoot: Path): List<Path> {
         }
     }.getOrDefault(emptyList())
 }
-
-private fun JsonObject.requiredInt(name: String, path: Path): Int =
-    this[name]?.jsonPrimitive?.intOrNull
-        ?: throw GradleException("WinApp restore lockfile $path is missing integer '$name'.")
-
-private fun JsonObject.requiredString(name: String, path: Path): String =
-    optionalString(name)?.takeIf(String::isNotBlank)
-        ?: throw GradleException("WinApp restore lockfile $path is missing string '$name'.")
-
-private fun JsonObject.optionalString(name: String): String? =
-    this[name]?.let { element -> runCatching { element.jsonPrimitive.content }.getOrNull() }
-
-private fun JsonObject.requiredArray(name: String, path: Path): JsonArray =
-    this[name]?.let { element -> runCatching { element.jsonArray }.getOrNull() }
-        ?: throw GradleException("WinApp restore lockfile $path is missing array '$name'.")

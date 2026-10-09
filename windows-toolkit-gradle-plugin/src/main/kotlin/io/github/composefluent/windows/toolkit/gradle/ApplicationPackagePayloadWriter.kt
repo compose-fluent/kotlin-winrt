@@ -25,6 +25,8 @@ internal data class PackagePayloadDecision(
     val origin: String,
     val overriddenSource: Path? = null,
     val isPriCompilerInput: Boolean = false,
+    val sourceArchive: Path? = null,
+    val overriddenSources: List<Path> = emptyList(),
 )
 
 internal object ApplicationPackagePayloadWriter {
@@ -76,6 +78,8 @@ internal object ApplicationPackagePayloadWriter {
                         input.relativePath.toString().toSafeRelativePath("dependency AppX resource path"),
                         "dependency AppX resource",
                         isPriCompilerInput = input.isPriCompilerInput(),
+                        sourceArchive = input.sourceArchive,
+                        overriddenSources = input.overriddenSources,
                     ),
                     priority = DEPENDENCY_PRIORITY,
                     unresolvedConflicts = unresolvedConflicts,
@@ -93,6 +97,8 @@ internal object ApplicationPackagePayloadWriter {
                         input.relativePath.toString().toSafeRelativePath("AppX resource path"),
                         "appxResources",
                         isPriCompilerInput = input.isPriCompilerInput(),
+                        overriddenSource = input.overriddenSources.lastOrNull(),
+                        overriddenSources = input.overriddenSources,
                     ),
                     priority = CONVENTION_PRIORITY,
                     unresolvedConflicts = unresolvedConflicts,
@@ -378,6 +384,8 @@ internal object ApplicationPackagePayloadWriter {
                             put("sha256", sha256(decision.source))
                         }
                         decision.overriddenSource?.let { put("overriddenSource", it.toString()) }
+                        decision.sourceArchive?.let { put("sourceArchive", it.toString()) }
+                        put("overriddenSources", buildJsonArray { decision.overriddenSources.distinct().forEach { add(it.toString()) } })
                     })
                 }
             })
@@ -430,7 +438,8 @@ internal object ApplicationPackagePayloadWriter {
         ) {
             return
         }
-        selected[key] = decision.copy(overriddenSource = existing.source)
+        selected[key] = decision.copy(overriddenSource = existing.source,
+            overriddenSources = existing.overriddenSources + listOf(existing.source) + decision.overriddenSources)
     }
 
     private fun originPriority(origin: String): Int = when (origin) {

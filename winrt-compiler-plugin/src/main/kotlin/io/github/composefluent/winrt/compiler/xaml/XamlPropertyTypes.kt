@@ -13,6 +13,7 @@ internal fun xamlTypeClassId(name: String): ClassId {
     return when (type.projectionCategory) {
         WinRTProjectionCategory.Guid -> ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.Guid"))
         WinRTProjectionCategory.Object -> ClassId.topLevel(FqName("kotlin.Any"))
+        WinRTProjectionCategory.Type -> ClassId.topLevel(FqName("kotlin.reflect.KClass"))
         else -> winRTFundamentalTypeForName(name)?.toKotlinProjectionTypeName()
             ?.let { ClassId.topLevel(FqName("kotlin.$it")) } ?: xamlProjectionClassId(name)
     }

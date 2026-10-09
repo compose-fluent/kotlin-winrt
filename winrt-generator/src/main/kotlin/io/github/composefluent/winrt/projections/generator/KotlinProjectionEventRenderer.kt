@@ -1148,8 +1148,9 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                     WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME,
                 )
                 .add(
-                    "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }\n",
+                    "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> %T(instance, kotlin.Unit) }\n",
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                    projectedClassName,
                 )
                 .add(
                     "%T.registerCustomAbiTypeMapping(%T::class, %T::class, TYPE_NAME, isRuntimeClass = true)\n",
@@ -1203,14 +1204,8 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .returns(projectedClassName)
                 .addCode(
-                    "val __managed = %T.findObject(%T.fromRawComPtr(instance.pointer), %T::class)\n" +
-                        "if (__managed != null) {\n" +
-                        "  instance.close()\n" +
-                        "  return __managed\n" +
-                        "}\n" +
-                        "return %T(instance, kotlin.Unit)\n",
+                    "return %T.wrapRuntimeClass(instance, %T::class) { reference -> %T(reference, kotlin.Unit) }\n",
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
-                    PLATFORM_ABI_CLASS_NAME,
                     projectedClassName,
                     projectedClassName,
                 )

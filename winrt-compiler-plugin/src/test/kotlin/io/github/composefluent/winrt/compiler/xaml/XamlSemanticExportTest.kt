@@ -18,6 +18,19 @@ import io.github.composefluent.winrt.runtime.WinRTXamlLoadState
 
 class XamlSemanticExportTest {
     @Test
+    fun development_accessors_use_the_system_type_projection_for_style_target_type() {
+        // CsWinRT helpers.h maps Windows.UI.Xaml.Interop.TypeName to System.Type;
+        // KotlinProjectionTypeResolver emits KClass<*>?, not a TypeName struct.
+        val resolver = WinRTMetadataModel(emptyList()).specialTypeResolver()
+        listOf("Windows.UI.Xaml.Interop.TypeName", "System.Type").forEach { name ->
+            assertEquals("kotlin.reflect.KClass", xamlTypeClassId(name).asSingleFqName().asString())
+            assertEquals("kotlin.reflect.KClass<*>?", xamlProjectedPropertySourceType(WinRTTypeRef.named(name), resolver))
+        }
+        assertEquals("kotlin.collections.MutableList<kotlin.reflect.KClass<*>?>", xamlProjectedPropertySourceType(
+            WinRTTypeRef.fromDisplayName("Windows.Foundation.Collections.IVector<Windows.UI.Xaml.Interop.TypeName>"), resolver))
+    }
+
+    @Test
     fun referenced_winmd_activation_generates_fallback_without_a_ctor_method() {
         // CSharpTypeInfoPass2 emits XamlUserType.Activator for referenced classes;
         // CsWinRT's write_factory_constructors uses WinMD activation attributes.

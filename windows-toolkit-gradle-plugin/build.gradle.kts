@@ -58,6 +58,7 @@ listOf("compileClasspath", "testCompileClasspath", "testRuntimeClasspath").forEa
 
 dependencies {
     compileOnly(gradleApi())
+    implementation(project(":ide-model"))
     toolProjects.forEach { tool ->
         compileOnly(tool)
         embeddedTools(tool)

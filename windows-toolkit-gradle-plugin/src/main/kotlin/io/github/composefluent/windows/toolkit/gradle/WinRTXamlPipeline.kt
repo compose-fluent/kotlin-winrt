@@ -41,6 +41,7 @@ internal fun configureWinRTXamlPipeline(
     val hasXaml = project.provider {
         xamlSourceRoots.get().any { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }
     }
+    project.extensions.extraProperties.set("kotlinWinRTXamlSourcesPresent", hasXaml)
     val exportsLibrarySchema = project.provider { !extension.applicationEnabled.get() && !hasXaml.get() &&
         extension.xaml.exportLibrarySchema.get() &&
         sourceRoots.get().filterNot { isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it.toPath()) }
@@ -125,6 +126,7 @@ internal fun configureWinRTXamlPipeline(
                 .get().dependencyIdentityFiles
         })
         task.emitSources.set(hasXaml)
+        task.previewHost.set(extension.applicationEnabled)
         task.onlyIf { hasXaml.get() || exportsLibrarySchema.get() }
         task.dependsOn(removeStaleXaml)
     }
@@ -204,6 +206,8 @@ internal fun configureWinRTXamlPipeline(
             !it.name.contains("Test", true) && !it.name.startsWith("compileKotlinWinRT") && it.name !in nonJvmTargetTasks
         }
         businessTasks.forEach { business ->
+            // kotlin.jvm calls its business task compileKotlin. Reserve the unsuffixed
+            // names for the aggregate analysis/header tasks, as in the KMP pipeline.
             val suffix = business.name.removePrefix("compileKotlin").ifBlank { "Main" }
             val compilation = kmp?.targets?.withType(KotlinJvmTarget::class.java)?.flatMap { it.compilations }
                 ?.singleOrNull { it.compileTaskProvider.name == business.name }

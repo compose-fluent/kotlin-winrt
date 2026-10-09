@@ -72,10 +72,14 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
         additionalAuthoringTargetArtifactNames.convention(emptyList())
         emitProjectionSources.convention(true)
         prepareMetadataOnly.convention(false)
+        generateSdkPreviewSources.convention(false)
     }
 
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
+
+    @get:Input
+    abstract val generateSdkPreviewSources: Property<Boolean>
 
     @get:OutputDirectory
     abstract val authoringTypeDetailsOutputDirectory: DirectoryProperty
@@ -238,6 +242,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.authoringCandidatesFile.set(authoringCandidatesFile)
             parameters.preparedMetadataManifest.set(preparedMetadataManifest)
             parameters.prepareMetadataOnly.set(prepareMetadataOnly)
+            parameters.generateSdkPreviewSources.set(generateSdkPreviewSources)
             parameters.metadataModelCacheDirectory.set(metadataModelCacheDirectory)
             parameters.preparedStaticSourceDirectory.set(preparedStaticSourceDirectory)
             parameters.includeNamespaces.set(includeNamespaces)
@@ -279,6 +284,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val authoringCandidatesFile: RegularFileProperty
     val preparedMetadataManifest: RegularFileProperty
     val prepareMetadataOnly: Property<Boolean>
+    val generateSdkPreviewSources: Property<Boolean>
     val metadataModelCacheDirectory: DirectoryProperty
     val preparedStaticSourceDirectory: DirectoryProperty
     val includeNamespaces: ListProperty<String>
@@ -499,6 +505,8 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             assemblyName = parameters.authoringAssemblyName.get(),
             candidates = authoringCandidates,
         )
+        if (parameters.generateSdkPreviewSources.get())
+            io.github.composefluent.winrt.compiler.xaml.writeXamlSdkPreviewSources(generatedRoot, projectionModel)
     }
 
     private fun writeAuthoringTypeDetailsRegistrarSupport(
@@ -612,11 +620,12 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             ?.let { return it }
 
         val cache = WinRTMetadataSourceResolver.resolve(metadataSources())
-        if (parameters.prepareMetadataOnly.get()) {
-            val manifest = parameters.outputDirectory.get().asFile.toPath()
-                .resolve(PREPARED_METADATA_MANIFEST_RELATIVE_PATH)
-            writePreparedMetadataCache(manifest, cache)
-        }
+        // A standalone SDK generation has no metadata-preparation producer.
+        // Preserve its resolved inputs too, for design-time consumers to use
+        // exactly this SDK selection without resolving a second metadata graph.
+        val manifest = parameters.outputDirectory.get().asFile.toPath()
+            .resolve(PREPARED_METADATA_MANIFEST_RELATIVE_PATH)
+        writePreparedMetadataCache(manifest, cache)
         return cache
     }
 

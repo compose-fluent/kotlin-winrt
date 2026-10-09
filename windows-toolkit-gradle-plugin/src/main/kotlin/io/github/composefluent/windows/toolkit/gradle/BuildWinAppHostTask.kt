@@ -459,6 +459,7 @@ internal fun applicationHostSource(
     #include <jni.h>
     #include <process.h>
     #include <stdint.h>
+    #include <wchar.h>
 
     typedef jint (JNICALL *kotlin_winrt_create_java_vm_fn)(JavaVM **, void **, void *);
 
@@ -762,6 +763,33 @@ internal fun applicationHostSource(
         return failed;
     }
 
+    // Package activation forwards arguments, not the launching IDE's environment.
+    // Consume the development opt-in before JVM creation; user main sees only its own arguments.
+    static int kotlin_winrt_preview_requested = 0;
+    static int kotlin_winrt_development_arguments(int *argc, wchar_t **wargv) {
+        const wchar_t *prefix = L"$WINAPP_HOT_RELOAD_ARGUMENT";
+        const size_t prefix_length = wcslen(prefix);
+        int next = 1;
+        int enabled = 0;
+        for (int i = 1; i < *argc; ++i) {
+            if (wcsncmp(wargv[i], prefix, prefix_length) == 0) {
+                const wchar_t *directory = wargv[i] + prefix_length;
+                if (enabled || directory[0] == L'\0' ||
+                    !SetEnvironmentVariableW(L"${io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.SESSION_DIRECTORY}", directory)) {
+                    return 1;
+                }
+                enabled = 1;
+            } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
+                kotlin_winrt_preview_requested = 1;
+            } else {
+                wargv[next++] = wargv[i];
+            }
+        }
+        *argc = next;
+        wargv[next] = NULL;
+        return 0;
+    }
+
     static int kotlin_winrt_run_application(int argc, wchar_t **wargv) {
         JNIEnv *env = NULL;
         jobject application_host = NULL;
@@ -770,6 +798,9 @@ internal fun applicationHostSource(
         jclass string_class;
         jobjectArray args;
         int exit_code = 0;
+        if (kotlin_winrt_development_arguments(&argc, wargv) != 0) {
+            return 1;
+        }
         if (kotlin_winrt_create_vm(&env) != 0 || env == NULL) {
             return 1;
         }
@@ -782,7 +813,8 @@ internal fun applicationHostSource(
             kotlin_winrt_close_application_host(env, application_host);
             return 1;
         }
-        main_class = (*env)->FindClass(env, "$mainClassPath");
+        main_class = (*env)->FindClass(env, kotlin_winrt_preview_requested ?
+            "io/github/composefluent/winrt/generated/xaml/KotlinWinRTXamlPreviewHost" : "$mainClassPath");
         if (main_class == NULL) {
             exit_code = 1;
             kotlin_winrt_handle_pending_exception(env);
