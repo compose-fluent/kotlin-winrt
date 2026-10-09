@@ -1419,6 +1419,7 @@ private fun configureWinAppTasks(
             task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.Jvm }
         },
     )
+    val jvmApplicationClasspath = project.files()
     val applicationHostTask = project.tasks.register(
         taskName("buildWinAppHost"),
         BuildWinAppHostTask::class.java,
@@ -1450,6 +1451,7 @@ private fun configureWinAppTasks(
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
+            task.runtimeClasspath.from(jvmApplicationClasspath)
             task.jvmRuntimeMode.set(options.jvmRuntimeMode.map { it.name })
             task.runtimeImageDirectory.set(prepareJvmRuntimeImageTask.flatMap { it.outputDirectory })
             task.launcherExecutable.set(
@@ -1508,7 +1510,25 @@ private fun configureWinAppTasks(
         .map { it == "1" }.orElse(false)
     developmentPackageTask.configure { task ->
         task.description = "Stages an isolated development identity and regenerates its application PRI."
-        task.runtimeAssetsDirectory.set(applicationPackageDirectory)
+        task.runtimeAssetsDirectory.set(selectedVariant.flatMap { variant ->
+            if (variant.kind == WinAppVariantKind.Jvm) stageRuntimeAssetsTask.flatMap { it.outputDirectory }
+            else stageApplicationPackageTask.flatMap { it.outputDirectory }
+        })
+        task.jvmLauncherExecutable.set(selectedVariant.flatMap { variant ->
+            if (variant.kind == WinAppVariantKind.Jvm) launcherCompileTask.flatMap { launcher ->
+                launcher.outputDirectory.file(executableBaseName.map { "$it.exe" })
+            } else project.providers.provider { null }
+        })
+        task.jvmRuntimeClasspath.from(selectedVariant.map { variant ->
+            if (variant.kind == WinAppVariantKind.Jvm) jvmApplicationClasspath else emptyList<java.io.File>()
+        })
+        task.jvmRuntimeImageDirectory.set(selectedVariant.zip(options.jvmRuntimeMode) { variant, mode ->
+            variant.kind == WinAppVariantKind.Jvm && mode == WinAppJvmRuntimeMode.Bundled
+        }.flatMap { bundled ->
+            if (bundled) sharedJvmRuntimeImageProducer.flatMap { it.outputDirectory }
+            else project.providers.provider { null }
+        })
+        task.jvmRuntimeJavaMajor.set(options.jvmToolchainVersion)
         task.developmentIdentity.set(true)
         task.developmentIdentitySuffix.set(designPreview.map { if (it) "preview" else "dev" })
         task.outputDirectory.set(project.layout.buildDirectory.dir(
@@ -1519,7 +1539,7 @@ private fun configureWinAppTasks(
         ))
         task.dependsOn(project.provider {
             if (selectedVariant.get().kind == WinAppVariantKind.Jvm) {
-                applicationHostTask
+                stageRuntimeAssetsTask
             } else {
                 stageApplicationPackageTask
             }
@@ -1749,15 +1769,10 @@ private fun configureWinAppTasks(
     )
     project.plugins.withId("java") {
         project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> { sourceSets ->
-            applicationHostTask.configure { task ->
-                task.runtimeClasspath.from(sourceSets.getByName("main").runtimeClasspath)
-            }
+            jvmApplicationClasspath.from(sourceSets.getByName("main").runtimeClasspath)
         })
         project.tasks.named("jar", Jar::class.java).let { jar ->
-            applicationHostTask.configure { task ->
-                task.runtimeClasspath.from(jar.flatMap { it.archiveFile })
-                task.dependsOn(jar)
-            }
+            jvmApplicationClasspath.from(jar.flatMap { it.archiveFile })
         }
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             if (integrateDefaultJvmLifecycle && unpackagedMode.get()) {
@@ -1782,7 +1797,7 @@ private fun configureWinAppTasks(
             }
         })
     }
-    configureKmpJvmApplicationHostClasspath(project, applicationHostTask, selectedVariant, eagerSelection = eagerJvmSelection)
+    configureKmpJvmApplicationHostClasspath(project, jvmApplicationClasspath, selectedVariant, eagerSelection = eagerJvmSelection)
     project.afterEvaluate {
         if (selectedVariant.get().kind == WinAppVariantKind.Jvm &&
             options.jvmRuntimeMode.get() == WinAppJvmRuntimeMode.External &&
@@ -1851,7 +1866,7 @@ private class RuntimeAssetsRootJvmArgumentProvider(
 
 private fun configureKmpJvmApplicationHostClasspath(
     project: Project,
-    applicationHostTask: TaskProvider<BuildWinAppHostTask>,
+    selectedJvmClasspath: org.gradle.api.file.ConfigurableFileCollection,
     selectedVariant: Provider<WinAppVariant>,
     eagerSelection: Boolean,
 ) {
@@ -1860,8 +1875,6 @@ private fun configureKmpJvmApplicationHostClasspath(
         // Keep the selected KMP target in a separate file collection. The application host may
         // be configured before all targets exist; wiring every target as it appears leaks jars
         // from unrelated JVM targets into the eventual application classpath.
-        val selectedJvmClasspath = project.files()
-        applicationHostTask.configure { task -> task.runtimeClasspath.from(selectedJvmClasspath) }
 
         var selectedTargetAttached = false
 
@@ -1940,7 +1953,6 @@ private fun configureKmpJvmApplicationHostClasspath(
             }
             selectedJvmClasspath.setFrom(emptyList<Any>())
             selectedJvmClasspath.from(jvmCompilation.runtimeDependencyFiles, jar.flatMap { it.archiveFile })
-            applicationHostTask.configure { task -> task.dependsOn(jar) }
             selectedTargetAttached = true
         }
 

@@ -251,6 +251,8 @@ Automatic native runtime staging omits PDB symbols and linker intermediates (`.l
 
 Gradle modules keep the WinApp metadata inventory and select runtime payloads directly from the resolved NuGet cache. They discard WinApp's redundant copies of runtime architectures, C++ headers and import libraries. Custom CLI workflows can retain them with `tasks.named<RestoreWinAppDependenciesTask>("restoreWinAppDependencies") { includeRuntimeAssets.set(true); includeNativeBuildFiles.set(true) }`.
 
+JVM development runs assemble their launcher, dependency JARs, shared JVM image and runtime assets directly into the development package. They do not first materialize the ordinary package and standalone host directories; those outputs are still available through their own build/package tasks.
+
 New IDE project templates enable Gradle's build cache and configuration cache. Existing projects can enable them in `gradle.properties`:
 
 ```properties

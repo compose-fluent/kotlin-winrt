@@ -9,6 +9,7 @@ import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
@@ -29,6 +30,15 @@ import kotlin.streams.asSequence
 
 @CacheableTask
 abstract class StageWinAppPackageTask : DefaultTask() {
+    /** Direct JVM staging avoids constructing an intermediate standalone application host. */
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val jvmRuntimeClasspath: ConfigurableFileCollection
+    @get:InputDirectory @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val jvmRuntimeImageDirectory: DirectoryProperty
+    @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val jvmLauncherExecutable: org.gradle.api.file.RegularFileProperty
+    @get:Input abstract val jvmRuntimeJavaMajor: Property<Int>
+
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val runtimeAssetsDirectory: DirectoryProperty
@@ -204,6 +214,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             .map { Path.of(it).toAbsolutePath().normalize().toString() }
 
     init {
+        jvmRuntimeJavaMajor.convention(25)
         generateProjectPri.convention(true)
         developmentIdentity.convention(false)
         developmentIdentitySuffix.convention("dev")
@@ -236,16 +247,29 @@ abstract class StageWinAppPackageTask : DefaultTask() {
     @TaskAction
     fun stage() {
         val runtimeAssetsRoot = runtimeAssetsDirectory.get().asFile.toPath()
-        val outputRoot = outputDirectory.get().asFile.toPath()
+        val outputRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        val runtimeImage = jvmRuntimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        runtimeImage?.let { image ->
+            runtimeImageOverlapError(image, outputRoot, "Bundled JVM runtime image")?.let { throw GradleException(it) }
+        }
         GradleFileOperations.cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
         if (runtimeAssetsRoot.isDirectory()) {
             Files.walk(runtimeAssetsRoot).use { stream ->
                 stream.asSequence()
                     .filter { it.isRegularFile() }
-                    .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeAssetsRoot))) }
+                    .forEach { source ->
+                        val relative = source.relativeTo(runtimeAssetsRoot)
+                        if (jvmLauncherExecutable.isPresent) rejectWinAppJvmRuntimeAsset(relative)
+                        GradleFileOperations.copyFile(source, outputRoot.resolve(relative))
+                    }
             }
         }
+        jvmLauncherExecutable.orNull?.asFile?.toPath()?.let { launcher ->
+            GradleFileOperations.copyFile(launcher, outputRoot.resolve("${executableBaseName.get()}.exe"))
+            stageWinAppJvmRuntimeClasspath(jvmRuntimeClasspath.files, outputRoot)
+        }
+        runtimeImage?.let { stageWinAppJvmRuntimeImage(it, outputRoot, jvmRuntimeJavaMajor.get(), runtimeIdentifier.get()) }
         // Resolve the convention and dependency resource inputs once. PRI staging and loose
         // payload selection must observe the same source set and dependency archive contents.
         val conventionAppxResources = defaultAppxResourceInputs()

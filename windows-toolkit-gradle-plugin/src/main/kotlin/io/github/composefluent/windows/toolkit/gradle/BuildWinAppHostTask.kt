@@ -207,7 +207,7 @@ abstract class BuildWinAppHostTask : DefaultTask() {
                 windowsAppSdkDeployment = windowsAppSdkDeployment.get(),
             ),
         )
-        stageRuntimeClasspath(outputRoot)
+        stageWinAppJvmRuntimeClasspath(runtimeClasspath.files, outputRoot)
         stageRuntimeAssets(outputRoot)
         WinAppManifestGenerator.writeApplicationManifest(
             outputRoot,
@@ -236,47 +236,13 @@ abstract class BuildWinAppHostTask : DefaultTask() {
         }
     }
 
-    private fun stageRuntimeClasspath(outputRoot: Path) {
-        val libRoot = outputRoot.resolve("lib")
-        GradleFileOperations.cleanDirectory(libRoot)
-        Files.createDirectories(libRoot)
-        stagedRuntimeJarNames(runtimeClasspath.files.filter { it.isFile && it.name.endsWith(".jar", ignoreCase = true) })
-            .forEach { (jar, name) ->
-                val target = libRoot.resolve(name)
-                // JARs with one file name and one content share a staged file.
-                if (!Files.exists(target)) {
-                    Files.copy(jar.toPath(), target)
-                }
-            }
-    }
-
     private fun stageRuntimeImage(outputRoot: Path) {
         val source = runtimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
             ?: throw IllegalStateException(
                 "Bundled JVM runtime image is missing. Configure application.jvmRuntimeImage or ensure the " +
                     "prepareWinAppJvmRuntimeImage task is wired before building the application host.",
             )
-        if (!source.isDirectory()) {
-            throw IllegalStateException("Bundled JVM runtime image is not a directory: $source")
-        }
-        val target = outputRoot.resolve("runtime").toAbsolutePath().normalize()
-        runtimeImageOverlapError(source, outputRoot, "Bundled JVM runtime image")?.let { message ->
-            throw IllegalStateException(message)
-        }
-        copyDirectory(source, target)
-        if (isWindowsHost() && !hasWindowsJvmLibrary(target)) {
-            throw IllegalStateException(
-                "Bundled JVM runtime image at $source does not contain a Windows JVM library " +
-                "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll).",
-            )
-        }
-        if (isWindowsHost()) {
-            runCatching {
-                validateJvmRuntime(target, expectedJavaMajor.get(), runtimeIdentifier.get(), "Bundled JVM runtime image")
-            }.getOrElse { error ->
-                throw IllegalStateException(error.message, error)
-            }
-        }
+        stageWinAppJvmRuntimeImage(source, outputRoot, expectedJavaMajor.get(), runtimeIdentifier.get())
     }
 
     private fun validateExternalJvmHome(home: Path) {
@@ -299,12 +265,6 @@ abstract class BuildWinAppHostTask : DefaultTask() {
         }
     }
 
-    private fun hasWindowsJvmLibrary(root: Path): Boolean = listOf(
-        root.resolve("bin").resolve("server").resolve("jvm.dll"),
-        root.resolve("jre").resolve("bin").resolve("server").resolve("jvm.dll"),
-        root.resolve("bin").resolve("jvm.dll"),
-    ).any(Path::isRegularFile)
-
     private fun stageRuntimeAssets(outputRoot: Path) {
         runtimeAssetsDirectory.files
             .filter { it.exists() }
@@ -314,7 +274,7 @@ abstract class BuildWinAppHostTask : DefaultTask() {
                     copyRuntimeAssetDirectory(source.toPath(), outputRoot)
                 } else if (source.isFile) {
                     Files.createDirectories(outputRoot)
-                    rejectReservedRuntimeAsset(Path.of(source.name))
+                    rejectWinAppJvmRuntimeAsset(Path.of(source.name))
                     Files.copy(
                         source.toPath(),
                         outputRoot.resolve(source.name),
@@ -328,33 +288,10 @@ abstract class BuildWinAppHostTask : DefaultTask() {
         Files.walk(sourceRoot).use { stream ->
             stream.filter(Files::isRegularFile).forEach { source ->
                 val relative = sourceRoot.relativize(source)
-                rejectReservedRuntimeAsset(relative)
+                rejectWinAppJvmRuntimeAsset(relative)
                 val target = targetRoot.resolve(relative.toString()).normalize()
                 Files.createDirectories(target.parent)
                 Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            }
-        }
-    }
-
-    private fun rejectReservedRuntimeAsset(relative: Path) {
-        val firstSegment = relative.iterator().asSequence().firstOrNull()?.toString().orEmpty()
-        if (firstSegment.equals("runtime", ignoreCase = true) || firstSegment.equals("lib", ignoreCase = true)) {
-            throw IllegalStateException(
-                "Runtime asset '${relative.toString().replace('\\', '/')}' targets a reserved JVM host directory.",
-            )
-        }
-    }
-
-    private fun copyDirectory(sourceRoot: Path, targetRoot: Path) {
-        Files.walk(sourceRoot).use { stream ->
-            stream.forEach { source ->
-                val target = targetRoot.resolve(sourceRoot.relativize(source).toString())
-                if (Files.isDirectory(source)) {
-                    Files.createDirectories(target)
-                } else if (Files.isRegularFile(source)) {
-                    Files.createDirectories(target.parent)
-                    Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                }
             }
         }
     }
@@ -407,6 +344,50 @@ abstract class BuildWinAppHostTask : DefaultTask() {
         if (result.exitCode != 0) {
             throw IllegalStateException("WinApp host build failed with exit code ${result.exitCode}.\n${result.output}")
         }
+    }
+}
+
+/** One JVM payload contract for standalone hosts and direct development package staging. */
+internal fun stageWinAppJvmRuntimeClasspath(jars: Iterable<java.io.File>, outputRoot: Path) {
+    val libRoot = outputRoot.resolve("lib")
+    GradleFileOperations.cleanDirectory(libRoot)
+    Files.createDirectories(libRoot)
+    stagedRuntimeJarNames(jars.filter { it.isFile && it.name.endsWith(".jar", ignoreCase = true) })
+        .forEach { (jar, name) ->
+            val target = libRoot.resolve(name)
+            if (!Files.exists(target)) Files.copy(jar.toPath(), target)
+        }
+}
+
+internal fun stageWinAppJvmRuntimeImage(source: Path, outputRoot: Path, expectedJavaMajor: Int, runtimeIdentifier: String) {
+    require(source.isDirectory()) { "Bundled JVM runtime image is not a directory: $source" }
+    runtimeImageOverlapError(source, outputRoot, "Bundled JVM runtime image")?.let { throw IllegalStateException(it) }
+    val targetRoot = outputRoot.resolve("runtime")
+    Files.walk(source).use { stream ->
+        stream.forEach { file ->
+            val target = targetRoot.resolve(source.relativize(file).toString())
+            if (file.isDirectory()) Files.createDirectories(target)
+            else if (file.isRegularFile()) GradleFileOperations.copyFile(file, target)
+        }
+    }
+    if (isWindowsHost()) {
+        check(hasWindowsJvmLibrary(targetRoot)) {
+            "Bundled JVM runtime image at $source does not contain a Windows JVM library " +
+                "(bin/server/jvm.dll, jre/bin/server/jvm.dll, or bin/jvm.dll)."
+        }
+        runCatching { validateJvmRuntime(targetRoot, expectedJavaMajor, runtimeIdentifier, "Bundled JVM runtime image") }
+            .getOrElse { throw IllegalStateException(it.message, it) }
+    }
+}
+
+private fun hasWindowsJvmLibrary(root: Path): Boolean = listOf(
+    root.resolve("bin/server/jvm.dll"), root.resolve("jre/bin/server/jvm.dll"), root.resolve("bin/jvm.dll"),
+).any(Path::isRegularFile)
+
+internal fun rejectWinAppJvmRuntimeAsset(relative: Path) {
+    val firstSegment = relative.iterator().asSequence().firstOrNull()?.toString().orEmpty()
+    if (firstSegment.equals("runtime", true) || firstSegment.equals("lib", true)) {
+        throw IllegalStateException("Runtime asset '${relative.toString().replace('\\', '/')}' targets a reserved JVM host directory.")
     }
 }
 
