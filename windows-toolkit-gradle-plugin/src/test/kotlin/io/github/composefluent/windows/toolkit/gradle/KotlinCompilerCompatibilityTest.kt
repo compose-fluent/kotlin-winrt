@@ -14,6 +14,40 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 
 /** CsWinRT SourceGenerator.props builds shared sources against each supported compiler API. */
 class KotlinCompilerCompatibilityTest {
+    @Test
+    fun inactive_published_plugin_resolves_on_jdk_21_and_reuses_configuration_cache() {
+        val fixture = fixture("2.4.20")
+        val publicationVersion = requireNotNull(System.getProperty("winrt.test.publicationVersion"))
+        write(fixture, "build.gradle", """
+            plugins {
+                id 'io.github.compose-fluent.windows-toolkit' version '$publicationVersion' apply false
+                id 'org.jetbrains.kotlin.jvm' version '2.4.20'
+            }
+            assert !plugins.hasPlugin('io.github.compose-fluent.windows-toolkit')
+            abstract class VerifyInactiveJdk extends DefaultTask {
+                @TaskAction void verify() {
+                    assert Runtime.version().feature() == 21
+                    println 'WINRT_INACTIVE_JDK:21'
+                }
+            }
+            tasks.register('verifyInactiveJdk', VerifyInactiveJdk)
+        """)
+        val javaHome = "-Dorg.gradle.java.home=${jdk21()}"
+        val result = build(fixture, "verifyInactiveJdk", javaHome, "--configuration-cache")
+        assertTrue(result.output, result.output.contains("WINRT_INACTIVE_JDK:21"))
+        val reused = build(fixture, "verifyInactiveJdk", javaHome, "--configuration-cache")
+        assertTrue(reused.output, reused.output.contains("Reusing configuration cache"))
+    }
+
+    @Test
+    fun applying_published_plugin_on_jdk_21_reports_the_required_jdk() {
+        val fixture = fixture("2.4.0")
+        val result = build(fixture, "help", "-Dorg.gradle.java.home=${jdk21()}", fail = true)
+        assertTrue(result.output, result.output.contains("The Windows toolkit requires JDK 25 or newer when applied."))
+        assertFalse(result.output, result.output.contains("UnsupportedClassVersionError"))
+        assertFalse(result.output, result.output.contains("No matching variant"))
+    }
+
     @Test fun kotlin_2_4_0_compiles_with_matching_plugins() = compileJvm("2.4.0")
     @Test fun kotlin_2_4_20_compiles_with_matching_plugins() = compileJvm("2.4.20")
     @Test fun kotlin_2_4_0_compiles_native_with_matching_plugins() = compileNative("2.4.0")
@@ -165,6 +199,20 @@ class KotlinCompilerCompatibilityTest {
     }
 
     private var buildNumber = 0
+
+    private fun jdk21(): Path {
+        val explicit = System.getenv("WINRT_TEST_JDK_21")?.let(Path::of)
+        val gradleHome = System.getenv("GRADLE_USER_HOME")?.let(Path::of)
+            ?: Path.of(System.getProperty("user.home"), ".gradle")
+        val candidates = listOfNotNull(explicit) + gradleHome.resolve("jdks").toFile()
+            .listFiles().orEmpty().filter { it.isDirectory }.map { it.toPath() }
+        return requireNotNull(candidates.firstOrNull { candidate ->
+            Files.isRegularFile(candidate.resolve("bin/java.exe")) &&
+                candidate.resolve("release").toFile().takeIf { it.isFile }?.readLines()
+                    ?.any { it.startsWith("JAVA_VERSION=\"21.") } == true
+        }) { "Install JDK 21 or set WINRT_TEST_JDK_21 to validate inactive plugin resolution" }
+    }
+
     private fun build(directory: Path, vararg arguments: String, fail: Boolean = false) =
         Files.newBufferedWriter(directory.parent.resolve("logs/build-${buildNumber++}.log")).use { log ->
             val runner = GradleRunner.create()

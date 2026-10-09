@@ -3564,7 +3564,7 @@ private fun kotlinWinRTRuntimeClasspathDependency(project: Project): Any {
         projectPath = ":winrt-runtime",
         moduleName = "winrt-runtime",
     )
-        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid")?.let(project::files)
+        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid"))?.let(project::files)
         ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
 }
 
@@ -3582,7 +3582,7 @@ private fun kotlinWinRTAuthoringRuntimeClasspathDependency(project: Project): An
         projectPath = ":winrt-authoring",
         moduleName = "winrt-authoring",
     )
-        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports")?.let(project::files)
+        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports"))?.let(project::files)
         ?: "io.github.compose-fluent:winrt-authoring:${kotlinWinRTPluginVersion()}"
 }
 
@@ -3645,7 +3645,7 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
         return runtimeDependencies
     }
     runtimeDependencies += kotlinWinRTPluginMetadataArtifact(project, "winrt-metadata")
-        ?: kotlinWinRTCodeSourceFile(WinRTMetadataSource::class.java)
+        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile(WinRTMetadataSource::class.java))
             ?.let(project::files)
         ?: "io.github.compose-fluent:winrt-metadata:${kotlinWinRTPluginVersion()}"
     return runtimeDependencies
@@ -3702,6 +3702,11 @@ private fun kotlinWinRTPluginMetadataGeneratorWorkerClasspath(): List<File>? {
 }
 
 private fun kotlinWinRTPluginUnderTestMetadataFile(): File? {
+    KotlinWindowsToolkitPlugin::class.java.classLoader
+        .getResourceAsStream("kotlin-winrt-test-metadata.properties")?.use { stream ->
+            val metadataFile = Properties().apply { load(stream) }.getProperty("metadata-file")?.let(::File)
+            if (metadataFile?.isFile == true) return metadataFile
+        }
     val codeSource = kotlinWinRTCodeSourceFile(KotlinWindowsToolkitPlugin::class.java) ?: return null
     val sourcePath = codeSource.canonicalFile.toPath()
     var current = sourcePath.toFile()
@@ -3854,6 +3859,11 @@ private fun kotlinWinRTCachedCompilerEmbeddable(project: Project, kotlinCompiler
 private fun kotlinWinRTCodeSourceFile(type: Class<*>): File? {
     val location = type.protectionDomain?.codeSource?.location ?: return null
     return runCatching { File(location.toURI()) }.getOrNull()
+}
+
+/** Bundled tools belong to the Gradle plugin, never to an application's library classpath. */
+private fun kotlinWinRTStandaloneArtifact(codeSource: File?): File? = codeSource?.takeUnless { file ->
+    file.canonicalFile == kotlinWinRTCodeSourceFile(KotlinWindowsToolkitPlugin::class.java)?.canonicalFile
 }
 
 private fun kotlinWinRTCodeSourceFile(typeName: String): File? =

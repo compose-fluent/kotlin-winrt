@@ -26,6 +26,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up JDK 21 for inactive plugin compatibility
+        id: jdk21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
@@ -96,6 +103,8 @@ jobs:
 
       - name: Test Kotlin compiler compatibility
         shell: pwsh
+        env:
+          WINRT_TEST_JDK_21: ${{ steps.jdk21.outputs.path }}
         run: ./gradlew.bat -p windows-toolkit-gradle-plugin :compilerCompatibilityTest --no-configuration-cache --max-workers=2
 
       - name: Verify Publish to Maven Local

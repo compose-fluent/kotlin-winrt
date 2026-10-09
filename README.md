@@ -25,6 +25,8 @@ WinUI validation runs through both the generated JVM application host and the `m
 
 The Windows toolkit supports Kotlin **2.4.0** and **2.4.20**. It selects compiler plugin artifacts for the project's exact Kotlin Gradle Plugin version, for both JVM and `mingwX64`; no version override is required. Other compiler versions fail with a supported-version diagnostic before loading the IR plugin. Runtime, metadata, and generated projection libraries share the same publication version across these compiler targets.
 
+Gradle builds running on JDK 21 can declare the Windows toolkit with `apply false`. Applying the plugin and compiling WinRT/WinUI still require Gradle to run on JDK 25 or newer; the plugin checks this before loading its WinRT tools.
+
 ## Modules
 
 - `winrt-runtime`: WinRT ABI, COM interop, activation, marshaling, object identity, WinUI bootstrap, and runtime helpers.
