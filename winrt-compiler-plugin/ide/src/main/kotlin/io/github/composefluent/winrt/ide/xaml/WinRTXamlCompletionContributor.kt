@@ -90,10 +90,13 @@ class WinRTXamlCompletionContributor : CompletionContributor() {
         names.distinct().filter { !it.substringAfter(':').contains('.') || it in properties }.forEach { name ->
             var item = LookupElementBuilder.create(name).withInsertHandler(XmlTagInsertHandler.INSTANCE)
             properties[name]?.let { member ->
-                // Match the property itself and camel-word suffixes as well as
-                // its qualified form: Backdrop -> Window.SystemBackdrop.
+                // Match camel-word suffixes both with and without the owner:
+                // Backdrop / Window.Backdrop -> Window.SystemBackdrop.
                 val words = member.name.split(Regex("(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])"))
-                item = item.withLookupStrings(words.indices.map { words.drop(it).joinToString("") })
+                val suffixes = words.indices.map { words.drop(it).joinToString("") }
+                val owner = name.substringBeforeLast('.')
+                item = item.withLookupStrings(suffixes + suffixes.map { "$owner.$it" })
+                    .withPresentableText(name)
                     .withTypeText(member.typeName.substringAfterLast('.').takeIf(String::isNotEmpty) ?: "Property")
             }
             result.addElement(item)

@@ -59,6 +59,7 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
             WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.Controls.Control"),
             WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Grid", "Microsoft.UI.Xaml.Controls.Control"),
             WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Window"),
+            WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Media.SystemBackdrop"),
             WinRTXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Visibility", enumEntries = listOf("Visible", "Collapsed")),
         ), mapOf(
             "Microsoft.UI.Xaml.Controls.Control" to WinRTXamlApplicationTypeMembers(properties = listOf(
@@ -73,7 +74,7 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
                 WinRTXamlApplicationProperty("RowDefinitions", WinRTTypeRef.named("String")),
             )),
             "Microsoft.UI.Xaml.Window" to WinRTXamlApplicationTypeMembers(properties = listOf(
-                WinRTXamlApplicationProperty("SystemBackdrop", WinRTTypeRef.named("String")),
+                WinRTXamlApplicationProperty("SystemBackdrop", WinRTTypeRef.named("Microsoft.UI.Xaml.Media.SystemBackdrop")),
                 WinRTXamlApplicationProperty("Title", WinRTTypeRef.named("String")),
             )),
         ), metadata, mapOf("Sample.ClickHandler" to "Sample", "Windows.Foundation.EventRegistrationToken" to "Windows.Foundation.FoundationContract"))
@@ -138,6 +139,34 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
         val items = allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }.orEmpty()
         assertTrue(items.joinToString { it.lookupString }, items.any { it.lookupString == "local:Widget.Inherited" } ||
             myFixture.file.text.contains("<local:Widget.Inherited>"))
+    }
+
+    fun testQualifiedPropertySuffixesDisplayAndInsertTheFullPropertyElementName() {
+        // These are SDK property names, using the same normalized member view
+        // consumed by CsWinRT. Backdrop is a typing shortcut for SystemBackdrop.
+        configure("""<Window xmlns="${WinRTXamlCatalog.PRESENTATION}"><Window.Backdrop<caret></Window>""")
+        val automatic = com.intellij.codeInsight.CodeInsightSettings.getInstance().AUTOCOMPLETE_ON_CODE_COMPLETION
+        com.intellij.codeInsight.CodeInsightSettings.getInstance().AUTOCOMPLETE_ON_CODE_COMPLETION = false
+        try {
+            listOf(
+                Triple("Window", "Window.Backdrop", "Window.SystemBackdrop"),
+                Triple("Window", "Window.Sys", "Window.SystemBackdrop"),
+                Triple("Grid", "Grid.Definitions", "Grid.RowDefinitions"),
+            ).forEach { (owner, entered, expected) ->
+                myFixture.configureByText("Shell.xaml", """<$owner xmlns="${WinRTXamlCatalog.PRESENTATION}"><$entered<caret></$owner>""")
+                val items = allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }.orEmpty()
+                val item = items.single { it.lookupString == expected }
+                val presentation = com.intellij.codeInsight.lookup.LookupElementPresentation()
+                item.renderElement(presentation)
+                assertEquals(expected, presentation.itemText)
+                if (owner == "Window") assertEquals("SystemBackdrop", presentation.typeText)
+                myFixture.lookup.currentItem = item
+                myFixture.finishLookup('>')
+                assertTrue(myFixture.file.text, myFixture.file.text.contains("<$expected>"))
+                assertTrue(myFixture.file.text, myFixture.file.text.contains("</$expected>"))
+                assertFalse(myFixture.file.text, myFixture.file.text.contains("<$owner.$expected"))
+            }
+        } finally { com.intellij.codeInsight.CodeInsightSettings.getInstance().AUTOCOMPLETE_ON_CODE_COMPLETION = automatic }
     }
 
     fun testProjectedEventValuesAreNotSuggestedAsPropertyElements() {
