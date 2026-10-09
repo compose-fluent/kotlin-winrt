@@ -37,8 +37,10 @@ internal enum class WinRTManifestPage(val title: String) {
                 "Capabilities" in path -> Capabilities
                 "ApplicationContentUriRules" in path -> ContentUris
                 "Extensions" in path -> Declarations
+                field.path.last().name == "TileUpdate" || field.path.last().name == "LockScreen" && field.attribute == "Notification" -> Application
                 "VisualElements" in path -> if (field.path.last().name == "VisualElements" && field.attribute in listOf("DisplayName", "Description", "AppListEntry")) Application else VisualAssets
                 field.path.last().name == "Logo" -> VisualAssets
+                field.path.last().name == "Resource" && field.path.last().index == 0 && field.attribute == "Language" -> Application
                 "Application" in path -> Application
                 else -> Packaging
             }
@@ -61,6 +63,18 @@ internal fun WinRTManifestDesigner(
     onGradle: () -> Unit,
     onBrowse: (WinRTXmlField) -> Unit,
     assetPath: (String) -> Path?,
+    catalog: WinRTManifestCatalog = WinRTManifestCatalog.Empty,
+    onCatalogCapability: (WinRTManifestCapability) -> Unit = { onCapability(it.name, it.namespace.contains("restrictedcapabilities"), it.device) },
+    onDeclaration: (Int, WinRTManifestDeclaration) -> Unit = { _, _ -> },
+    onAddNode: (WinRTXmlNode, WinRTManifestChild) -> Unit = { _, _ -> },
+    onRemoveNode: (WinRTXmlNode) -> Unit = {},
+    onSelection: (Int, Boolean, String, Boolean) -> Unit = { _, _, _, _ -> },
+    onCertificate: (WinRTXmlField) -> Unit = {},
+    onGenerateAssets: (WinRTManifestAssetRequest) -> Unit = {},
+    onBrowseAssetVariant: (WinRTXmlField, Int) -> Unit = { _, _ -> },
+    onRemoveAssetVariant: (WinRTXmlField, Int) -> Unit = { _, _ -> },
+    onChooseAssetSource: ((String) -> Unit) -> Unit = {},
+    generatingAssets: Boolean = false,
 ) {
     var page by remember { mutableStateOf(WinRTManifestPage.Application) }
     var application by remember { mutableIntStateOf(0) }
@@ -73,6 +87,11 @@ internal fun WinRTManifestDesigner(
             page = WinRTManifestPage.entries.single { it.title == title }
         }
         Divider(Orientation.Horizontal)
+        if (page == WinRTManifestPage.VisualAssets) {
+            WinRTManifestVisualAssets(snapshot, application, onEdit, onBrowse, assetPath, onSelection,
+                onGenerateAssets, onBrowseAssetVariant, onRemoveAssetVariant, onChooseAssetSource, errors, generatingAssets) { application = it }
+            return@Column
+        }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Column(Modifier.widthIn(max = 900.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 errors.distinct().forEach { Text(it) }
@@ -85,7 +104,7 @@ internal fun WinRTManifestDesigner(
                     WinRTManifestPage.Application -> "Identify and describe the application."
                     WinRTManifestPage.VisualAssets -> "Configure application icons, tiles and the splash screen."
                     WinRTManifestPage.Capabilities -> "Choose the system features the application can access."
-                    WinRTManifestPage.Declarations -> "Register protocols and file associations."
+                    WinRTManifestPage.Declarations -> "Add declarations and configure their properties."
                     WinRTManifestPage.ContentUris -> "Configure access rules for web content."
                     WinRTManifestPage.Packaging -> "Configure package identity, publisher and supported Windows versions."
                 })
@@ -94,8 +113,12 @@ internal fun WinRTManifestDesigner(
                     windowsVersions.forEach { Text(it) }
                     Link("Edit Windows versions in Gradle", onClick = onGradle)
                 }
-                if (page == WinRTManifestPage.Capabilities) ManifestCapabilities(visibleFields, onRemove, onCapability)
-                else visibleFields.groupBy { groupTitle(it, page) }.forEach { (group, fields) ->
+                if (page == WinRTManifestPage.Capabilities) WinRTManifestCapabilities(visibleFields, catalog, onRemove, onCatalogCapability)
+                else if (page == WinRTManifestPage.Declarations) WinRTManifestDeclarations(snapshot, application, catalog, onEdit, onDeclaration, onAddNode, onRemoveNode)
+                else visibleFields.filterNot { it.path.last().name in listOf("Rotation", "ShowOn") }.sortedBy { field ->
+                    if (page == WinRTManifestPage.Application) listOf("DisplayName", "EntryPoint", "Language", "Description", "TrustLevel", "RuntimeBehavior", "AppListEntry", "Notification", "ResourceGroup", "Recurrence", "UriTemplate", "Id", "Executable")
+                        .indexOf(field.attribute).takeIf { it >= 0 } ?: 100 else 0
+                }.groupBy { groupTitle(it, page) }.forEach { (group, fields) ->
                     if (group.isNotEmpty()) Text(group, fontWeight = FontWeight.SemiBold)
                     fields.forEach { field ->
                         key(field.id) {
@@ -104,9 +127,12 @@ internal fun WinRTManifestDesigner(
                             ManifestFormRow(fieldTitle(field)) {
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        ManifestFieldEditor(field, !governed, Modifier.weight(1f), onEdit)
+                                        if (page == WinRTManifestPage.Packaging && field.attribute == "Version") ManifestVersionEditor(field, onEdit)
+                                        else ManifestFieldEditor(field, !governed, Modifier.weight(1f), onEdit)
+                                        if (page == WinRTManifestPage.Packaging && field.attribute == "Publisher") OutlinedButton(onClick = { onCertificate(field) }) { Text("Select Certificate…") }
                                         if (asset) OutlinedButton(onClick = { onBrowse(field) }) { Text("Browse…") }
-                                        if (field.attribute in listOf("Name", "Language", "Match") && field.path.last().name in listOf("Protocol", "FileTypeAssociation", "Resource", "Rule"))
+                                        if (field.attribute in listOf("Name", "Language", "Match") && field.path.last().name in listOf("Protocol", "FileTypeAssociation", "Resource", "Rule") &&
+                                            !(field.path.last().name == "Resource" && field.path.last().index == 0))
                                             Link("Remove", onClick = { onRemove(field) })
                                     }
                                     if (asset) ManifestAssetPreview(field.value, assetPath)
@@ -116,7 +142,8 @@ internal fun WinRTManifestDesigner(
                     }
                 }
                 when (page) {
-                    WinRTManifestPage.Declarations -> ManifestNewDeclaration(application, snapshot.applicationCount > 0, onExtension)
+                    WinRTManifestPage.Application -> ManifestRotations(snapshot, application, onSelection)
+                    WinRTManifestPage.Packaging -> ManifestFamilyName(snapshot)
                     WinRTManifestPage.ContentUris -> ManifestNewContentUri(application, snapshot.applicationCount > 0, onContentUri)
                     else -> Unit
                 }
@@ -126,7 +153,7 @@ internal fun WinRTManifestDesigner(
 }
 
 @Composable
-private fun ManifestFormRow(label: String, content: @Composable RowScope.() -> Unit) {
+internal fun ManifestFormRow(label: String, content: @Composable RowScope.() -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (maxWidth < 520.dp) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("$label:")
@@ -155,7 +182,7 @@ private class ManifestFieldDraft(field: WinRTXmlField) {
 }
 
 @Composable
-private fun ManifestFieldEditor(field: WinRTXmlField, enabled: Boolean, modifier: Modifier, onEdit: (WinRTXmlField, String) -> Unit) {
+internal fun ManifestFieldEditor(field: WinRTXmlField, enabled: Boolean, modifier: Modifier, onEdit: (WinRTXmlField, String) -> Unit) {
     val draft = remember(field.id) { ManifestFieldDraft(field) }
     LaunchedEffect(field.value) { draft.accept(field) }
     val conflict = field.value != draft.expected.value && field.value != draft.submitted
@@ -169,14 +196,14 @@ private fun ManifestFieldEditor(field: WinRTXmlField, enabled: Boolean, modifier
     val latestCommit by rememberUpdatedState(::commit)
     LaunchedEffect(draft.buffer.text, draft.expected.value, draft.submitted) { delay(350); commit() }
     DisposableEffect(field.id) { onDispose { latestCommit() } }
-    val choices = when (field.attribute) {
+    val choices = field.choices.ifEmpty { when (field.attribute) {
         "ProcessorArchitecture" -> listOf("x64", "x86", "arm64", "neutral")
         "AppListEntry" -> listOf("default", "none")
         "Type" -> if (field.path.last().name == "Rule") listOf("include", "exclude") else emptyList()
         else -> emptyList()
-    }
+    } }
     Column(modifier) {
-        if (choices.isNotEmpty()) WinRTComboBox(fieldTitle(field), (choices + field.value).distinct().map { it to it }, field.value, Modifier.fillMaxWidth()) { onEdit(field, it) }
+        if (choices.isNotEmpty()) WinRTComboBox(fieldTitle(field), (choices + field.value).distinct().map { it to it.ifEmpty { "Not set" } }, field.value, Modifier.fillMaxWidth()) { onEdit(field, it) }
         else {
             val inputModifier = Modifier.fillMaxWidth()
             .semantics { contentDescription = fieldTitle(field) }
@@ -193,47 +220,6 @@ private fun ManifestFieldEditor(field: WinRTXmlField, enabled: Boolean, modifier
 }
 
 @Composable
-private fun ManifestCapabilities(fields: List<WinRTXmlField>, onRemove: (WinRTXmlField) -> Unit, onAdd: (String, Boolean, Boolean) -> Unit) {
-    val names = fields.filter { it.attribute == "Name" }
-    val presets = listOf(
-        Triple("Internet client", "internetClient", "Capability"),
-        Triple("Internet client and server", "internetClientServer", "Capability"),
-        Triple("Private networks", "privateNetworkClientServer", "Capability"),
-        Triple("Webcam", "webcam", "DeviceCapability"),
-        Triple("Microphone", "microphone", "DeviceCapability"),
-        Triple("Run full trust", "runFullTrust", "RestrictedCapability"),
-    )
-    presets.forEach { (title, name, kind) ->
-        val namespace = if (kind == "RestrictedCapability") WinRTXmlForms.RESTRICTED else WinRTXmlForms.FOUNDATION
-        val existing = names.firstOrNull { it.value == name && it.path.last().namespace == namespace && it.path.last().name == if (kind == "DeviceCapability") kind else "Capability" }
-        CheckboxRow(title, existing != null, { checked -> if (checked) onAdd(name, kind == "RestrictedCapability", kind == "DeviceCapability") else existing?.let(onRemove) })
-    }
-    names.filter { field -> presets.none { it.second == field.value } }.forEach { field ->
-        CheckboxRow("${field.value} (${if (field.path.last().namespace == WinRTXmlForms.RESTRICTED) "restricted" else field.path.last().name.removeSuffix("Capability").lowercase().ifEmpty { "general" }})", true, { onRemove(field) })
-    }
-    Divider(Orientation.Horizontal)
-    val name = remember { TextFieldState() }
-    var kind by remember { mutableStateOf("General") }
-    Text("Additional capability", fontWeight = FontWeight.SemiBold)
-    ManifestFormRow("Name") { TextField(name, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Capability name") }) }
-    ManifestFormRow("Type") { WinRTComboBox("Capability type", listOf("General", "Restricted", "Device").map { it to it }, kind, Modifier.fillMaxWidth()) { kind = it } }
-    OutlinedButton(enabled = name.text.isNotBlank(), onClick = { onAdd(name.text.toString(), kind == "Restricted", kind == "Device") }) { Text("Add capability") }
-}
-
-@Composable
-private fun ManifestNewDeclaration(application: Int, enabled: Boolean, onAdd: (Int, String, String?) -> Unit) {
-    Divider(Orientation.Horizontal)
-    Text("Add declaration", fontWeight = FontWeight.SemiBold)
-    var type by remember { mutableStateOf("Protocol") }
-    val name = remember { TextFieldState() }
-    val extension = remember { TextFieldState(".txt") }
-    ManifestFormRow("Type") { WinRTComboBox("Declaration type", listOf("Protocol", "File association").map { it to it }, type, Modifier.fillMaxWidth()) { type = it } }
-    ManifestFormRow("Name") { TextField(name, modifier = Modifier.fillMaxWidth()) }
-    if (type == "File association") ManifestFormRow("File extension") { TextField(extension, modifier = Modifier.fillMaxWidth()) }
-    OutlinedButton(enabled = enabled && name.text.isNotBlank(), onClick = { onAdd(application, name.text.toString(), if (type == "Protocol") null else extension.text.toString()) }) { Text("Add declaration") }
-}
-
-@Composable
 private fun ManifestNewContentUri(application: Int, enabled: Boolean, onAdd: (Int, String, String) -> Unit) {
     Divider(Orientation.Horizontal)
     Text("Add URI rule", fontWeight = FontWeight.SemiBold)
@@ -245,7 +231,7 @@ private fun ManifestNewContentUri(application: Int, enabled: Boolean, onAdd: (In
 }
 
 @Composable
-private fun ManifestAssetPreview(value: String, assetPath: (String) -> Path?) {
+internal fun ManifestAssetPreview(value: String, assetPath: (String) -> Path?, size: Int = 64) {
     var bitmap by remember(value) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(value) {
         bitmap = withContext(Dispatchers.IO) { runCatching {
@@ -254,7 +240,7 @@ private fun ManifestAssetPreview(value: String, assetPath: (String) -> Path?) {
             org.jetbrains.skia.Image.makeFromEncoded(Files.readAllBytes(path)).toComposeImageBitmap()
         }.getOrNull() }
     }
-    bitmap?.let { Image(it, contentDescription = "Asset preview", modifier = Modifier.size(64.dp)) }
+    bitmap?.let { Image(it, contentDescription = "Asset preview", modifier = Modifier.size(size.dp)) }
 }
 
 private fun groupTitle(field: WinRTXmlField, page: WinRTManifestPage): String = when (page) {
@@ -264,12 +250,16 @@ private fun groupTitle(field: WinRTXmlField, page: WinRTManifestPage): String = 
     else -> ""
 }
 
-private fun fieldTitle(field: WinRTXmlField): String = when (field.attribute ?: field.path.last().name) {
+internal fun fieldTitle(field: WinRTXmlField): String = when (field.attribute ?: field.path.last().name) {
     "Id" -> "Application ID"
     "MinVersion" -> "Minimum Windows version"
     "MaxVersionTested" -> "Maximum version tested"
     "ProcessorArchitecture" -> "Architecture"
     "Match" -> "URI"
+    "Language" -> if (field.path.last().index == 0) "Default language" else "Language"
+    "Notification" -> "Lock screen notification"
+    "Recurrence" -> "Tile update recurrence"
+    "UriTemplate" -> "Tile update URI template"
     "Square150x150Logo" -> "Square 150 × 150 logo"
     "Square44x44Logo" -> "Square 44 × 44 logo"
     "Wide310x150Logo" -> "Wide 310 × 150 logo"
@@ -279,3 +269,62 @@ private fun fieldTitle(field: WinRTXmlField): String = when (field.attribute ?: 
 }
 
 private fun friendlyTitle(name: String): String = name.substringAfter(':').replace(Regex("([a-z])([A-Z])"), "$1 $2")
+
+@Composable
+private fun ManifestRotations(snapshot: WinRTXmlSnapshot, application: Int, onSelection: (Int, Boolean, String, Boolean) -> Unit) {
+    if (snapshot.applicationCount == 0) return
+    Text("Supported rotations", fontWeight = FontWeight.SemiBold)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        listOf("landscape" to "Landscape", "portrait" to "Portrait", "landscapeFlipped" to "Landscape flipped", "portraitFlipped" to "Portrait flipped").forEach { (value, title) ->
+            val selected = snapshot.fields.any { it.path.last().name == "Rotation" && it.path.any { step -> step.name == "Application" && step.index == application } && it.value == value }
+            CheckboxRow(title, selected, { onSelection(application, true, value, it) })
+        }
+    }
+}
+
+@Composable
+private fun ManifestVersionEditor(field: WinRTXmlField, onEdit: (WinRTXmlField, String) -> Unit) {
+    val draft = remember(field.id) { ManifestFieldDraft(field) }
+    val parts = remember(field.id) { List(4) { TextFieldState(field.value.split('.').getOrNull(it).orEmpty()) } }
+    val values = parts.map { it.text.toString() }
+    val valid = values.all { it.toIntOrNull() in 0..65535 }
+    LaunchedEffect(field.value) {
+        val local = parts.joinToString(".") { it.text.toString() }
+        draft.buffer.edit { replace(0, length, local) }
+        draft.accept(field)
+        if (draft.buffer.text.toString() != local) parts.forEachIndexed { index, part ->
+            val value = draft.buffer.text.toString().split('.').getOrNull(index).orEmpty()
+            part.edit { replace(0, length, value) }
+        }
+    }
+    val conflict = field.value != draft.expected.value && field.value != draft.submitted
+    fun commit() {
+        val value = parts.joinToString(".") { it.text.toString() }
+        if (valid && !conflict && draft.submitted == null && value != draft.expected.value) {
+            draft.submitted = value; onEdit(draft.expected, value)
+        }
+    }
+    val latestCommit by rememberUpdatedState(::commit)
+    LaunchedEffect(values, draft.expected.value, draft.submitted) { delay(350); commit() }
+    DisposableEffect(field.id) { onDispose { latestCommit() } }
+    Column(Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Major", "Minor", "Build", "Revision").forEachIndexed { index, name -> Column(Modifier.weight(1f)) {
+                Text(name)
+                TextField(parts[index], modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Version $name" }.onFocusChanged { if (!it.isFocused) commit() })
+            } }
+        }
+        if (!valid) Text("Each version number must be between 0 and 65535.")
+        if (conflict) Text("The version changed in the source editor. Reopen Packaging to reload it.")
+    }
+}
+
+@Composable
+private fun ManifestFamilyName(snapshot: WinRTXmlSnapshot) {
+    val name = snapshot.fields.firstOrNull { it.path.last().name == "Identity" && it.attribute == "Name" }?.value.orEmpty()
+    val publisher = snapshot.fields.firstOrNull { it.path.last().name == "Identity" && it.attribute == "Publisher" }?.value.orEmpty()
+    var family by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(name, publisher) { family = withContext(Dispatchers.IO) { runCatching { WinRTPackageIdentity.familyName(name, publisher) }.getOrNull() } }
+    ManifestFormRow("Package family name") { Text(family ?: "Enter a valid package name and publisher.") }
+    Text("Publisher is read from the selected certificate. Configure package signing in Gradle.")
+}

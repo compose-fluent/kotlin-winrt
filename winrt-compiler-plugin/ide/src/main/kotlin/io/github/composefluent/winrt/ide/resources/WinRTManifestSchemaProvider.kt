@@ -48,6 +48,7 @@ internal class WinRTManifestBundledSchemas(private val project: com.intellij.ope
         }
     }
     companion object {
+        internal fun sources(): Map<String, String> = texts.mapValues { it.value.second }
         // SDK Include/winrt omits these namespaces. The vendored Microsoft MSIX
         // schemas retain their original definitions and accompanying MIT license.
         private val texts by lazy {

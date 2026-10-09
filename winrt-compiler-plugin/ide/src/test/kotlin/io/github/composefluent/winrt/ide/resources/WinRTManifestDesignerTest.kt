@@ -51,12 +51,13 @@ class WinRTManifestDesignerTest : BasePlatformTestCase() {
             scene.render().close()
             scene.click(scene.textNode("Visual Assets").boundsInWindow.center)
             assertEquals("Preview application", snapshot.fields.first { it.attribute == "DisplayName" }.value)
+            scene.click(scene.textNode("Medium Tile").boundsInWindow.center)
             assertNotNull(scene.textNode("Square 150 × 150 logo:"))
             screenshot(scene, "manifest-assets.png")
             scene.click(scene.textNode("Capabilities").boundsInWindow.center)
-            scene.click(scene.textNode("Internet client").boundsInWindow.center)
+            scene.click(scene.textNode("Internet Client").boundsInWindow.center)
             assertTrue(snapshot.fields.any { it.value == "internetClient" })
-            scene.click(scene.textNode("Internet client").boundsInWindow.center)
+            scene.click(scene.textNode("Internet Client").boundsInWindow.center)
             assertFalse(snapshot.fields.any { it.value == "internetClient" })
             assertTrue(xml.text.contains("<!-- keep --><custom:Unknown"))
             scene.click(scene.textNode("Packaging").boundsInWindow.center)
@@ -99,7 +100,7 @@ class WinRTManifestDesignerTest : BasePlatformTestCase() {
         render().close(); render().close()
     }
 
-    private fun ImageComposeScene.textNode(text: String) = nodes().single { it.hasText(text) }
+    private fun ImageComposeScene.textNode(text: String) = nodes().first { it.hasText(text) }
     private fun SemanticsNode.hasText(text: String) = config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text == text }
     private fun ImageComposeScene.nodes(): List<SemanticsNode> {
         fun descendants(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::descendants)
