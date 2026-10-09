@@ -74,13 +74,17 @@ internal object WinRTXamlSymbols {
     fun propertyElements(tag: XmlTag): Map<String, WinRTXamlMember> {
         if (tag.localName.contains('.')) return emptyMap()
         val catalog = catalog(tag.containingFile)
-        val properties = members(tag).filterNot { it.isEvent }.toMutableList()
+        val declaredMembers = members(tag)
+        val properties = declaredMembers.filterNot { it.isEvent }.toMutableList()
         tagClass(tag)?.let { owner ->
             analyze(owner) {
                 val scope = (owner.classSymbol as? KaNamedClassSymbol)?.defaultType?.scope
                 scope?.getCallableSignatures { true }?.forEach { signature ->
                     val variable = signature.symbol as? KaVariableSymbol ?: return@forEach
                     val name = variable.name.asString().takeUnless { it.startsWith('<') } ?: return@forEach
+                    // Projected events are Kotlin vals; metadata retains the
+                    // event/property distinction used by XAML and CsWinRT.
+                    if (declaredMembers.any { it.isEvent && it.name.equals(name, true) }) return@forEach
                     if (properties.none { it.name.equals(name, true) }) properties += WinRTXamlMember(
                         name.replaceFirstChar(Char::uppercase),
                         (signature.returnType as? KaClassType)?.classId?.asSingleFqName()?.asString().orEmpty(),

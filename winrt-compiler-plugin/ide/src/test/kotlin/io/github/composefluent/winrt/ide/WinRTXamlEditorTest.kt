@@ -140,6 +140,22 @@ class WinRTXamlEditorTest : BasePlatformTestCase() {
             myFixture.file.text.contains("<local:Widget.Inherited>"))
     }
 
+    fun testProjectedEventValuesAreNotSuggestedAsPropertyElements() {
+        // CsWinRT's normalized metadata distinguishes events from properties,
+        // even when Kotlin exposes a projected event as a val.
+        myFixture.addFileToProject("ProjectedButton.kt", """
+            package microsoft.ui.xaml.controls
+            class Button {
+                val click: Any = Any()
+                var customTitle: String = ""
+            }
+        """.trimIndent())
+        val file = configure("""<Button xmlns="${WinRTXamlCatalog.PRESENTATION}"><caret></Button>""")
+        val names = allowAnalysisOnEdt { file.rootTag!!.descriptor!!.getElementsDescriptors(file.rootTag).map { it.name } }
+        assertTrue(names.toString(), names.containsAll(listOf("Button.Content", "Button.CustomTitle")))
+        assertFalse(names.toString(), "Button.Click" in names)
+    }
+
     fun testQualifiedPropertyCompletionAndRootWindowTypeRemainAvailable() {
         configure("""<Window xmlns="${WinRTXamlCatalog.PRESENTATION}"><Window.Sys<caret>></Window>""")
         allowAnalysisOnEdt { myFixture.complete(CompletionType.BASIC) }
