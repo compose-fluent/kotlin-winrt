@@ -327,7 +327,7 @@ class KotlinProjectionPlanner(
                 null
             },
             classMemberMergeDescriptor = if (type.kind == WinRTTypeKind.RuntimeClass) {
-                semanticHelpers.classMemberMergeDescriptor(type)
+                semanticHelpers.classMemberMergeDescriptor(type, projectionContext)
             } else {
                 null
             },

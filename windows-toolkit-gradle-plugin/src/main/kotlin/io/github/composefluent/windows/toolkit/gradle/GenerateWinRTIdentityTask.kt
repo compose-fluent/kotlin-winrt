@@ -135,6 +135,7 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
                 appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFiles.files, typeShapeDescriptorFiles.files).toJsonArray()},")
+                appendLine("  \"internalProjectedTypes\": ${readInternalProjectedTypeNames(typeShapeDescriptorFiles.files).toJsonArray()},")
                 appendLine("  \"authoredTypes\": ${readAuthoredTypeNames(authoredMetadataFiles.files).toJsonArray()},")
                 appendLine("  \"sourceAdditions\": ${readGeneratedSourceAdditionTypeNames(sourceAdditionManifestFiles.files).toJsonArray()},")
                 appendLine("  \"excludeNamespaces\": ${excludeNamespaces.get().toJsonArray()},")
@@ -336,7 +337,15 @@ private val typeShapeDescriptorHeader = listOf(
     "value",
 )
 
-private fun readTypeShapeDescriptorProjectedTypeNames(file: File): List<String> {
+private fun readTypeShapeDescriptorProjectedTypeNames(file: File): List<String> =
+    readTypeShapeDescriptorRows(file).map { it[0] }
+
+internal fun readInternalProjectedTypeNames(files: Iterable<File>): List<String> =
+    files.filter(File::isFile).flatMap(::readTypeShapeDescriptorRows)
+        .filter { it[1] == "PROJECTION_VISIBILITY" && it[2] == "internal" }
+        .map { it[0] }.distinct().sorted()
+
+private fun readTypeShapeDescriptorRows(file: File): List<List<String>> {
     val lines = file.readLines()
     val header = lines.firstOrNull()?.split('\t')
         ?: throw GradleException("Type shape descriptor '${file.absolutePath}' is missing a header.")
@@ -356,7 +365,7 @@ private fun readTypeShapeDescriptorProjectedTypeNames(file: File): List<String> 
                 "Type shape descriptor '${file.absolutePath}' has malformed row $rowNumber.",
             )
         }
-        parts[0]
+        parts
     }
 }
 

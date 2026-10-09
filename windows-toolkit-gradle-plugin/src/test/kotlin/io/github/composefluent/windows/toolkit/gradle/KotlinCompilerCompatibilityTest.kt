@@ -9,6 +9,8 @@ import org.junit.Test
 import java.util.concurrent.TimeUnit
 import java.nio.file.Files
 import java.nio.file.Path
+import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 
 /** CsWinRT SourceGenerator.props builds shared sources against each supported compiler API. */
 class KotlinCompilerCompatibilityTest {
@@ -16,6 +18,41 @@ class KotlinCompilerCompatibilityTest {
     @Test fun kotlin_2_4_20_compiles_with_matching_plugins() = compileJvm("2.4.20")
     @Test fun kotlin_2_4_0_compiles_native_with_matching_plugins() = compileNative("2.4.0")
     @Test fun kotlin_2_4_20_compiles_native_with_matching_plugins() = compileNative("2.4.20")
+
+    @Test
+    fun downstream_projection_compiles_with_an_internal_dependency_interface_on_both_targets() {
+        // CsWinRT's exclusive interface belongs to its projection assembly. Kotlin
+        // cannot name that internal declaration from a dependent module; keep ABI calls.
+        listOf(false, true).forEach { native ->
+            val fixture = fixture("2.4.0", native)
+            Files.writeString(fixture.resolve("settings.gradle"), "\ninclude ':dependency'\n", java.nio.file.StandardOpenOption.APPEND)
+            write(fixture, "dependency/build.gradle", """
+                apply plugin: 'org.jetbrains.kotlin.${if (native) "multiplatform" else "jvm"}'
+                kotlin { ${if (native) "mingwX64()" else "jvmToolchain(25)"} }
+                repositories { mavenCentral() }
+            """)
+            val sourceSet = if (native) "commonMain" else "main"
+            write(fixture, "dependency/src/$sourceSet/kotlin/InternalInterface.kt", """
+                package sample.search
+                internal interface IQueryOptionsAdditionalSearchSources {
+                    val additionalSearchSourcesCount: Int
+                }
+            """)
+            val dependency = if (native) "kotlin.sourceSets.commonMain.dependencies { implementation project(':dependency') }"
+                else "dependencies { implementation project(':dependency') }"
+            Files.writeString(fixture.resolve("build.gradle"), "\n$dependency\n", java.nio.file.StandardOpenOption.APPEND)
+            KotlinProjectionGenerator(
+                projectionContext = WinRTMetadataProjectionContext(
+                    sources = emptyList(), inaccessibleDependencyTypes = setOf(HIDDEN_QUERY_INTERFACE),
+                ),
+                suppressedProjectionTypeNames = setOf(HIDDEN_QUERY_INTERFACE),
+            ).generate(projectionVisibilityModel()).filter { it.relativePath.endsWith(".kt") }.forEach { file ->
+                write(fixture, "src/$sourceSet/kotlin/${file.relativePath}", file.contents)
+            }
+            val task = if (native) ":compileKotlinMingwX64" else ":compileKotlin"
+            assertEquals(TaskOutcome.SUCCESS, build(fixture, task).task(task)?.outcome)
+        }
+    }
 
     @Test
     fun unsupported_compiler_fails_before_loading_ir_plugins() {
