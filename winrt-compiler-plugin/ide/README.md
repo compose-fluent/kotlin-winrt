@@ -79,6 +79,47 @@ variants use `build/variants/<name>/distributions`. Application
 runtime/projection behavior remains in the existing Kotlin modules corresponding
 to `.cswinrt`; IDE UI and analysis adapters do not own ABI behavior.
 
+## CI and GitHub releases
+
+The **IDE Plugin** workflow builds on Windows with JDK 25. Pull requests and
+`master` commits run the platform/editor/FIR tests, verify plugin structure and
+unique class ownership, and upload three installable ZIPs with checksums and
+test reports. Optional real application/import fixtures still require their
+explicit properties; they are not part of the default CI suite.
+
+| Package variant | Downloaded IDE SDK |
+| --- | --- |
+| `idea-262` | IntelliJ IDEA `2026.2.2` |
+| `as-261` | Android Studio Quail 4 `2026.1.4.7` |
+| `as-canary-262` | Android Studio Rabbit 2 Canary 2 `2026.2.2.2` |
+
+Versions are pinned to the compatibility matrix above. Both the UI and FIR
+adapter compile against the same downloaded SDK. To download another validated
+SDK locally, pass `-PkotlinWinRT.ide.sdkVersion=<version>` together with the
+variant/cache options. `-PkotlinWinRT.ide.path` still overrides downloads.
+
+Push a tag such as `ide-v0.1.0` or `ide-v0.1.0-beta.1` to build and publish a
+GitHub Release after all three variants pass. Alternatively run **IDE Plugin**
+manually with an existing release tag; leaving `release_tag` empty only uploads
+snapshot artifacts. Prerelease tags create prereleases. The workflow uses the
+built-in `GITHUB_TOKEN` with `contents: write` only in its release job; no Maven,
+signing or Marketplace credentials are needed. Existing releases are not
+overwritten.
+
+Release assets are named `kotlin-winrt-ide-<version>-<variant>.zip` alongside
+`SHA256SUMS.txt`. The plugin descriptor carries that release version; the
+portable project toolchain retains its separately versioned bundled snapshot
+publications. Install the ZIP matching your IDE through **Settings > Plugins >
+Install Plugin from Disk**.
+
+The same packaging and artifact checks can be run locally:
+
+```powershell
+./.github/scripts/build-ide-plugin.ps1 -Variant as-canary-262 `
+  -SdkVersion 2026.2.2.2 -Version 0.1.0-SNAPSHOT `
+  -LocalIdePath 'D:/Program Files/Android Studio Canary'
+```
+
 ## Analysis integration
 
 The compiler tooling already owns the XAML declaration, supertype and name

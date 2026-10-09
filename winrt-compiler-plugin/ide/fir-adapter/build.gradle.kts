@@ -14,7 +14,13 @@ dependencies {
     implementation("io.github.compose-fluent:winrt-metadata:0.1.0-SNAPSHOT")
     intellijPlatform {
         val localIde = providers.gradleProperty("kotlinWinRT.ide.path")
-        if (localIde.isPresent) local(localIde.get()) else intellijIdea("2026.2.2")
+        val sdkVersion = providers.gradleProperty("kotlinWinRT.ide.sdkVersion")
+        when {
+            localIde.isPresent -> local(localIde.get())
+            providers.gradleProperty("kotlinWinRT.ide.variant").orNull?.startsWith("as-") == true ->
+                androidStudio(sdkVersion.get())
+            else -> intellijIdea(sdkVersion.orElse("2026.2.2").get())
+        }
         bundledPlugin("org.jetbrains.kotlin")
     }
 }

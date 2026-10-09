@@ -13,7 +13,10 @@ plugins {
 }
 
 group = "io.github.composefluent.winrt"
-version = "0.1.0-SNAPSHOT"
+version = providers.gradleProperty("kotlinWinRT.ide.version").orElse("0.1.0-SNAPSHOT").get()
+require(version.toString().matches(Regex("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?"))) {
+    "Use a three-part IDE plugin version, optionally followed by a prerelease suffix."
+}
 
 // Each distribution recompiles its FIR/UI adapters and owns its test caches.
 // Keep the baseline package intact while validating another installed SDK.
@@ -38,7 +41,12 @@ dependencies {
     implementation(project(":fir-adapter")) { isTransitive = false }
     intellijPlatform {
         val localIde = providers.gradleProperty("kotlinWinRT.ide.path")
-        if (localIde.isPresent) local(localIde.get()) else intellijIdea("2026.2.2")
+        val sdkVersion = providers.gradleProperty("kotlinWinRT.ide.sdkVersion")
+        when {
+            localIde.isPresent -> local(localIde.get())
+            androidStudioSdk -> androidStudio(sdkVersion.get())
+            else -> intellijIdea(sdkVersion.orElse("2026.2.2").get())
+        }
         bundledPlugins("com.intellij.java", "org.jetbrains.kotlin", "com.intellij.gradle")
         if (androidStudioSdk) bundledPlugin("org.jetbrains.android")
         composeUI()
