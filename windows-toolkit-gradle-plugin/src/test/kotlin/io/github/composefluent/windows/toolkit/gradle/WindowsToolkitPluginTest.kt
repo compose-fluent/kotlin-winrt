@@ -6187,6 +6187,11 @@ class WindowsToolkitPluginTest {
         Files.writeString(nativeRoot.resolve("WinUI3Package.dll"), "dll")
         Files.writeString(nativeRoot.resolve("WinUI3Package.winmd"), "winmd")
         Files.writeString(nativeRoot.resolve("WinUI3Package.pri"), "pri")
+        // .cswinrt/nuget/Microsoft.Windows.CsWinRT.targets stages implementations,
+        // not the native compiler directory's debug symbols/linker intermediates.
+        listOf("pdb", "lib", "exp", "obj").forEach {
+            Files.writeString(nativeRoot.resolve("WinUI3Package.$it"), "compiler-only")
+        }
         Files.writeString(nativeRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml"), "xaml")
         Files.writeString(nativeRoot.resolve("WinUI3Package/SettingsCard_Resource.xbf"), "xbf")
         Files.writeString(nativeRoot.resolve("WinUI3Package/Shimmer_Resource.xaml"), "xaml")
@@ -6211,6 +6216,9 @@ class WindowsToolkitPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.winmd")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package.pri")))
+        listOf("pdb", "lib", "exp", "obj").forEach {
+            assertFalse(Files.exists(outputRoot.resolve("WinUI3Package.$it")))
+        }
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xbf")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("WinUI3Package/Shimmer_Resource.xbf")))
         assertFalse(Files.exists(outputRoot.resolve("WinUI3Package/SettingsCard_Resource.xaml")))
@@ -6244,6 +6252,9 @@ class WindowsToolkitPluginTest {
         val winAppBin = winAppRoot.resolve("bin")
         Files.createDirectories(winAppBin.resolve("x64/plugins"))
         Files.writeString(winAppBin.resolve("x64/plugins/runtime.dat"), "runtime")
+        Files.writeString(winAppBin.resolve("x64/plugins/runtime.pdb"), "implicit-symbols")
+        val debugSymbols = project.projectDir.toPath().resolve("DeclaredComponent.pdb")
+        Files.writeString(debugSymbols, "explicit-symbols")
         val lockfile = winAppRoot.resolve("winmds.lock.json")
         Files.writeString(
             lockfile,
@@ -6268,6 +6279,7 @@ class WindowsToolkitPluginTest {
             registeredTask.runtimeAssets.set(emptyList())
             registeredTask.nugetPackageContentFiles.from(project.files())
             registeredTask.winAppRuntimeAssetDirectories.from(winAppBin)
+            registeredTask.runtimeAssetFiles.from(debugSymbols)
             registeredTask.winAppRestoreLockFiles.from(lockfile)
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.generateProjectPri.set(false)
@@ -6278,6 +6290,8 @@ class WindowsToolkitPluginTest {
 
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertEquals("runtime", Files.readString(outputRoot.resolve("plugins/runtime.dat")))
+        assertFalse(Files.exists(outputRoot.resolve("plugins/runtime.pdb")))
+        assertEquals("explicit-symbols", Files.readString(outputRoot.resolve("DeclaredComponent.pdb")))
         assertEquals("dll", Files.readString(outputRoot.resolve("Sample.WinApp.Package.dll")))
         assertEquals("pri", Files.readString(outputRoot.resolve("Sample.WinApp.Package.pri")))
         assertFalse(Files.exists(outputRoot.resolve("Resources/Control.xaml")))

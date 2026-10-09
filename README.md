@@ -247,6 +247,8 @@ windows {
 
 Reusable WinRT libraries may declare `packageReferences { nugetPackage(...) }` or `application { runtimeAsset(...) }`. Final application modules consume dependency WinRT identity metadata and stage the aggregated runtime assets, so downstream apps do not need to repeat every library declaration just to place payloads in the final layout.
 
+Automatic native runtime staging omits PDB symbols and linker intermediates (`.lib`, `.exp`, `.obj`). Add a symbol file with `runtimeAsset(...)` when native debugging requires it; explicit NuGet copy-local payloads are also preserved.
+
 ## WinApp CLI and NuGet Restore
 
 The Gradle plugin translates project and dependency `packageReferences { nugetPackage(...) }` declarations into an internal `build/generated/kotlin-winrt/winapp/winapp.yaml`. Do not create or maintain that file manually. With the default `packageReferences { restoreNuGetPackages = true }`, `restoreWinAppDependencies` runs `winapp restore`, validates its schema-3 lockfile, and uses the resolved WinMD files for projection generation. The same lockfile and `.winapp/bin/<architecture>` output drive DLL, PRI, asset, and manifest staging after compilation; explicit local `packageReferences { winmd(...) }` inputs remain part of the projection input set.
