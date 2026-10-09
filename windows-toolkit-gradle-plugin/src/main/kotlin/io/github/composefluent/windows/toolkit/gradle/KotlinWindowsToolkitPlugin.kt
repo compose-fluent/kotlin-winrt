@@ -2772,8 +2772,10 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
             jvmTarget.set(businessTask.compilerOptions.jvmTarget)
             noJdk.set(businessTask.compilerOptions.noJdk)
             moduleName.set(
-                businessTask.compilerOptions.moduleName.map { moduleName ->
-                    "$moduleName-winrt-projection"
+                // The projection is owned by its published artifact, independently
+                // of the importing application's root name (KGP's default prefix).
+                projectionAuthoringTargetArtifactName.map { artifactName ->
+                    "${artifactName.removeSuffix(".jar")}-winrt-projection"
                 },
             )
         }
@@ -2809,13 +2811,23 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
             (task as org.jetbrains.kotlin.gradle.tasks.KotlinCompile).incremental = false
             task.libraries.from(projectionClasspath)
             task.pluginClasspath.from(compilerPluginClasspath)
+            val projectionMetadataIndex = generatedProjectionSources.map { directory ->
+                directory.file("kotlin-winrt-authoring/metadata-index.tsv")
+            }
+            // KGP's file options keep machine/project paths out of the scalar
+            // compiler arguments. Track their content separately for relocatable
+            // projection bytecode, like CsWinRT's metadata/tool inputs.
+            task.inputs.file(projectionMetadataIndex).withPropertyName("winrtProjectionMetadata")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+            task.inputs.files(compilerSupportManifest.map { it.asFile.parentFile })
+                .withPropertyName("winrtProjectionSupport")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             addWinRTCompilerPluginOptions(
                 project = project,
                 freeCompilerArgs = task.compilerOptions.freeCompilerArgs,
+                pluginOptions = task.pluginOptions,
                 taskName = task.name,
-                metadataIndex = generatedProjectionSources.map { directory ->
-                    directory.file("kotlin-winrt-authoring/metadata-index.tsv")
-                },
+                metadataIndex = projectionMetadataIndex,
                 outputs = compilerAuthoringOutputs(
                     outputDirectory = project.layout.dir(project.provider {
                         task.destinationDirectory.get().asFile
@@ -5164,9 +5176,9 @@ private fun addWinRTCompilerPluginOptions(
     projectionSupportOwnerArtifactName: org.gradle.api.provider.Provider<String>,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
     projectionSupportMode: String? = null,
+    pluginOptions: org.gradle.api.provider.ListProperty<org.jetbrains.kotlin.gradle.plugin.CompilerPluginConfig>? = null,
 ) {
-    freeCompilerArgs.addAll(
-        project.provider {
+    val options = project.provider {
             val authoringOptions = listOf(
                 "metadataIndex=${metadataIndex.get().asFile.absolutePath}",
                 "typeIndexOutput=${outputs.typeIndex.get().asFile.absolutePath}",
@@ -5200,10 +5212,27 @@ private fun addWinRTCompilerPluginOptions(
             } else {
                 emptyList()
             }
-            (authoringOptions + projectionSupportOptions)
-                .flatMap { option -> listOf("-P", "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:$option") }
-        },
-    )
+            authoringOptions + projectionSupportOptions
+    }
+    if (pluginOptions == null) {
+        freeCompilerArgs.addAll(options.map { entries -> entries.flatMap { option ->
+            listOf("-P", "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:$option")
+        } })
+    } else {
+        pluginOptions.add(options.map { entries ->
+            org.jetbrains.kotlin.gradle.plugin.CompilerPluginConfig().apply {
+                entries.forEach { entry ->
+                    val key = entry.substringBefore('=')
+                    val value = entry.substringAfter('=')
+                    val fileOption = key == "metadataIndex" || key == "compilerSupportManifest" ||
+                        key.endsWith("Output") || key == "compilerSupportClassOutputDirectory"
+                    val option = if (fileOption) org.jetbrains.kotlin.gradle.plugin.FilesSubpluginOption(key, listOf(File(value)))
+                        else org.jetbrains.kotlin.gradle.plugin.SubpluginOption(key, value)
+                    addPluginArgument(KOTLIN_WINRT_COMPILER_PLUGIN_ID, option)
+                }
+            }
+        })
+    }
 }
 
 internal fun withoutKotlinWinRTCompilerPluginOptions(args: List<String>): List<String> {

@@ -15,6 +15,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
+import io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter
+import io.github.composefluent.winrt.metadata.WinRTPortableExecutableInterfaceDescriptor
 
 /** CsWinRT SourceGenerator.props builds shared sources against each supported compiler API. */
 class KotlinCompilerCompatibilityTest {
@@ -91,6 +93,46 @@ class KotlinCompilerCompatibilityTest {
     @Test fun kotlin_2_4_20_compiles_with_matching_plugins() = compileJvm("2.4.20")
     @Test fun kotlin_2_4_0_compiles_native_with_matching_plugins() = compileNative("2.4.0")
     @Test fun kotlin_2_4_20_compiles_native_with_matching_plugins() = compileNative("2.4.20")
+
+    @Test
+    fun projection_bytecode_cache_is_reused_across_project_directories_for_supported_compilers() {
+        // CsWinRT.targets separates metadata/tool inputs from output locations.
+        // KGP file options must preserve that boundary for both supported APIs.
+        val metadata = Files.createTempDirectory("winrt-projection-cache-inputs").resolve("Sample.winmd")
+        WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample.ProjectionCache",
+            interfaces = listOf(WinRTPortableExecutableInterfaceDescriptor(
+                interfaceName = "Sample.ProjectionCache.IProbe",
+                iid = "00000000-0000-0000-0000-000000000001",
+            )),
+            runtimeClasses = emptyList(),
+            outputFile = metadata,
+        )
+        val cache = Files.createTempDirectory("winrt-projection-bytecode-cache")
+        listOf("2.4.0", "2.4.20").forEach { version ->
+            val original = fixture(version)
+            val relocated = fixture(version)
+            listOf(original, relocated).forEachIndexed { index, directory ->
+                Files.writeString(directory.resolve("settings.gradle"), "\n" + """
+                    buildCache { local { directory = '${cache.toString().replace('\\', '/')}' } }
+                    rootProject.name = 'projection-cache-root-$index'
+                    include ':winrt-projections'
+                """.trimIndent(), java.nio.file.StandardOpenOption.APPEND)
+                val buildScript = Files.readString(directory.resolve("build.gradle"))
+                write(directory, "build.gradle", "")
+                write(directory, "winrt-projections/build.gradle", buildScript + "\n" + """
+                    windows { packageReferences { winmd '${metadata.toString().replace('\\', '/')}' } }
+                """.trimIndent())
+            }
+            val task = ":winrt-projections:compileKotlinWinRTProjection"
+            val first = build(original, task, "--build-cache", "--configuration-cache")
+            assertEquals(first.output, TaskOutcome.SUCCESS, first.task(task)?.outcome)
+            val reused = build(relocated, task, "--build-cache", "--configuration-cache")
+            assertEquals(reused.output, TaskOutcome.FROM_CACHE, reused.task(task)?.outcome)
+            val classes = relocated.resolve("winrt-projections/build/classes/kotlin-winrt/projection/compileKotlin")
+            assertTrue(Files.walk(classes).use { files -> files.anyMatch { it.fileName.toString() == "IProbe.class" } })
+        }
+    }
 
     @Test
     fun downstream_projection_compiles_with_an_internal_dependency_interface_on_both_targets() {
