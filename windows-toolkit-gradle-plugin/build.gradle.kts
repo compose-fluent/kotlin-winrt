@@ -3,6 +3,7 @@ import org.gradle.plugin.devel.tasks.PluginUnderTestMetadata
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.attributes.java.TargetJvmVersion
+import org.gradle.plugin.compatibility.compatibility
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
@@ -12,6 +13,7 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     `java-gradle-plugin`
+    alias(libs.plugins.gradlePluginPublish)
     id("build-convention")
     id("winrt.publish")
 }
@@ -170,10 +172,21 @@ tasks.named("check") { dependsOn("compilerCompatibilityTest") }
 tasks.named<Jar>("jar") { manifest.attributes("Implementation-Version" to project.version.toString()) }
 
 gradlePlugin {
+    website.set("https://github.com/compose-fluent/kotlin-winrt")
+    vcsUrl.set("https://github.com/compose-fluent/kotlin-winrt")
     plugins {
         create("kotlinWindowsToolkit") {
             id = "io.github.compose-fluent.windows-toolkit"
             implementationClass = "io.github.composefluent.windows.toolkit.gradle.KotlinWindowsToolkitBootstrapPlugin"
+            displayName = "Kotlin Windows Toolkit"
+            description = project.description
+            tags.set(listOf("kotlin", "windows", "winrt", "winui", "nuget"))
+            compatibility {
+                features {
+                    configurationCache = true
+                    isolatedProjects = false
+                }
+            }
         }
     }
 }

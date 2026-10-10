@@ -6,6 +6,7 @@ kotlinx-coroutines = "1.10.2"
 kotlinx-io = "0.9.0"
 kotlinpoet = "1.18.1"
 mavenPublish = "0.36.0"
+gradlePluginPublish = "2.2.1"
 jvmTarget = "25"
 
 [libraries]
@@ -24,3 +25,4 @@ kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref =
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 mavenPublish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
+gradlePluginPublish = { id = "com.gradle.plugin-publish", version.ref = "gradlePluginPublish" }

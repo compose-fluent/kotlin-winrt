@@ -1,0 +1,102 @@
+name: Test Gradle Plugin Portal Publication
+run-name: Gradle Plugin Portal 0.0.9-build${{ github.run_number }}
+
+on:
+  push:
+    branches: [codex/ci-gradle-plugin-portal-test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gradle-plugin-portal-test
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/codex/ci-gradle-plugin-portal-test'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select test version and check Portal credentials
+        id: version
+        shell: pwsh
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('GRADLE_PUBLISH_KEY', 'GRADLE_PUBLISH_SECRET')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing secret: $name"
+            }
+          }
+          $version = "0.0.9-build$env:GITHUB_RUN_NUMBER"
+          "version=$version" | Add-Content $env:GITHUB_OUTPUT
+          Write-Host "Testing Gradle Plugin Portal publication: $version"
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and validate plugin publication
+        shell: pwsh
+        run: |
+          ./gradlew.bat -p windows-toolkit-gradle-plugin :validatePlugins :jar `
+            :generatePomFileForPluginMavenPublication `
+            :generatePomFileForKotlinWindowsToolkitPluginMarkerMavenPublication `
+            "-Pwinrt.releaseTag=v${{ steps.version.outputs.version }}" `
+            --no-configuration-cache --max-workers=2 --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify implementation and marker versions
+        shell: pwsh
+        env:
+          PORTAL_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publications = 'windows-toolkit-gradle-plugin/build/included-projects/publications'
+          $implementation = [xml](Get-Content "$publications/pluginMaven/pom-default.xml" -Raw)
+          $marker = [xml](Get-Content "$publications/kotlinWindowsToolkitPluginMarkerMaven/pom-default.xml" -Raw)
+          if ($implementation.project.version -cne $env:PORTAL_VERSION -or
+              $marker.project.version -cne $env:PORTAL_VERSION -or
+              $marker.project.dependencies.dependency.version -cne $env:PORTAL_VERSION) {
+            throw 'Implementation and plugin marker must use the exact test version.'
+          }
+          $jar = "windows-toolkit-gradle-plugin/build/included-projects/libs/windows-toolkit-gradle-plugin-$env:PORTAL_VERSION.jar"
+          if (-not (Test-Path -LiteralPath $jar)) { throw "Missing plugin JAR: $jar" }
+      - name: Validate publication with Gradle Plugin Portal
+        shell: pwsh
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+        run: |
+          ./gradlew.bat -p windows-toolkit-gradle-plugin :publishPlugins --validate-only `
+            "-Pwinrt.releaseTag=v${{ steps.version.outputs.version }}" `
+            --no-configuration-cache --max-workers=2 --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish test version to Gradle Plugin Portal
+        shell: pwsh
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+        run: |
+          ./gradlew.bat -p windows-toolkit-gradle-plugin :publishPlugins `
+            "-Pwinrt.releaseTag=v${{ steps.version.outputs.version }}" `
+            --no-configuration-cache --max-workers=2 --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "Submitted io.github.compose-fluent.windows-toolkit:${{ steps.version.outputs.version }} to Gradle Plugin Portal." |
+            Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Preserve publication artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-plugin-portal-${{ steps.version.outputs.version }}
+          path: |
+            windows-toolkit-gradle-plugin/build/included-projects/libs/*.jar
+            windows-toolkit-gradle-plugin/build/included-projects/publications/**
+            windows-toolkit-gradle-plugin/build/included-projects/reports/plugin-development/**
+          if-no-files-found: warn
