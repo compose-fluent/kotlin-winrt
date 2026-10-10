@@ -11,6 +11,72 @@ import java.nio.file.Path
 
 class WinRTPrebuiltProjectionConventionPluginTest {
     @Test
+    fun native_verification_reads_projection_output_when_main_has_no_sources() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-native-projection-verification-")
+        writeNativeProjectionFixture(projectDir, "lowered native calls")
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(":projection:verifyMingwX64ProjectionCallSiteLowering", "--configuration-cache", "--max-workers=1")
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:verifyMingwX64ProjectionCallSiteLowering")?.outcome)
+        assertEquals(TaskOutcome.SKIPPED, result.task(":projection:compileWinRTProjectionKotlinMingwX64")?.outcome)
+
+        val cachedResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(":projection:verifyMingwX64ProjectionCallSiteLowering", "--configuration-cache", "--max-workers=1")
+            .build()
+        assertTrue(cachedResult.output, cachedResult.output.contains("Configuration cache entry reused."))
+    }
+
+    @Test
+    fun native_verification_rejects_placeholders_in_projection_output() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-native-projection-placeholder-")
+        writeNativeProjectionFixture(projectDir, "Fixed WinRT ABI call")
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(":projection:verifyMingwX64ProjectionCallSiteLowering", "--max-workers=1")
+            .buildAndFail()
+
+        assertTrue(result.output, result.output.contains("Forbidden WinRT call-site marker 'Fixed WinRT ABI call'"))
+    }
+
+    private fun writeNativeProjectionFixture(projectDir: Path, content: String) {
+        writeFixture(projectDir)
+        val buildFile = projectDir.resolve("projection/build.gradle.kts")
+        // Match the toolkit's separate Native projection compilation, without
+        // invoking the compiler: the regression is artifact discovery, not ABI emission.
+        Files.writeString(buildFile, "import java.util.zip.ZipOutputStream\nimport java.util.zip.ZipEntry\n" +
+            Files.readString(buildFile) + "\n" + """
+            kotlin.targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
+                compilations.create("winRTProjection")
+            }
+            tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>().configureEach {
+                enabled = false
+            }
+            tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>(
+                "compileWinRTProjectionKotlinMingwX64",
+            ) {
+                produceUnpackagedKlib.set(false)
+            }
+            val projectionKlib = tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>(
+                "compileWinRTProjectionKotlinMingwX64",
+            ).get().outputFile.get()
+            projectionKlib.parentFile.mkdirs()
+            ZipOutputStream(projectionKlib.outputStream()).use { archive ->
+                archive.putNextEntry(ZipEntry("default/linkdata/module"))
+                archive.write("$content".toByteArray())
+                archive.closeEntry()
+            }
+        """.trimIndent())
+    }
+
+    @Test
     fun convention_mirrors_compile_only_projection_references_and_registers_validation_tasks() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-prebuilt-convention-")
         writeFixture(projectDir)

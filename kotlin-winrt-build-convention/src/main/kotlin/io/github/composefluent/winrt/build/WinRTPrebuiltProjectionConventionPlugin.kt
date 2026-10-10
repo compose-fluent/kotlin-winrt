@@ -12,6 +12,7 @@ import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.provider.Provider
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import org.w3c.dom.Element
 
 class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
@@ -53,14 +54,24 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 artifactDescription.set("compiled JVM projection classes")
             },
         )
+        val nativeCompilationTasks = project.tasks.withType(KotlinNativeCompile::class.java)
+            .matching { task ->
+                task.name == "compileKotlinMingwX64" || task.name == "compileWinRTProjectionKotlinMingwX64"
+            }
+        val compiledNativeKlibs = project.objects.fileCollection()
+        // Projection declarations live in their own compilation. The main
+        // compilation may have no sources, so use the producers' actual outputs.
+        nativeCompilationTasks.configureEach(Action<KotlinNativeCompile> {
+            compiledNativeKlibs.from(outputFile)
+        })
         val verifyMingwX64CallSiteLowering = project.tasks.register(
             MINGW_CALL_SITE_VERIFICATION_TASK_NAME,
             VerifyBinaryMarkerAbsentTask::class.java,
             Action<VerifyBinaryMarkerAbsentTask> {
                 group = "verification"
                 description = "Verifies that no generated WinRT call-site placeholder reaches the mingwX64 klib."
-                dependsOn("compileKotlinMingwX64")
-                binaryArtifacts.from(project.layout.buildDirectory.dir("classes/kotlin/mingwX64/main/klib"))
+                dependsOn(nativeCompilationTasks)
+                binaryArtifacts.from(compiledNativeKlibs)
                 markers.set(CALL_SITE_PLACEHOLDERS)
                 artifactDescription.set("compiled mingwX64 projection klib")
             },
