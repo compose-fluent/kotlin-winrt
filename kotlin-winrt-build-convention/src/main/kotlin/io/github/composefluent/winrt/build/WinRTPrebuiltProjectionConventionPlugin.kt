@@ -6,11 +6,14 @@ import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.XmlProvider
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.ConfigurablePublishArtifact
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.publish.maven.MavenArtifact
 import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.TaskProvider
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import org.w3c.dom.Element
@@ -76,6 +79,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 artifactDescription.set("compiled mingwX64 projection klib")
             },
         )
+        configureNativeProjectionPublication(project, verifyMingwX64CallSiteLowering)
         val verifyJvmDirectCallSiteLowering = project.tasks.register(
             JVM_DIRECT_CALL_SITE_VERIFICATION_TASK_NAME,
             VerifyBinaryMarkerAbsentTask::class.java,
@@ -248,6 +252,48 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 configureProjectionReference(dependency)
             })
         })
+    }
+
+    private fun configureNativeProjectionPublication(
+        project: Project,
+        verification: TaskProvider<VerifyBinaryMarkerAbsentTask>,
+    ) {
+        // The toolkit excludes generated declarations from main after evaluation.
+        // A projection-only module has no business KLIB, so publish its actual
+        // projection compilation instead of KGP's nonexistent main artifact.
+        project.gradle.projectsEvaluated {
+            val projection = project.tasks.findByName("compileWinRTProjectionKotlinMingwX64")
+                as? KotlinNativeCompile ?: return@projectsEvaluated
+            val main = project.tasks.findByName("compileKotlinMingwX64")
+                as? KotlinNativeCompile ?: return@projectsEvaluated
+            if (!main.sources.isEmpty) return@projectsEvaluated
+
+            val apiElements = project.configurations.getByName("mingwX64ApiElements")
+            if (apiElements.outgoing.artifacts.none { it.classifier == "winrt-projection" }) {
+                return@projectsEvaluated
+            }
+            // KGP copies the project variant into a separate published variant.
+            // Both must expose the same file for Gradle's component mapping.
+            for (configurationName in listOf("mingwX64ApiElements", "mingwX64ApiElements-published")) {
+                val configuration = project.configurations.findByName(configurationName) ?: continue
+                configuration.outgoing.artifacts.removeAll { it.extension == "klib" }
+                configuration.outgoing.artifact(projection.outputFile, Action<ConfigurablePublishArtifact> {
+                    extension = "klib"
+                    type = "klib"
+                    builtBy(projection, verification)
+                })
+            }
+            project.extensions.getByType(PublishingExtension::class.java)
+                .publications.withType(MavenPublication::class.java)
+                .matching { it.name == "mingwX64" }
+                .configureEach(Action<MavenPublication> {
+                    artifacts.removeAll { it.extension == "klib" }
+                    artifact(projection.outputFile, Action<MavenArtifact> {
+                        extension = "klib"
+                        builtBy(projection, verification)
+                    })
+                })
+        }
     }
 
     private companion object {

@@ -11,6 +11,64 @@ import java.nio.file.Path
 
 class WinRTPrebuiltProjectionConventionPluginTest {
     @Test
+    fun native_publication_uses_projection_as_primary_artifact_when_main_is_empty() {
+        verifyNativePublication(withBusinessSources = false, expectedKlibs = 1)
+    }
+
+    @Test
+    fun native_publication_retains_business_and_projection_artifacts_when_main_has_sources() {
+        verifyNativePublication(withBusinessSources = true, expectedKlibs = 2)
+    }
+
+    private fun verifyNativePublication(withBusinessSources: Boolean, expectedKlibs: Int) {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-native-publication-")
+        writeNativeProjectionFixture(projectDir, "lowered native calls")
+        val sources = projectDir.resolve("projection/native-projection-sources/Generated.kt")
+        write(sources, "class Generated")
+        if (withBusinessSources) {
+            write(projectDir.resolve("projection/src/mingwX64Main/kotlin/Business.kt"), "class Business")
+        }
+        val buildFile = projectDir.resolve("projection/build.gradle.kts")
+        Files.writeString(buildFile, Files.readString(buildFile) + "\n" + """
+            publishing.repositories.maven {
+                name = "Test"
+                url = uri(layout.buildDirectory.dir("test-repository"))
+            }
+            tasks.named<org.gradle.jvm.tasks.Jar>("mingwX64SourcesJar") {
+                from("native-projection-sources")
+            }
+            if ($withBusinessSources) {
+                val businessKlib = tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>(
+                    "compileKotlinMingwX64",
+                ).get().outputFile.get()
+                val linkData = businessKlib.resolve("default/linkdata/module")
+                linkData.parentFile.mkdirs()
+                linkData.writeText("lowered business calls")
+            }
+        """.trimIndent())
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(":projection:publishMingwX64PublicationToTestRepository", "--configuration-cache", "--max-workers=1")
+            .build()
+        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:publishMingwX64PublicationToTestRepository")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:verifyMingwX64ProjectionCallSiteLowering")?.outcome)
+        val repository = projectDir.resolve("projection/build/test-repository/test/winrt/published-projection-mingwx64/1.0")
+        assertTrue(Files.isRegularFile(repository.resolve("published-projection-mingwx64-1.0.klib")))
+        val metadata = Files.readString(repository.resolve("published-projection-mingwx64-1.0.module"))
+        assertEquals(metadata, expectedKlibs, Regex(""""url": "[^"\n]*\.klib"""").findAll(metadata).count())
+        assertEquals(metadata, withBusinessSources, metadata.contains("-winrt-projection.klib"))
+
+        val cachedResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(":projection:publishMingwX64PublicationToTestRepository", "--configuration-cache", "--max-workers=1")
+            .build()
+        assertTrue(cachedResult.output, cachedResult.output.contains("Configuration cache entry reused."))
+    }
+
+    @Test
     fun native_verification_reads_projection_output_when_main_has_no_sources() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-native-projection-verification-")
         writeNativeProjectionFixture(projectDir, "lowered native calls")
@@ -53,8 +111,18 @@ class WinRTPrebuiltProjectionConventionPluginTest {
         // invoking the compiler: the regression is artifact discovery, not ABI emission.
         Files.writeString(buildFile, "import java.util.zip.ZipOutputStream\nimport java.util.zip.ZipEntry\n" +
             Files.readString(buildFile) + "\n" + """
-            kotlin.targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
-                compilations.create("winRTProjection")
+            kotlin.targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().all {
+                val projection = compilations.create("winRTProjection")
+                project.afterEvaluate {
+                    configurations.getByName(apiElementsConfigurationName).outgoing.artifact(
+                        projection.compileTaskProvider.flatMap { it.outputFile },
+                    ) {
+                        classifier = "winrt-projection"
+                        extension = "klib"
+                        type = "klib"
+                        builtBy(projection.compileTaskProvider)
+                    }
+                }
             }
             tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>().configureEach {
                 enabled = false
