@@ -28,11 +28,14 @@ fun resolveVersion() = providers
     .orElse("0.1.0")
     .zip(
         providers
-            .environmentVariable("GITHUB_REF_TYPE")
-            .zip(providers.environmentVariable("GITHUB_REF_NAME")) { refType, refName ->
-                if (refType == "tag") refName else ""
-            }
-            .orElse(providers.gradleProperty("winrt.releaseTag").orElse("")),
+            .gradleProperty("winrt.releaseTag")
+            .orElse(
+                providers.environmentVariable("GITHUB_REF_TYPE")
+                    .zip(providers.environmentVariable("GITHUB_REF_NAME")) { refType, refName ->
+                        if (refType == "tag") refName else ""
+                    },
+            )
+            .orElse(""),
     ) { baseVersion, releaseTag ->
         if (releaseTag.isNotBlank() && releaseTag.matches(releaseTagRegex)) {
             releaseTag.removePrefix("v")
