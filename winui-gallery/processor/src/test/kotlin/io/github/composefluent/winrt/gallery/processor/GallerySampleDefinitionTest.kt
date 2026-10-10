@@ -19,10 +19,18 @@ class GallerySampleDefinitionTest {
     }
 
     @Test fun malformed_definitions_fail_instead_of_showing_another_examples_code() {
-        listOf("--- header\nTitle", "--- xaml\n<Button/>",
+        listOf("Text before a section",
             "--- header\nTitle\n--- Header\nOther\n--- xaml\n<Button/>",
             "--- header\nTitle\n--- c#\nvoid Click() {}").forEach {
             assertFailsWith<IllegalArgumentException> { GallerySampleDefinition.parse(it) }
         }
+    }
+
+    @Test fun omitted_sections_preserve_the_original_gallery_fallbacks() {
+        // ControlExample keeps its XAML HeaderText when the definition omits it.
+        assertEquals(GallerySampleDefinition("", "<Button/>", ""),
+            GallerySampleDefinition.parse("--- xaml\n<Button/>"))
+        assertEquals(GallerySampleDefinition("Title", "", ""),
+            GallerySampleDefinition.parse("--- header\nTitle"))
     }
 }
