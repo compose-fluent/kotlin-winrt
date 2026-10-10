@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.ide
 
 import org.junit.Assert.*
+import io.github.composefluent.winrt.ide.templates.WinRTBundledToolchain
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.net.URI
@@ -44,11 +45,11 @@ class WinRTTemplateClassLoaderTest {
                     .invoke(templatesType.getField("INSTANCE").get(null), options) as Map<*, *>
 
                 val paths = files.keys.map { it as String }
-                assertTrue(paths.any { it.contains("winrt-runtime-jvm/0.1.0-SNAPSHOT/") && it.endsWith(".jar") })
-                assertTrue(paths.any { it.contains("windows-toolkit-gradle-plugin/0.1.0-SNAPSHOT/") && it.endsWith(".pom") })
+                assertTrue(paths.any { it.contains("winrt-runtime-jvm/${WinRTBundledToolchain.VERSION}/") && it.endsWith(".jar") })
+                assertTrue(paths.any { it.contains("windows-toolkit-gradle-plugin/${WinRTBundledToolchain.VERSION}/") && it.endsWith(".pom") })
                 assertTrue(paths.contains("gradle/wrapper/gradle-wrapper.jar"))
                 assertEquals(122, paths.count { it.endsWith(".png") })
-                assertTrue(paths.any { it.contains("winrt-runtime-mingwx64/0.1.0-SNAPSHOT/") && it.endsWith(".klib") })
+                assertTrue(paths.any { it.contains("winrt-runtime-mingwx64/${WinRTBundledToolchain.VERSION}/") && it.endsWith(".klib") })
                 assertNotNull(ImageIO.read(ByteArrayInputStream(files["app/src/winuiMain/appxResources/Assets/AppList.scale-100.png"] as ByteArray)))
                 assertTrue(paths.contains("app/src/winuiMain/appxResources/AppxManifest.xml"))
                 assertTrue(paths.contains("app/src/winuiMain/kotlin/sample/hello/MainWindow.kt"))

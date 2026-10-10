@@ -4,7 +4,11 @@ import java.util.zip.ZipInputStream
 
 /** Portable Maven publications and wrapper files shipped with the IDE plugin. */
 internal object WinRTBundledToolchain {
-    const val VERSION = "0.1.0-SNAPSHOT"
+    val VERSION: String = requireNotNull(
+        WinRTBundledToolchain::class.java.getResourceAsStream("/templates/toolchain-version.txt"),
+    ) { "The bundled toolchain version is missing. Reinstall the plugin." }
+        .bufferedReader().use { it.readText().trim() }
+        .also { require(it.matches(Regex("\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?"))) }
     const val DIRECTORY = ".kotlin-winrt/toolchain"
     fun available() = WinRTBundledToolchain::class.java.getResource("/templates/toolchain.zip") != null
 

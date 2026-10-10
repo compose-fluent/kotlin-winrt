@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.ide.templates.WinRTTemplateKind
 import io.github.composefluent.winrt.ide.templates.WinRTTemplateOptions
 import io.github.composefluent.winrt.ide.templates.WinRTTemplates
 import org.junit.Assert.*
+import io.github.composefluent.winrt.ide.templates.WinRTBundledToolchain
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
@@ -17,10 +18,10 @@ class WinRTTemplatesTest {
         val settings = files.getValue("settings.gradle.kts").toString(Charsets.UTF_8)
         assertFalse(settings.contains("includeBuild"))
         assertTrue(settings.contains("id(\"io.github.compose-fluent.windows-toolkit\") version"))
-        assertTrue(files.keys.any { it.contains("winrt-runtime-jvm/0.1.0-SNAPSHOT/") && it.endsWith(".jar") })
-        assertTrue(files.keys.any { it.contains("callsite-lowering/0.1.0-SNAPSHOT/") && it.endsWith(".jar") })
+        assertTrue(files.keys.any { it.contains("winrt-runtime-jvm/${WinRTBundledToolchain.VERSION}/") && it.endsWith(".jar") })
+        assertTrue(files.keys.any { it.contains("callsite-lowering/${WinRTBundledToolchain.VERSION}/") && it.endsWith(".jar") })
         listOf("winrt-runtime", "winrt-authoring").forEach { module ->
-            assertTrue(files.keys.any { it.contains("$module-mingwx64/0.1.0-SNAPSHOT/") && it.endsWith(".klib") })
+            assertTrue(files.keys.any { it.contains("$module-mingwx64/${WinRTBundledToolchain.VERSION}/") && it.endsWith(".klib") })
         }
         assertTrue(files.keys.none { it.endsWith(".java") })
     }

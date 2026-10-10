@@ -9,6 +9,8 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$')]
     [string] $Version,
     [string] $LocalIdePath,
+    [ValidatePattern('^v\d+\.\d+\.\d+$')]
+    [string] $ReleaseTag,
     [string] $OutputDirectory
 )
 
@@ -21,8 +23,8 @@ if (-not $OutputDirectory) {
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
-# The plugin has its own release version. Its project templates consume the
-# bundled snapshot toolchain, even when this workflow is dispatched on a tag.
+# Standalone ide-v releases retain their snapshot toolchain. A project release
+# bundles and selects the exact same stable toolchain as Maven Central.
 $previousRefType = $env:GITHUB_REF_TYPE
 try {
     $env:GITHUB_REF_TYPE = 'branch'
@@ -35,6 +37,11 @@ try {
         '-Dorg.gradle.jvmargs=-Xmx3g -XX:+UseSerialGC -Dfile.encoding=UTF-8')
     if ($LocalIdePath) {
         $arguments += "-PkotlinWinRT.ide.path=$LocalIdePath"
+    }
+    if ($ReleaseTag) {
+        if ($ReleaseTag -cne "v$Version") { throw 'Plugin and project release versions must match.' }
+        $arguments += "-Pwinrt.releaseTag=$ReleaseTag"
+        $arguments += "-PkotlinWinRT.ide.toolchainVersion=$Version"
     }
     & (Join-Path $repository 'gradlew.bat') @arguments
     if ($LASTEXITCODE -ne 0) { throw "IDE plugin validation failed (exit $LASTEXITCODE)." }

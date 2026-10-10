@@ -137,6 +137,19 @@ tasks.processResources {
 }
 
 val toolchainRepository = layout.projectDirectory.dir("../../.gradle/ide-toolchain/repository")
+val bundledToolchainVersion = providers.gradleProperty("kotlinWinRT.ide.toolchainVersion").orElse("0.1.0-SNAPSHOT")
+val prepareToolchainVersion by tasks.registering {
+    val output = layout.buildDirectory.dir("toolchain-version")
+    inputs.property("version", bundledToolchainVersion)
+    outputs.dir(output)
+    doLast {
+        output.get().file("templates/toolchain-version.txt").asFile.apply {
+            parentFile.mkdirs()
+            writeText(bundledToolchainVersion.get())
+        }
+    }
+}
+tasks.processResources { from(prepareToolchainVersion) }
 val bundleWinRTToolchain by tasks.registering(Zip::class) {
     val producer = gradle.includedBuild("winrt-toolchain")
     dependsOn(producer.task(":publishPluginMavenPublicationToIdeToolchainRepository"),
@@ -152,7 +165,11 @@ val bundleWinRTToolchain by tasks.registering(Zip::class) {
     }
     archiveFileName.set("toolchain.zip")
     destinationDirectory.set(layout.buildDirectory.dir("bundled-toolchain/templates"))
-    from(toolchainRepository) { into("repository") }
+    from(toolchainRepository) {
+        into("repository")
+        // Do not leak old local snapshot/release publications into a new ZIP.
+        include("**/${bundledToolchainVersion.get()}/**")
+    }
     from(layout.projectDirectory.dir("../..")) {
         include("gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties")
     }

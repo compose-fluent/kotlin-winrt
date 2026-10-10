@@ -1,6 +1,11 @@
 name: IDE Plugin
 
 on:
+  workflow_call:
+    inputs:
+      project_release_tag:
+        required: true
+        type: string
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -46,12 +51,20 @@ jobs:
         shell: pwsh
         env:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          PROJECT_RELEASE_TAG: ${{ inputs.project_release_tag }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = $env:INPUT_RELEASE_TAG
           if ($env:GITHUB_REF_TYPE -eq 'tag') { $tag = $env:GITHUB_REF_NAME }
           $commit = git rev-parse HEAD
-          if ($tag) {
+          if ($env:PROJECT_RELEASE_TAG) {
+            $tag = $env:PROJECT_RELEASE_TAG
+            if ($tag -cnotmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected project tag vX.Y.Z.' }
+            $version = $Matches[1]
+            $tagCommit = git rev-parse --verify "refs/tags/$tag^{commit}"
+            if ($LASTEXITCODE -ne 0 -or $tagCommit -cne $commit) { throw 'Release tag must match checkout.' }
+            $publish = 'false'
+          } elseif ($tag) {
             if ($tag -cnotmatch '^ide-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?)$') {
               throw 'Release tags must use ide-vX.Y.Z, optionally with a prerelease suffix.'
             }
@@ -106,8 +119,11 @@ jobs:
           IDE_VARIANT: ${{ matrix.variant }}
           IDE_SDK_VERSION: ${{ matrix.sdk-version }}
           IDE_PLUGIN_VERSION: ${{ needs.prepare.outputs.version }}
+          PROJECT_RELEASE_TAG: ${{ inputs.project_release_tag }}
         run: |
-          ./.github/scripts/build-ide-plugin.ps1 `
+          $releaseOptions = @{}
+          if ($env:PROJECT_RELEASE_TAG) { $releaseOptions.ReleaseTag = $env:PROJECT_RELEASE_TAG }
+          ./.github/scripts/build-ide-plugin.ps1 @releaseOptions `
             -Variant $env:IDE_VARIANT -SdkVersion $env:IDE_SDK_VERSION `
             -Version $env:IDE_PLUGIN_VERSION -OutputDirectory "$env:RUNNER_TEMP/ide-plugin"
       - name: Upload plugin ZIP, checksum and build metadata
