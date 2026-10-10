@@ -12,6 +12,60 @@ import java.util.Properties
 
 /** Cross-process validation of Gradle model registration and its public interface proxies. */
 class WinRTIdeToolingApiTest {
+    /** The first-sync projection source contract must survive import optimizations. */
+    @Test
+    fun first_sync_exposes_projection_sources_without_compilation_and_warm_sync_repairs_them() {
+        val directory = Files.createTempDirectory("winrt-ide-tooling-sources-").toFile()
+        val metadata = Properties().apply {
+            WinRTIdeToolingApiTest::class.java.classLoader.getResourceAsStream("plugin-under-test-metadata.properties")!!.use(::load)
+        }
+        val classpath = metadata.getProperty("implementation-classpath").split(File.pathSeparator)
+            .joinToString(", ") { "\"${it.replace('\\', '/').replace("$", "\\$")}\"" }
+        val winmd = directory.toPath().resolve("Sample.winmd")
+        io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(
+            assemblyName = "Sample",
+            interfaces = listOf(io.github.composefluent.winrt.metadata.WinRTPortableExecutableInterfaceDescriptor(
+                interfaceName = "Sample.IProbe", iid = "00000000-0000-0000-0000-000000000001",
+            )),
+            runtimeClasses = emptyList(), outputFile = winmd,
+        )
+        directory.resolve("settings.gradle.kts").writeText("rootProject.name = \"ide-import-sources\"\n")
+        directory.resolve("gradle.properties").writeText("org.gradle.jvmargs=-Xmx768m\norg.gradle.workers.max=1\n")
+        directory.resolve("build.gradle.kts").writeText("""
+            buildscript { dependencies { classpath(files($classpath)) } }
+            apply(plugin = "org.jetbrains.kotlin.jvm")
+            apply(plugin = "io.github.compose-fluent.windows-toolkit")
+            configure<io.github.composefluent.windows.toolkit.gradle.WindowsExtension> {
+                packageReferences { winmd("${winmd.toString().replace('\\', '/')}"); type("Sample.IProbe") }
+            }
+            tasks.configureEach { doFirst { error("Sync must expose projection sources without compiling") } }
+        """.trimIndent())
+        try {
+            GradleConnector.newConnector().forProjectDirectory(directory)
+                .useGradleVersion(GradleVersion.current().version).connect().use { connection ->
+                    fun sync() = connection.model(WinRTIdeModel::class.java)
+                        .setJavaHome(File(System.getProperty("java.home")))
+                        .withArguments("--no-configuration-cache").get()
+                    fun projection(model: WinRTIdeModel): File = model.sourceSets.flatMap { it.kotlinRoots }
+                        .flatMap { root -> File(root).walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }
+                        .first { it.readText().contains("interface IProbe") }
+                    val source = projection(sync())
+                    val contents = source.readText()
+                    val timestamp = source.lastModified()
+                    assertEquals(source, projection(sync()))
+                    assertEquals(timestamp, source.lastModified())
+                    assertTrue(source.delete())
+                    assertEquals(source, projection(sync()))
+                    assertEquals(contents, source.readText())
+                    assertTrue(!directory.resolve("build/classes").exists())
+                }
+        } finally {
+            check(directory.canonicalFile.parentFile == File(System.getProperty("java.io.tmpdir")).canonicalFile)
+            check(directory.name.startsWith("winrt-ide-tooling-"))
+            directory.deleteRecursively()
+        }
+    }
+
     @Test
     fun tooling_api_imports_the_model_without_running_restore_or_projection_tasks() {
         val directory = Files.createTempDirectory("winrt-ide-tooling-").toFile()

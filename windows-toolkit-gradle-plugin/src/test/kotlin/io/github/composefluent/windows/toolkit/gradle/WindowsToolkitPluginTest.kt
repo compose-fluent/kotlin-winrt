@@ -3402,7 +3402,7 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
-    fun local_winmd_static_sources_are_prepared_in_project_gradle_store() {
+    fun local_winmd_static_sources_are_prepared_in_shared_gradle_store() {
         val project = ProjectBuilder.builder().withName("prepared-static-test").build()
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
         val extension = project.extensions.getByType(WindowsExtension::class.java)
@@ -3430,7 +3430,8 @@ class WindowsToolkitPluginTest {
         )
 
         assertTrue(prepared != null)
-        assertTrue(Files.isRegularFile(prepared!!.parent.resolve("manifest.tsv")))
+        assertTrue(prepared!!.startsWith(sharedWinRTCacheDirectory(project, "prepared-imports")))
+        assertTrue(Files.isRegularFile(prepared.parent.resolve("manifest.tsv")))
         assertTrue(Files.walk(prepared).use { stream ->
             stream.anyMatch { path -> path.fileName.toString().endsWith(".kt") }
         })

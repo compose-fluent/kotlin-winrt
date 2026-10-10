@@ -274,6 +274,8 @@ windows {
 }
 ```
 
+The plugin keeps static projection sources available during IDE import, so projection completion does not require a preceding compilation. Prepared sources are shared in the Gradle user home; warm imports reuse unchanged content checks and preserve generated source timestamps. Missing or modified generated files are repaired during import.
+
 The plugin's `winapp restore`, `winapp package`, and `winapp tool makeappx` paths do not invoke MSBuild and do not require an MSBuild project. JVM and `mingwX64` compilation still require their normal JDK, Kotlin/Native, C/C++, and Windows SDK prerequisites.
 
 JVM native EXE and authoring DLL hosts automatically discover installed Visual Studio or Build Tools C++ toolchains through `vswhere`, including custom installation locations. The plugin initializes the MSVC environment for the variant's architecture and the configured Windows SDK in a child process; builds work from an ordinary terminal or IDE without a Developer Command Prompt or system `PATH` changes. An already configured matching C++ environment and `clang-cl` on `PATH` remain supported. Missing C++ components must be installed through Visual Studio Installer; the plugin does not install MSVC or invoke MSBuild to compile these hosts.
