@@ -14,6 +14,9 @@ import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeCompilation
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 import org.w3c.dom.Element
@@ -38,6 +41,20 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             "classes/kotlin-winrt/projection/compileKotlinJvm",
         )
         val compileJvmProjectionTaskName = "compileKotlinWinRTProjectionJvm"
+        // CsWinRT's WinAppSDK projection compiles against its Windows
+        // ProjectReference. Supply those references to the standalone compiler
+        // classpaths without exporting them through source-set dependencies.
+        project.configurations.matching { it.name == "kotlinWinRTProjectionJvmCompileClasspath" }
+            .configureEach(Action<Configuration> { extendsFrom(compileOnlyConfiguration.get()) })
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+            .targets.withType(KotlinNativeTarget::class.java)
+            .configureEach(Action<KotlinNativeTarget> {
+                compilations.matching { it.name == "winRTProjection" }
+                    .configureEach(Action<KotlinNativeCompilation> {
+                        project.configurations.named(compileDependencyConfigurationName)
+                            .configure(Action<Configuration> { extendsFrom(compileOnlyConfiguration.get()) })
+                    })
+            })
 
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(
             Action<KotlinJvmCompile> {

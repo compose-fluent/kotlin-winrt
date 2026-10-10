@@ -222,12 +222,62 @@ class WinRTPrebuiltProjectionConventionPluginTest {
     fun convention_mirrors_compile_only_projection_references_and_registers_validation_tasks() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-prebuilt-convention-")
         writeFixture(projectDir)
+        val buildFile = projectDir.resolve("projection/build.gradle.kts")
+        // Like CsWinRT's Windows ProjectReference, the SDK must reach the
+        // standalone compilers while remaining absent from the published POM.
+        // Create these configurations after the dependency declaration, as the
+        // toolkit does when it registers the separate projection compilations.
+        Files.writeString(buildFile, Files.readString(buildFile) + "\n" + """
+            val projectionJvmClasspath = configurations.create("kotlinWinRTProjectionJvmCompileClasspath") {
+                isCanBeResolved = true
+                isCanBeConsumed = false
+                attributes {
+                    attribute(org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.attribute,
+                        org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.jvm)
+                    attribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE,
+                        objects.named(org.gradle.api.attributes.Usage::class.java, "java-api"))
+                }
+            }
+            kotlin.targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().all {
+                val projection = compilations.create("winRTProjection")
+                projection.defaultSourceSet.dependsOn(kotlin.sourceSets.maybeCreate("winRTProjectionMain"))
+                compilations.getByName("main").associateWith(projection)
+            }
+            afterEvaluate {
+                val jvmReferences = projectionJvmClasspath.elements.map { files ->
+                    files.map { it.asFile.absolutePath }
+                }
+                val nativeReferences = tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>(
+                    "compileWinRTProjectionKotlinMingwX64",
+                ).get().libraries.elements.map { files ->
+                    files.map { it.asFile.absolutePath }
+                }
+                val sdkBuildDirectory = project(":sdk").layout.buildDirectory.get().asFile.absolutePath
+                tasks.register("verifyCompilerReferences") {
+                    inputs.property("jvmReferences", jvmReferences)
+                    inputs.property("nativeReferences", nativeReferences)
+                    inputs.property("sdkBuildDirectory", sdkBuildDirectory)
+                    doLast {
+                        val sdkDirectory = inputs.properties.getValue("sdkBuildDirectory") as String
+                        listOf("jvmReferences", "nativeReferences").forEach { name ->
+                            val references = inputs.properties.getValue(name) as List<*>
+                            check(references.any { it.toString().startsWith(sdkDirectory) }) {
+                                "Expected SDK on ${'$'}name, found ${'$'}references"
+                            }
+                        }
+                    }
+                }
+            }
+        """.trimIndent())
 
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
             .withArguments(
                 ":projection:generatePomFileForKotlinMultiplatformPublication",
+                ":projection:generatePomFileForJvmPublication",
+                ":projection:generatePomFileForMingwX64Publication",
+                ":projection:verifyCompilerReferences",
                 "--configuration-cache",
                 "--stacktrace",
                 "--max-workers=1",
@@ -236,6 +286,7 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":projection:generatePomFileForKotlinMultiplatformPublication")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:verifyCompilerReferences")?.outcome)
         val pom = Files.readString(
             projectDir.resolve("projection/build/publications/kotlinMultiplatform/pom-default.xml"),
         )
@@ -245,6 +296,10 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             pom,
             Regex("""<artifactId>published-api</artifactId>[\s\S]*?<scope>compile</scope>""").containsMatchIn(pom),
         )
+        listOf("jvm", "mingwX64").forEach { target ->
+            val targetPom = Files.readString(projectDir.resolve("projection/build/publications/$target/pom-default.xml"))
+            assertFalse(targetPom, targetPom.contains("<artifactId>published-sdk"))
+        }
     }
 
     @Test
