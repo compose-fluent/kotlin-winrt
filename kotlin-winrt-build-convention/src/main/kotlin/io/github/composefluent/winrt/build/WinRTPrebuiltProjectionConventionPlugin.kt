@@ -274,6 +274,11 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                     if (file != projection.outputFile.get()) return@artifactAdded
                     val main = project.tasks.findByName("compileKotlinMingwX64")
                         as? KotlinNativeCompile ?: return@artifactAdded
+                    // SDK projections generate interop overlays such as
+                    // WindowNative and Win32Interop in main. Their files are
+                    // absent during clean configuration, but their main KLIBs
+                    // remain part of the published API.
+                    if (project.name in NATIVE_OVERLAY_PROJECTION_MODULES) return@artifactAdded
                     if (!main.sources.isEmpty) return@artifactAdded
 
                     promotedProjection = true
@@ -296,6 +301,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         const val COMMON_MAIN_API_CONFIGURATION = "commonMainApi"
         const val OUTPUT_AUDIT_TASK_NAME = "auditGeneratedWinRTProjectionOutput"
         const val PUBLICATION_VALIDATION_TASK_NAME = "validatePrebuiltProjectionPublication"
+        val NATIVE_OVERLAY_PROJECTION_MODULES = setOf("windows-sdk", "windows-app-sdk")
         const val PREBUILT_MAX_TOTAL_CLASS_BYTES = 150_000_000L
         const val JVM_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteLowering"
         const val JVM_DIRECT_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteDirectLowering"

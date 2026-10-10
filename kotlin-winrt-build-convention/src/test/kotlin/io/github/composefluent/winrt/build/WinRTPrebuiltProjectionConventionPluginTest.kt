@@ -20,9 +20,30 @@ class WinRTPrebuiltProjectionConventionPluginTest {
         verifyNativePublication(withBusinessSources = true, expectedKlibs = 2)
     }
 
-    private fun verifyNativePublication(withBusinessSources: Boolean, expectedKlibs: Int) {
+    @Test
+    fun native_publication_retains_sdk_overlays_before_their_sources_are_generated() {
+        verifyNativePublication(withBusinessSources = false, expectedKlibs = 2, generatedOverlayProject = "windows-sdk")
+    }
+
+    @Test
+    fun native_publication_retains_app_sdk_overlays_before_their_sources_are_generated() {
+        verifyNativePublication(withBusinessSources = false, expectedKlibs = 2, generatedOverlayProject = "windows-app-sdk")
+    }
+
+    private fun verifyNativePublication(
+        withBusinessSources: Boolean,
+        expectedKlibs: Int,
+        generatedOverlayProject: String? = null,
+    ) {
         val projectDir = Files.createTempDirectory("kotlin-winrt-native-publication-")
         writeNativeProjectionFixture(projectDir, "lowered native calls")
+        val generatedOverlay = generatedOverlayProject != null
+        val projectionPath = generatedOverlayProject?.let { ":$it" } ?: ":projection"
+        if (generatedOverlay) {
+            val settings = projectDir.resolve("settings.gradle.kts")
+            Files.writeString(settings, Files.readString(settings).replace(":projection", projectionPath) +
+                "\nproject(\"$projectionPath\").projectDir = file(\"projection\")\n")
+        }
         val sources = projectDir.resolve("projection/native-projection-sources/Generated.kt")
         write(sources, "class Generated")
         if (withBusinessSources) {
@@ -45,11 +66,11 @@ class WinRTPrebuiltProjectionConventionPluginTest {
                         "mingw_x64")
                 }
             }
-            dependencies.add(nativeConsumer.name, project(":projection"))
-            evaluationDependsOn(":projection")
+            dependencies.add(nativeConsumer.name, project("$projectionPath"))
+            evaluationDependsOn("$projectionPath")
             afterEvaluate {
                 check(nativeConsumer.incoming.artifacts.artifactFiles.files.isNotEmpty())
-                val nativePublication = project(":projection").extensions
+                val nativePublication = project("$projectionPath").extensions
                     .getByType<org.gradle.api.publish.PublishingExtension>()
                     .publications.getByName("mingwX64") as org.gradle.api.publish.maven.MavenPublication
                 check(nativePublication.artifacts.isNotEmpty())
@@ -72,25 +93,51 @@ class WinRTPrebuiltProjectionConventionPluginTest {
                 linkData.parentFile.mkdirs()
                 linkData.writeText("lowered business calls")
             }
+            if ($generatedOverlay) {
+                val businessCompile = tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>(
+                    "compileKotlinMingwX64",
+                )
+                val businessKlib = businessCompile.get().outputFile.get()
+                val overlayDirectory = layout.buildDirectory.dir("generated/sdk-overlay").get().asFile
+                val generateOverlay = tasks.register("generateSdkOverlay") {
+                    outputs.dir(overlayDirectory)
+                    outputs.dir(businessKlib)
+                    doLast {
+                        overlayDirectory.mkdirs()
+                        overlayDirectory.resolve("WindowNative.kt").writeText("object WindowNative")
+                        val linkData = businessKlib.resolve("default/linkdata/module")
+                        linkData.parentFile.mkdirs()
+                        linkData.writeText("lowered SDK overlay calls")
+                    }
+                }
+                kotlin.sourceSets.getByName("mingwX64Main").kotlin.srcDir(generateOverlay.map { overlayDirectory })
+                businessCompile.configure { dependsOn(generateOverlay) }
+            }
         """.trimIndent())
 
+        if (generatedOverlay) {
+            assertFalse(Files.exists(projectDir.resolve("projection/build/generated/sdk-overlay")))
+        }
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments(":projection:publishMingwX64PublicationToTestRepository", "--configuration-cache", "--max-workers=1")
+            .withArguments("$projectionPath:publishMingwX64PublicationToTestRepository", "--configuration-cache", "--max-workers=1")
             .build()
-        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:publishMingwX64PublicationToTestRepository")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":projection:verifyMingwX64ProjectionCallSiteLowering")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task("$projectionPath:publishMingwX64PublicationToTestRepository")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task("$projectionPath:verifyMingwX64ProjectionCallSiteLowering")?.outcome)
+        if (generatedOverlay) {
+            assertEquals(TaskOutcome.SUCCESS, result.task("$projectionPath:generateSdkOverlay")?.outcome)
+        }
         val repository = projectDir.resolve("projection/build/test-repository/test/winrt/published-projection-mingwx64/1.0")
         assertTrue(Files.isRegularFile(repository.resolve("published-projection-mingwx64-1.0.klib")))
         val metadata = Files.readString(repository.resolve("published-projection-mingwx64-1.0.module"))
         assertEquals(metadata, expectedKlibs, Regex(""""url": "[^"\n]*\.klib"""").findAll(metadata).count())
-        assertEquals(metadata, withBusinessSources, metadata.contains("-winrt-projection.klib"))
+        assertEquals(metadata, expectedKlibs == 2, metadata.contains("-winrt-projection.klib"))
 
         val cachedResult = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments(":projection:publishMingwX64PublicationToTestRepository", "--configuration-cache", "--max-workers=1")
+            .withArguments("$projectionPath:publishMingwX64PublicationToTestRepository", "--configuration-cache", "--max-workers=1")
             .build()
         assertTrue(cachedResult.output, cachedResult.output.contains("Configuration cache entry reused."))
     }
