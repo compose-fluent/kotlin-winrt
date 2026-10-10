@@ -33,7 +33,7 @@ internal fun WinRTMethodDefinition.withNullableReturnContract(ownerTypeName: Str
     // a zero ABI pointer. Normalize before planning so base calls and authored
     // overrides expose the same nullable contract on JVM and Native.
     if (ownerTypeName.substringBeforeLast('.') in setOf("Microsoft.UI.Xaml.Controls", "Windows.UI.Xaml.Controls") &&
-        ownerTypeName.substringAfterLast('.') in setOf("DataTemplateSelector", "IDataTemplateSelector", "IDataTemplateSelectorOverrides", "IDataTemplateSelectorOverrides2") &&
+        ownerTypeName.substringAfterLast('.') in setOf("DataTemplateSelector", "IDataTemplateSelector", "IDataTemplateSelector2", "IDataTemplateSelectorOverrides", "IDataTemplateSelectorOverrides2") &&
         name in setOf("SelectTemplate", "SelectTemplateCore")) {
         return copy(returnTypeName = returnTypeName.removeSuffix("?") + "?")
     }
