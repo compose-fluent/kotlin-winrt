@@ -18,7 +18,7 @@ hello-winrt/
 
 ## 1. Resolve the Gradle plugin
 
-The Windows toolkit is **not published on Gradle Plugin Portal**. Add Maven Central to plugin repositories and explicitly map the plugin ID to its implementation artifact. Put this at the top of `settings.gradle.kts`:
+Gradle Plugin Portal approval for the Windows toolkit is pending. Add Maven Central to plugin repositories and explicitly map the plugin ID to its implementation artifact. Put this at the top of `settings.gradle.kts`:
 
 ```kotlin
 pluginManagement {

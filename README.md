@@ -53,7 +53,7 @@ hello-winrt/
   winrt-projections/   # Shared generated Windows SDK and WinUI APIs
 ```
 
-The Windows toolkit is published through Maven Central. Resolve its plugin ID explicitly in `settings.gradle.kts`, since it is not on Gradle Plugin Portal:
+The Windows toolkit is published through Maven Central. While Gradle Plugin Portal approval is pending, resolve its plugin ID explicitly in `settings.gradle.kts`:
 
 ```kotlin
 pluginManagement {

@@ -28,7 +28,7 @@ Gradle builds running on JDK 21 can declare the Windows toolkit with `apply fals
 
 ## Dependency setup
 
-Use the complete [Maven Central plugin resolution example](../README.md#create-your-application) in the root README. The Windows toolkit is not published on Gradle Plugin Portal; its plugin ID can be mapped directly to the implementation module with `useModule`. For snapshots, add the Sonatype snapshot repository to both plugin and dependency repositories and select `0.1.0-SNAPSHOT`.
+Use the complete [Maven Central plugin resolution example](../README.md#create-your-application) in the root README. While Gradle Plugin Portal approval is pending, map the plugin ID directly to the Maven Central implementation module with `useModule`. For snapshots, add the Sonatype snapshot repository to both plugin and dependency repositories and select `0.1.0-SNAPSHOT`.
 
 The plugin adds `winrt-runtime` automatically to JVM and KMP main configurations. Add runtime dependencies manually only when using the runtime without the plugin:
 
