@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag, changelog and credentials
+        id: release
+        shell: pwsh
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_KEY_ID: ${{ secrets.MAVEN_GPG_KEY_ID }}
+          MAVEN_GPG_KEY_ARMOR: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
+          MAVEN_GPG_KEY_PASSWORD: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
+          WINUI_GALLERY_SIGNING_PFX_BASE64: ${{ secrets.WINUI_GALLERY_SIGNING_PFX_BASE64 }}
+          WINUI_GALLERY_SIGNING_PFX_PASSWORD: ${{ secrets.WINUI_GALLERY_SIGNING_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF_NAME -cnotmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected stable tag vX.Y.Z.' }
+          $version = $Matches[1]
+          $base = (Select-String -Path gradle.properties -Pattern '^winrt.baseVersion=(.+)$').Matches.Groups[1].Value
+          if ($base -cne $version) { throw 'Tag must match winrt.baseVersion.' }
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve checkout.' }
+          $tagCommit = git rev-parse --verify "refs/tags/$env:GITHUB_REF_NAME^{commit}"
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -cne $commit) { throw 'Tag does not match checkout.' }
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $entry = [regex]::Match($changelog, '(?ms)^## \[' + [regex]::Escape($version) + '\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)')
+          if (-not $entry.Success -or [string]::IsNullOrWhiteSpace($entry.Groups[1].Value)) { throw 'Missing changelog entry.' }
+          $entry.Groups[1].Value.Trim() | Set-Content release-notes.md -Encoding utf8NoBOM
+          foreach ($name in @('MAVEN_CENTRAL_USERNAME', 'MAVEN_CENTRAL_PASSWORD', 'MAVEN_GPG_KEY_ID',
+              'MAVEN_GPG_KEY_ARMOR', 'MAVEN_GPG_KEY_PASSWORD', 'WINUI_GALLERY_SIGNING_PFX_BASE64',
+              'WINUI_GALLERY_SIGNING_PFX_PASSWORD')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) { throw "Missing secret: $name" }
+          }
+          "version=$version", "commit=$commit" | Add-Content $env:GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
+
+  gallery:
+    needs: prepare
+    uses: ./.github/workflows/build-winui-gallery-snapshot.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+    secrets: inherit
+
+  ide:
+    needs: prepare
+    permissions:
+      contents: write
+    uses: ./.github/workflows/ide-plugin.yml
+    with:
+      project_release_tag: ${{ github.ref_name }}
+
+  assets:
+    needs: [prepare, gallery, ide]
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: winui-gallery-release-*
+          path: packages
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ide-plugin-*-${{ needs.prepare.outputs.version }}
+          path: packages
+          merge-multiple: true
+      - name: Verify package identities, provenance and checksums
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: ./.github/scripts/verify-release-assets.ps1 -Directory packages -Version $env:RELEASE_VERSION -Commit $env:RELEASE_COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: packages/*
+          if-no-files-found: error
+          compression-level: 0
+
+  maven:
+    # Validate all downloadable applications before starting irreversible publication.
+    needs: [prepare, assets]
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify SDK baselines
+        shell: pwsh
+        run: ./.github/scripts/install-release-sdks.ps1
+      - name: Validate runtime and compiler contracts
+        shell: pwsh
+        run: |
+          ./gradlew.bat :winrt-runtime:jvmTest :winrt-runtime:mingwX64Test `
+            :winrt-metadata:test :winrt-generator:test :winrt-authoring:jvmTest :winrt-authoring:mingwX64Test `
+            :winrt-compiler-plugin:test :winrt-compiler-plugin:compiler-kotlin-2-4-20:test `
+            :winrt-compiler-plugin:callsite-lowering:test :winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20:test `
+            "-Pwinrt.releaseTag=$env:GITHUB_REF_NAME" --no-configuration-cache --max-workers=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and verify every publication locally
+        shell: pwsh
+        run: ./.github/scripts/publish-release.ps1 -Tag $env:GITHUB_REF_NAME -Mode Verify
+      - name: Publish and release to Maven Central
+        shell: pwsh
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_GPG_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
+        run: ./.github/scripts/publish-release.ps1 -Tag $env:GITHUB_REF_NAME -Mode Publish
+
+  github-release:
+    needs: [prepare, assets, maven]
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: packages
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+      - name: Verify assets and publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          ./.github/scripts/verify-release-assets.ps1 -Directory packages -Version $env:RELEASE_VERSION -Commit $env:RELEASE_COMMIT
+          $assets = @(Get-ChildItem packages -File | Where-Object { $_.Extension -in @('.msix', '.zip', '.cer') } | ForEach-Object FullName)
+          $assets += (Resolve-Path packages/SHA256SUMS.txt).Path
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Kotlin/WinRT $env:RELEASE_VERSION" --notes-file release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }

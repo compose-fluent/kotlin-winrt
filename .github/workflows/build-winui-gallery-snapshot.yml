@@ -1,6 +1,11 @@
 name: Build WinUI Gallery Snapshot
 
 on:
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
   push:
     branches:
       - master
@@ -20,7 +25,8 @@ permissions:
 
 jobs:
   build-gallery:
-    name: Build and sign WinUI Gallery snapshot packages
+    name: Build and sign WinUI Gallery packages
+    timeout-minutes: 360
     runs-on: windows-2022
 
     steps:
@@ -61,9 +67,11 @@ jobs:
             }
           }
 
-      - name: Set snapshot package identity and version
-        id: snapshot-meta
+      - name: Set package identity and version
+        id: package-meta
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           $baseVersionLine = Get-Content 'gradle.properties' |
             Where-Object { $_ -cmatch '^\s*winrt\.baseVersion\s*=' } |
@@ -74,7 +82,14 @@ jobs:
             '0.1.0'
           }
 
+          $kind = 'snapshot'
           $packageVersion = "$baseVersion-SNAPSHOT"
+          if ($env:RELEASE_TAG) {
+            if ($env:RELEASE_TAG -cnotmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected release tag vX.Y.Z.' }
+            $packageVersion = $Matches[1]
+            $kind = 'release'
+          }
+          "kind=$kind" >> $env:GITHUB_OUTPUT
           $fileVersion = $packageVersion -replace '[^A-Za-z0-9._-]', '-'
           if ([string]::IsNullOrWhiteSpace($fileVersion)) {
             throw 'Resolved an empty Gallery package version.'
@@ -89,7 +104,8 @@ jobs:
             throw "Could not find Package/Identity in $manifestPath."
           }
           $baseName = $identity.GetAttribute('Name') -replace '(?i)\.snapshot$', ''
-          $snapshotName = "$baseName.snapshot"
+          $snapshotName = if ($kind -eq 'release') { $baseName } else { "$baseName.snapshot" }
+          if ($kind -eq 'release') { $identity.SetAttribute('Version', "$packageVersion.0") }
           if ($snapshotName.Length -gt 50 -or $snapshotName -cnotmatch '^[A-Za-z0-9.-]+$') {
             throw "Snapshot package identity name is invalid: $snapshotName"
           }
@@ -134,14 +150,16 @@ jobs:
             throw 'The Gallery signing certificate has expired.'
           }
 
-          $publicCertificatePath = Join-Path $env:RUNNER_TEMP 'winui-gallery-snapshot-signing.cer'
+          $publicCertificatePath = Join-Path $env:RUNNER_TEMP 'winui-gallery-signing.cer'
           Export-Certificate -Cert $certificate -FilePath $publicCertificatePath -Type CERT -Force | Out-Null
           Add-Content -Path $env:GITHUB_ENV -Value "WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE=$publicCertificatePath"
 
       - name: Build JVM and MinGW packages
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          # This workflow always produces snapshot packages, including manual runs on a tag.
+          # Standalone/manual runs stay snapshots; the release caller supplies an explicit tag.
           $env:GITHUB_REF_TYPE = 'branch'
           $packageRoot = Join-Path $env:GITHUB_WORKSPACE 'winui-gallery/build/kotlin-winrt/packages'
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'winui-gallery-snapshot-artifacts'
@@ -150,6 +168,7 @@ jobs:
           New-Item -ItemType Directory -Path $jvmArtifactDirectory, $mingwArtifactDirectory -Force | Out-Null
 
           $galleryGradleOptions = @('--no-daemon', '--no-configuration-cache', '--max-workers=1')
+          if ($env:RELEASE_TAG) { $galleryGradleOptions += "-Pwinrt.releaseTag=$env:RELEASE_TAG" }
           $galleryJvmOptions = $galleryGradleOptions + @(
             '-Dorg.gradle.jvmargs=-Xmx8g -XX:+UseSerialGC -Dfile.encoding=UTF-8')
           # Keep all Native Release optimizations, including devirtualization. A
@@ -188,13 +207,13 @@ jobs:
           $version = $env:WINUI_GALLERY_PACKAGE_VERSION
           Copy-Item $jvmPackage.FullName (Join-Path $jvmArtifactDirectory "Kotlin-WinUI-Gallery-$version-jvm.msix")
           Copy-Item $mingwPackage.FullName (Join-Path $mingwArtifactDirectory "Kotlin-WinUI-Gallery-$version-mingwX64.msix")
-          Copy-Item $env:WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE (Join-Path $jvmArtifactDirectory 'winui-gallery-snapshot-signing.cer')
-          Copy-Item $env:WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE (Join-Path $mingwArtifactDirectory 'winui-gallery-snapshot-signing.cer')
+          Copy-Item $env:WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE (Join-Path $jvmArtifactDirectory 'winui-gallery-signing.cer')
+          Copy-Item $env:WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE (Join-Path $mingwArtifactDirectory 'winui-gallery-signing.cer')
 
       - name: Upload JVM package
         uses: actions/upload-artifact@v4
         with:
-          name: winui-gallery-snapshot-${{ steps.snapshot-meta.outputs.version }}-jvm
+          name: winui-gallery-${{ steps.package-meta.outputs.kind }}-${{ steps.package-meta.outputs.version }}-jvm
           path: ${{ runner.temp }}/winui-gallery-snapshot-artifacts/jvm/*
           if-no-files-found: error
           compression-level: 0
@@ -203,7 +222,7 @@ jobs:
       - name: Upload MinGW package
         uses: actions/upload-artifact@v4
         with:
-          name: winui-gallery-snapshot-${{ steps.snapshot-meta.outputs.version }}-mingwX64
+          name: winui-gallery-${{ steps.package-meta.outputs.kind }}-${{ steps.package-meta.outputs.version }}-mingwX64
           path: ${{ runner.temp }}/winui-gallery-snapshot-artifacts/mingw/*
           if-no-files-found: error
           compression-level: 0
