@@ -131,8 +131,6 @@ The implementation follows Microsoft's [CsWinRT](https://github.com/microsoft/Cs
 
 The **Kotlin WinUI Gallery** contains 122 routes and 355 example documents, with interactive controls and a XAML/Kotlin source viewer. Layouts and assets are ported from the official WinUI Gallery with [third-party attribution](winui-gallery/THIRD-PARTY-NOTICES.md).
 
-![Button examples with XAML source in Kotlin WinUI Gallery](docs/Assets/winui-gallery-button.jpg)
-
 Download from the [0.1.0 release](https://github.com/compose-fluent/kotlin-winrt/releases/tag/v0.1.0) once the tag's release workflow completes:
 
 | Asset | Purpose |
