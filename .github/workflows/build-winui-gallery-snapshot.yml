@@ -149,9 +149,20 @@ jobs:
           $mingwArtifactDirectory = Join-Path $artifactRoot 'mingw'
           New-Item -ItemType Directory -Path $jvmArtifactDirectory, $mingwArtifactDirectory -Force | Out-Null
 
-          $galleryGradleOptions = @('--no-daemon', '--no-configuration-cache', '--max-workers=2',
+          $galleryGradleOptions = @('--no-daemon', '--no-configuration-cache', '--max-workers=1')
+          $galleryJvmOptions = $galleryGradleOptions + @(
             '-Dorg.gradle.jvmargs=-Xmx8g -XX:+UseSerialGC -Dfile.encoding=UTF-8')
-          & .\gradlew.bat :winui-gallery:signWinAppPackageWinuiJvmMain @galleryGradleOptions
+          # Keep all Native Release optimizations, including devirtualization. A
+          # separate compiler process leaves its heap free of Gradle and JVM IR.
+          # The public Windows runner has 16 GB: reserve 2 GB for Gradle and give
+          # the Native compiler 12 GB, with one compiler task running at a time.
+          # Return idle Java heap while LLVM runs outside it, leaving room for
+          # LLVM's native allocations on the same runner.
+          $galleryNativeOptions = $galleryGradleOptions + @(
+            '-Dorg.gradle.jvmargs=-Xmx2g -XX:+UseSerialGC -Dfile.encoding=UTF-8',
+            '-Pkotlin.native.disableCompilerDaemon=true',
+            '-Pkotlin.native.jvmArgs=-Xmx12g -XX:+UseG1GC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:G1PeriodicGCInterval=30000')
+          & .\gradlew.bat :winui-gallery:signWinAppPackageWinuiJvmMain @galleryJvmOptions
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
@@ -161,7 +172,7 @@ jobs:
           }
           $jvmPackage = $signedPackages[0]
 
-          & .\gradlew.bat :winui-gallery:signWinAppPackageMingwX64MainReleaseExecutable @galleryGradleOptions
+          & .\gradlew.bat :winui-gallery:signWinAppPackageMingwX64MainReleaseExecutable @galleryNativeOptions
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
