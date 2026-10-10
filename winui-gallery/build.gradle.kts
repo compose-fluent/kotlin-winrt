@@ -95,14 +95,16 @@ dependencies {
         "configuration" to "jvmRuntimeElements",
     )))
 }
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
-    if (name == "compileKotlinWinuiJvm" || name == "compileKotlinMingwX64") {
-        dependsOn(galleryHighlightingPlugin)
-        compilerOptions.freeCompilerArgs.addAll(provider {
-            galleryHighlightingPlugin.files.sortedBy { it.name }.map { file -> "-Xplugin=${file.absolutePath}" }
-        })
-        inputs.files(galleryHighlightingPlugin)
-    }
+// Highlight application sources only. Raw -Xplugin arguments are inherited by
+// isolated projection/XAML semantic compilations, without the producer tasks.
+// KGP's classpath properties retain the JAR build dependencies and keep this
+// application processor out of the SDK projection boundary (as with the separate
+// projection ProjectReferences in .cswinrt/src/Samples/WinUIDesktopSample).
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>("compileKotlinWinuiJvm") {
+    pluginClasspath.from(galleryHighlightingPlugin)
+}
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>("compileKotlinMingwX64") {
+    compilerPluginClasspath = files(compilerPluginClasspath, galleryHighlightingPlugin)
 }
 tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlinWinuiJvm") {
     // Preview and original file must share a FIR session, including rebuilds after
