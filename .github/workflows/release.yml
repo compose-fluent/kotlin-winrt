@@ -3,12 +3,24 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Stable release tag
+        type: string
+        required: true
+        default: v0.1.0
+      assets_run_id:
+        description: Reuse verified Release assets after publication-only fixes
+        type: string
+        required: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -18,15 +30,21 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
       commit: ${{ steps.release.outputs.commit }}
+      tag: ${{ steps.release.outputs.tag }}
+      asset_commit: ${{ steps.release.outputs.asset_commit }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.release_tag || github.ref }}
       - name: Validate tag, changelog and credentials
         id: release
         shell: pwsh
         env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          ASSETS_RUN_ID: ${{ inputs.assets_run_id }}
+          GH_TOKEN: ${{ github.token }}
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           MAVEN_GPG_KEY_ID: ${{ secrets.MAVEN_GPG_KEY_ID }}
@@ -36,13 +54,16 @@ jobs:
           WINUI_GALLERY_SIGNING_PFX_PASSWORD: ${{ secrets.WINUI_GALLERY_SIGNING_PFX_PASSWORD }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:GITHUB_REF_NAME -cnotmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected stable tag vX.Y.Z.' }
+          if ($env:RELEASE_TAG -cnotmatch '^v(\d+\.\d+\.\d+)$') { throw 'Expected stable tag vX.Y.Z.' }
           $version = $Matches[1]
+          if ($env:GITHUB_REF_TYPE -cne 'tag' -or $env:GITHUB_REF_NAME -cne $env:RELEASE_TAG) {
+            throw 'Run the Release workflow on the requested release tag.'
+          }
           $base = (Select-String -Path gradle.properties -Pattern '^winrt.baseVersion=(.+)$').Matches.Groups[1].Value
           if ($base -cne $version) { throw 'Tag must match winrt.baseVersion.' }
           $commit = git rev-parse HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve checkout.' }
-          $tagCommit = git rev-parse --verify "refs/tags/$env:GITHUB_REF_NAME^{commit}"
+          $tagCommit = git rev-parse --verify "refs/tags/$env:RELEASE_TAG^{commit}"
           if ($LASTEXITCODE -ne 0 -or $tagCommit -cne $commit) { throw 'Tag does not match checkout.' }
           $changelog = Get-Content CHANGELOG.md -Raw
           $entry = [regex]::Match($changelog, '(?ms)^## \[' + [regex]::Escape($version) + '\][^\r\n]*\r?\n(.*?)(?=^## \[|\z)')
@@ -53,7 +74,31 @@ jobs:
               'WINUI_GALLERY_SIGNING_PFX_PASSWORD')) {
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) { throw "Missing secret: $name" }
           }
-          "version=$version", "commit=$commit" | Add-Content $env:GITHUB_OUTPUT
+          $assetCommit = $commit
+          if ($env:ASSETS_RUN_ID) {
+            if ($env:ASSETS_RUN_ID -notmatch '^\d+$') { throw 'Expected a numeric Release run ID.' }
+            $sourceRun = gh run view $env:ASSETS_RUN_ID --repo $env:GITHUB_REPOSITORY `
+              --json headSha,headBranch,workflowName,jobs | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect source Release run.' }
+            if ($sourceRun.workflowName -cne 'Release' -or $sourceRun.headBranch -cne $env:RELEASE_TAG -or
+                @($sourceRun.jobs | Where-Object { $_.name -ceq 'assets' -and $_.conclusion -ceq 'success' }).Count -ne 1) {
+              throw 'Source run must have verified assets for this exact release version.'
+            }
+            $assetCommit = $sourceRun.headSha
+            $changedFiles = @(git diff --name-only $assetCommit $commit)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot compare artifact source with release checkout.' }
+            $publicationFiles = @(
+              'kotlin-winrt-build-convention/src/main/kotlin/io/github/composefluent/winrt/build/WinRTPrebuiltProjectionConventionPlugin.kt',
+              'kotlin-winrt-build-convention/src/test/kotlin/io/github/composefluent/winrt/build/WinRTPrebuiltProjectionConventionPluginTest.kt'
+            )
+            foreach ($file in $changedFiles) {
+              if ($file -notlike '.github/*' -and $file -cnotin $publicationFiles) {
+                throw "Application or IDE build inputs changed; rebuild assets: $file"
+              }
+            }
+            Write-Host "Reusing verified assets from run $env:ASSETS_RUN_ID, source $assetCommit; release source $commit."
+          }
+          "version=$version", "commit=$commit", "tag=$env:RELEASE_TAG", "asset_commit=$assetCommit" | Add-Content $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
         with:
           name: release-notes
@@ -61,21 +106,24 @@ jobs:
           if-no-files-found: error
 
   gallery:
+    if: ${{ inputs.assets_run_id == '' }}
     needs: prepare
     uses: ./.github/workflows/build-winui-gallery-snapshot.yml
     with:
-      release_tag: ${{ github.ref_name }}
+      release_tag: ${{ needs.prepare.outputs.tag }}
     secrets: inherit
 
   ide:
+    if: ${{ inputs.assets_run_id == '' }}
     needs: prepare
     permissions:
       contents: write
     uses: ./.github/workflows/ide-plugin.yml
     with:
-      project_release_tag: ${{ github.ref_name }}
+      project_release_tag: ${{ needs.prepare.outputs.tag }}
 
   assets:
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (inputs.assets_run_id != '' || (needs.gallery.result == 'success' && needs.ide.result == 'success')) }}
     needs: [prepare, gallery, ide]
     runs-on: windows-2022
     timeout-minutes: 15
@@ -83,21 +131,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ needs.prepare.outputs.tag }}
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.assets_run_id == '' }}
         with:
           pattern: winui-gallery-release-*
           path: packages
           merge-multiple: true
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.assets_run_id == '' }}
         with:
           pattern: ide-plugin-*-${{ needs.prepare.outputs.version }}
           path: packages
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.assets_run_id != '' }}
+        with:
+          name: release-assets
+          path: packages
+          run-id: ${{ inputs.assets_run_id }}
+          github-token: ${{ github.token }}
       - name: Verify package identities, provenance and checksums
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.asset_commit }}
         run: ./.github/scripts/verify-release-assets.ps1 -Directory packages -Version $env:RELEASE_VERSION -Commit $env:RELEASE_COMMIT
       - uses: actions/upload-artifact@v4
         with:
@@ -111,10 +169,13 @@ jobs:
     needs: [prepare, assets]
     runs-on: windows-2022
     timeout-minutes: 360
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ needs.prepare.outputs.tag }}
       - uses: actions/setup-java@v4
         with:
           java-version: '25'
@@ -130,11 +191,11 @@ jobs:
             :winrt-metadata:test :winrt-generator:test :winrt-authoring:jvmTest :winrt-authoring:mingwX64Test `
             :winrt-compiler-plugin:test :winrt-compiler-plugin:compiler-kotlin-2-4-20:test `
             :winrt-compiler-plugin:callsite-lowering:test :winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20:test `
-            "-Pwinrt.releaseTag=$env:GITHUB_REF_NAME" --no-configuration-cache --max-workers=1
+            "-Pwinrt.releaseTag=$env:RELEASE_TAG" --no-configuration-cache --max-workers=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build and verify every publication locally
         shell: pwsh
-        run: ./.github/scripts/publish-release.ps1 -Tag $env:GITHUB_REF_NAME -Mode Verify
+        run: ./.github/scripts/publish-release.ps1 -Tag $env:RELEASE_TAG -Mode Verify
       - name: Publish and release to Maven Central
         shell: pwsh
         env:
@@ -143,7 +204,7 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_GPG_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
-        run: ./.github/scripts/publish-release.ps1 -Tag $env:GITHUB_REF_NAME -Mode Publish
+        run: ./.github/scripts/publish-release.ps1 -Tag $env:RELEASE_TAG -Mode Publish
 
   gradle-portal:
     # Portal submission and its manual review do not gate the GitHub Release.
@@ -152,11 +213,12 @@ jobs:
     timeout-minutes: 60
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ needs.prepare.outputs.tag }}
       - name: Check Gradle Plugin Portal credentials
         shell: pwsh
         env:
@@ -240,6 +302,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ needs.prepare.outputs.tag }}
       - uses: actions/download-artifact@v4
         with:
           name: release-assets
@@ -253,10 +316,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.asset_commit }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           ./.github/scripts/verify-release-assets.ps1 -Directory packages -Version $env:RELEASE_VERSION -Commit $env:RELEASE_COMMIT
           $assets = @(Get-ChildItem packages -File | Where-Object { $_.Extension -in @('.msix', '.zip', '.cer') } | ForEach-Object FullName)
           $assets += (Resolve-Path packages/SHA256SUMS.txt).Path
-          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --title "Kotlin/WinRT $env:RELEASE_VERSION" --notes-file release-notes.md
+          gh release create $env:RELEASE_TAG @assets --verify-tag --title "Kotlin/WinRT $env:RELEASE_VERSION" --notes-file release-notes.md
           if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed.' }
