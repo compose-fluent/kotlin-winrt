@@ -259,13 +259,14 @@ private fun preparedStaticProjectionKey(
     updateList("metadataFiles", files.map { file -> file.toAbsolutePath().normalize().toString() }.sorted())
     files.sortedBy(Path::toString).forEach { file ->
         updateField("metadataFilePath", file.toAbsolutePath().normalize().toString())
-        digest.update(PreparedProjectionFileFingerprints.content(file))
+        // Metadata remains content-addressed even when a producer preserves its timestamps.
+        updateFileContents(digest, file)
         digest.update(0)
     }
     updateList("identityFiles", identityFiles.map { file -> file.absolutePath }.sorted())
     identityFiles.sortedBy(java.io.File::getAbsolutePath).forEach { file ->
         updateField("identityFilePath", file.absolutePath)
-        digest.update(PreparedProjectionFileFingerprints.content(file.toPath()))
+        updateFileContents(digest, file.toPath())
         digest.update(0)
     }
     return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
