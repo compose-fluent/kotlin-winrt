@@ -1,6 +1,6 @@
 # Kotlin/WinRT usage reference
 
-For installation, current XAML examples and Gallery downloads, start with the [README](../README.md). This guide covers projection selection, packaging and custom hosts.
+For installation and Gallery downloads, start with the [README](../README.md). To create a shared Native/JVM XAML application, follow the [WinUI quick start](QUICKSTART.md). This reference covers projection selection, packaging and custom hosts.
 
 ## Targets
 
@@ -28,7 +28,7 @@ Gradle builds running on JDK 21 can declare the Windows toolkit with `apply fals
 
 ## Dependency setup
 
-Use the complete [Maven Central plugin resolution example](../README.md#get-started) in the root README. The Windows toolkit is not published on Gradle Plugin Portal; its plugin ID can be mapped directly to the implementation module with `useModule`. For snapshots, add the Sonatype snapshot repository to both plugin and dependency repositories and select `0.1.0-SNAPSHOT`.
+Use the complete [Maven Central plugin resolution example](../README.md#create-your-application) in the root README. The Windows toolkit is not published on Gradle Plugin Portal; its plugin ID can be mapped directly to the implementation module with `useModule`. For snapshots, add the Sonatype snapshot repository to both plugin and dependency repositories and select `0.1.0-SNAPSHOT`.
 
 The plugin adds `winrt-runtime` automatically to JVM and KMP main configurations. Add runtime dependencies manually only when using the runtime without the plugin:
 
@@ -133,13 +133,13 @@ windows {
 ```kotlin
 dependencies {
     implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
-    implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.2.0")
+    implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.5.1")
 }
 
 windows {
     packageReferences {
         windowsSdk(includeExtensions = true)
-        nugetPackage("Microsoft.WindowsAppSDK", "2.2.0") {
+        nugetPackage("Microsoft.WindowsAppSDK", "2.5.1") {
             generateProjection = false
         }
     }
@@ -167,7 +167,7 @@ When a project intentionally needs a local projection from a NuGet package, keep
 windows {
     packageReferences {
         windowsSdk(includeExtensions = true, generateProjection = true)
-        nugetPackage("Microsoft.WindowsAppSDK", "2.2.0") {
+        nugetPackage("Microsoft.WindowsAppSDK", "2.5.1") {
             generateProjection = true
         }
 
@@ -292,7 +292,7 @@ windows {
 
     packageReferences {
         windowsSdk(includeExtensions = true)
-        nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
+        nugetPackage("Microsoft.WindowsAppSDK", "2.5.1")
     }
 }
 ```

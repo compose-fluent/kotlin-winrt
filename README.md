@@ -2,56 +2,58 @@
 
 [![Release](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/release.yml/badge.svg)](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/release.yml)
 [![Snapshot](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml/badge.svg?branch=master)](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml)
-[![JVM](https://img.shields.io/badge/JVM-JDK%2025-blue)](#requirements)
 [![Native](https://img.shields.io/badge/Kotlin%2FNative-mingwX64-blue)](#requirements)
+[![JVM](https://img.shields.io/badge/JVM-JDK%2025-blue)](#requirements)
 
-**Build Windows apps with Kotlin, WinRT and native WinUI 3 controls.**
+**Build Windows apps with Kotlin, XAML and native WinUI 3 controls.**
 
-Kotlin/WinRT projects Windows Runtime APIs into Kotlin and connects Kotlin code to the Windows ABI. Share application sources between Kotlin/JVM and Kotlin/Native `mingwX64`, write WinUI layouts in XAML with Kotlin code-behind, and package Windows applications through Gradle.
-
-- **WinRT interop:** COM lifetime and identity, activation, strings, marshaling, delegates, generic interfaces, collections and async support for the implemented projection surface.
-- **Metadata-driven APIs:** load WinMD from Windows SDK, NuGet or local files and generate Kotlin projections, or use prebuilt SDK projections.
-- **Kotlin + XAML:** named controls, events, compiled bindings, resources, templates and authored Kotlin types, backed by XAML compilation and XBF/PRI assets.
-- **Windows toolkit:** restore NuGet dependencies, stage native runtime files, build JVM launchers or Native executables, and create/sign MSIX packages.
-- **Optional IDE integration:** project templates, Kotlin/XAML analysis, navigation, Gradle import, run/debug and JVM Hot Reload for supported IDE distributions.
-
-The implementation follows Microsoft's [CsWinRT](https://github.com/microsoft/CsWinRT) and [C++/WinRT](https://github.com/microsoft/cppwinrt) projection model. Version 0.1.0 is the initial release; see [CHANGELOG.md](CHANGELOG.md) for its scope and limitations.
-
-## See it running
-
-The **Kotlin WinUI Gallery** shares XAML and Kotlin application code between JVM and Native. It contains 122 routes and 355 example documents, with interactive controls and a source viewer. Layouts and assets are ported from the official WinUI Gallery with [third-party attribution](winui-gallery/THIRD-PARTY-NOTICES.md).
+Kotlin/WinRT projects Windows Runtime APIs into Kotlin. Share application code and XAML between **Kotlin/Native `mingwX64` and Kotlin/JVM**, and use Gradle to generate API bindings, compile XAML and package your app. The project uses **Windows App SDK 2.5.1**.
 
 ![Kotlin WinUI Gallery home running on Windows](docs/Assets/winui-gallery.jpg)
 
-![Button examples with XAML source in Kotlin WinUI Gallery](docs/Assets/winui-gallery-button.jpg)
+*The Kotlin WinUI Gallery runs the same Kotlin/XAML application on both targets. [See examples and downloads](#gallery-and-downloads).*
 
-Download from the [0.1.0 release](https://github.com/compose-fluent/kotlin-winrt/releases/tag/v0.1.0) after the tag's release workflow completes:
+## Quick start
 
-| Asset | Purpose |
-| --- | --- |
-| `Kotlin-WinUI-Gallery-0.1.0-jvm.msix` | Gallery with a bundled JVM runtime |
-| `Kotlin-WinUI-Gallery-0.1.0-mingwX64.msix` | Native release build |
-| `kotlin-winrt-ide-0.1.0-<variant>.zip` | IDE plugin; select the matching distribution below |
-| `winui-gallery-signing.cer` | Public package signing certificate |
-| `SHA256SUMS.txt` | Download checksums |
+### Requirements
 
-The Gallery packages share one application identity: install one at a time. They target Windows x64 and use Windows App SDK **2.5.1**. Framework-dependent installation requires the matching Windows App Runtime. If Windows does not already trust the signer, verify and trust the supplied public certificate before installing the MSIX. See the [Gallery guide](winui-gallery/README.md) for source builds.
+- **Windows x64**, with **JDK 25** and the Gradle **9.4.0** wrapper.
+- Visual Studio / Build Tools with **Desktop development with C++** and **Windows SDK 10.0.26100.0**.
+- **Windows Developer Mode** for AppX development runs.
+- Kotlin **2.4.0** or **2.4.20** when creating an application.
 
-## Requirements
+The Gradle toolkit provisions WinApp CLI and the Kotlin-aware XAML compiler, restores NuGet packages and stages the native runtime files. Build from an ordinary terminal; the toolkit discovers the installed C++ build tools.
 
-- Windows x64. Sample manifests declare Windows 10 version 2004 (`10.0.19041.0`) as their minimum; individual Windows App SDK versions and APIs can require newer Windows releases.
-- **JDK 25** for Gradle and JVM interop (`java.lang.foreign`). This repository uses Gradle **9.4.0**.
-- Kotlin **2.4.0** or **2.4.20**; the toolkit selects the matching compiler plugin automatically.
-- Visual Studio / Build Tools with **Desktop development with C++** and the selected Windows SDK (examples use **10.0.26100.0**). Toolchain discovery works from an ordinary terminal.
-- Windows Developer Mode for packaged development runs. Creating an MSIX does not itself require Developer Mode.
+### Run the Gallery
 
-The Gradle toolkit provisions its pinned WinApp CLI and Kotlin-aware XAML compiler automatically, and handles code generation, XAML compilation, packaging and running on both targets. Native builds use Kotlin/Native's `mingwX64` toolchain. See the [usage reference](docs/USAGE.md) for deployment modes, SDK selection and offline prerequisites.
+Clone the repository and launch the Native application with AppX identity:
 
-## Get started
+```powershell
+git clone --recursive https://github.com/compose-fluent/kotlin-winrt.git
+cd kotlin-winrt
+.\gradlew.bat :winui-gallery:runWinAppPackageMingwX64MainDebugExecutable --args=Home --detach
+```
 
-### Resolve the Gradle plugin from Maven Central
+To run the JVM target instead:
 
-The Windows toolkit is **not published on Gradle Plugin Portal**. Add Maven Central to plugin repositories and explicitly map the plugin ID to its implementation artifact. Put this at the top of `settings.gradle.kts`:
+```powershell
+.\gradlew.bat :winui-gallery:runWinAppPackageWinuiJvmMain --args=Home --detach
+```
+
+Run one target at a time. AppX development tasks register a `.dev` package and launch the application with package identity, including `ms-appx:///` resource access. They do not require signing an MSIX. Use these `runWinAppPackage...` tasks as the default development entry point.
+
+### Create your application
+
+Use a Kotlin Multiplatform project with **both `mingwX64` and JVM targets**:
+
+```text
+hello-winrt/
+  settings.gradle.kts
+  app/                 # Shared Kotlin/XAML sources, manifest and icons
+  winrt-projections/   # Shared generated Windows SDK and WinUI APIs
+```
+
+The Windows toolkit is published through Maven Central. Resolve its plugin ID explicitly in `settings.gradle.kts`, since it is not on Gradle Plugin Portal:
 
 ```kotlin
 pluginManagement {
@@ -78,99 +80,9 @@ rootProject.name = "hello-winrt"
 include(":app", ":winrt-projections")
 ```
 
-### Start with Kotlin Multiplatform: mingwX64 + JVM
+Follow the [WinUI quick start](docs/QUICKSTART.md) for the complete Gradle files, manifest setup and `Application.start` entry point. It uses toolkit **0.1.0**, Windows App SDK **2.5.1**, and a shared `winuiMain` source set.
 
-Start with **both `mingwX64` and JVM targets** and two modules: `app` for shared Kotlin/XAML application sources, and `winrt-projections` for SDK projections. The following Gradle configurations consume `0.1.0` from Maven Central.
-
-Keep SDK generation in `winrt-projections/build.gradle.kts`:
-
-```kotlin
-plugins {
-    kotlin("multiplatform") version "2.4.0"
-    id("io.github.compose-fluent.windows-toolkit") version "0.1.0"
-}
-
-kotlin {
-    jvmToolchain(25)
-    mingwX64()
-    jvm { compilerOptions { freeCompilerArgs.add("-Xno-optimize") } }
-}
-
-windows {
-    xaml { exportLibrarySchema = false }
-    packageReferences {
-        windowsSdk("10.0.26100.0", includeExtensions = false, generateProjection = true)
-        nugetPackage("Microsoft.WindowsAppSDK", "2.5.1")
-        namespace("Microsoft.UI.Xaml")
-        namespace("Microsoft.UI.Xaml.Controls")
-        type("Microsoft.UI.Xaml.Media.MicaBackdrop")
-        type("Windows.Foundation.Uri")
-    }
-}
-```
-
-Consume that projection from `app/build.gradle.kts` and keep the default packaged application mode:
-
-```kotlin
-plugins {
-    kotlin("multiplatform") version "2.4.0"
-    id("io.github.compose-fluent.windows-toolkit") version "0.1.0"
-}
-
-kotlin {
-    jvmToolchain(25)
-    mingwX64 {
-        binaries { executable { entryPoint = "sample.hello.main" } }
-    }
-    jvm()
-    sourceSets {
-        getByName("winuiMain").dependencies {
-            implementation(project(":winrt-projections"))
-        }
-    }
-}
-
-windows {
-    application {
-        mainClass = "sample.hello.MainKt"
-        minWindowsVersion = "10.0.19041.0"
-        launcherIcon = layout.projectDirectory.file(
-            "src/winuiMain/appxResources/Assets/Application.ico"
-        )
-    }
-    packageReferences {
-        windowsSdk("10.0.26100.0", includeExtensions = false)
-        nugetPackage("Microsoft.WindowsAppSDK", "2.5.1") {
-            generateProjection = false
-        }
-        // The shared projection module owns SDK declarations and additions.
-        listOf("Windows", "Microsoft", "WinRT").forEach(::excludeAdditionNamespace)
-    }
-}
-```
-
-The toolkit adds the runtime and shared `winuiMain` source set. Add your `AppxManifest.xml` and referenced image assets under `app/src/winuiMain/appxResources/`, including the launcher icon configured above. The [Gallery manifest](winui-gallery/src/winuiMain/appxResources/AppxManifest.xml) provides a repository example; adapt its identity, display names and assets to your application.
-
-**Use AppX development runs by default** (the `runAppx` development flow). In the current toolkit the concrete tasks are named `runWinAppPackage...`:
-
-```powershell
-.\gradlew.bat :app:runWinAppPackageMingwX64MainDebugExecutable --detach
-.\gradlew.bat :app:runWinAppPackageJvmMain --detach
-```
-
-Run one target at a time. These tasks register a separate `.dev` package and launch with package identity, so `ms-appx:///` resources resolve correctly. Enable Windows Developer Mode. Development runs do not require creating or signing an MSIX. JVM and Native are equal application targets; choose JVM when using the current IDE Hot Reload transport. Direct host/executable launch is an advanced unpackaged workflow, not the default development path.
-
-For snapshots, use `0.1.0-SNAPSHOT` and add this repository to **both** repository blocks above. Keep the same `resolutionStrategy`:
-
-```kotlin
-maven("https://central.sonatype.com/repository/maven-snapshots/") {
-    mavenContent { snapshotsOnly() }
-}
-```
-
-### Shared XAML and Kotlin code
-
-Place XAML beside its Kotlin class: `MainWindow.xaml` and `MainWindow.kt` under `app/src/winuiMain/kotlin/sample/hello/`. Gradle compiles these sources for both targets.
+Place `MainWindow.xaml` beside `MainWindow.kt` under `app/src/winuiMain/kotlin/sample/hello/`:
 
 ```xml
 <Window x:Class="sample.hello.MainWindow"
@@ -197,63 +109,45 @@ class MainWindow : Window() {
 }
 ```
 
-The compiler supplies typed named-element properties and initializes the component after construction. No `@XamlPage` annotation or handwritten generated superclass is needed. Add `App.xaml`, `App.kt` and `Main.kt` alongside the window:
+The compiler generates typed named-element access and initializes the XAML component after construction. Gradle compiles the shared sources for both targets.
 
-```xml
-<Application x:Class="sample.hello.App"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Application.Resources>
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
-    </Application.Resources>
-</Application>
-```
-
-```kotlin
-// App.kt
-package sample.hello
-
-import microsoft.ui.xaml.Application
-import microsoft.ui.xaml.LaunchActivatedEventArgs
-
-class App : Application() {
-    private var window: MainWindow? = null
-
-    override fun onLaunched(args: LaunchActivatedEventArgs) {
-        window = MainWindow().also { it.activate() }
-    }
-}
-```
-
-```kotlin
-// Main.kt
-package sample.hello
-
-import microsoft.ui.xaml.Application
-
-private var application: App? = null
-
-fun main() {
-    Application.start { application = App() }
-    application = null
-}
-```
-
-Build a distributable Native package separately from development runs:
+Once the [application setup](docs/QUICKSTART.md) is complete, run either target with AppX identity:
 
 ```powershell
-.\gradlew.bat :app:packageWinAppMingwX64MainReleaseExecutable
+.\gradlew.bat :app:runWinAppPackageMingwX64MainDebugExecutable --detach
+.\gradlew.bat :app:runWinAppPackageJvmMain --detach
 ```
 
-Task suffixes follow the Kotlin target name. The Gallery uses `winuiJvm`, so its task is `:winui-gallery:runWinAppPackageWinuiJvmMain`. See [packaging and manual configuration](docs/USAGE.md#winui-applications).
+## What you can build
 
-### Optional IDE plugin
+- Call WinRT APIs through generated Kotlin bindings, including the implemented activation, delegates, collections and async surfaces.
+- Write WinUI layouts with Kotlin code-behind, named controls, events, compiled bindings, resources and templates.
+- Generate projections from Windows SDK, NuGet or local WinMD files, or consume [prebuilt projections](docs/USAGE.md#prebuilt-projections). The prebuilt Windows App SDK coordinate is `io.github.compose-fluent:winrt-projections-windows-app-sdk:2.5.1`.
+- Build JVM launchers and Native executables, author WinRT components, and create/sign MSIX packages through Gradle.
 
-The IDE plugin improves completion, navigation, diagnostics, project creation and run/debug integration. Install the matching ZIP with **Settings → Plugins → Install Plugin from Disk**. Its **WinUI XAML Application** template creates the modules, sources, manifest, icons and bundled Maven toolchain described above; enable both targets.
+The implementation follows Microsoft's [CsWinRT](https://github.com/microsoft/CsWinRT) and [C++/WinRT](https://github.com/microsoft/cppwinrt) projection model. See [CHANGELOG.md](CHANGELOG.md) for the initial release's scope.
+
+## Gallery and downloads
+
+The **Kotlin WinUI Gallery** contains 122 routes and 355 example documents, with interactive controls and a XAML/Kotlin source viewer. Layouts and assets are ported from the official WinUI Gallery with [third-party attribution](winui-gallery/THIRD-PARTY-NOTICES.md).
+
+![Button examples with XAML source in Kotlin WinUI Gallery](docs/Assets/winui-gallery-button.jpg)
+
+Download from the [0.1.0 release](https://github.com/compose-fluent/kotlin-winrt/releases/tag/v0.1.0) once the tag's release workflow completes:
+
+| Asset | Purpose |
+| --- | --- |
+| `Kotlin-WinUI-Gallery-0.1.0-mingwX64.msix` | Native Gallery |
+| `Kotlin-WinUI-Gallery-0.1.0-jvm.msix` | Gallery with a bundled JVM runtime |
+| `kotlin-winrt-ide-0.1.0-<variant>.zip` | IDE plugin |
+| `winui-gallery-signing.cer` | Public package signing certificate |
+| `SHA256SUMS.txt` | Download checksums |
+
+Install one Gallery variant at a time; both use the same application identity. The framework-dependent packages require the matching Windows App Runtime. If the signer is not already trusted, verify and trust the supplied public certificate before installing. See the [Gallery guide](winui-gallery/README.md) for source builds and packaging.
+
+## Optional IDE plugin
+
+The IDE plugin adds completion, navigation, diagnostics, project templates and run/debug integration. Install the matching ZIP with **Settings → Plugins → Install Plugin from Disk**. Its **WinUI XAML Application** template creates the application and projection modules, shared sources, manifest, icons and bundled Maven toolchain; enable both targets.
 
 | ZIP variant | IDE SDK used to build and validate it |
 | --- | --- |
@@ -261,42 +155,8 @@ The IDE plugin improves completion, navigation, diagnostics, project creation an
 | `as-261` | Android Studio Quail 4 / 2026.1.4.7 |
 | `as-canary-262` | Android Studio Rabbit 2 Canary 2 / 2026.2.2.2 |
 
-Packages are built separately for each distribution; other IDE/compiler combinations are not covered by this compatibility claim. [IDE setup and limitations](winrt-compiler-plugin/ide/README.md).
+IDE Run/Debug and Hot Reload currently target JVM. XAML Preview is temporarily disabled. See [IDE setup](winrt-compiler-plugin/ide/README.md) and [Hot Reload](winrt-runtime/HOT_RELOAD.md) for supported edits and current limitations.
 
-**IDE limits:** XAML Preview is temporarily disabled. IDE Run/Debug and Hot Reload currently target JVM; Native Hot Reload transport is not implemented. Supported literal/resource/child edits can update live controls; other structural or Kotlin changes require rebuilding and restarting. See [Hot Reload](winrt-runtime/HOT_RELOAD.md).
+## Further reading
 
-## Prebuilt projections
-
-Add prebuilt projections explicitly, or generate your application's namespaces. Prebuilt release versions follow the metadata baseline; runtime and toolkit versions are `0.1.0`:
-
-```kotlin
-dependencies {
-    implementation("io.github.compose-fluent:winrt-projections-windows-sdk:10.0.26100.0")
-    implementation("io.github.compose-fluent:winrt-projections-windows-app-sdk:2.2.0")
-}
-
-windows {
-    packageReferences {
-        windowsSdk("10.0.26100.0", includeExtensions = true)
-        nugetPackage("Microsoft.WindowsAppSDK", "2.2.0") {
-            generateProjection = false
-        }
-    }
-}
-```
-
-The prebuilt App SDK baseline is **2.2.0**; the Gallery and IDE templates generate **2.5.1** projections. Do not combine prebuilt `Windows.UI.Xaml` and Windows App SDK projection families in one consumer. See [projection selection](docs/USAGE.md#prebuilt-projections) for other baselines, WebView2 and snapshot coordinates.
-
-## Build this repository
-
-```powershell
-git clone --recursive https://github.com/compose-fluent/kotlin-winrt.git
-cd kotlin-winrt
-.\gradlew.bat :winui-gallery:runWinAppPackageMingwX64MainDebugExecutable --args=Home --detach
-.\gradlew.bat :winui-gallery:runWinAppPackageWinuiJvmMain --args=Home --detach
-.\gradlew.bat :winrt-runtime:jvmTest :winrt-runtime:mingwX64Test
-```
-
-Runtime/ABI code lives in `winrt-runtime`; metadata and generation in `winrt-metadata` and `winrt-generator`; authoring in `winrt-authoring`; compiler and IDE support in `winrt-compiler-plugin`; Gradle integration in `windows-toolkit-gradle-plugin`. `winrt-projections`, `winrt-samples` and `winui-gallery` consume those layers.
-
-Further reading: [usage reference](docs/USAGE.md) · [Gallery](winui-gallery/README.md) · [compiler](winrt-compiler-plugin/README.md) · [IDE](winrt-compiler-plugin/ide/README.md) · [release procedure](docs/RELEASING.md) · [benchmarks](winrt-benchmarks/README.md).
+[WinUI quick start](docs/QUICKSTART.md) · [Usage and packaging](docs/USAGE.md) · [Gallery](winui-gallery/README.md) · [Compiler](winrt-compiler-plugin/README.md) · [Release procedure](docs/RELEASING.md) · [Benchmarks](winrt-benchmarks/README.md)
