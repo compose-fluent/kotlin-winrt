@@ -26,7 +26,7 @@ on:
       windowsAppSdkVersion:
         description: 'Microsoft.WindowsAppSDK version used for the prebuilt projection'
         required: true
-        default: '2.2.0'
+        default: '2.5.1'
       windowsSdkVersions:
         description: 'Comma-separated Windows SDK metadata versions to publish as windows-sdk projection versions'
         required: true

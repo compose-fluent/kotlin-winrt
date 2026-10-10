@@ -39,7 +39,7 @@ To validate locally without uploading to Central:
 
 ## Outputs
 
-Core runtime, metadata, generator, authoring, compiler/callsite modules (including Kotlin 2.4.20 variants) and the toolkit use `0.1.0`. Prebuilt projections retain metadata-baseline versions: Windows SDK and Windows.UI.Xaml for the four SDKs in `gradle.properties`, plus WebView2 and Windows App SDK. WebView2 is included because the App SDK projection depends on it. IDE project-release packages bundle and select `0.1.0`; standalone `ide-v*` releases retain their independent snapshot-toolchain behavior.
+Core runtime, metadata, generator, authoring, compiler/callsite modules (including Kotlin 2.4.20 variants) and the toolkit use `0.1.0`. Prebuilt projections retain metadata-baseline versions: Windows SDK and Windows.UI.Xaml for the four SDKs in `gradle.properties`, plus WebView2 and Windows App SDK 2.5.1. WebView2 is included because the App SDK projection depends on it. IDE project-release packages bundle and select `0.1.0`; standalone `ide-v*` releases retain their independent snapshot-toolchain behavior.
 
 GitHub assets are the two `Kotlin-WinUI-Gallery-0.1.0-{jvm,mingwX64}.msix` packages, three `kotlin-winrt-ide-0.1.0-{idea-262,as-261,as-canary-262}.zip` packages, `winui-gallery-signing.cer` and `SHA256SUMS.txt`.
 

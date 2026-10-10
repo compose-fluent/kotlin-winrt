@@ -15,7 +15,7 @@ base {
 val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.projections.windowsSdkVersion")
     .orElse("10.0.26100.0")
 val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkVersion")
-    .orElse("2.2.0")
+    .orElse("2.5.1")
 val projectionWindowsAppSdkArtifactVersion = providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkArtifactVersion")
     .orElse(providers.provider { projectionArtifactVersion(projectionWindowsAppSdkVersion.get(), rootProject.version.toString()) })
 

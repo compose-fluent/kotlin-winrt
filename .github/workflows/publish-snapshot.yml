@@ -61,7 +61,7 @@ jobs:
           path: |
             ~\.nuget\packages
             ~\.gradle\caches\kotlin-winrt\nuget
-          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-2.2.0
+          key: nuget-${{ runner.os }}-Microsoft.WindowsAppSDK-2.5.1
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Setup Gradle
@@ -98,7 +98,7 @@ jobs:
             :winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20:test \
             :winrt-projections:jvmTest \
             :winrt-projections:mingwX64Test \
-            -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.2.0 \
+            -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.5.1 \
             --no-configuration-cache
 
       - name: Test Kotlin compiler compatibility

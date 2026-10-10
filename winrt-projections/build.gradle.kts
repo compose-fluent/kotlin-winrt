@@ -9,7 +9,7 @@ plugins {
 }
 
 val projectionWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
-    .orElse("2.2.0")
+    .orElse("2.5.1")
 val projectionWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
     .orElse("10.0.26100.0")
 val projectionIncludeWinAppSdk = providers.gradleProperty("kotlinWinRT.projections.includeWinAppSdk")

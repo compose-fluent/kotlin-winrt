@@ -22,6 +22,6 @@ Core libraries and the Windows toolkit are published as `0.1.0` under `io.github
 
 ### Initial-release boundaries
 
-This release does not claim complete parity with every WinRT API or IDE distribution. Runtime and application sources support JVM and `mingwX64` for the implemented surface; IDE development transport and Hot Reload currently target JVM. XAML Preview is temporarily disabled. Hot Reload supports a bounded set of edits; other XAML changes and Kotlin code changes require rebuilding and restarting. The prebuilt Windows App SDK projection targets 2.2.0, while the Gallery and IDE templates generate projections for 2.5.1.
+This release does not claim complete parity with every WinRT API or IDE distribution. Runtime and application sources support JVM and `mingwX64` for the implemented surface; IDE development transport and Hot Reload currently target JVM. XAML Preview is temporarily disabled. Hot Reload supports a bounded set of edits; other XAML changes and Kotlin code changes require rebuilding and restarting. Prebuilt projections, the Gallery and IDE templates use Windows App SDK 2.5.1.
 
 [Source, usage instructions and third-party notices](https://github.com/compose-fluent/kotlin-winrt/tree/v0.1.0).

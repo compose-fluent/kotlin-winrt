@@ -62,7 +62,7 @@ val sampleWinUIEnabled = providers.gradleProperty("kotlinWinRT.samples.enableWin
     .map(String::toBooleanStrict)
     .orElse(true)
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
-    .orElse("2.2.0")
+    .orElse("2.5.1")
 
 val verifyWinRTSampleIdentity by tasks.registering(VerifyWinRTSampleIdentityTask::class) {
     group = "verification"

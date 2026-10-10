@@ -226,7 +226,7 @@ val windowsSdkProjectionVersion = providers.gradleProperty("kotlinWinRT.projecti
 val windowsAppSdkProjectionVersion = providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkArtifactVersion")
     .orElse(
         providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkVersion")
-            .orElse("2.2.0")
+            .orElse("2.5.1")
             .map { metadataVersion -> projectionArtifactVersion(metadataVersion, winrtVersion) },
     )
 val webView2ProjectionVersion = providers.gradleProperty("kotlinWinRT.projections.webView2ArtifactVersion")
