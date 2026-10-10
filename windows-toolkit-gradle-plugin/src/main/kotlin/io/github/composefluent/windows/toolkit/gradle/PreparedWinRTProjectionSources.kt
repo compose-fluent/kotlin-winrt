@@ -131,7 +131,8 @@ internal fun prepareWinRTStaticProjectionSources(
         emitJvmAuthoringHostExports,
         registryRootPaths.orEmpty(),
     )
-    val storeRoot = project.layout.projectDirectory.dir(".gradle/kotlin-winrt/prepared-imports").asFile.toPath()
+    // Preserve first-import completion, while sharing immutable SDK sources between projects.
+    val storeRoot = sharedWinRTCacheDirectory(project, "prepared-imports")
     val entry = storeRoot.resolve(key)
     val sourceRoot = entry.resolve("sources")
     // Keep the full metadata model and KotlinPoet graph out of the configuration daemon.
@@ -220,7 +221,7 @@ private fun preparedStaticProjectionKey(
             update(value)
         }
     }
-    updateField("schema", "prepared-static-sources-v4")
+    updateField("schema", "prepared-static-sources-v5")
     updateField("emitSupportFiles", "true")
     updateField("groupProjectionFilesByPackageOnWrite", "true")
     updateField("generationLayout", "SingleSourceSet")
@@ -258,6 +259,7 @@ private fun preparedStaticProjectionKey(
     updateList("metadataFiles", files.map { file -> file.toAbsolutePath().normalize().toString() }.sorted())
     files.sortedBy(Path::toString).forEach { file ->
         updateField("metadataFilePath", file.toAbsolutePath().normalize().toString())
+        // Metadata remains content-addressed even when a producer preserves its timestamps.
         updateFileContents(digest, file)
         digest.update(0)
     }
@@ -323,7 +325,7 @@ private fun updateImplementationRoot(digest: MessageDigest, root: Path) {
                     .sorted()
                     .forEach { relative ->
                         update(relative.toString().replace('\\', '/'))
-                        updateFileContents(digest, normalizedRoot.resolve(relative))
+                        digest.update(PreparedProjectionFileFingerprints.content(normalizedRoot.resolve(relative)))
                         digest.update(0)
                     }
             }
@@ -331,7 +333,9 @@ private fun updateImplementationRoot(digest: MessageDigest, root: Path) {
 
         Files.isRegularFile(normalizedRoot) -> {
             update("archive")
-            JarFile(normalizedRoot.toFile()).use { jar ->
+            digest.update(PreparedProjectionFileFingerprints.archive(normalizedRoot) {
+              val archiveDigest = MessageDigest.getInstance("SHA-256")
+              JarFile(normalizedRoot.toFile()).use { jar ->
                 val entries = mutableListOf<String>()
                 val enumeration = jar.entries()
                 while (enumeration.hasMoreElements()) {
@@ -339,18 +343,21 @@ private fun updateImplementationRoot(digest: MessageDigest, root: Path) {
                     if (!entry.isDirectory) entries += entry.name
                 }
                 entries.sorted().forEach { name ->
-                    update(name)
+                    archiveDigest.update(name.toByteArray(Charsets.UTF_8))
+                    archiveDigest.update(0)
                     jar.getInputStream(jar.getJarEntry(name)).use { input ->
                         val buffer = ByteArray(16 * 1024)
                         while (true) {
                             val count = input.read(buffer)
                             if (count < 0) break
-                            digest.update(buffer, 0, count)
+                            archiveDigest.update(buffer, 0, count)
                         }
                     }
-                    digest.update(0)
+                    archiveDigest.update(0)
                 }
-            }
+              }
+              archiveDigest.digest()
+            })
         }
 
         else -> update("missing")
@@ -393,9 +400,7 @@ internal fun writePreparedStaticManifest(path: Path, files: List<Path>, model: W
 }
 
 private fun preparedOutputHash(path: Path): String {
-    val digest = MessageDigest.getInstance("SHA-256")
-    updateFileContents(digest, path)
-    return java.util.HexFormat.of().formatHex(digest.digest())
+    return java.util.HexFormat.of().formatHex(PreparedProjectionFileFingerprints.content(path))
 }
 
 /** Validate both the output inventory and bytes before reusing a prepared projection. */
@@ -429,7 +434,8 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
         Files.readAllLines(manifest).filter(String::isNotBlank).toSet()
     } else {
         emptySet()
-    }) + markedGeneratedProjectionFiles(generatedRoot)
+    })
+    val previousOwnedFiles = previousFiles + markedGeneratedProjectionFiles(generatedRoot, previousFiles)
     val currentFiles = mutableSetOf<String>()
     Files.walk(sourceRoot).use { stream ->
         stream.filter(Files::isRegularFile).forEach { source ->
@@ -437,12 +443,12 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
             currentFiles += relative
             val target = generatedRoot.resolve(relative)
             Files.createDirectories(target.parent)
-            if (!Files.isRegularFile(target) || !Files.mismatch(source, target).let { it == -1L }) {
+            if (!Files.isRegularFile(target) || preparedOutputHash(source) != preparedOutputHash(target)) {
                 Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
             }
         }
     }
-    previousFiles.asSequence()
+    previousOwnedFiles.asSequence()
         .filterNot(currentFiles::contains)
         .map(generatedRoot::resolve)
         .forEach(Files::deleteIfExists)
@@ -453,10 +459,11 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
 }
 
 /** Adopts files from task generation predating the prepared-source ownership manifest. */
-private fun markedGeneratedProjectionFiles(root: Path): Set<String> {
+private fun markedGeneratedProjectionFiles(root: Path, knownFiles: Set<String> = emptySet()): Set<String> {
     if (!Files.isDirectory(root)) return emptySet()
     return Files.walk(root).use { paths ->
-        paths.filter { isGeneratedWinRTProjectionSource(it.toFile()) }
+        paths.filter { root.relativize(it).toString().replace('\\', '/') !in knownFiles }
+            .filter { isGeneratedWinRTProjectionSource(it.toFile()) }
             .map { root.relativize(it).toString().replace('\\', '/') }
             .toList().toSet()
     }

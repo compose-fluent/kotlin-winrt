@@ -23,6 +23,10 @@ Current supported validation targets are:
 
 WinUI validation runs through both the generated JVM application host and the `mingwX64` executable path.
 
+The Windows toolkit supports Kotlin **2.4.0** and **2.4.20**. It selects compiler plugin artifacts for the project's exact Kotlin Gradle Plugin version, for both JVM and `mingwX64`; no version override is required. Other compiler versions fail with a supported-version diagnostic before loading the IR plugin. Runtime, metadata, and generated projection libraries share the same publication version across these compiler targets.
+
+Gradle builds running on JDK 21 can declare the Windows toolkit with `apply false`. Applying the plugin and compiling WinRT/WinUI still require Gradle to run on JDK 25 or newer; the plugin checks this before loading its WinRT tools.
+
 ## Modules
 
 - `winrt-runtime`: WinRT ABI, COM interop, activation, marshaling, object identity, WinUI bootstrap, and runtime helpers.
@@ -243,9 +247,26 @@ windows {
 
 Reusable WinRT libraries may declare `packageReferences { nugetPackage(...) }` or `application { runtimeAsset(...) }`. Final application modules consume dependency WinRT identity metadata and stage the aggregated runtime assets, so downstream apps do not need to repeat every library declaration just to place payloads in the final layout.
 
+Automatic native runtime staging omits PDB symbols and linker intermediates (`.lib`, `.exp`, `.obj`). Add a symbol file with `runtimeAsset(...)` when native debugging requires it; explicit NuGet copy-local payloads are also preserved.
+
+Gradle modules keep the WinApp metadata inventory and select runtime payloads directly from the resolved NuGet cache. They discard WinApp's redundant copies of runtime architectures, C++ headers and import libraries. Custom CLI workflows can retain them with `tasks.named<RestoreWinAppDependenciesTask>("restoreWinAppDependencies") { includeRuntimeAssets.set(true); includeNativeBuildFiles.set(true) }`.
+
+JVM development runs assemble their launcher, dependency JARs, shared JVM image and runtime assets directly into the development package. They do not first materialize the ordinary package and standalone host directories; those outputs are still available through their own build/package tasks.
+
+New IDE project templates enable Gradle's build cache and configuration cache. Existing projects can enable them in `gradle.properties`:
+
+```properties
+org.gradle.caching=true
+org.gradle.configuration-cache=true
+```
+
+JVM SDK projection bytecode can be reused across project directories and root project names when the projection module's artifact name, SDK inputs, Kotlin compiler, JVM target, and compiler settings match. The first compilation of a new SDK/compiler combination still compiles the generated declarations; later projects can restore that task's output from the build cache. IDE import prepares XAML analysis and projection sources. The compiled SDK preview host is prepared when a preview is opened, and successful preview compilation removes its temporary class files.
+
+XAML compilation retains verified native declarations and XBF per page, reusing unchanged pages when sources change. Reference metadata, compiler tools, and Kotlin semantic symbols are part of the cache context; missing or damaged entries are compiled again. Application resources and shared resource dictionaries retain full native batch compilation because the compiler protocol does not export their dependency graph. First IDE sync still prepares projection sources for completion without a manual build.
+
 ## WinApp CLI and NuGet Restore
 
-The Gradle plugin translates project and dependency `packageReferences { nugetPackage(...) }` declarations into an internal `build/generated/kotlin-winrt/winapp/winapp.yaml`. Do not create or maintain that file manually. With the default `packageReferences { restoreNuGetPackages = true }`, `restoreWinAppDependencies` runs `winapp restore`, validates its schema-3 lockfile, and uses the resolved WinMD files for projection generation. The same lockfile and `.winapp/bin/<architecture>` output drive DLL, PRI, asset, and manifest staging after compilation; explicit local `packageReferences { winmd(...) }` inputs remain part of the projection input set.
+The Gradle plugin translates project and dependency `packageReferences { nugetPackage(...) }` declarations into an internal `build/generated/kotlin-winrt/winapp/winapp.yaml`. Do not create or maintain that file manually. With the default `packageReferences { restoreNuGetPackages = true }`, `restoreWinAppDependencies` runs `winapp restore`, validates its schema-3 lockfile, and uses the resolved WinMD files for projection generation. The same lockfile's NuGet package roots drive DLL, PRI, asset, and manifest staging after compilation; explicit local `packageReferences { winmd(...) }` inputs remain part of the projection input set.
 
 WinApp CLI provisioning is automatic and does not use WinGet, modify `PATH`, or require an administrator install. The plugin first probes `winAppCliExecutable` (default: `winapp`) and uses it only when it reports the required version, currently `0.6.0`. Otherwise it downloads `Microsoft.Windows.SDK.BuildTools.WinApp` from NuGet, verifies the pinned SHA-512 checksum, and caches the extracted host tools below the Gradle user home. A custom system location can be selected without changing `PATH`:
 
@@ -254,6 +275,8 @@ windows {
     winAppCliExecutable = "C:/tools/winapp.exe"
 }
 ```
+
+The plugin keeps static projection sources available during IDE import, so projection completion does not require a preceding compilation. Prepared sources are shared in the Gradle user home; warm imports reuse unchanged content checks and preserve generated source timestamps. Missing or modified generated files are repaired during import.
 
 The plugin's `winapp restore`, `winapp package`, and `winapp tool makeappx` paths do not invoke MSBuild and do not require an MSBuild project. JVM and `mingwX64` compilation still require their normal JDK, Kotlin/Native, C/C++, and Windows SDK prerequisites.
 
@@ -292,6 +315,8 @@ Kotlin Multiplatform applications expose one task graph for each JVM main compil
 JVM distribution and Windows App SDK deployment are independent settings. The default `bundledJvmRuntime()` creates or copies a runtime image beside the host; `externalJvmRuntime("C:/path/to/jdk")` requires that JVM on the target machine. `windowsAppSdkDeployment` is a `WindowsAppSdkDeployment` enum and defaults to `Auto`. Auto scans the application and its WinRT identity dependencies for a `Microsoft.WindowsAppSDK*` NuGet package, chooses `FrameworkDependent` when WinApp restore can provide its Bootstrap DLL, falls back to `SelfContained` when that condition is unavailable, and chooses `None` when no Windows App SDK package is present. Set `windowsAppSdkDeployment` explicitly when the deployment model is known; these settings do not change `packageType`.
 
 NuGet source configuration follows NuGet's normal directory hierarchy. `windows { packageReferences { nugetConfig("path/to/NuGet.Config") } }` selects an explicit config, while `packageReferences.nugetConfigDirectory` can select the restore base directory. The plugin still generates `winapp.yaml`; users do not maintain that file or a second global cache. In offline mode, restore only reuses a verified lock/cache and fails clearly when a package or lock entry is missing.
+
+NuGet archive signatures, extraction bookkeeping, and empty package directories do not invalidate restore or projection generation. WinMDs and package descriptors remain projection inputs; native payload changes invalidate restore and their owning runtime stages.
 
 ```kotlin
 windows {
@@ -338,6 +363,10 @@ windows {
 ```
 
 `application.launcherIcon` accepts a Win32 `.ico` file, matching C# `ApplicationIcon` and C++ `ICON` resources. The plugin compiles it with the selected Windows SDK's `rc.exe` and embeds it in both the JVM launcher and the `mingwX64` executable. Multi-size ICOs, including PNG-compressed images inside the ICO, are preserved; standalone PNG and SVG files must first be converted to ICO. Named applications inherit this property and may override it. To also use the icon with `AppWindow.setIcon`, include the ICO in `appxResources` and set the window icon separately; AppX logo settings remain independent.
+
+Set `application { executableBaseName = "animeko-desktop" }` to choose the launcher's filename without `.exe`. By default, a build with one application module uses the root project name (`animeko.exe`). When multiple modules enable `windows.application`, each appends its module name (`animeko-app2.exe` for module `app2`). Libraries and additional target or named application variants in the same module do not increase the module count. Named applications inherit the setting and may override it. The name applies to JVM launchers and staged `mingwX64` executables, their run tasks, and their application manifests. The first AppX `Application` is the primary launcher; references to its original executable, including extension registrations, follow the configured name. Kotlin/Native's linked binary retains its own `baseName`.
+
+With Gradle's configure-on-demand enabled, application naming evaluates the remaining modules to determine the full application module count.
 
 The dual-target project exposes separate JVM and Native task graphs automatically. Run the JVM host with:
 

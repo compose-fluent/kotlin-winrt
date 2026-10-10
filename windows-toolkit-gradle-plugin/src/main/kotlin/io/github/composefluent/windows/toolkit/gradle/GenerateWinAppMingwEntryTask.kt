@@ -15,7 +15,9 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
+@DisableCachingByDefault(because = "Removes obsolete entry points outside the declared output directory")
 abstract class GenerateWinAppMingwEntryTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty

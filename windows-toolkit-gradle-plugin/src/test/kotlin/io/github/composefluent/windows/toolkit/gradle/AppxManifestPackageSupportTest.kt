@@ -11,6 +11,30 @@ import org.junit.Test
 
 class AppxManifestPackageSupportTest {
     @Test
+    fun launcher_name_updates_matching_extensions_and_preserves_other_executables() {
+        val manifest = Files.createTempFile("launcher-name-", ".xml")
+        Files.writeString(manifest, """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+                     xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10">
+              <Applications>
+                <Application Id="App" Executable="App/Original.exe" EntryPoint="Windows.FullTrustApplication">
+                  <Extensions><com:ExeServer Executable="app\ORIGINAL.EXE" /></Extensions>
+                </Application>
+                <Application Id="Helper" Executable="Helper.exe" EntryPoint="Windows.FullTrustApplication" />
+              </Applications>
+            </Package>
+        """.trimIndent())
+        AppxManifestPackageSupport.useApplicationExecutable(manifest, "animeko-app2.exe")
+        val document = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(manifest.toFile())
+        val applications = document.getElementsByTagNameNS("*", "Application")
+        assertEquals("animeko-app2.exe", (applications.item(0) as org.w3c.dom.Element).getAttribute("Executable"))
+        assertEquals("Helper.exe", (applications.item(1) as org.w3c.dom.Element).getAttribute("Executable"))
+        val server = document.getElementsByTagNameNS("*", "ExeServer").item(0) as org.w3c.dom.Element
+        assertEquals("animeko-app2.exe", server.getAttribute("Executable"))
+    }
+
+    @Test
     fun windows_versions_follow_build_settings_and_preserve_framework_dependencies() {
         // CsWinRT Samples/AuthoringDemo/WinUI3CppApp separates the SDK target from TargetPlatformMinVersion.
         val manifest = Files.createTempFile("windows-versions-", ".xml")

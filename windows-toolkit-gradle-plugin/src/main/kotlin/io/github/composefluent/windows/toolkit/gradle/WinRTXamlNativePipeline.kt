@@ -51,7 +51,7 @@ internal fun configureWinRTXamlNativePipeline(
                         moduleName.set("${project.name}-xaml-semantic-$suffix")
                         freeCompilerArgs.set(business.compilerOptions.freeCompilerArgs.map(::withoutKotlinWinRTCompilerPluginOptions))
                         freeCompilerArgs.addAll(project.provider {
-                            listOf("xamlDeclarations=${declarations.get().declarationsFile.get().asFile.absolutePath}",
+                            listOf("xamlDeclarations=${declarations.get().semanticDeclarationsFile.get().asFile.absolutePath}",
                                 "metadataIndex=${metadataIndex.get().asFile.absolutePath}",
                                 "xamlSemanticOutput=${symbols.get().asFile.absolutePath}",
                                 "xamlApplicationHeader=${applicationHeader.get().outputFile.get().asFile.absolutePath}",
@@ -64,7 +64,7 @@ internal fun configureWinRTXamlNativePipeline(
                     task.multiplatformStructure.defaultFragmentName.set(business.multiplatformStructure.defaultFragmentName)
                     task.destinationDirectory.set(semanticRoot.map { it.dir("klib") })
                     task.produceUnpackagedKlib.set(false)
-                    task.inputs.file(declarations.flatMap { it.declarationsFile })
+                    task.inputs.file(declarations.flatMap { it.semanticDeclarationsFile })
                     task.inputs.file(metadataManifest)
                     task.outputs.file(symbols)
                     task.outputs.file(semanticRoot.map { it.file("KotlinXaml.winmd") })

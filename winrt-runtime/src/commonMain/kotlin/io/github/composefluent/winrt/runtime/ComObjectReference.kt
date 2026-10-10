@@ -4,6 +4,9 @@ open class ComObjectReference internal constructor(
     @PublishedApi
     internal val comPtr: ComPtr,
 ) : AutoCloseable {
+    private var ownedInterfaces: MutableList<ComObjectReference>? = null
+    private var closing = false
+
     @kotlin.concurrent.Volatile
     private var objectState: WinRTObjectState<ComObjectReference>? = null
 
@@ -105,7 +108,49 @@ open class ComObjectReference internal constructor(
         comPtr.sameIdentity(other.comPtr)
 
     override fun close() {
-        comPtr.close()
+        val children = ownedInterfacesLock.withLock {
+            if (closing) return
+            closing = true
+            ownedInterfaces.also { ownedInterfaces = null }
+        }
+        var failure: Throwable? = null
+        fun closeOwned(reference: AutoCloseable) {
+            try {
+                reference.close()
+            } catch (error: Throwable) {
+                if (failure == null) failure = error else if (failure !== error) failure!!.addSuppressed(error)
+            }
+        }
+        children?.forEach(::closeOwned)
+        closeOwned(comPtr)
+        failure?.let { throw it }
+    }
+
+    /**
+     * CsWinRT keeps lazy QI references in the RCW's managed graph (IInspectable/IWinRTObject).
+     * Kotlin additionally exposes deterministic close on its native owner. References used by
+     * those lazy interface views must follow that owner on both JVM and Native.
+     * Independent queryInterface results keep their existing independent lifetime.
+     */
+    internal fun <T : ComObjectReference> ownInterfaceReference(reference: T): T {
+        val accepted = ownedInterfacesLock.withLock {
+            if (closing || comPtr.isDisposed) {
+                false
+            } else {
+                (ownedInterfaces ?: mutableListOf<ComObjectReference>().also { ownedInterfaces = it }).add(reference)
+                true
+            }
+        }
+        if (!accepted) {
+            val failure = WinRTObjectDisposedException("Object reference is disposed.")
+            try {
+                reference.close()
+            } catch (error: Throwable) {
+                failure.addSuppressed(error)
+            }
+            throw failure
+        }
+        return reference
     }
 
     protected fun throwIfDisposed() {
@@ -120,6 +165,12 @@ open class ComObjectReference internal constructor(
             wrapInspectable = ::InspectableReference,
             wrapActivationFactory = ::ActivationFactoryReference,
         )
+
+    private companion object {
+        // Protect only registration/detachment; native Release runs outside the lock.
+        // A shared lock avoids allocating an OS lock for each projected pointer wrapper.
+        val ownedInterfacesLock = PlatformLock()
+    }
 }
 
 open class IUnknownReference internal constructor(
@@ -149,7 +200,7 @@ open class IUnknownReference internal constructor(
 }
 
 fun acquireInterfaceReference(instance: ComObjectReference, iid: Guid): IUnknownReference =
-    IUnknownReference(instance.comPtr.queryInterface(iid).getOrThrow())
+    instance.ownInterfaceReference(IUnknownReference(instance.comPtr.queryInterface(iid).getOrThrow()))
 
 /**
  * Transfers a wrapper constructor's owned reference to its declared WinRT interface.

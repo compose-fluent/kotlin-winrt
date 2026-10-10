@@ -58,6 +58,8 @@ data class WinRTMetadataProjectionContext(
     val idicExclusiveTo: Boolean = false,
     val partialFactory: Boolean = false,
     val verbose: Boolean = false,
+    /** Dependency-owned declarations that Kotlin metadata does not expose to this module. */
+    val inaccessibleDependencyTypes: Set<String> = emptySet(),
 ) {
     val filter: WinRTMetadataFilter
         get() = WinRTMetadataFilter(include, exclude).normalized()

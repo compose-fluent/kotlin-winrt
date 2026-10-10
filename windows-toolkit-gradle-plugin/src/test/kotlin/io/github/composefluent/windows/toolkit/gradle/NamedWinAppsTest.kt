@@ -97,13 +97,16 @@ class NamedWinAppsTest {
         extension.packageReferences.windowsSdkVersion.set("10.0.22621.0")
         assertEquals("10.0.22621.0", firstDevelopment.maxVersionTested.get())
         assertEquals("10.0.28000.0", secondDevelopment.maxVersionTested.get())
-        assertEquals(first.outputDirectory.get(), firstDevelopment.runtimeAssetsDirectory.get())
-        assertEquals(second.outputDirectory.get(), secondDevelopment.runtimeAssetsDirectory.get())
+        assertEquals(project.tasks.named("stageWindowsPackageRuntimeAssetsFirst", StageWindowsPackageRuntimeAssetsTask::class.java)
+            .get().outputDirectory.get(), firstDevelopment.runtimeAssetsDirectory.get())
+        assertEquals(project.tasks.named("stageWindowsPackageRuntimeAssetsSecond", StageWindowsPackageRuntimeAssetsTask::class.java)
+            .get().outputDirectory.get(), secondDevelopment.runtimeAssetsDirectory.get())
         assertEquals(firstDevelopment.outputDirectory.get(), firstPackagedRun.packageDirectory.get())
         assertEquals(secondDevelopment.outputDirectory.get(), secondPackagedRun.packageDirectory.get())
         assertNotEquals(firstPackagedRun.deploymentDirectory.get(), secondPackagedRun.deploymentDirectory.get())
-        assertTrue(first in firstDevelopment.taskDependencies.getDependencies(firstDevelopment))
-        assertTrue(second in secondDevelopment.taskDependencies.getDependencies(secondDevelopment))
+        assertFalse(first in firstDevelopment.taskDependencies.getDependencies(firstDevelopment))
+        assertFalse(second in secondDevelopment.taskDependencies.getDependencies(secondDevelopment))
+        assertTrue(firstLauncher in firstDevelopment.taskDependencies.getDependencies(firstDevelopment))
         assertEquals("shared.txt", extension.application.variants.getByName("first").packagePayloadFiles.singleFile.name)
         assertEquals("second.txt", extension.application.variants.getByName("second").packagePayloadFiles.singleFile.name)
         listOf("runFirst" to first, "runSecond" to second, "runSecondAgain" to second).forEach { (name, host) ->
@@ -149,10 +152,15 @@ class NamedWinAppsTest {
             repositories { mavenCentral() }
             windows { application {
                 mainClass = 'sample.FirstKt'
+                minWindowsVersion = '10.0.19041.0'
+                maxVersionTested = '10.0.26100.0'
                 generateProjectPri = false
                 enableDefaultProjectPriResources = false
                 variants { create('first') { variantName = 'firstJvm:primary' } }
             } }
+            // This fixture verifies JVM classpath/resource isolation without a WinUI SDK.
+            tasks.named('generateWinAppConfiguration') { includeToolingPackages = false }
+            tasks.named('restoreWinAppDependencies') { includeToolingPackages = false }
             kotlin {
                 jvm('firstJvm') {
                     compilations.create('primary')
@@ -229,12 +237,14 @@ class NamedWinAppsTest {
                     create('first') {
                         variantName = 'desktop:main:firstReleaseExecutable'
                         mainClass = 'sample.first'
+                        executableBaseName = 'native-first'
                         appxManifest('payload/first.xml')
                         packagePayload('payload/Logo.png', 'Assets/Logo.png')
                     }
                     create('second') {
                         variantName = 'desktop:main:secondReleaseExecutable'
                         mainClass = 'sample.second'
+                        executableBaseName = 'native-second'
                         appxManifest('payload/second.xml')
                         packagePayload('payload/Logo.png', 'Assets/Logo.png')
                     }
@@ -288,11 +298,12 @@ class NamedWinAppsTest {
             val id = "${name.lowercase()}--desktop_main_${name.lowercase()}ReleaseExecutable"
             val packageFile = root.resolve("build/kotlin-winrt/packages/native-variants-$id.msix")
             ZipFile(packageFile.toFile()).use { zip ->
-                assertTrue(zip.getEntry("${name.lowercase()}.exe") != null)
+                assertTrue(zip.getEntry("native-${name.lowercase()}.exe") != null)
+                assertFalse(zip.getEntry("${name.lowercase()}.exe") != null)
                 assertTrue(zip.getEntry("Assets/Logo.png") != null)
                 assertFalse(zip.entries().asSequence().any { it.name.startsWith("appxResources/") })
             }
-            val executable = root.resolve("build/kotlin-winrt/application-layout/$id/package/${name.lowercase()}.exe")
+            val executable = root.resolve("build/kotlin-winrt/application-layout/$id/package/native-${name.lowercase()}.exe")
             val process = ProcessBuilder(executable.toString()).directory(root.toFile()).redirectErrorStream(true).start()
             try {
                 assertTrue(process.waitFor(20, TimeUnit.SECONDS))

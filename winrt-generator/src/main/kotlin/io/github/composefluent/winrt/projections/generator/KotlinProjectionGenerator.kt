@@ -163,6 +163,9 @@ class KotlinProjectionGenerator(
             projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwPlans
                 .mapTo(linkedSetOf()) { plan -> plan.type.qualifiedName },
             semanticHelpers = semanticHelpers,
+            projectedSlotLiterals = projectedSlotLiteralMap(plans.filter { plan ->
+                plan.type.qualifiedName in projectionContext.inaccessibleDependencyTypes
+            }),
         )
         val projectionFiles = renderedPlans.flatMap(projectionRenderer::render)
         val projectedInterfaceCcwFiles = listOfNotNull(
@@ -204,11 +207,9 @@ class KotlinProjectionGenerator(
             plan.type.qualifiedName in authoredTypeNames ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
-        val projectedSlotLiterals = if (groupProjectionFilesByPackageOnWrite) {
-            projectedSlotLiteralMap(renderedPlans)
-        } else {
-            emptyMap()
-        }
+        val projectedSlotLiterals = projectedSlotLiteralMap(renderedPlans.filter { plan ->
+            groupProjectionFilesByPackageOnWrite || plan.type.qualifiedName in projectionContext.inaccessibleDependencyTypes
+        })
         val durationAliasPackages = if (emitSupportFiles) {
             renderedPlans.kotlinDurationAliasPackages()
         } else {
@@ -1827,11 +1828,9 @@ class KotlinProjectionGenerator(
         projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int>? = null,
         durationAliasPackages: Set<String>? = null,
     ): KotlinProjectionFileRenderer {
-        val effectiveProjectedSlotLiterals = projectedSlotLiterals ?: if (groupProjectionFilesByPackageOnWrite && plans != null) {
-            projectedSlotLiteralMap(plans)
-        } else {
-            emptyMap()
-        }
+        val effectiveProjectedSlotLiterals = projectedSlotLiterals ?: projectedSlotLiteralMap(plans.orEmpty().filter { plan ->
+            groupProjectionFilesByPackageOnWrite || plan.type.qualifiedName in projectionContext.inaccessibleDependencyTypes
+        })
         val effectiveDurationAliasPackages = durationAliasPackages ?: plans?.kotlinDurationAliasPackages().orEmpty()
         return when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> object : KotlinProjectionFileRenderer {
@@ -1907,7 +1906,7 @@ class KotlinProjectionGenerator(
                 KotlinProjectionRenderer(
                     useInterfaceProjectionArtifacts = configured.useInterfaceProjectionArtifacts,
                     suppressProjectedMemberSlotConstants = configured.suppressProjectedMemberSlotConstants,
-                    projectedSlotLiterals = configured.projectedSlotLiterals,
+                    projectedSlotLiterals = configured.projectedSlotLiterals + projectedSlotLiterals,
                     useWinAppSdkTypeRedirects = configured.useWinAppSdkTypeRedirects,
                     useKotlinDurationAlias = configured.useKotlinDurationAlias,
                     modulePlatformAbiCalls = configured.modulePlatformAbiCalls,

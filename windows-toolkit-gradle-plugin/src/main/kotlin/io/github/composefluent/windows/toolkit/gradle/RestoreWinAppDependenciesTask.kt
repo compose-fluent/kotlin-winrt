@@ -64,6 +64,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:org.gradle.api.tasks.IgnoreEmptyDirectories
     abstract val packageContentFiles: ConfigurableFileCollection
 
     /** Tracks inherited NuGet.Config files that WinApp CLI will discover from restoreBaseDirectory. */
@@ -77,6 +78,14 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
 
     @get:Input
     abstract val includeToolingPackages: Property<Boolean>
+
+    /** Retains WinApp's copied runtime payloads for custom CLI-based workflows. */
+    @get:Input
+    abstract val includeRuntimeAssets: Property<Boolean>
+
+    /** Retains WinApp's C++ headers, import libraries and shared native build inputs. */
+    @get:Input
+    abstract val includeNativeBuildFiles: Property<Boolean>
 
     @get:Input
     abstract val winAppCliVersion: Property<String>
@@ -100,6 +109,8 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
         nugetPackages.convention(emptyList())
         restoreEnabled.convention(true)
         includeToolingPackages.convention(false)
+        includeRuntimeAssets.convention(true)
+        includeNativeBuildFiles.convention(true)
         offline.convention(false)
     }
 
@@ -203,6 +214,17 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
 
             val restoredOutput = restoreWorkspace.resolve(".winapp")
             validateRestore(restoredOutput.resolve("winmds.lock.json"), packageSpecs)
+            if (!includeRuntimeAssets.get()) {
+                // CsWinRT consumes package references directly. Gradle's runtime stages
+                // likewise read the validated NuGet roots, without architecture copies.
+                GradleFileOperations.deleteDirectory(restoredOutput.resolve("bin"))
+                Files.createDirectories(restoredOutput.resolve("bin"))
+            }
+            if (!includeNativeBuildFiles.get()) {
+                listOf("include", "lib", "share").forEach {
+                    GradleFileOperations.deleteDirectory(restoredOutput.resolve(it))
+                }
+            }
             writeRestoreContext(
                 restoredOutput,
                 config,
@@ -292,11 +314,13 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     private fun restoreContext(config: Path, restoreBase: Path, packageSpecs: List<String>, lock: Path): String {
         val inventory = if (lock.isRegularFile()) packageInventory(lock) else "pending"
         val lines = linkedMapOf(
-            "schema" to "1",
+            "schema" to "2",
             "configurationSha256" to sha256(config),
             "nugetConfigSha256" to effectiveNuGetConfigFingerprint(restoreBase),
             "packageSpecs" to packageSpecs.joinToString("\u001f"),
             "includeToolingPackages" to includeToolingPackages.get().toString(),
+            "includeRuntimeAssets" to includeRuntimeAssets.get().toString(),
+            "includeNativeBuildFiles" to includeNativeBuildFiles.get().toString(),
             "winAppCliVersion" to winAppCliVersion.get(),
             "winAppCliPackageSha512" to winAppCliPackageSha512.get(),
             // Dependency schemas and compiled type ownership do not change NuGet restore.
@@ -336,10 +360,22 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
             val root = packageRoot(lockFile, lockfile, packageEntry)
             if (!Files.isDirectory(root)) return@forEach
             Files.walk(root).use { stream ->
-                stream.filter(Files::isRegularFile).sorted().forEach { file ->
+                stream.filter(Files::isRegularFile)
+                    .filter { isWinAppPackageRestoreInput(root.relativize(it).toString()) }
+                    .sorted().forEach { file ->
                     digest.update(root.relativize(file).toString().replace('\\', '/').toByteArray())
                     digest.update(0.toByte())
-                    digest.update(sha256(file).toByteArray())
+                    // Gradle already fingerprints packageContentFiles. The restore
+                    // context needs the extracted inventory, not a second full read
+                    // of every SDK library, tool binary and native symbol file.
+                    // Metadata and package descriptors still use content hashes;
+                    // selected runtime payloads are also inputs of their own stages.
+                    val attributes = Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes::class.java)
+                    digest.update("${attributes.size()}:${attributes.lastModifiedTime()}".toByteArray())
+                    val name = file.fileName.toString().lowercase()
+                    if (name.endsWith(".winmd") || name.endsWith(".nuspec")) {
+                        digest.update(sha256(file).toByteArray())
+                    }
                     digest.update(0.toByte())
                 }
             }

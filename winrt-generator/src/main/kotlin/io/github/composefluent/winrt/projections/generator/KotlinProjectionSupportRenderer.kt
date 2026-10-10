@@ -601,6 +601,9 @@ class KotlinProjectionSupportRenderer private constructor(
         fun boolRow(key: String, value: Boolean) {
             row(key, value.toString())
         }
+        // Preserve CsWinRT's internal exclusive interfaces without advertising
+        // them as Kotlin declarations accessible from another projection module.
+        row("PROJECTION_VISIBILITY", plan.visibility.name.lowercase())
 
         listRow(
             "PROJECTED_ATTRIBUTES",

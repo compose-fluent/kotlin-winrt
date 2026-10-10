@@ -1619,11 +1619,14 @@ class KotlinProjectionRenderer(
                             runtimeClassObjectReferenceCacheInitializer(
                                 defaultObjectReferencePlan,
                                 plan.typesByQualifiedName,
-                                "Metadata.acquireInterface(nativeObject, %T.Metadata.IID)",
-                                projectionClassName(defaultObjectReferencePlan.interfaceName.substringBefore('<')),
-                            )
+                            ) {
+                                CodeBlock.of("Metadata.acquireInterface(nativeObject, %L)",
+                                    runtimeClassInterfaceIdCode(defaultObjectReferencePlan.interfaceName, plan))
+                            }
                         } else {
-                            runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, plan.typesByQualifiedName, "Metadata.acquireDefaultInterface(nativeObject)")
+                            runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, plan.typesByQualifiedName) {
+                                CodeBlock.of("Metadata.acquireDefaultInterface(nativeObject)")
+                            }
                         },
                 )
             }
@@ -1638,9 +1641,9 @@ class KotlinProjectionRenderer(
                 val objectReferencePlan = objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]
                 val acquireExpression =
                     if (plan.composableFactoryBindings.isNotEmpty() && plan.isOverridableRuntimeClassInterface(binding.qualifiedName)) {
-                        "Metadata.acquireInterface(winRTComposableObjectReference?.inner ?: nativeObject, %T.Metadata.IID)"
+                        "Metadata.acquireInterface(winRTComposableObjectReference?.inner ?: nativeObject, %L)"
                     } else {
-                        "Metadata.acquireInterface(nativeObject, %T.Metadata.IID)"
+                        "Metadata.acquireInterface(nativeObject, %L)"
                     }
                 builder.addObjectReferenceCacheProperty(
                     name = "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
@@ -1648,9 +1651,9 @@ class KotlinProjectionRenderer(
                     createReference = runtimeClassObjectReferenceCacheInitializer(
                         objectReferencePlan,
                         plan.typesByQualifiedName,
-                        acquireExpression,
-                        projectionClassName(binding.qualifiedName.substringBefore('<')),
-                    ),
+                    ) {
+                        CodeBlock.of(acquireExpression, runtimeClassInterfaceIdCode(binding.qualifiedName, plan))
+                    },
                 )
         }
         requiredInterfaceCacheBindings(plan)
@@ -2178,6 +2181,11 @@ class KotlinProjectionRenderer(
     ): Map<String, RuntimeClassInterfaceProjectionForwardTarget> {
         val ownerInterfaceBindings = plan.instanceMemberBindings
             .filterNot { binding -> plan.usesDirectFastAbiVtableSlot(binding) }
+            .filter { binding ->
+                plan.classMemberMergeDescriptor?.interfaceDescriptors
+                    ?.firstOrNull { it.interfaceTypeName == binding.ownerInterfaceQualifiedName.substringBefore('<') }
+                    ?.isAccessibleInProjection != false
+            }
             .groupBy { binding -> binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?") }
         return ownerInterfaceBindings.mapNotNull { (rawInterfaceName, bindings) ->
             if (isMappedCollectionInterfaceName(rawInterfaceName) || isRuntimeOwnedMappedTypeName(rawInterfaceName)) {
@@ -2261,7 +2269,7 @@ class KotlinProjectionRenderer(
         val descriptor = classMemberMergeDescriptor
             ?.interfaceDescriptors
             ?.firstOrNull { it.interfaceTypeName == rawName }
-        return descriptor?.let { !it.isOverridableInterface && !it.isProtectedInterface } ?: true
+        return descriptor?.let { it.isAccessibleInProjection && !it.isOverridableInterface && !it.isProtectedInterface } ?: true
     }
 
     private fun KotlinTypeProjectionPlan.isOverridableRuntimeClassInterface(interfaceName: String): Boolean {
@@ -3885,8 +3893,7 @@ class KotlinProjectionRenderer(
     private fun runtimeClassObjectReferenceCacheInitializer(
         objectReferencePlan: WinRTObjectReferencePlanDescriptor?,
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
-        acquireExpression: String,
-        vararg acquireArgs: Any,
+        acquireExpression: () -> CodeBlock,
     ): CodeBlock {
         val body = CodeBlock.builder()
         if (objectReferencePlan?.usesDefaultInterfaceObjRef == true && objectReferencePlan.defaultInterfaceHierarchyIndex != null) {
@@ -3902,7 +3909,7 @@ class KotlinProjectionRenderer(
                 signature,
             )
         } else {
-            body.add(acquireExpression, *acquireArgs)
+            body.add(acquireExpression())
             body.add("\n")
         }
         return body.build()
@@ -4014,6 +4021,15 @@ class KotlinProjectionRenderer(
     ): CodeBlock {
         val rawInterfaceName = redirectedAbiTypeName(interfaceName.substringBefore('<').removeSuffix("?"))
         if ('<' !in interfaceName) {
+            val accessible = plan.classMemberMergeDescriptor?.interfaceDescriptors
+                ?.firstOrNull { it.interfaceTypeName == rawInterfaceName }?.isAccessibleInProjection != false
+            if (!accessible) {
+                // CsWinRT calls exclusive-interface members through their ABI owner.
+                // Use the WinMD IID directly when the dependency's Kotlin interface is internal.
+                val iid = plan.typesByQualifiedName[rawInterfaceName]?.iid
+                    ?: error("Dependency-owned internal interface $rawInterfaceName has no WinMD IID.")
+                return CodeBlock.of("%T(%S)", GUID_CLASS_NAME, iid.toString())
+            }
             runtimeOwnedPublicInterfaceIdCode(rawInterfaceName)?.let { return it }
             mappedTypeByAbiName(rawInterfaceName)?.customObjectAbi?.let { customObjectAbi ->
                 return CodeBlock.of("%T(%S)", GUID_CLASS_NAME, customObjectAbi.interfaceId.toString())

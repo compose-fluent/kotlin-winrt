@@ -11,11 +11,13 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
 
 /** Publishes WinApp's resolved package roots for runtime staging; never restores packages. */
+@DisableCachingByDefault(because = "Records machine-specific package paths from the WinApp restore")
 abstract class ResolveWinRTRuntimeNuGetPackagesTask : DefaultTask() {
     @get:OutputFile
     abstract val outputFile: RegularFileProperty

@@ -31,7 +31,7 @@ class RunWinAppPackageTaskTest {
         (project as ProjectInternal).evaluate()
 
         val expectedLayouts = mapOf(
-            "DesktopMain" to "buildWinAppHostDesktopMain",
+            "DesktopMain" to "stageWindowsPackageRuntimeAssetsDesktopMain",
             "NativeDesktopMainDebugExecutable" to "stageWinAppPackageNativeDesktopMainDebugExecutable",
             "NativeDesktopMainReleaseExecutable" to "stageWinAppPackageNativeDesktopMainReleaseExecutable",
         )
@@ -45,7 +45,14 @@ class RunWinAppPackageTaskTest {
                 run.taskDependencies.getDependencies(run).map { it.name }.toSet(),
             )
             val pack = project.tasks.named("packageWinApp$suffix", PackageWinAppTask::class.java).get()
-            assertEquals(pack.packageDirectory.get(), developmentStage.runtimeAssetsDirectory.get())
+            if (suffix != "DesktopMain") assertEquals(pack.packageDirectory.get(), developmentStage.runtimeAssetsDirectory.get())
+            else {
+                val dependencies = developmentStage.taskDependencies.getDependencies(developmentStage).map { it.name }
+                assertFalse("buildWinAppHostDesktopMain" in dependencies)
+                assertFalse("stageWinAppPackageDesktopMain" in dependencies)
+                assertTrue("compileWinAppLauncherDesktopMain" in dependencies)
+                assertTrue(developmentStage.jvmRuntimeImageDirectory.isPresent)
+            }
             assertEquals(developmentStage.outputDirectory.get(), run.packageDirectory.get())
             assertTrue(developmentStage.developmentIdentity.get())
             assertTrue(producer in developmentStage.taskDependencies.getDependencies(developmentStage).map { it.name })
@@ -62,6 +69,67 @@ class RunWinAppPackageTaskTest {
             val run = project.tasks.named("runWinAppPackage$suffix", RunWinAppPackageTask::class.java).get()
             assertTrue(run.selfContained.get())
         }
+    }
+
+    @Test
+    fun direct_development_stage_keeps_launcher_and_collision_safe_runtime_jars() {
+        // CsWinRT's copy-local packaging boundary stays separate from the launcher and
+        // JVM adaptation; development staging consumes each producer directly.
+        val root = Files.createTempDirectory("kotlin-winrt-direct-development-")
+        val input = root.resolve("assets")
+        write(input.resolve("AppxManifest.xml"), manifest)
+        write(input.resolve("Assets/Logo.png"), "logo")
+        write(input.resolve("Component.dll"), "component")
+        val launcher = root.resolve("launcher/App.exe")
+        write(launcher, "launcher")
+        val first = root.resolve("first/library.jar")
+        val second = root.resolve("second/library.jar")
+        write(first, "first library")
+        write(second, "second library")
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        val task = project.tasks.register("directDevelopment", StageWinAppPackageTask::class.java).get()
+        task.runtimeAssetsDirectory.set(input.toFile())
+        task.outputDirectory.set(root.resolve("development").toFile())
+        task.jvmLauncherExecutable.set(launcher.toFile())
+        task.jvmRuntimeClasspath.from(first, second)
+        task.executableBaseName.set("App")
+        task.developmentIdentity.set(true)
+        task.generateProjectPri.set(false)
+        task.runtimeIdentifier.set("win-x64")
+        task.minWindowsVersion.set("10.0.19041.0")
+        task.windowsSdkVersion.set("10.0.26100.0")
+        task.stage()
+        assertEquals("launcher", Files.readString(root.resolve("development/App.exe")))
+        assertEquals("component", Files.readString(root.resolve("development/Component.dll")))
+        assertTrue(Files.readString(root.resolve("development/AppxManifest.xml")).contains("KotlinWinRT.RunTest.dev"))
+        Files.list(root.resolve("development/lib")).use { jars ->
+            assertEquals(setOf("first library", "second library"), jars.map(Files::readString).toList().toSet())
+        }
+        write(input.resolve("lib/unexpected.jar"), "reserved")
+        assertTrue(runCatching { task.stage() }.isFailure)
+    }
+
+    @Test
+    fun direct_development_graph_reuses_configuration_cache_without_intermediate_layouts() {
+        val root = Files.createTempDirectory("kotlin-winrt-development-cache-")
+        write(root.resolve("settings.gradle"), "rootProject.name = 'development-cache'")
+        write(root.resolve("gradle.properties"), "org.gradle.workers.max=1\norg.gradle.jvmargs=-Xmx384m -XX:+UseSerialGC")
+        write(root.resolve("build.gradle"), """
+            plugins { id 'java'; id 'io.github.compose-fluent.windows-toolkit' }
+            repositories { mavenCentral() }
+            windows { application { mainClass = 'sample.Main' } }
+            tasks.configureEach { enabled = false }
+        """.trimIndent())
+        fun run() = GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
+            .withArguments("stageWinAppDevelopmentPackageJvmMain", "--configuration-cache", "--offline", "--stacktrace").build()
+        val first = run()
+        assertEquals(TaskOutcome.SKIPPED, first.task(":stageWinAppDevelopmentPackageJvmMain")?.outcome)
+        assertTrue(first.task(":compileWinAppLauncherJvmMain") != null)
+        assertTrue(first.task(":buildWinAppHostJvmMain") == null)
+        assertTrue(first.task(":stageWinAppPackageJvmMain") == null)
+        assertTrue(first.task(":prepareWinAppJvmRuntimeImageJvmMain") == null)
+        val reused = run()
+        assertTrue(reused.output, reused.output.contains("Reusing configuration cache"))
     }
 
     @Test

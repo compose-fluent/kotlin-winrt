@@ -4,7 +4,6 @@ package io.github.composefluent.winrt.compiler.callsites.lowering
 
 import org.jetbrains.kotlin.builtins.DefaultBuiltIns
 import org.jetbrains.kotlin.descriptors.impl.EmptyPackageFragmentDescriptor
-import org.jetbrains.kotlin.ir.declarations.impl.IrFileImpl
 import org.jetbrains.kotlin.ir.declarations.impl.IrModuleFragmentImpl
 import org.jetbrains.kotlin.ir.symbols.impl.IrFileSymbolImpl
 import org.jetbrains.kotlin.ir.util.NaiveSourceBasedFileEntryImpl
@@ -19,11 +18,12 @@ class WinRTAbiSupportFilesTest {
     fun bootstrap_and_full_plugin_passes_reuse_the_same_module_storage() {
         val module = IrModuleFragmentImpl(DefaultBuiltIns.Instance.builtInsModule)
         val packageName = FqName("test")
-        val source = IrFileImpl(
+        val source = compilerIrFile(
             NaiveSourceBasedFileEntryImpl("Input.kt", intArrayOf(0), 0),
             IrFileSymbolImpl(EmptyPackageFragmentDescriptor(module.descriptor, packageName)),
             packageName,
-        ).also { it.module = module; module.files += it }
+            module,
+        ).also { module.files += it }
         val bootstrap = WinRTAbiSupportFiles().file(source, "jvm-hresult|ADDRESS")
         val full = WinRTAbiSupportFiles()
         assertSame(bootstrap, full.file(source, "jvm-hresult|ADDRESS"))
@@ -36,11 +36,12 @@ class WinRTAbiSupportFilesTest {
         assertSame(native, WinRTAbiSupportFiles(useExistingFile = true).file(source, "native|HRESULT|ADDRESS"))
         // Without a frontend-owned safe file, another caller must keep its own file-local
         // storage rather than borrowing the first caller's initialization context.
-        val otherSource = IrFileImpl(
+        val otherSource = compilerIrFile(
             NaiveSourceBasedFileEntryImpl("Other.kt", intArrayOf(0), 0),
             IrFileSymbolImpl(EmptyPackageFragmentDescriptor(module.descriptor, packageName)),
             packageName,
-        ).also { it.module = module; module.files += it }
+            module,
+        ).also { module.files += it }
         val fallback = WinRTAbiSupportFiles(useExistingFile = true)
         assertSame(source, fallback.file(source, "native|HRESULT|ADDRESS"))
         assertSame(otherSource, fallback.file(otherSource, "native|HRESULT|ADDRESS"))

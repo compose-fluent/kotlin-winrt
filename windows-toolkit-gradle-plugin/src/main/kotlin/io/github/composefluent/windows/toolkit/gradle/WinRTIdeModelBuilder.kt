@@ -33,6 +33,13 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                 appxResourceRoots(project, listOf(sourceSet.name)).map { it.toAbsolutePath().normalize().toString() },
             )
         }.sortedBy { it.name }
+        val metadataIndex = if (windows == null) "" else
+            project.tasks.withType(GenerateWinRTAuthoringCandidatesTask::class.java)
+                .firstOrNull()?.metadataIndex?.orNull?.asFile?.absolutePath.orEmpty()
+        val hostRuns = if (windows == null) emptyList() else
+            project.tasks.withType(RunWinAppHostTask::class.java).toList()
+        val packageRuns = if (windows == null) emptyList() else
+            project.tasks.withType(RunWinAppPackageTask::class.java).toList()
         return IdeModel(
             enabled = windows != null,
             projectPath = project.path,
@@ -61,8 +68,7 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                         task.declarationsFile.get().asFile.absolutePath,
                         task.outputDirectory.file("input.json").get().asFile.absolutePath,
                         task.compilerDirectory.orNull?.asFile?.absolutePath.orEmpty(),
-                        project.tasks.withType(GenerateWinRTAuthoringCandidatesTask::class.java)
-                            .firstOrNull()?.metadataIndex?.orNull?.asFile?.absolutePath.orEmpty(),
+                        metadataIndex,
                     )
                 }.sortedBy { it.taskName },
             packageLayouts = if (windows == null) emptyList() else
@@ -75,23 +81,23 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             restoreLockFiles = if (windows == null) emptyList() else
                 project.tasks.withType(RestoreWinAppDependenciesTask::class.java).map { it.winmdLockFile.get().asFile.absolutePath }.distinct().sorted(),
             hotReloadLaunches = if (windows == null) emptyList() else (
-                project.tasks.withType(RunWinAppHostTask::class.java).filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
+                hostRuns.filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath)
-                } + project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.supportsXamlHotReload.get() }.map {
+                } + packageRuns.filter { it.supportsXamlHotReload.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath,
                         it.previewHostExecutable.get().asFile.absolutePath)
                 }).sortedBy { it.taskName },
             staticPreview = if (windows?.packageReferences?.nugetPackages?.any {
                     it.packageId.startsWith("Microsoft.WindowsAppSDK", true) } != true) null else
-                project.tasks.withType(RunWinAppHostTask::class.java).firstOrNull { it.sdkPreview.get() }?.let { task ->
+                hostRuns.firstOrNull { it.sdkPreview.get() }?.let { task ->
                     IdeStaticPreview(task.name, task.hostExecutable.get().asFile.absolutePath,
                         task.workingDirectory.get().asFile.absolutePath,
                         project.tasks.named("buildWinRTXamlSdkPreview", BuildWinRTXamlSdkPreviewTask::class.java)
                             .get().metadataReferencesFile.get().asFile.absolutePath)
                 },
             runTasks = if (windows == null) emptyList() else (
-                project.tasks.withType(RunWinAppHostTask::class.java).filter { !it.sdkPreview.get() && it.supportsXamlHotReload.get() }.map { it.name } +
-                project.tasks.withType(RunWinAppPackageTask::class.java).filter { it.supportsDevelopmentRun.get() }.map { it.name } +
+                hostRuns.filter { !it.sdkPreview.get() && it.supportsXamlHotReload.get() }.map { it.name } +
+                packageRuns.filter { it.supportsDevelopmentRun.get() }.map { it.name } +
                 if (windows.application.packageType.get() == WindowsPackageType.None) project.tasks.names.filter {
                     it.startsWith("runDebugExecutable") || it.startsWith("runReleaseExecutable")
                 } else emptyList()

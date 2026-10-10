@@ -16,7 +16,8 @@ object WinRTGradleTasks {
         run(project, module, buildList {
             if (module.xamlCompilations.isNotEmpty()) add("analyzeWinRTXaml")
             add("generateWinRTProjections")
-            if (module.staticPreview != null) add("prepareWinRTXamlSdkPreview")
+            // runWinRTXamlSdkPreview already owns preparation through its task
+            // dependencies. Compile the SDK host when the user opens a preview.
         }, "Prepare Kotlin WinRT XAML analysis") { project.service<WinRTXamlSnapshotService>().refresh() }
     }
 

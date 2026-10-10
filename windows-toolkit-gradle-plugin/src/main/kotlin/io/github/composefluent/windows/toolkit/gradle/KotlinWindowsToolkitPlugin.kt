@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.metadata.projectionInventory
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
 import org.gradle.api.Action
+import org.gradle.api.artifacts.Configuration
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
@@ -78,6 +79,11 @@ abstract class KotlinWindowsToolkitPlugin : Plugin<Project> {
 
     override fun apply(project: Project) {
         toolingModelRegistry.register(WinRTIdeModelBuilder())
+        listOf("org.jetbrains.kotlin.jvm", "org.jetbrains.kotlin.multiplatform").forEach { kotlinPlugin ->
+            project.pluginManager.withPlugin(kotlinPlugin) {
+                KotlinWinRTCompilerVersions.validate(project.getKotlinPluginVersion())
+            }
+        }
         val extension = project.extensions.create("windows", WindowsExtension::class.java, project)
         val windowsSdkRegistryRoots = windowsSdkRegistryRootsProvider(project)
         extension.windowsSdkVersion.convention(project.providers.of(WindowsSdkVersionValueSource::class.java) {
@@ -765,6 +771,7 @@ private fun configureWinAppTasks(
     observeVariantDependenciesImmediately: Boolean,
 ) {
     fun taskName(base: String): String = base + taskSuffix
+    val executableBaseName = options.executableBaseName.map(::validateWinAppExecutableBaseName)
     val namedOutputPath = "/variant-$taskSuffix"
     val configurationSuffix = "Application$taskSuffix"
     val identityConfigurationName = KOTLIN_WINRT_IDENTITY_CONFIGURATION + configurationSuffix
@@ -853,7 +860,6 @@ private fun configureWinAppTasks(
             })
         }
     dependencyAppxResourceArchives.builtBy(dependencyAppxResourceView.files)
-    val projectName = project.name
     // Attribute the optional resource graph only after the final application variant is known.
     // KMP producers only expose target-specific artifacts. A generic artifact is reserved for
     // a genuinely target-independent Java/JVM producer.
@@ -1131,7 +1137,7 @@ private fun configureWinAppTasks(
             task.projectPriExcludedFromBuildPaths.set(options.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
             task.dependencyIdentityFiles.from(dependencyIdentityFiles)
             task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
                 spec.include("*.dll")
@@ -1324,14 +1330,17 @@ private fun configureWinAppTasks(
                 options.packageType.get() == WindowsPackageType.Packaged &&
                     resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent
             })
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
+            task.rewriteApplicationExecutable.set(true)
             task.deferredManifestPayloadPaths.set(
-                hasMingwReleaseExecutable.map { hasNativeExecutable ->
-                    if (hasNativeExecutable) emptyList() else listOf("$projectName.exe")
+                hasMingwReleaseExecutable.zip(executableBaseName) { hasNativeExecutable, name ->
+                    if (hasNativeExecutable) emptyList() else listOf("$name.exe")
                 },
             )
             task.reservedPackageFiles.set(
-                hasMingwReleaseExecutable.map { native -> if (native) emptyList() else listOf("$projectName.exe") },
+                hasMingwReleaseExecutable.zip(executableBaseName) { native, name ->
+                    if (native) emptyList() else listOf("$name.exe")
+                },
             )
             task.reservedPackageDirectories.set(
                 hasMingwReleaseExecutable.map { native -> if (native) emptyList() else listOf("runtime", "lib") },
@@ -1364,6 +1373,7 @@ private fun configureWinAppTasks(
         selectedVariant,
         options.console,
         launcherIconTask,
+        executableBaseName,
     )
     val launcherCompileTask = project.tasks.register(
         taskName("compileWinAppLauncher"),
@@ -1393,7 +1403,7 @@ private fun configureWinAppTasks(
             task.packageType.set(project.provider { options.packageType.get().name })
             task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.console.set(options.console)
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
             task.expectedJavaMajor.set(options.jvmToolchainVersion)
             task.jvmRuntimeMode.set(options.jvmRuntimeMode.map { it.name })
@@ -1409,6 +1419,7 @@ private fun configureWinAppTasks(
             task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.Jvm }
         },
     )
+    val jvmApplicationClasspath = project.files()
     val applicationHostTask = project.tasks.register(
         taskName("buildWinAppHost"),
         BuildWinAppHostTask::class.java,
@@ -1432,7 +1443,7 @@ private fun configureWinAppTasks(
             task.packageType.set(project.provider { options.packageType.get().name })
             task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.console.set(options.console)
-            task.executableBaseName.set(project.name)
+            task.executableBaseName.set(executableBaseName)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
             task.expectedJavaMajor.set(options.jvmToolchainVersion)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
@@ -1440,11 +1451,12 @@ private fun configureWinAppTasks(
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
+            task.runtimeClasspath.from(jvmApplicationClasspath)
             task.jvmRuntimeMode.set(options.jvmRuntimeMode.map { it.name })
             task.runtimeImageDirectory.set(prepareJvmRuntimeImageTask.flatMap { it.outputDirectory })
             task.launcherExecutable.set(
                 launcherCompileTask.flatMap { launcher ->
-                    launcher.outputDirectory.file("${project.name}.exe")
+                    launcher.outputDirectory.file(executableBaseName.map { "$it.exe" })
                 },
             )
             task.externalJvmHome.set(
@@ -1498,7 +1510,25 @@ private fun configureWinAppTasks(
         .map { it == "1" }.orElse(false)
     developmentPackageTask.configure { task ->
         task.description = "Stages an isolated development identity and regenerates its application PRI."
-        task.runtimeAssetsDirectory.set(applicationPackageDirectory)
+        task.runtimeAssetsDirectory.set(selectedVariant.flatMap { variant ->
+            if (variant.kind == WinAppVariantKind.Jvm) stageRuntimeAssetsTask.flatMap { it.outputDirectory }
+            else stageApplicationPackageTask.flatMap { it.outputDirectory }
+        })
+        task.jvmLauncherExecutable.set(selectedVariant.flatMap { variant ->
+            if (variant.kind == WinAppVariantKind.Jvm) launcherCompileTask.flatMap { launcher ->
+                launcher.outputDirectory.file(executableBaseName.map { "$it.exe" })
+            } else project.providers.provider { null }
+        })
+        task.jvmRuntimeClasspath.from(selectedVariant.map { variant ->
+            if (variant.kind == WinAppVariantKind.Jvm) jvmApplicationClasspath else emptyList<java.io.File>()
+        })
+        task.jvmRuntimeImageDirectory.set(selectedVariant.zip(options.jvmRuntimeMode) { variant, mode ->
+            variant.kind == WinAppVariantKind.Jvm && mode == WinAppJvmRuntimeMode.Bundled
+        }.flatMap { bundled ->
+            if (bundled) sharedJvmRuntimeImageProducer.flatMap { it.outputDirectory }
+            else project.providers.provider { null }
+        })
+        task.jvmRuntimeJavaMajor.set(options.jvmToolchainVersion)
         task.developmentIdentity.set(true)
         task.developmentIdentitySuffix.set(designPreview.map { if (it) "preview" else "dev" })
         task.outputDirectory.set(project.layout.buildDirectory.dir(
@@ -1509,7 +1539,7 @@ private fun configureWinAppTasks(
         ))
         task.dependsOn(project.provider {
             if (selectedVariant.get().kind == WinAppVariantKind.Jvm) {
-                applicationHostTask
+                stageRuntimeAssetsTask
             } else {
                 stageApplicationPackageTask
             }
@@ -1739,15 +1769,10 @@ private fun configureWinAppTasks(
     )
     project.plugins.withId("java") {
         project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> { sourceSets ->
-            applicationHostTask.configure { task ->
-                task.runtimeClasspath.from(sourceSets.getByName("main").runtimeClasspath)
-            }
+            jvmApplicationClasspath.from(sourceSets.getByName("main").runtimeClasspath)
         })
         project.tasks.named("jar", Jar::class.java).let { jar ->
-            applicationHostTask.configure { task ->
-                task.runtimeClasspath.from(jar.flatMap { it.archiveFile })
-                task.dependsOn(jar)
-            }
+            jvmApplicationClasspath.from(jar.flatMap { it.archiveFile })
         }
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             if (integrateDefaultJvmLifecycle && unpackagedMode.get()) {
@@ -1772,7 +1797,7 @@ private fun configureWinAppTasks(
             }
         })
     }
-    configureKmpJvmApplicationHostClasspath(project, applicationHostTask, selectedVariant, eagerSelection = eagerJvmSelection)
+    configureKmpJvmApplicationHostClasspath(project, jvmApplicationClasspath, selectedVariant, eagerSelection = eagerJvmSelection)
     project.afterEvaluate {
         if (selectedVariant.get().kind == WinAppVariantKind.Jvm &&
             options.jvmRuntimeMode.get() == WinAppJvmRuntimeMode.External &&
@@ -1841,7 +1866,7 @@ private class RuntimeAssetsRootJvmArgumentProvider(
 
 private fun configureKmpJvmApplicationHostClasspath(
     project: Project,
-    applicationHostTask: TaskProvider<BuildWinAppHostTask>,
+    selectedJvmClasspath: org.gradle.api.file.ConfigurableFileCollection,
     selectedVariant: Provider<WinAppVariant>,
     eagerSelection: Boolean,
 ) {
@@ -1850,8 +1875,6 @@ private fun configureKmpJvmApplicationHostClasspath(
         // Keep the selected KMP target in a separate file collection. The application host may
         // be configured before all targets exist; wiring every target as it appears leaks jars
         // from unrelated JVM targets into the eventual application classpath.
-        val selectedJvmClasspath = project.files()
-        applicationHostTask.configure { task -> task.runtimeClasspath.from(selectedJvmClasspath) }
 
         var selectedTargetAttached = false
 
@@ -1930,7 +1953,6 @@ private fun configureKmpJvmApplicationHostClasspath(
             }
             selectedJvmClasspath.setFrom(emptyList<Any>())
             selectedJvmClasspath.from(jvmCompilation.runtimeDependencyFiles, jar.flatMap { it.archiveFile })
-            applicationHostTask.configure { task -> task.dependsOn(jar) }
             selectedTargetAttached = true
         }
 
@@ -1949,14 +1971,12 @@ private fun configureMingwApplicationEntry(
     selectedVariant: Provider<WinAppVariant>,
     console: Provider<Boolean>,
     launcherIconTask: TaskProvider<CompileWinAppIconTask>,
+    executableBaseName: Provider<String>,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
-    val applicationLayoutDirectory = project.provider {
-        project.layout.buildDirectory
-            .dir("kotlin-winrt/application-layout/${selectedVariant.get().id.toSafeDirectoryName()}/package")
-            .get()
-            .asFile
-    }
+    val applicationLayoutDirectory = project.layout.buildDirectory.dir(
+        selectedVariant.map { "kotlin-winrt/application-layout/${it.id.toSafeDirectoryName()}/package" },
+    ).map { it.asFile }
     project.afterEvaluate {
         val variant = selectedVariant.get()
         if (variant.kind != WinAppVariantKind.MingwX64) return@afterEvaluate
@@ -1983,24 +2003,30 @@ private fun configureMingwApplicationEntry(
                 task.inputs.file(resource).withPathSensitivity(PathSensitivity.NONE)
             }
         }
-        // Kotlin/Native's model name (for example, releaseExecutable) is not the staged file
-        // name. Keep the output file Provider as the single source for payload, manifest and run
-        // task wiring so custom binary names and target-specific base names remain consistent.
+        // The linked Kotlin/Native binary keeps its own baseName. The application model owns
+        // the staged launcher name, just as it does for JVM, without renaming the binary model.
         val executableOutputFile = project.provider { executable.outputFile }
-        val executableOutputName = executableOutputFile.map { outputFile -> outputFile.name }
-        val executableOutputBaseName = executableOutputFile.map { outputFile -> outputFile.nameWithoutExtension }
+        val executableOutputName = executableBaseName.map { "$it.exe" }
         executable.linkTaskProvider.configure { task -> task.dependsOn(entryTask) }
-        stageRuntimeAssetsTask.configure { task -> task.executableBaseName.set(executableOutputBaseName) }
         stageApplicationPackageTask.configure { task ->
             task.dependsOn(executable.linkTaskProvider)
             task.rootPackagePayloadFiles.from(executableOutputFile)
-            task.executableBaseName.set(executableOutputBaseName)
+            task.projectPriTargetPaths.putAll(executableOutputFile.zip(executableOutputName) { file, name ->
+                mapOf(file.toPath().toAbsolutePath().normalize().toString() to name)
+            })
         }
         executable.runTaskProvider?.configure { task ->
             task.dependsOn(stageRuntimeAssetsTask)
             task.dependsOn(stageApplicationPackageTask)
             task.workingDir(applicationLayoutDirectory.get())
             task.executable(applicationLayoutDirectory.get().resolve(executableOutputName.get()).absolutePath)
+            val launcherPath = applicationLayoutDirectory.zip(executableOutputName) { directory, name ->
+                directory.resolve(name).absolutePath
+            }
+            // ExecSpec stores a String executable, so refresh it after all app modules have
+            // registered, including when this run task was realized during configuration.
+            task.inputs.property("winAppLauncherPath", launcherPath)
+            task.doFirst { run -> (run as org.gradle.api.tasks.Exec).executable(launcherPath.get()) }
             task.environment(
                 "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
                 stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,
@@ -2243,6 +2269,10 @@ private fun configureWinRTGeneration(
             task.nugetPackages.set(project.provider { allNuGetPackageSpecs(extension.packageReferences) })
             task.restoreEnabled.set(extension.restoreNuGetPackages)
             task.includeToolingPackages.set(includeWinAppToolingPackages)
+            // Runtime/native inputs are selected from the lock's NuGet roots by their
+            // owning Gradle tasks. WinApp's multi-architecture C++ workspace is redundant.
+            task.includeRuntimeAssets.set(false)
+            task.includeNativeBuildFiles.set(false)
             task.winAppCliExecutable.set(extension.winAppCliExecutable)
             task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
             task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
@@ -2317,7 +2347,10 @@ private fun configureWinRTGeneration(
         task.nugetPackages.set(project.provider { projectionNuGetPackageSpecs(extension.packageReferences) })
         task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
         task.nugetPackageContentFiles.from(project.provider {
+            // Projection generation consumes WinMDs and package identities. Native
+            // payloads belong to runtime staging and must not invalidate projections.
             existingWinAppPackageContentRoots(listOf(restoreWinAppDependenciesTask.get().winmdLockFile.get().asFile))
+                .map { root -> project.fileTree(root) { it.include("**/*.winmd", "**/*.WinMD", "**/*.nuspec") } }
         })
         task.projectModel.set(
             project.provider {
@@ -2754,8 +2787,10 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
             jvmTarget.set(businessTask.compilerOptions.jvmTarget)
             noJdk.set(businessTask.compilerOptions.noJdk)
             moduleName.set(
-                businessTask.compilerOptions.moduleName.map { moduleName ->
-                    "$moduleName-winrt-projection"
+                // The projection is owned by its published artifact, independently
+                // of the importing application's root name (KGP's default prefix).
+                projectionAuthoringTargetArtifactName.map { artifactName ->
+                    "${artifactName.removeSuffix(".jar")}-winrt-projection"
                 },
             )
         }
@@ -2791,13 +2826,23 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
             (task as org.jetbrains.kotlin.gradle.tasks.KotlinCompile).incremental = false
             task.libraries.from(projectionClasspath)
             task.pluginClasspath.from(compilerPluginClasspath)
+            val projectionMetadataIndex = generatedProjectionSources.map { directory ->
+                directory.file("kotlin-winrt-authoring/metadata-index.tsv")
+            }
+            // KGP's file options keep machine/project paths out of the scalar
+            // compiler arguments. Track their content separately for relocatable
+            // projection bytecode, like CsWinRT's metadata/tool inputs.
+            task.inputs.file(projectionMetadataIndex).withPropertyName("winrtProjectionMetadata")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+            task.inputs.files(compilerSupportManifest.map { it.asFile.parentFile })
+                .withPropertyName("winrtProjectionSupport")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             addWinRTCompilerPluginOptions(
                 project = project,
                 freeCompilerArgs = task.compilerOptions.freeCompilerArgs,
+                pluginOptions = task.pluginOptions,
                 taskName = task.name,
-                metadataIndex = generatedProjectionSources.map { directory ->
-                    directory.file("kotlin-winrt-authoring/metadata-index.tsv")
-                },
+                metadataIndex = projectionMetadataIndex,
                 outputs = compilerAuthoringOutputs(
                     outputDirectory = project.layout.dir(project.provider {
                         task.destinationDirectory.get().asFile
@@ -3497,10 +3542,7 @@ private fun configureKotlinWinRTCompilerPluginClasspath(project: Project) {
         }
         .configureEach { configuration ->
             if (configuredConfigurations.add(configuration.name)) {
-                project.dependencies.add(configuration.name, kotlinWinRTCompilerPluginDependency(project))
-                kotlinWinRTCompilerPluginRuntimeDependencies(project).forEach { dependency ->
-                    project.dependencies.add(configuration.name, dependency)
-                }
+                addKotlinWinRTCompilerPluginDependencies(project, configuration)
             }
         }
 }
@@ -3510,11 +3552,17 @@ private fun kotlinWinRTCompilerPluginClasspath(project: Project) =
         ?: project.configurations.create(KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION).also { configuration ->
             configuration.isCanBeConsumed = false
             configuration.isCanBeResolved = true
-            project.dependencies.add(configuration.name, kotlinWinRTCompilerPluginDependency(project))
-            kotlinWinRTCompilerPluginRuntimeDependencies(project).forEach { dependency ->
-                project.dependencies.add(configuration.name, dependency)
-            }
+            addKotlinWinRTCompilerPluginDependencies(project, configuration)
         }
+
+private fun addKotlinWinRTCompilerPluginDependencies(project: Project, configuration: Configuration) {
+    // The toolkit may be applied before KGP. Select only when the classpath is requested,
+    // after the consumer's Kotlin plugin is present, and retain project artifact build dependencies.
+    configuration.dependencies.addAllLater(project.provider {
+        (listOf(kotlinWinRTCompilerPluginDependency(project)) + kotlinWinRTCompilerPluginRuntimeDependencies(project))
+            .map(project.dependencies::create)
+    })
+}
 
 /** Fixed plugin dependencies can prepare an import without resolving task-produced artifacts. */
 internal fun kotlinWinRTPreparedGeneratorClasspath(project: Project): org.gradle.api.file.FileCollection {
@@ -3609,15 +3657,18 @@ private fun kotlinWinRTPluginClasspathLocation(project: Project): Any =
     }
 
 private fun kotlinWinRTCompilerPluginDependency(project: Project): Any {
-    kotlinWinRTPluginMetadataArtifact(project, "winrt-compiler-plugin")?.let { artifact ->
+    val kotlinVersion = project.getKotlinPluginVersion()
+    val moduleName = KotlinWinRTCompilerVersions.artifact("winrt-compiler-plugin", kotlinVersion)
+    kotlinWinRTPluginMetadataArtifact(project, moduleName)?.let { artifact ->
         return artifact
     }
-    val localCompilerPlugin = project.rootProject.findProject(":winrt-compiler-plugin")
+    val localCompilerPlugin = project.rootProject.findProject(
+        KotlinWinRTCompilerVersions.projectPath(":winrt-compiler-plugin", kotlinVersion),
+    )
     return if (localCompilerPlugin != null) {
         project.dependencies.project(mapOf("path" to localCompilerPlugin.path))
     } else {
-        kotlinWinRTCompilerPluginClasspathJar(project)
-            ?: "io.github.compose-fluent:winrt-compiler-plugin:${kotlinWinRTPluginVersion()}"
+        "io.github.compose-fluent:$moduleName:${kotlinWinRTPluginVersion()}"
     }
 }
 
@@ -3635,7 +3686,7 @@ private fun kotlinWinRTRuntimeClasspathDependency(project: Project): Any {
         projectPath = ":winrt-runtime",
         moduleName = "winrt-runtime",
     )
-        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid")?.let(project::files)
+        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid"))?.let(project::files)
         ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
 }
 
@@ -3653,7 +3704,7 @@ private fun kotlinWinRTAuthoringRuntimeClasspathDependency(project: Project): An
         projectPath = ":winrt-authoring",
         moduleName = "winrt-authoring",
     )
-        ?: kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports")?.let(project::files)
+        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.authoring.WinRTAuthoringHostExports"))?.let(project::files)
         ?: "io.github.compose-fluent:winrt-authoring:${kotlinWinRTPluginVersion()}"
 }
 
@@ -3688,6 +3739,7 @@ private fun kotlinWinRTLocalOrPluginUnderTestDependency(
 }
 
 private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List<Any> {
+    val kotlinVersion = project.getKotlinPluginVersion()
     val runtimeDependencies = mutableListOf<Any>()
     runtimeDependencies += kotlinWinRTCompilerPluginSupportDependency(
         project = project,
@@ -3696,8 +3748,8 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
     )
     runtimeDependencies += kotlinWinRTCompilerPluginSupportDependency(
         project = project,
-        projectPath = ":winrt-compiler-plugin:callsite-lowering",
-        moduleName = "callsite-lowering",
+        projectPath = KotlinWinRTCompilerVersions.projectPath(":winrt-compiler-plugin:callsite-lowering", kotlinVersion),
+        moduleName = KotlinWinRTCompilerVersions.artifact("callsite-lowering", kotlinVersion),
     )
     runtimeDependencies += kotlinWinRTRuntimeClasspathDependency(project)
     runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
@@ -3715,7 +3767,7 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
         return runtimeDependencies
     }
     runtimeDependencies += kotlinWinRTPluginMetadataArtifact(project, "winrt-metadata")
-        ?: kotlinWinRTCodeSourceFile(WinRTMetadataSource::class.java)
+        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile(WinRTMetadataSource::class.java))
             ?.let(project::files)
         ?: "io.github.compose-fluent:winrt-metadata:${kotlinWinRTPluginVersion()}"
     return runtimeDependencies
@@ -3772,23 +3824,32 @@ private fun kotlinWinRTPluginMetadataGeneratorWorkerClasspath(): List<File>? {
 }
 
 private fun kotlinWinRTPluginUnderTestMetadataFile(): File? {
+    KotlinWindowsToolkitPlugin::class.java.classLoader
+        .getResourceAsStream("kotlin-winrt-test-metadata.properties")?.use { stream ->
+            val metadataFile = Properties().apply { load(stream) }.getProperty("metadata-file")?.let(::File)
+            if (metadataFile?.isFile == true) return metadataFile
+        }
     val codeSource = kotlinWinRTCodeSourceFile(KotlinWindowsToolkitPlugin::class.java) ?: return null
-    var current = codeSource.canonicalFile
+    val sourcePath = codeSource.canonicalFile.toPath()
+    var current = sourcePath.toFile()
     if (current.isFile) {
         current = current.parentFile ?: return null
     }
     while (current != current.parentFile) {
-        val metadataFile = current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
-        if (metadataFile.isFile) {
-            return metadataFile
+        // Maven caches can live below a build directory (notably TestKit's work directory).
+        // Only this producer's classes/libs outputs may consume its test metadata; otherwise
+        // a published Native consumer would receive the producer's JVM-only runtime JARs.
+        val outputKind = current.toPath().relativize(sourcePath).firstOrNull()?.toString()
+        if (outputKind in setOf("classes", "libs", "resources")) {
+            val metadataFile = current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
+            if (metadataFile.isFile) return metadataFile
         }
         if (current.name == "build") {
             break
         }
         current = current.parentFile ?: break
     }
-    return current.resolve("pluginUnderTestMetadata/plugin-under-test-metadata.properties")
-        .takeIf(File::isFile)
+    return null
 }
 
 private fun kotlinWinRTPluginMetadataArtifact(project: Project, moduleName: String): Any? {
@@ -3805,7 +3866,9 @@ private fun kotlinWinRTPluginMetadataArtifact(project: Project, moduleName: Stri
         .mapNotNull { path -> path.takeIf(String::isNotBlank)?.let(::File) }
         .firstOrNull { file ->
             val name = file.name
-            name.startsWith(moduleName) && name.endsWith(".jar") && file.isFile
+            (name == "$moduleName.jar" || name.startsWith("$moduleName-")) && name.endsWith(".jar") &&
+                !name.endsWith("-sources.jar") && !name.endsWith("-javadoc.jar") &&
+                ("-kotlin-" in moduleName || !name.startsWith("$moduleName-kotlin-")) && file.isFile
         }
         ?.let(project::files)
 }
@@ -3831,11 +3894,16 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
         ?: return emptyList()
     return moduleNames
         .flatMap { moduleName ->
-            val moduleRoot = when (moduleName) {
+            val baseModuleName = moduleName.substringBefore("-kotlin-")
+            val baseModuleRoot = when (baseModuleName) {
                 "callsite-contract", "callsite-lowering" ->
-                    includedRoot.resolve("winrt-compiler-plugin").resolve(moduleName)
-                else -> includedRoot.resolve(moduleName)
+                    includedRoot.resolve("winrt-compiler-plugin").resolve(baseModuleName)
+                else -> includedRoot.resolve(baseModuleName)
             }
+            val moduleRoot = if (baseModuleName != moduleName) {
+                val variant = if (baseModuleName == "callsite-lowering") "lowering" else "compiler"
+                baseModuleRoot.resolve("$variant-kotlin-${moduleName.substringAfter("-kotlin-").replace('.', '-')}")
+            } else baseModuleRoot
             val prefix = when (moduleName) {
                 "winrt-runtime" -> "winrt-runtime-jvm-"
                 "winrt-authoring" -> "winrt-authoring-jvm-"
@@ -3850,6 +3918,8 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
                         .filter { path ->
                             Files.isRegularFile(path) &&
                                 path.fileName.toString().startsWith(prefix) &&
+                                !path.fileName.toString().endsWith("-sources.jar") &&
+                                !path.fileName.toString().endsWith("-javadoc.jar") &&
                                 path.fileName.toString().endsWith(".jar", ignoreCase = true)
                         }
                         .sorted()
@@ -3908,13 +3978,14 @@ private fun kotlinWinRTCachedCompilerEmbeddable(project: Project, kotlinCompiler
         }
 }
 
-private fun kotlinWinRTCompilerPluginClasspathJar(project: Project): Any? {
-    return kotlinWinRTPluginMetadataArtifact(project, "winrt-compiler-plugin")
-}
-
 private fun kotlinWinRTCodeSourceFile(type: Class<*>): File? {
     val location = type.protectionDomain?.codeSource?.location ?: return null
     return runCatching { File(location.toURI()) }.getOrNull()
+}
+
+/** Bundled tools belong to the Gradle plugin, never to an application's library classpath. */
+private fun kotlinWinRTStandaloneArtifact(codeSource: File?): File? = codeSource?.takeUnless { file ->
+    file.canonicalFile == kotlinWinRTCodeSourceFile(KotlinWindowsToolkitPlugin::class.java)?.canonicalFile
 }
 
 private fun kotlinWinRTCodeSourceFile(typeName: String): File? =
@@ -5120,9 +5191,9 @@ private fun addWinRTCompilerPluginOptions(
     projectionSupportOwnerArtifactName: org.gradle.api.provider.Provider<String>,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
     projectionSupportMode: String? = null,
+    pluginOptions: org.gradle.api.provider.ListProperty<org.jetbrains.kotlin.gradle.plugin.CompilerPluginConfig>? = null,
 ) {
-    freeCompilerArgs.addAll(
-        project.provider {
+    val options = project.provider {
             val authoringOptions = listOf(
                 "metadataIndex=${metadataIndex.get().asFile.absolutePath}",
                 "typeIndexOutput=${outputs.typeIndex.get().asFile.absolutePath}",
@@ -5156,10 +5227,27 @@ private fun addWinRTCompilerPluginOptions(
             } else {
                 emptyList()
             }
-            (authoringOptions + projectionSupportOptions)
-                .flatMap { option -> listOf("-P", "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:$option") }
-        },
-    )
+            authoringOptions + projectionSupportOptions
+    }
+    if (pluginOptions == null) {
+        freeCompilerArgs.addAll(options.map { entries -> entries.flatMap { option ->
+            listOf("-P", "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:$option")
+        } })
+    } else {
+        pluginOptions.add(options.map { entries ->
+            org.jetbrains.kotlin.gradle.plugin.CompilerPluginConfig().apply {
+                entries.forEach { entry ->
+                    val key = entry.substringBefore('=')
+                    val value = entry.substringAfter('=')
+                    val fileOption = key == "metadataIndex" || key == "compilerSupportManifest" ||
+                        key.endsWith("Output") || key == "compilerSupportClassOutputDirectory"
+                    val option = if (fileOption) org.jetbrains.kotlin.gradle.plugin.FilesSubpluginOption(key, listOf(File(value)))
+                        else org.jetbrains.kotlin.gradle.plugin.SubpluginOption(key, value)
+                    addPluginArgument(KOTLIN_WINRT_COMPILER_PLUGIN_ID, option)
+                }
+            }
+        })
+    }
 }
 
 internal fun withoutKotlinWinRTCompilerPluginOptions(args: List<String>): List<String> {
@@ -5281,27 +5369,7 @@ private fun windowsSdkMetadataInputFiles(
     )
     return roots
         .filter(Files::isDirectory)
-        .flatMap { root ->
-            val rootFiles = linkedSetOf<File>()
-            // The SDK resolver consumes these metadata locations; keeping the file tree narrow
-            // avoids making unrelated headers, libraries, and tools projection inputs.
-            Files.walk(root).use { stream ->
-                stream
-                    .filter(Files::isRegularFile)
-                    .filter { file ->
-                        val relative = root.relativize(file).toString().replace('\\', '/')
-                        relative.startsWith("Platforms/UAP/", ignoreCase = true) &&
-                            relative.endsWith("/Platform.xml", ignoreCase = true) ||
-                            relative.startsWith("References/", ignoreCase = true) &&
-                            relative.endsWith(".winmd", ignoreCase = true) ||
-                            relative.startsWith("Extension SDKs/", ignoreCase = true) &&
-                            (relative.endsWith("/SDKManifest.xml", ignoreCase = true) ||
-                                relative.endsWith(".winmd", ignoreCase = true))
-                    }
-                    .forEach { file -> rootFiles.add(file.toFile()) }
-            }
-            rootFiles
-        }
+        .flatMap(::windowsSdkMetadataFiles)
         .distinctBy { file -> file.toPath().toAbsolutePath().normalize().toString().lowercase() }
         .sortedBy { file -> file.toPath().toAbsolutePath().normalize().toString().lowercase() }
 }
@@ -5352,46 +5420,24 @@ private fun configureWinAppRestoreInputFiles(
 ) {
     task.packageContentFiles.from(project.provider {
         existingWinAppPackageContentRoots(listOf(task.winmdLockFile.get().asFile))
+            .map { root -> project.fileTree(root) { tree ->
+                tree.exclude { element -> !isWinAppPackageRestoreInput(element.relativePath.pathString) }
+            } }
     })
     task.nugetConfigHierarchyFiles.from(
-        project.provider {
-            discoverNuGetConfigHierarchyFiles(
-                project = project,
-                extension = extension,
+        project.providers.of(NuGetConfigHierarchyValueSource::class.java) {
+            it.parameters.baseDirectory.set(
+                extension.nugetConfigDirectory.map { directory -> directory.asFile.absolutePath }
+                    .orElse(extension.nugetConfigFile.map { file -> file.asFile.parentFile.absolutePath })
+                    .orElse(project.projectDir.absolutePath),
+            )
+            it.parameters.userConfigFile.set(
+                project.providers.environmentVariable("APPDATA").filter(String::isNotBlank).map { appData ->
+                    File(appData, "NuGet/NuGet.Config").absolutePath
+                },
             )
         },
     )
-}
-
-private fun discoverNuGetConfigHierarchyFiles(
-    project: Project,
-    extension: PackageReferencesConfiguration,
-): List<File> {
-    val base = extension.nugetConfigDirectory.orNull?.asFile?.toPath()
-        ?: extension.nugetConfigFile.orNull?.asFile?.parentFile?.toPath()
-        ?: project.projectDir.toPath()
-    val files = linkedSetOf<Path>()
-    var current: Path? = base.toAbsolutePath().normalize()
-    while (current != null) {
-        if (Files.isDirectory(current)) {
-            Files.list(current).use { entries ->
-                entries
-                    .filter { path ->
-                        Files.isRegularFile(path) &&
-                            path.fileName.toString().equals("NuGet.Config", ignoreCase = true)
-                    }
-                    .forEach { path -> files.add(path.toAbsolutePath().normalize()) }
-            }
-        }
-        current = current.parent
-    }
-    project.providers.environmentVariable("APPDATA").orNull
-        ?.takeIf(String::isNotBlank)
-        ?.let { appData ->
-            val userConfig = Path.of(appData).resolve("NuGet").resolve("NuGet.Config")
-            if (Files.isRegularFile(userConfig)) files.add(userConfig.toAbsolutePath().normalize())
-        }
-    return files.sortedBy { it.toString().lowercase() }.map(Path::toFile)
 }
 
 private fun Project.hasKotlinWinRTIdentityMetadata(): Boolean =

@@ -140,8 +140,7 @@ val toolchainRepository = layout.projectDirectory.dir("../../.gradle/ide-toolcha
 val bundleWinRTToolchain by tasks.registering(Zip::class) {
     val producer = gradle.includedBuild("winrt-toolchain")
     dependsOn(producer.task(":publishPluginMavenPublicationToIdeToolchainRepository"),
-        producer.task(":publishKotlinWindowsToolkitPluginMarkerMavenPublicationToIdeToolchainRepository"),
-        producer.task(":ide-model:publishMavenPublicationToIdeToolchainRepository"))
+        producer.task(":publishKotlinWindowsToolkitPluginMarkerMavenPublicationToIdeToolchainRepository"))
     listOf("winrt-runtime", "winrt-authoring").forEach { module ->
         listOf("Jvm", "MingwX64", "KotlinMultiplatform").forEach { publication ->
             dependsOn(producer.task(":$module:publish${publication}PublicationToIdeToolchainRepository"))

@@ -196,6 +196,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:org.gradle.api.tasks.IgnoreEmptyDirectories
     abstract val nugetPackageContentFiles: ConfigurableFileCollection
 
     @get:Input
@@ -476,6 +477,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             // component mode describes the component's own metadata, not its
             // imported controls: enabling it here suppresses their RCW registrar.
             component = parameters.projectModel.get() != "application" && exportedAuthoringCandidates.isNotEmpty(),
+            inaccessibleDependencyTypes = dependencyInternalProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files),
         )
         if (parameters.emitProjectionSources.get() && !(hasPreparedStaticSources && authoringCandidates.isEmpty())) {
             KotlinProjectionGenerator(
@@ -757,6 +759,26 @@ internal fun dependencyProjectionSurfaceTypeNames(
         .distinct()
         .sorted()
 
+internal fun dependencyInternalProjectedTypeNames(
+    model: WinRTMetadataModel,
+    identityFiles: Iterable<File>,
+): Set<String> {
+    // Current identities carry visibility directly. Only legacy identities need
+    // another metadata index; building it eagerly duplicates a full SDK model.
+    val types by lazy { model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName } }
+    val helpers by lazy { io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers(model) }
+    val context = WinRTMetadataProjectionContext(sources = emptyList())
+    return identityFiles.flatMap { file ->
+        val identity = readProjectionSurfaceIdentity(file)
+        val ownedTypes = dependencyProjectedTypeNames(model, identity)
+        // Older identities did not record visibility. Their default CsWinRT
+        // projection policy still identifies internal exclusive/support interfaces.
+        identity.internalProjectedTypes?.filter { it in ownedTypes } ?: ownedTypes.filter { name ->
+            types[name]?.let { helpers.typeProjectionContextDescriptor(it, context).accessibility == "internal" } == true
+        }
+    }.toSortedSet()
+}
+
 internal fun dependencySourceAdditionTypeNames(
     identityFiles: Iterable<File>,
 ): Set<String> = identityFiles
@@ -957,6 +979,7 @@ internal data class ProjectionSurfaceIdentity(
     val sourceAdditions: List<String>,
     val excludeNamespaces: List<String>,
     val excludeTypes: List<String>,
+    val internalProjectedTypes: List<String>? = null,
 )
 
 internal const val CURRENT_PROJECTION_SHAPE_VERSION: Int = 1
@@ -974,6 +997,7 @@ internal fun readProjectionSurfaceIdentity(identityFile: java.io.File): Projecti
         sourceAdditions = readIdentityStringArray(content, "sourceAdditions"),
         excludeNamespaces = readIdentityStringArray(content, "excludeNamespaces"),
         excludeTypes = readIdentityStringArray(content, "excludeTypes"),
+        internalProjectedTypes = readOptionalIdentityStringArray(content, "internalProjectedTypes"),
     )
 }
 

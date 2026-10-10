@@ -466,7 +466,7 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
             // lib/native is a compiler payload. Its XAML files are source inputs, not
             // default application payload; explicit ContentWithTargetPath items are
             // staged separately by the NuGet MSBuild payload resolver below.
-            .filterNot { source -> source.name.endsWith(".xaml", ignoreCase = true) }
+            .filterNot { source -> source.name.endsWith(".xaml", ignoreCase = true) || isNativeCompilerArtifact(source) }
             .forEach { source ->
                 GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(selectedRoot)))
             }
@@ -479,6 +479,7 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
         Files.walk(nativeRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() }
+                .filterNot(::isNativeCompilerArtifact)
                 .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
         }
     }
@@ -490,11 +491,19 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
         Files.walk(runtimeRoot).use { stream ->
             stream.asSequence()
                 .filter(Path::isRegularFile)
+                .filterNot(::isNativeCompilerArtifact)
                 .forEach { source ->
                     GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeRoot)))
                 }
         }
     }
+
+    // CsWinRT stages implementation DLLs via ReferenceCopyLocalPaths, rather than
+    // publishing an entire compiler directory. Symbols and linker intermediates
+    // are not runtime dependencies. Explicit runtimeAssets/CopyLocal items retain
+    // their declared payload, including symbols requested for native debugging.
+    private fun isNativeCompilerArtifact(source: Path): Boolean =
+        source.name.substringAfterLast('.', "").lowercase() in setOf("pdb", "lib", "exp", "obj")
 
     private fun stageMsBuildCopyLocalPayloads(packageRoot: Path, runtimeIdentifier: String, outputRoot: Path) {
         WinRTNuGetMsBuildPayloadResolver.resolveCopyLocalPayloads(packageRoot, runtimeIdentifier)

@@ -8,7 +8,6 @@ import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrField
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrProperty
-import org.jetbrains.kotlin.ir.declarations.impl.IrFileImpl
 import org.jetbrains.kotlin.ir.symbols.impl.IrFileSymbolImpl
 import org.jetbrains.kotlin.ir.util.NaiveSourceBasedFileEntryImpl
 import org.jetbrains.kotlin.name.FqName
@@ -54,13 +53,13 @@ internal class WinRTAbiSupportFiles(private val useExistingFile: Boolean = false
             source.module.files.singleOrNull {
                 it.fileEntry.name == fileName && it.packageFqName == packageName
             }?.let { return@getOrPut it }
-            IrFileImpl(
+            compilerIrFile(
                 NaiveSourceBasedFileEntryImpl(fileName, intArrayOf(0), 0),
                 // Native KLIB serialization still requires a package fragment descriptor.
                 IrFileSymbolImpl(EmptyPackageFragmentDescriptor(source.module.descriptor, packageName)),
                 packageName,
+                source.module,
             ).also {
-                it.module = source.module
                 source.module.files += it
             }
         }

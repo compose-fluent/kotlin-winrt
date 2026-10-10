@@ -664,7 +664,14 @@ internal fun runtimeClassMemberModifiers(
     plan: KotlinTypeProjectionPlan,
     binding: KotlinProjectionInstanceMemberBinding,
 ): List<KModifier> {
-    val ownerInterfaceName = binding.ownerInterfaceQualifiedName.substringBefore('<')
+    return runtimeClassInterfaceMemberModifiers(plan, binding.ownerInterfaceQualifiedName)
+}
+
+internal fun runtimeClassInterfaceMemberModifiers(
+    plan: KotlinTypeProjectionPlan,
+    interfaceName: String,
+): List<KModifier> {
+    val ownerInterfaceName = interfaceName.substringBefore('<')
     val descriptor = plan.classMemberMergeDescriptor
         ?.interfaceDescriptors
         ?.firstOrNull { it.interfaceTypeName == ownerInterfaceName }
@@ -673,6 +680,7 @@ internal fun runtimeClassMemberModifiers(
             listOf(KModifier.PROTECTED, KModifier.OPEN)
         descriptor?.isOverridableInterface == true || descriptor?.isProtectedInterface == true ->
             listOf(KModifier.PROTECTED)
+        descriptor?.isAccessibleInProjection == false -> listOf(KModifier.PUBLIC)
         else -> listOf(KModifier.OVERRIDE)
     }
 }
@@ -1004,7 +1012,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
                     .filter(WinRTProjectedAttributeDescriptor::isPlatformAttribute),
             )
             .addMethodGenericParameters(method)
-            .addModifiers(KModifier.OVERRIDE)
+            .addModifiers(runtimeClassInterfaceMemberModifiers(plan, ownerInterfaceName))
             .returns(resolveTypeName(method.projectedKotlinReturnTypeName()))
             .addParameters(
                 method.projectedKotlinParameters().map { parameter ->
@@ -1029,7 +1037,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addProjectedAttributeAnnotations(projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
-        .addModifiers(KModifier.OVERRIDE)
+        .addModifiers(if (objectShape != null) listOf(KModifier.OVERRIDE) else runtimeClassInterfaceMemberModifiers(plan, ownerInterfaceName))
         .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
@@ -1081,8 +1089,13 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
     property: RequiredForwardProperty,
 ): PropertySpec? {
     val propertyType = resolveTypeName(property.propertyTypeName)
+    val accessor = listOfNotNull(property.getter, property.setter).firstOrNull { accessor ->
+        plan.classMemberMergeDescriptor?.interfaceDescriptors
+            ?.firstOrNull { it.interfaceTypeName == accessor.ownerInterfaceName.substringBefore('<') }
+            ?.isAccessibleInProjection != false
+    } ?: property.getter ?: requireNotNull(property.setter)
     val builder = PropertySpec.builder(property.propertyName, propertyType)
-        .addModifiers(KModifier.OVERRIDE)
+        .addModifiers(runtimeClassInterfaceMemberModifiers(plan, accessor.ownerInterfaceName))
         .mutable(property.setter != null)
     val projectedAttributes = (property.getter?.slotInterfaceType ?: property.setter?.slotInterfaceType)
         ?.projectedAttributes()

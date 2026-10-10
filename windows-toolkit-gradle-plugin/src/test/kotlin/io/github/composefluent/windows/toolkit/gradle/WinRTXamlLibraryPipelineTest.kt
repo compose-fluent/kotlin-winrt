@@ -9,6 +9,65 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WinRTXamlLibraryPipelineTest {
+    @Test
+    fun header_reuses_type_selection_when_only_literal_markup_changes() {
+        // XAMLC DirectUISchemaContext owns namespace aliases; the Kotlin header only selects
+        // application types. Unlike XBF, its schema is independent of literal property values.
+        val root = writeLibrary("kotlin-winrt-xaml-header-inputs-", """
+            tasks.named('generateWinRTXamlApplicationHeader') { emitSources = false }
+        """.trimIndent(), plainJvm = true)
+        val markup = root.resolve("src/main/kotlin/Theme.xaml")
+        val original = """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:local="using:sample"><local:Model title="Before" /></ResourceDictionary>"""
+        write(markup, original)
+        assertEquals(TaskOutcome.SUCCESS, run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+            .task(":generateWinRTXamlApplicationHeader")?.outcome)
+        // The first restore creates its lock; warm the resulting configuration once.
+        run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+        write(markup, original.replace("Before", "After"))
+        val literal = run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+        assertEquals(TaskOutcome.UP_TO_DATE, literal.task(":generateWinRTXamlApplicationHeader")?.outcome)
+        assertTrue(literal.output, literal.output.contains("Reusing configuration cache"))
+        write(markup, original.replace("local:Model", "local:Other"))
+        assertEquals(TaskOutcome.SUCCESS, run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+            .task(":generateWinRTXamlApplicationHeader")?.outcome)
+        write(root.resolve("src/main/kotlin/sample/Model.kt"), "package sample; class Model { var title: Int = 0 }")
+        assertEquals(TaskOutcome.SUCCESS, run(root, "generateWinRTXamlApplicationHeader", "--configuration-cache")
+            .task(":generateWinRTXamlApplicationHeader")?.outcome)
+    }
+
+    @Test
+    fun sdk_preview_preparation_serializes_without_capturing_other_tasks() {
+        // The SDK-only designer mirrors CsWinRT's reusable projection/SDK resource ownership.
+        // Skip native/compiler execution to exercise serialization of the actual preview task graph.
+        val root = writeLibrary("kotlin-winrt-sdk-preview-cache-", """
+            windows { application { } }
+            tasks.configureEach { enabled = false }
+        """.trimIndent(), plainJvm = true)
+        val first = run(root, "prepareWinRTXamlSdkPreview", "--configuration-cache")
+        assertEquals(TaskOutcome.SKIPPED, first.task(":prepareWinRTXamlSdkPreview")?.outcome)
+        assertTrue("The preview must not schedule business compilation", first.task(":compileKotlin") == null)
+        val reused = run(root, "prepareWinRTXamlSdkPreview", "--configuration-cache")
+        assertTrue(reused.output, reused.output.contains("Reusing configuration cache"))
+    }
+
+    @Test
+    fun plain_jvm_xaml_main_compilation_has_distinct_tasks_and_reuses_configuration_cache() {
+        val root = writeLibrary("kotlin-winrt-xaml-jvm-main-", "windows { application { } }", plainJvm = true)
+        write(root.resolve("src/main/kotlin/sample/Model.xaml"), """
+            <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Model" />
+        """)
+
+        val result = run(root, "tasks", "--all", "--configuration-cache")
+        assertTrue(result.output, result.output.contains("generateWinRTXamlApplicationHeader -"))
+        assertTrue(result.output, result.output.contains("generateWinRTXamlApplicationHeaderMain"))
+        assertTrue(result.output, result.output.contains("analyzeWinRTXamlMain"))
+        assertTrue(result.output, result.output.contains("compileKotlinWinRTXamlSemanticMain"))
+        assertTrue(result.output, result.output.contains("compileWinRTXamlMain"))
+        val reused = run(root, "tasks", "--all", "--configuration-cache")
+        assertTrue(reused.output, reused.output.contains("Reusing configuration cache."))
+    }
+
     // Only markup selects the declarations that the application header describes. A library
     // without XAML takes the header's references and dependency schemas, never its own sources,
     // so a source root that another task generates is not an undeclared input of the header.
@@ -58,7 +117,7 @@ class WinRTXamlLibraryPipelineTest {
         GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
             .withArguments(*arguments, "--offline", "--stacktrace").build()
 
-    private fun writeLibrary(prefix: String, configuration: String = ""): Path {
+    private fun writeLibrary(prefix: String, configuration: String = "", plainJvm: Boolean = false): Path {
         val root = Files.createTempDirectory(prefix)
         write(root.resolve("settings.gradle"), """
             pluginManagement {
@@ -76,7 +135,7 @@ class WinRTXamlLibraryPipelineTest {
         """)
         write(root.resolve("build.gradle"), """
             plugins {
-                id 'org.jetbrains.kotlin.multiplatform'
+                id 'org.jetbrains.kotlin.${if (plainJvm) "jvm" else "multiplatform"}'
                 id 'io.github.compose-fluent.windows-toolkit'
             }
             repositories { mavenCentral() }
@@ -89,10 +148,12 @@ class WinRTXamlLibraryPipelineTest {
                     source.text = 'package sample\nobject Version { const val NAME = "1.0" }\n'
                 }
             }
+            ${if (plainJvm) "" else """
             kotlin {
                 jvm('libraryDesktop')
                 sourceSets.commonMain.kotlin.srcDir(generateVersion)
             }
+            """}
             $configuration
             tasks.register('inspectSchemaExport') {
                 doLast {
@@ -103,7 +164,7 @@ class WinRTXamlLibraryPipelineTest {
                 }
             }
         """)
-        write(root.resolve("src/commonMain/kotlin/sample/Model.kt"), """
+        write(root.resolve("src/${if (plainJvm) "main" else "commonMain"}/kotlin/sample/Model.kt"), """
             package sample
 
             class Model { var title: String = "" }

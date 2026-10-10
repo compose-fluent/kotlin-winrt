@@ -345,6 +345,7 @@ data class WinRTClassInterfaceMemberDescriptor(
     val isManuallyGeneratedInterface: Boolean,
     val callStaticMethod: Boolean,
     val mappedTypeHasCustomMembers: Boolean,
+    val isAccessibleInProjection: Boolean = true,
 )
 
 data class WinRTMergedPropertyDescriptor(
@@ -1406,6 +1407,7 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
                 isManuallyGeneratedInterface = manual,
                 callStaticMethod = callStaticMethod,
                 mappedTypeHasCustomMembers = mapped?.hasCustomMembersOutput == true,
+                isAccessibleInProjection = interfaceType.qualifiedName !in context.inaccessibleDependencyTypes,
             )
             interfaceType.properties.forEach { property ->
                 // CsWinRT get_property_methods reads MethodSemantics. Our loader

@@ -203,6 +203,7 @@ abstract class WindowsExtension @Inject constructor(
 
     fun application(action: Action<in WinAppConfiguration>) {
         applicationEnabled.set(true)
+        registerWinAppApplicationModule(project)
         action.execute(application)
         applicationConfiguredActions.forEach { it() }
         applicationConfiguredActions.clear()
@@ -298,6 +299,9 @@ abstract class WinAppOptions @Inject constructor(
     /** Defaults to the module's selected Windows SDK; may describe a separately tested OS version. */
     val maxVersionTested: Property<String> = objects.property(String::class.java)
     val mainClass: Property<String> = objects.property(String::class.java)
+    /** Launcher filename without .exe; defaults to the root project name, plus this module when there are multiple apps. */
+    val executableBaseName: Property<String> = objects.property(String::class.java)
+        .convention(defaultWinAppExecutableBaseName(project))
     /** Win32 .ico file embedded in the JVM launcher or Kotlin/Native executable. */
     val launcherIcon: RegularFileProperty = objects.fileProperty()
     val console: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
@@ -371,6 +375,7 @@ abstract class WinAppOptions @Inject constructor(
         minWindowsVersion.convention(defaults.minWindowsVersion)
         maxVersionTested.convention(defaults.maxVersionTested)
         mainClass.convention(defaults.mainClass)
+        executableBaseName.convention(defaults.executableBaseName)
         launcherIcon.convention(defaults.launcherIcon)
         console.convention(defaults.console)
         generateProjectPri.convention(defaults.generateProjectPri)

@@ -9,10 +9,12 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.TimeUnit
 
+@DisableCachingByDefault(because = "Uses locally installed native binary inspection tools")
 abstract class ValidateWinRTNativeAuthoringExportsTask : DefaultTask() {
     @get:InputFiles
     @get:Optional

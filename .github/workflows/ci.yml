@@ -28,6 +28,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up JDK 21 for inactive plugin compatibility
+        id: jdk21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
@@ -78,6 +85,7 @@ jobs:
             :winrt-generator:assemble \
             :winrt-authoring:assemble \
             :winrt-compiler-plugin:assemble \
+            :winrt-compiler-plugin:compiler-kotlin-2-4-20:assemble \
             :winrt-projections:assemble \
             :winrt-samples:assemble \
             --no-configuration-cache
@@ -100,9 +108,18 @@ jobs:
             :winrt-authoring:jvmTest \
             :winrt-authoring:mingwX64Test \
             :winrt-compiler-plugin:test \
+            :winrt-compiler-plugin:compiler-kotlin-2-4-20:test \
+            :winrt-compiler-plugin:callsite-lowering:test \
+            :winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20:test \
             :winrt-projections:jvmTest \
             :winrt-projections:mingwX64Test \
             :winrt-samples:winuiJvmTest \
             :winrt-samples:mingwX64Test \
             -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@2.2.0 \
             --no-configuration-cache
+
+      - name: Test Kotlin compiler compatibility
+        shell: pwsh
+        env:
+          WINRT_TEST_JDK_21: ${{ steps.jdk21.outputs.path }}
+        run: ./gradlew.bat -p windows-toolkit-gradle-plugin :compilerCompatibilityTest --no-configuration-cache --max-workers=2

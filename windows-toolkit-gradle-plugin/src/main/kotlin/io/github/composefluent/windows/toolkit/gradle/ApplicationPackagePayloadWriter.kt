@@ -154,9 +154,11 @@ internal object ApplicationPackagePayloadWriter {
                 if (!source.isRegularFile()) {
                     throw GradleException("Declared root package payload must be a file: $source")
                 }
+                val target = configuredTargets[normalizedSourceKey(source)]
+                    ?.toSafeRelativePath("selected executable target path") ?: Path.of(source.name)
                 addDecision(
                     selected,
-                    PackagePayloadDecision(source, Path.of(source.name), "selected executable"),
+                    PackagePayloadDecision(source, target, "selected executable"),
                     priority = ROOT_PRIORITY,
                     reserved = true,
                     unresolvedConflicts = unresolvedConflicts,

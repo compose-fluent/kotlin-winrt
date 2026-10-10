@@ -10,6 +10,7 @@ import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -45,10 +46,11 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
 
     @get:Input abstract val sourceRootOwners: MapProperty<String, String>
 
-    @get:InputFiles
-    @get:Optional
-    @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:Internal
     abstract val sourceRoots: ConfigurableFileCollection
+
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    val inputKotlinFiles get() = sourceRoots.asFileTree.matching { it.include("**/*.kt") }
 
     @get:InputFiles
     @get:Optional
