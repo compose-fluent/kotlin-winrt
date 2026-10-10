@@ -10,6 +10,90 @@ import java.nio.file.Path
 
 class RestoreWinAppDependenciesTaskTest {
     @Test
+    fun gradle_ignores_package_bookkeeping_and_empty_directories_but_tracks_metadata_and_native_payloads() {
+        val directory = Files.createTempDirectory("winrt-restore-inputs-").toFile()
+        val packageRoot = directory.resolve("nuget/sample.native/1.0.0").apply { mkdirs() }
+        val winmd = packageRoot.resolve("Sample.winmd").apply { writeText("original") }
+        val native = packageRoot.resolve("Sample.dll").apply { writeText("native") }
+        packageRoot.resolve("Sample.Native.nuspec").writeText(
+            "<package><metadata><id>Sample.Native</id><version>1.0.0</version></metadata></package>",
+        )
+        directory.resolve("fixture-lock.json").writeText("""
+            {"schema":3,"nuget_cache_dir":"${directory.resolve("nuget").path.replace('\\', '/')}",
+             "packages":[{"name":"Sample.Native","version":"1.0.0","winmds":[]}]}
+        """.trimIndent())
+        directory.resolve("fake-winapp.cmd").writeText("""
+            @echo off
+            if /I "%~1"=="--version" (
+              echo 0.6.0
+              exit /b 0
+            )
+            if not exist .winapp mkdir .winapp
+            copy /Y "%~dp0fixture-lock.json" ".winapp\winmds.lock.json" > nul
+            exit /b 0
+        """.trimIndent() + System.lineSeparator())
+        directory.resolve("settings.gradle.kts").writeText("rootProject.name = \"restore-inputs\"\n")
+        directory.resolve("gradle.properties").writeText("org.gradle.jvmargs=-Xmx768m\norg.gradle.workers.max=1\n")
+        directory.resolve("build.gradle").writeText("""
+            plugins { id 'io.github.compose-fluent.windows-toolkit' }
+            repositories { mavenCentral() }
+            windows {
+                winAppCliExecutable.set(file('fake-winapp.cmd').absolutePath)
+                packageReferences { nugetPackage("Sample.Native", "1.0.0") { generateProjection = false } }
+            }
+            // The local fake CLI only copies this fixture's lock; Gradle dependency resolution stays offline.
+            tasks.named('restoreWinAppDependencies') { task -> task.offline.set(false) }
+            // Exercise the real plugin input wiring without running a generator on fake WinMD bytes.
+            tasks.named('generateWinRTProjections') { task ->
+                task.preparedMetadataManifest.unset()
+                task.authoringCandidatesFile.unset()
+                task.setDependsOn([])
+                task.setOnlyIf { true }
+                task.actions.clear()
+                def target = task.outputDirectory.file('fixture.txt')
+                task.doLast {
+                    target.get().asFile.parentFile.mkdirs()
+                    target.get().asFile.text = 'projection'
+                }
+            }
+        """.trimIndent())
+        try {
+            fun build() = org.gradle.testkit.runner.GradleRunner.create().withProjectDir(directory)
+                .withPluginClasspath().withArguments("restoreWinAppDependencies", "generateWinRTProjections",
+                    "--offline", "--configuration-cache", "--no-build-cache", "--max-workers=1").build()
+            build()
+            build() // The initial restore makes its external package inventory available as inputs.
+            val warm = build()
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.UP_TO_DATE, warm.task(":restoreWinAppDependencies")!!.outcome)
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.UP_TO_DATE, warm.task(":generateWinRTProjections")!!.outcome)
+            packageRoot.resolve(".nupkg.metadata").writeText("restore metadata")
+            packageRoot.resolve(".signature.p7s").writeText("signature")
+            packageRoot.resolve("sample.native.1.0.0.nupkg.sha512").writeText("archive checksum")
+            packageRoot.resolve("_rels").mkdirs()
+            packageRoot.resolve("_rels/.rels").writeText("relationships")
+            packageRoot.resolve("build/native/empty").mkdirs()
+            val bookkeeping = build()
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.UP_TO_DATE, bookkeeping.task(":restoreWinAppDependencies")!!.outcome)
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.UP_TO_DATE, bookkeeping.task(":generateWinRTProjections")!!.outcome)
+            assertTrue(bookkeeping.output.contains("Reusing configuration cache"))
+            native.writeText("changed native payload")
+            val payload = build()
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.SUCCESS, payload.task(":restoreWinAppDependencies")!!.outcome)
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.UP_TO_DATE, payload.task(":generateWinRTProjections")!!.outcome)
+            val timestamp = winmd.lastModified()
+            winmd.writeText("modified metadata")
+            winmd.setLastModified(timestamp)
+            val metadata = build()
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.SUCCESS, metadata.task(":restoreWinAppDependencies")!!.outcome)
+            assertEquals(org.gradle.testkit.runner.TaskOutcome.SUCCESS, metadata.task(":generateWinRTProjections")!!.outcome)
+        } finally {
+            check(directory.canonicalFile.parentFile == java.io.File(System.getProperty("java.io.tmpdir")).canonicalFile)
+            check(directory.name.startsWith("winrt-restore-inputs-"))
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun verified_restore_detects_native_inventory_changes_and_metadata_changes_with_preserved_timestamps() {
         // .cswinrt/nuget/Microsoft.Windows.CsWinRT.targets consumes metadata;
         // native payload content is fingerprinted by the Gradle staging tasks.
@@ -57,6 +141,15 @@ class RestoreWinAppDependenciesTaskTest {
         task.restore()
         task.offline.set(true)
         task.winAppCliExecutable.set(workspace.resolve("missing-winapp.exe").toString())
+        task.restore()
+        // NuGet can finish these bookkeeping files after WinApp has returned. They do not
+        // change the verified payload and must not force another restore or projection pass.
+        Files.writeString(packageRoot.resolve(".nupkg.metadata"), "restore metadata")
+        Files.writeString(packageRoot.resolve(".signature.p7s"), "signature")
+        Files.writeString(packageRoot.resolve("sample.native.1.0.0.nupkg.sha512"), "archive checksum")
+        Files.createDirectories(packageRoot.resolve("_rels"))
+        Files.writeString(packageRoot.resolve("_rels/.rels"), "package archive relationships")
+        Files.createDirectories(packageRoot.resolve("build/native/empty"))
         task.restore()
         Files.writeString(native, "changed native layout")
         assertTrue(runCatching { task.restore() }.exceptionOrNull() is org.gradle.api.GradleException)

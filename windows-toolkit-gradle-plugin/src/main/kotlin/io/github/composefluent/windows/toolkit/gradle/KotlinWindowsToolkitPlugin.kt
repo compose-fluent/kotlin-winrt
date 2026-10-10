@@ -5420,6 +5420,9 @@ private fun configureWinAppRestoreInputFiles(
 ) {
     task.packageContentFiles.from(project.provider {
         existingWinAppPackageContentRoots(listOf(task.winmdLockFile.get().asFile))
+            .map { root -> project.fileTree(root) { tree ->
+                tree.exclude { element -> !isWinAppPackageRestoreInput(element.relativePath.pathString) }
+            } }
     })
     task.nugetConfigHierarchyFiles.from(
         project.providers.of(NuGetConfigHierarchyValueSource::class.java) {

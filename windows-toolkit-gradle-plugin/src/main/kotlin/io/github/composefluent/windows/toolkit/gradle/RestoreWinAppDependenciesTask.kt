@@ -64,6 +64,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:org.gradle.api.tasks.IgnoreEmptyDirectories
     abstract val packageContentFiles: ConfigurableFileCollection
 
     /** Tracks inherited NuGet.Config files that WinApp CLI will discover from restoreBaseDirectory. */
@@ -359,7 +360,9 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
             val root = packageRoot(lockFile, lockfile, packageEntry)
             if (!Files.isDirectory(root)) return@forEach
             Files.walk(root).use { stream ->
-                stream.filter(Files::isRegularFile).sorted().forEach { file ->
+                stream.filter(Files::isRegularFile)
+                    .filter { isWinAppPackageRestoreInput(root.relativize(it).toString()) }
+                    .sorted().forEach { file ->
                     digest.update(root.relativize(file).toString().replace('\\', '/').toByteArray())
                     digest.update(0.toByte())
                     // Gradle already fingerprints packageContentFiles. The restore
@@ -370,8 +373,7 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
                     val attributes = Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes::class.java)
                     digest.update("${attributes.size()}:${attributes.lastModifiedTime()}".toByteArray())
                     val name = file.fileName.toString().lowercase()
-                    if (name.endsWith(".winmd") || name.endsWith(".nuspec") ||
-                        name.endsWith(".sha512") || name == ".nupkg.metadata") {
+                    if (name.endsWith(".winmd") || name.endsWith(".nuspec")) {
                         digest.update(sha256(file).toByteArray())
                     }
                     digest.update(0.toByte())

@@ -314,6 +314,8 @@ JVM distribution and Windows App SDK deployment are independent settings. The de
 
 NuGet source configuration follows NuGet's normal directory hierarchy. `windows { packageReferences { nugetConfig("path/to/NuGet.Config") } }` selects an explicit config, while `packageReferences.nugetConfigDirectory` can select the restore base directory. The plugin still generates `winapp.yaml`; users do not maintain that file or a second global cache. In offline mode, restore only reuses a verified lock/cache and fails clearly when a package or lock entry is missing.
 
+NuGet archive signatures, extraction bookkeeping, and empty package directories do not invalidate restore or projection generation. WinMDs and package descriptors remain projection inputs; native payload changes invalidate restore and their owning runtime stages.
+
 ```kotlin
 windows {
     application {

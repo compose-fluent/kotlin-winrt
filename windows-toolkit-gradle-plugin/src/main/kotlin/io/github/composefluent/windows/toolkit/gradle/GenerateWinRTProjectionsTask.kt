@@ -196,6 +196,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    @get:org.gradle.api.tasks.IgnoreEmptyDirectories
     abstract val nugetPackageContentFiles: ConfigurableFileCollection
 
     @get:Input
