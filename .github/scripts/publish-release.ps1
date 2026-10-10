@@ -28,6 +28,15 @@ try {
     Invoke-ReleaseGradle @($modules | ForEach-Object { "${_}:$task" })
     Invoke-ReleaseGradle @('-p', 'windows-toolkit-gradle-plugin', ":$task")
 
+    # Check the dependent desktop projections before the full SDK matrix so
+    # missing compile references fail as soon as the default SDK is available.
+    $desktopProjectionTasks = @(
+        ":winrt-projections:windows-webview2:$task", ":winrt-projections:windows-app-sdk:$task"
+    )
+    if ($Mode -eq 'Verify') {
+        Invoke-ReleaseGradle $desktopProjectionTasks
+    }
+
     # Projection versions retain their metadata baseline; dependencies use the tag.
     $properties = Get-Content -LiteralPath 'gradle.properties'
     $sdkVersions = (($properties | Where-Object { $_ -match '^kotlinWinRT.projections.windowsSdkVersions=' }) -split '=', 2)[1].Split(',')
@@ -38,9 +47,9 @@ try {
         )
     }
     # WebView2 is a public dependency of the App SDK artifact and must be published too.
-    Invoke-ReleaseGradle @(
-        ":winrt-projections:windows-webview2:$task", ":winrt-projections:windows-app-sdk:$task"
-    )
+    if ($Mode -eq 'Publish') {
+        Invoke-ReleaseGradle $desktopProjectionTasks
+    }
 } finally {
     Pop-Location
 }
