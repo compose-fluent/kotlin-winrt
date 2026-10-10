@@ -32,6 +32,7 @@ jobs:
       commit: ${{ steps.release.outputs.commit }}
       tag: ${{ steps.release.outputs.tag }}
       asset_commit: ${{ steps.release.outputs.asset_commit }}
+      reuse_contracts: ${{ steps.release.outputs.reuse_contracts }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,6 +76,7 @@ jobs:
             if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) { throw "Missing secret: $name" }
           }
           $assetCommit = $commit
+          $reuseContracts = $false
           if ($env:ASSETS_RUN_ID) {
             if ($env:ASSETS_RUN_ID -notmatch '^\d+$') { throw 'Expected a numeric Release run ID.' }
             $sourceRun = gh run view $env:ASSETS_RUN_ID --repo $env:GITHUB_REPOSITORY `
@@ -96,9 +98,37 @@ jobs:
                 throw "Application or IDE build inputs changed; rebuild assets: $file"
               }
             }
+            # Core code is unchanged. Also require identical test commands and
+            # toolchain setup before reusing a completed runtime/compiler check.
+            function Get-ContractValidationPlan([string] $workflow) {
+              $job = [regex]::Match($workflow, '(?ms)^  maven:\r?\n(.*?)(?=^  [a-z][a-z0-9-]*:\r?\n|\z)')
+              $bootstrap = [regex]::Match($job.Value,
+                '(?ms)^      - uses: actions/setup-java@v4\r?\n.*?(?=^      - name: Validate runtime and compiler contracts)')
+              $step = [regex]::Match($job.Value,
+                '(?ms)^      - name: Validate runtime and compiler contracts\r?\n.*?(?=^      - |\z)')
+              $command = [regex]::Match($step.Value, '(?ms)^        run: \|\r?\n(.+)')
+              if (-not $bootstrap.Success -or -not $command.Success) { return $null }
+              # Both refs have already been checked against the same release tag.
+              $normalizedCommand = $command.Groups[1].Value.Replace('$env:GITHUB_REF_NAME', '$env:RELEASE_TAG')
+              return ($bootstrap.Value + $normalizedCommand).Replace("`r`n", "`n").Trim()
+            }
+            $sourceWorkflow = (git show "${assetCommit}:.github/workflows/release.yml") -join "`n"
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect source validation commands.' }
+            $sourcePlan = Get-ContractValidationPlan $sourceWorkflow
+            $currentPlan = Get-ContractValidationPlan (Get-Content .github/workflows/release.yml -Raw)
+            $installerChanges = @(git diff --name-only $assetCommit $commit -- .github/scripts/install-release-sdks.ps1)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot compare SDK bootstrap inputs.' }
+            $verifiedContracts = @($sourceRun.jobs | Where-Object { $_.name -ceq 'maven' } |
+              ForEach-Object { $_.steps } | Where-Object {
+                $_.name -ceq 'Validate runtime and compiler contracts' -and $_.conclusion -ceq 'success'
+              })
+            $reuseContracts = $verifiedContracts.Count -eq 1 -and $installerChanges.Count -eq 0 -and
+              -not [string]::IsNullOrWhiteSpace($sourcePlan) -and $sourcePlan -ceq $currentPlan
+            if ($reuseContracts) { Write-Host "Reusing successful runtime/compiler validation from run $env:ASSETS_RUN_ID." }
             Write-Host "Reusing verified assets from run $env:ASSETS_RUN_ID, source $assetCommit; release source $commit."
           }
-          "version=$version", "commit=$commit", "tag=$env:RELEASE_TAG", "asset_commit=$assetCommit" | Add-Content $env:GITHUB_OUTPUT
+          "version=$version", "commit=$commit", "tag=$env:RELEASE_TAG", "asset_commit=$assetCommit",
+            "reuse_contracts=$($reuseContracts.ToString().ToLowerInvariant())" | Add-Content $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
         with:
           name: release-notes
@@ -186,6 +216,7 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/install-release-sdks.ps1
       - name: Validate runtime and compiler contracts
+        if: ${{ needs.prepare.outputs.reuse_contracts != 'true' }}
         shell: pwsh
         run: |
           ./gradlew.bat :winrt-runtime:jvmTest :winrt-runtime:mingwX64Test `
