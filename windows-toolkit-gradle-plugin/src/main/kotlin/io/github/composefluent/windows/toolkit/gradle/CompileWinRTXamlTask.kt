@@ -5,7 +5,6 @@ import kotlinx.serialization.json.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
@@ -13,13 +12,13 @@ import org.gradle.api.tasks.*
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
 import java.io.File
+import java.nio.file.Files
 import javax.inject.Inject
 
 /** Both passes use the fork's DOM/harvester; Gradle never interprets XAML syntax. */
 @DisableCachingByDefault(because = "The XamlCompiler protocol contains absolute diagnostic and output paths")
 abstract class CompileWinRTXamlTask @Inject constructor(
     private val exec: ExecOperations,
-    private val fileSystem: FileSystemOperations,
     private val objects: ObjectFactory,
 ) : DefaultTask() {
     @get:Internal
@@ -81,6 +80,7 @@ abstract class CompileWinRTXamlTask @Inject constructor(
     @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NONE)
     abstract val applicationHeaderWinmd: RegularFileProperty
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+    @get:LocalState abstract val pageCacheDirectory: DirectoryProperty
     @get:Internal val declarationsFile get() = outputDirectory.file("declarations.json")
     /** XAMLC's type/binding contract, without the IDE/runtime source-content fingerprint. */
     @get:Internal val semanticDeclarationsFile get() = outputDirectory.file("semantic-declarations.json")
@@ -88,6 +88,7 @@ abstract class CompileWinRTXamlTask @Inject constructor(
 
     init {
         minimumWindowsVersion.convention("10.0.19041.0")
+        pageCacheDirectory.convention(project.layout.buildDirectory.dir("intermediates/kotlin-winrt/xaml-pages/$name"))
     }
 
     @TaskAction fun compile() {
@@ -97,7 +98,6 @@ abstract class CompileWinRTXamlTask @Inject constructor(
         declarationsFile.get().asFile.delete()
         semanticDeclarationsFile.get().asFile.delete()
         implementationFile.get().asFile.delete()
-        fileSystem.delete { it.delete(File(output, "compiled")) }
         File(output, "state.xml").delete()
         val compilerManifest = validateXamlCompilerPackage(compilerDirectory.get().asFile.toPath())
         validateXamlCompilerHost(compilerManifest)
@@ -147,16 +147,58 @@ abstract class CompileWinRTXamlTask @Inject constructor(
                 put("LocalAssembly", JsonArray(listOf(item(applicationHeaderWinmd.get().asFile))))
             }
         }
-        val inputFile = File(output, "input.json").apply { writeText(input.toString()) }
-        val result = exec.exec { spec ->
-            spec.workingDir(output)
-            spec.commandLine(File(compilerDirectory.get().asFile, "XamlCompiler.exe").absolutePath,
-                inputFile.absolutePath, implementationFile.get().asFile.absolutePath)
-            spec.isIgnoreExitValue = true
+        // IDE snapshot compilation needs the complete input, even when this invocation is partial.
+        File(output, "input.json").writeText(input.toString())
+        val compiled = File(output, "compiled").toPath().toAbsolutePath().normalize()
+        val cache = WinRTXamlPageCache(pageCacheDirectory.get().asFile.toPath())
+        val compilerFiles = (compilerDirectory.get().asFile.walkTopDown() + inputGenXbfDirectory.get().walkTopDown())
+            .filter { it.isFile && it.extension.lowercase() in setOf("dll", "exe", "config", "json") }.toList()
+        val context = WinRTXamlPageCache.context(input, refs + inputWindowsSdkFacadeFiles.files + compilerFiles +
+            listOfNotNull(semanticWinmd.orNull?.asFile, applicationHeaderWinmd.orNull?.asFile))
+        val keys = sources.mapValues { (path, file) -> cache.key(context, path, file, sourceHashes.getValue(path)) }
+        val cached = keys.mapNotNull { (path, key) -> cache.read(key, path)?.let { path to it } }.toMap()
+        val symbols = input["KotlinSymbols"]?.jsonObject
+        fun invoke(resources: Set<String>): JsonObject {
+            val selected = JsonObject(input + buildMap {
+                put("XamlPages", JsonArray(input.getValue("XamlPages").jsonArray.filter {
+                    it.jsonObject.getValue("MSBuild_Link").jsonPrimitive.content in resources
+                }))
+                if (symbols != null) put("KotlinSymbols", WinRTXamlPageCache.symbolsForResources(symbols, resources))
+            })
+            val invocationFile = File(output, "incremental-input.json").apply { writeText(selected.toString()) }
+            implementationFile.get().asFile.delete()
+            val result = exec.exec { spec ->
+                spec.workingDir(output)
+                spec.commandLine(File(compilerDirectory.get().asFile, "XamlCompiler.exe").absolutePath,
+                    invocationFile.absolutePath, implementationFile.get().asFile.absolutePath)
+                spec.isIgnoreExitValue = true
+            }
+            val nativePlan = runCatching { WinRTXamlDeclarations.readCompilerOutput(implementationFile.get().asFile.toPath()) }
+                .getOrElse { error("XamlCompiler failed (exit ${result.exitValue}): ${it.message}") }
+            check(result.exitValue == 0) { "XamlCompiler failed with exit ${result.exitValue}." }
+            val nativeOutput = Json.parseToJsonElement(implementationFile.get().asFile.readText()).jsonObject
+            if (finalPass) require(nativeOutput.getValue("KotlinImplementation").jsonObject
+                .getValue("DeclarationFingerprint").jsonPrimitive.content == WinRTXamlDeclarations.fingerprint(nativePlan)) {
+                "XAML source or declarations changed between semantic and final compilation. Rebuild the XAML semantic symbols."
+            }
+            return nativeOutput
         }
-        val plan = runCatching { WinRTXamlDeclarations.readCompilerOutput(implementationFile.get().asFile.toPath()) }
-            .getOrElse { error("XamlCompiler failed (exit ${result.exitValue}): ${it.message}") }
-        check(result.exitValue == 0) { "XamlCompiler failed with exit ${result.exitValue}." }
+        val changed = sources.keys - cached.keys
+        var fresh = if (changed.isNotEmpty() || sources.isEmpty()) invoke(changed) else null
+        var reused = cached
+        // A newly introduced shared resource must also invalidate otherwise reusable pages.
+        if (fresh != null && cached.isNotEmpty() && (!WinRTXamlPageCache.canIsolate(
+                WinRTXamlDeclarations.parse(fresh.getValue("KotlinDeclarations").toString())) ||
+                (fresh["GeneratedCodeFiles"] as? JsonArray).orEmpty().isNotEmpty())) {
+            reused = emptyMap()
+            fresh = invoke(sources.keys)
+        }
+        val compilerOutput = WinRTXamlPageCache.merge(reused.values.map { cache.materialize(it, compiled) } + listOfNotNull(fresh), symbols)
+        val plan = WinRTXamlDeclarations.parse(compilerOutput.getValue("KotlinDeclarations").toString())
+        require((plan.resources + plan.pages.map { it.resourcePath }).toSet() == sources.keys) {
+            "XamlCompiler returned an incomplete resource set."
+        }
+        logger.info("XAML: compiled {} resources, reused {} resources.", sources.size - reused.size, reused.size)
         require(plan.schemaVersion <= compilerManifest.getValue("protocolVersion").jsonPrimitive.int) {
             "The XamlCompiler output exceeds its declared protocol version."
         }
@@ -175,7 +217,6 @@ abstract class CompileWinRTXamlTask @Inject constructor(
         }
         val fingerprinted = plan.copy(pages = plan.pages.map { it.copy(sourceHash = sourceHashes.getValue(it.resourcePath)) })
         val declarations = WinRTXamlDeclarations.canonicalText(fingerprinted)
-        val compilerOutput = Json.parseToJsonElement(implementationFile.get().asFile.readText()).jsonObject
         if (finalPass) require(compilerOutput.getValue("KotlinImplementation").jsonObject
             .getValue("DeclarationFingerprint").jsonPrimitive.content == WinRTXamlDeclarations.fingerprint(plan)) {
             "XAML source or declarations changed between semantic and final compilation. Rebuild the XAML semantic symbols."
@@ -190,5 +231,17 @@ abstract class CompileWinRTXamlTask @Inject constructor(
         GradleFileOperations.writeStringIfChanged(implementationFile.get().asFile.toPath(), enriched.toString())
         GradleFileOperations.writeStringIfChanged(declarationsFile.get().asFile.toPath(), declarations)
         GradleFileOperations.writeStringIfChanged(semanticDeclarationsFile.get().asFile.toPath(), WinRTXamlDeclarations.canonicalText(plan))
+        // Prune stale artifacts only after the complete native contract has passed validation.
+        val generated = listOf("GeneratedXamlFiles", "GeneratedXbfFiles", "GeneratedCodeFiles").flatMap {
+            (compilerOutput[it] as? JsonArray).orEmpty().map { path -> File(path.jsonPrimitive.content).toPath().toAbsolutePath().normalize() }
+        }.toSet()
+        if (Files.isDirectory(compiled)) Files.walk(compiled).use { paths ->
+            paths.filter(Files::isRegularFile).filter { it !in generated }.forEach(Files::delete)
+        }
+        if (WinRTXamlPageCache.canIsolate(plan)) fresh?.let { nativeOutput ->
+            val freshPlan = WinRTXamlDeclarations.parse(nativeOutput.getValue("KotlinDeclarations").toString())
+            freshPlan.pages.forEach { page -> cache.write(keys.getValue(page.resourcePath), page.resourcePath, nativeOutput, compiled) }
+        }
+        cache.retain(if (WinRTXamlPageCache.canIsolate(plan)) keys.values.toSet() else emptySet())
     }
 }
