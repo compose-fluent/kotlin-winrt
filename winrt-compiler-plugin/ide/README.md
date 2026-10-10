@@ -81,6 +81,12 @@ to `.cswinrt`; IDE UI and analysis adapters do not own ABI behavior.
 
 ## CI and GitHub releases
 
+Project tags such as `v0.1.0` call this workflow as part of the combined
+[project release](../../.github/workflows/release.yml). Those ZIPs bundle and select
+the matching stable Maven toolchain (`0.1.0`) and are attached alongside the Gallery
+packages. The standalone `ide-v*` path below retains its independent snapshot
+toolchain.
+
 The **IDE Plugin** workflow builds on Windows with JDK 25. Pull requests and
 `master` commits run the platform/editor/FIR tests, verify plugin structure and
 unique class ownership, and upload three installable ZIPs with checksums and

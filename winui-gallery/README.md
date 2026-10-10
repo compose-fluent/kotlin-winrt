@@ -112,15 +112,18 @@ Use `--offline` once dependencies and the verified compiler package are cached.
 The existing snapshot workflow builds JVM and Native packages without cloning
 the XamlCompiler fork. Signing uses the existing certificate configuration.
 For the full Gallery Release, run JVM and Native packaging in separate Gradle
-invocations with `--no-daemon`. The snapshot workflow gives each invocation an
-8 GB heap with `-Dorg.gradle.jvmargs="-Xmx8g -XX:+UseSerialGC"`. Compiling the JVM
-application concurrently with Native whole-program optimization can exhaust
-that shared heap; use `--max-workers=1` for a local build of both targets.
-Gradle compilation does not provide IDE completion or a XAML designer. The
-repository does not yet ship an IDE plugin, designer or hot reload integration.
-Completion and navigation have not been verified in an IDE. Community compiler
-plugins are not loaded by default there, and IDE compiler versions require a
-separate compatibility check; see the [Kotlin IDE integration documentation](https://kotlinlang.org/docs/custom-compiler-plugins.html#ide-integration).
+invocations with `--no-daemon`. The workflow uses an 8 GB JVM build heap, then a separate Native compiler process
+with 12 GB and a 2 GB Gradle heap. Keep `--max-workers=1` when building the full
+Gallery and avoid running JVM compilation alongside Native whole-program optimization.
+The optional [IDE plugin](../winrt-compiler-plugin/ide/README.md) supplies project templates,
+Kotlin/XAML analysis and navigation, and JVM Run/Debug with development Hot Reload.
+Version 0.1.0 release assets include separate packages for the supported IntelliJ
+IDEA and Android Studio distributions. XAML Preview is temporarily disabled;
+Native Hot Reload transport is not implemented.
+
+The [project release workflow](../.github/workflows/release.yml) builds signed JVM
+and Native packages when a stable project tag is pushed. See the [root README](../README.md)
+for actual Gallery screenshots, downloads and installation requirements.
 
 Upstream licenses and asset attribution remain in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
