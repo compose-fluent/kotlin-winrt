@@ -5,6 +5,7 @@ import kotlinx.serialization.json.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
@@ -19,6 +20,7 @@ import javax.inject.Inject
 @DisableCachingByDefault(because = "The XamlCompiler protocol contains absolute diagnostic and output paths")
 abstract class CompileWinRTXamlTask @Inject constructor(
     private val exec: ExecOperations,
+    private val fileSystem: FileSystemOperations,
     private val objects: ObjectFactory,
 ) : DefaultTask() {
     @get:Internal
@@ -236,7 +238,8 @@ abstract class CompileWinRTXamlTask @Inject constructor(
             (compilerOutput[it] as? JsonArray).orEmpty().map { path -> File(path.jsonPrimitive.content).toPath().toAbsolutePath().normalize() }
         }.toSet()
         if (Files.isDirectory(compiled)) Files.walk(compiled).use { paths ->
-            paths.filter(Files::isRegularFile).filter { it !in generated }.forEach(Files::delete)
+            val obsolete = paths.filter(Files::isRegularFile).filter { it !in generated }.toList()
+            fileSystem.delete { it.delete(obsolete) }
         }
         if (WinRTXamlPageCache.canIsolate(plan)) fresh?.let { nativeOutput ->
             val freshPlan = WinRTXamlDeclarations.parse(nativeOutput.getValue("KotlinDeclarations").toString())
