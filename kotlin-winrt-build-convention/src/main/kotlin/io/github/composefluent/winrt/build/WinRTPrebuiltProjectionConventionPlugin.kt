@@ -8,10 +8,10 @@ import org.gradle.api.XmlProvider
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ConfigurablePublishArtifact
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.artifacts.PublishArtifact
 import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
-import org.gradle.api.publish.maven.MavenArtifact
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
@@ -258,41 +258,34 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         project: Project,
         verification: TaskProvider<VerifyBinaryMarkerAbsentTask>,
     ) {
-        // The toolkit excludes generated declarations from main after evaluation.
-        // A projection-only module has no business KLIB, so publish its actual
-        // projection compilation instead of KGP's nonexistent main artifact.
-        project.gradle.projectsEvaluated {
-            val projection = project.tasks.findByName("compileWinRTProjectionKotlinMingwX64")
-                as? KotlinNativeCompile ?: return@projectsEvaluated
-            val main = project.tasks.findByName("compileKotlinMingwX64")
-                as? KotlinNativeCompile ?: return@projectsEvaluated
-            if (!main.sources.isEmpty) return@projectsEvaluated
+        // The toolkit registers this artifact after excluding generated sources
+        // from main. Promote it immediately, before KGP copies the variant for
+        // publication or another project observes either artifact set.
+        project.configurations.matching { it.name == "mingwX64ApiElements" }
+            .configureEach(Action<Configuration> {
+                val apiElements = this
+                var promotedProjection = false
+                outgoing.artifacts.all(Action<PublishArtifact> artifactAdded@{
+                    if (promotedProjection) return@artifactAdded
+                    val projection = project.tasks.findByName("compileWinRTProjectionKotlinMingwX64")
+                        as? KotlinNativeCompile ?: return@artifactAdded
+                    // Gradle notifies this set before applying the artifact's
+                    // classifier action, so identify the producer by its file.
+                    if (file != projection.outputFile.get()) return@artifactAdded
+                    val main = project.tasks.findByName("compileKotlinMingwX64")
+                        as? KotlinNativeCompile ?: return@artifactAdded
+                    if (!main.sources.isEmpty) return@artifactAdded
 
-            val apiElements = project.configurations.getByName("mingwX64ApiElements")
-            if (apiElements.outgoing.artifacts.none { it.classifier == "winrt-projection" }) {
-                return@projectsEvaluated
-            }
-            // KGP copies the project variant into a separate published variant.
-            // The project variant may already be consumed by another projection;
-            // only the publication copy needs the replacement primary artifact.
-            val publishedApiElements = project.configurations.getByName("mingwX64ApiElements-published")
-            publishedApiElements.outgoing.artifacts.removeAll { it.extension == "klib" }
-            publishedApiElements.outgoing.artifact(projection.outputFile, Action<ConfigurablePublishArtifact> {
-                extension = "klib"
-                type = "klib"
-                builtBy(projection, verification)
-            })
-            project.extensions.getByType(PublishingExtension::class.java)
-                .publications.withType(MavenPublication::class.java)
-                .matching { it.name == "mingwX64" }
-                .configureEach(Action<MavenPublication> {
-                    artifacts.removeAll { it.extension == "klib" }
-                    artifact(projection.outputFile, Action<MavenArtifact> {
+                    promotedProjection = true
+                    apiElements.outgoing.artifacts.remove(this)
+                    apiElements.outgoing.artifacts.removeAll { it.extension == "klib" }
+                    apiElements.outgoing.artifact(projection.outputFile, Action<ConfigurablePublishArtifact> {
                         extension = "klib"
+                        type = "klib"
                         builtBy(projection, verification)
                     })
                 })
-        }
+            })
     }
 
     private companion object {

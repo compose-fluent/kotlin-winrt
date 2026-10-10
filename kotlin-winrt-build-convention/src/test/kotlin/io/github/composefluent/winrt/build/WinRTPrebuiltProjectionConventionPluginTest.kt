@@ -29,8 +29,8 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             write(projectDir.resolve("projection/src/mingwX64Main/kotlin/Business.kt"), "class Business")
         }
         // CsWinRT stages compiled assemblies independently from their consumers.
-        // Likewise, publication must not mutate a project variant already observed
-        // by another projection (WebView2 is consumed by the App SDK).
+        // Likewise, finalize artifacts before consumers or publication observe
+        // the variants (WebView2 is consumed by the App SDK).
         val rootBuildFile = projectDir.resolve("build.gradle.kts")
         Files.writeString(rootBuildFile, Files.readString(rootBuildFile) + "\n" + """
             val nativeConsumer = configurations.create("nativeConsumer") {
@@ -49,6 +49,10 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             evaluationDependsOn(":projection")
             afterEvaluate {
                 check(nativeConsumer.incoming.artifacts.artifactFiles.files.isNotEmpty())
+                val nativePublication = project(":projection").extensions
+                    .getByType<org.gradle.api.publish.PublishingExtension>()
+                    .publications.getByName("mingwX64") as org.gradle.api.publish.maven.MavenPublication
+                check(nativePublication.artifacts.isNotEmpty())
             }
         """.trimIndent())
         val buildFile = projectDir.resolve("projection/build.gradle.kts")
