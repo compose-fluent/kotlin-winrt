@@ -28,6 +28,29 @@ class WinRTPrebuiltProjectionConventionPluginTest {
         if (withBusinessSources) {
             write(projectDir.resolve("projection/src/mingwX64Main/kotlin/Business.kt"), "class Business")
         }
+        // CsWinRT stages compiled assemblies independently from their consumers.
+        // Likewise, publication must not mutate a project variant already observed
+        // by another projection (WebView2 is consumed by the App SDK).
+        val rootBuildFile = projectDir.resolve("build.gradle.kts")
+        Files.writeString(rootBuildFile, Files.readString(rootBuildFile) + "\n" + """
+            val nativeConsumer = configurations.create("nativeConsumer") {
+                isCanBeResolved = true
+                isCanBeConsumed = false
+                attributes {
+                    attribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE,
+                        objects.named(org.gradle.api.attributes.Usage::class.java, "kotlin-api"))
+                    attribute(org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.attribute,
+                        org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.native)
+                    attribute(org.gradle.api.attributes.Attribute.of("org.jetbrains.kotlin.native.target", String::class.java),
+                        "mingw_x64")
+                }
+            }
+            dependencies.add(nativeConsumer.name, project(":projection"))
+            evaluationDependsOn(":projection")
+            afterEvaluate {
+                check(nativeConsumer.incoming.artifacts.artifactFiles.files.isNotEmpty())
+            }
+        """.trimIndent())
         val buildFile = projectDir.resolve("projection/build.gradle.kts")
         Files.writeString(buildFile, Files.readString(buildFile) + "\n" + """
             publishing.repositories.maven {

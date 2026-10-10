@@ -273,16 +273,15 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 return@projectsEvaluated
             }
             // KGP copies the project variant into a separate published variant.
-            // Both must expose the same file for Gradle's component mapping.
-            for (configurationName in listOf("mingwX64ApiElements", "mingwX64ApiElements-published")) {
-                val configuration = project.configurations.findByName(configurationName) ?: continue
-                configuration.outgoing.artifacts.removeAll { it.extension == "klib" }
-                configuration.outgoing.artifact(projection.outputFile, Action<ConfigurablePublishArtifact> {
-                    extension = "klib"
-                    type = "klib"
-                    builtBy(projection, verification)
-                })
-            }
+            // The project variant may already be consumed by another projection;
+            // only the publication copy needs the replacement primary artifact.
+            val publishedApiElements = project.configurations.getByName("mingwX64ApiElements-published")
+            publishedApiElements.outgoing.artifacts.removeAll { it.extension == "klib" }
+            publishedApiElements.outgoing.artifact(projection.outputFile, Action<ConfigurablePublishArtifact> {
+                extension = "klib"
+                type = "klib"
+                builtBy(projection, verification)
+            })
             project.extensions.getByType(PublishingExtension::class.java)
                 .publications.withType(MavenPublication::class.java)
                 .matching { it.name == "mingwX64" }
