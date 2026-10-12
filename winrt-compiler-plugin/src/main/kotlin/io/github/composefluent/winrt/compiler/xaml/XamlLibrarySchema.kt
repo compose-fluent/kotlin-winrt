@@ -181,6 +181,11 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
         support.resolve("xaml-type-registrars.tsv").writeText("className\nio.github.composefluent.winrt.generated.xaml.$registrar\n")
         support.resolve("compiler-support.tsv").writeText("kind\tclassName\tsourceFile\tentries\towner\n" +
             "xaml-type-registrar\tio.github.composefluent.winrt.generated.xaml.$registrar\txaml-type-registrars.tsv\t1\t\n")
+        // Like the application semantic export, this isolated pass owns only schema and
+        // accessor sources. Preserve full type inference above, then consume the IR so
+        // the JVM/Native backend does not compile a second, unused copy of the library.
+        // The ordinary compilation compiles the original sources with these accessors.
+        moduleFragment.files.clear()
     }
 
     private fun defaultConstructor(klass: IrClass): IrConstructor? = if (klass.kind != ClassKind.CLASS || klass.modality == Modality.ABSTRACT) null

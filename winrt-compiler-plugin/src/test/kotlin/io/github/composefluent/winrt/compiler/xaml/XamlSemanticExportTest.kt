@@ -206,6 +206,8 @@ class XamlSemanticExportTest {
                 assertEquals(diagnostics.toString(), ExitCode.OK, result)
             }
             compile(listOf(source), "export", true)
+            assertFalse("Schema-only compilation must not emit library bytecode",
+                File(root, "export").walkTopDown().any { it.isFile && it.extension == "class" })
             val types = WinRTMetadataLoader.load(File(schema, "KotlinXaml.winmd").toPath()).namespaces.flatMap { it.types }
             assertEquals(setOf("probe.Legacy", "probe.Model", "probe.NoActivation", "probe.Choice"),
                 types.map { it.qualifiedName }.toSet())
@@ -218,6 +220,7 @@ class XamlSemanticExportTest {
             assertEquals(1, accessors.size)
             assertFalse(accessors.single().readText().contains("activate = { probe.NoActivation() }"))
             compile(listOf(source) + accessors, "with-accessors", false)
+            assertTrue(File(root, "with-accessors/probe/Model.class").isFile)
         } finally {
             root.deleteRecursively()
         }
