@@ -3,10 +3,21 @@ package io.github.composefluent.windows.toolkit.gradle
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 
 class ResolveWinUiXamlReferencesTaskTest {
+    @Test
+    fun reference_manifest_producer_runs_after_stale_xaml_cleanup() {
+        val project = ProjectBuilder.builder().build()
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val resolver = project.tasks.getByName("resolveWinRTXamlReferences") as ResolveWinUiXamlReferencesTask
+        val cleanup = project.tasks.getByName("removeStaleWinRTXamlOutputs")
+        assertTrue(resolver.taskDependencies.getDependencies(resolver).contains(cleanup))
+    }
+
     @Test
     fun reference_resolution_waits_for_the_restore_output_and_preserves_unchanged_manifests() {
         // .cswinrt/nuget/Microsoft.Windows.CsWinRT.targets: ResolveReferences

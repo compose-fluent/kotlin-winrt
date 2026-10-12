@@ -67,6 +67,8 @@ internal fun configureWinUiXamlPipeline(
         ResolveWinUiXamlReferencesTask::class.java) { task ->
         task.group = "kotlin-winrt"
         task.description = "Resolves compiler-only WinMD references after WinApp restore."
+        // Cleanup owns the parent directory; run it before recreating this input.
+        task.dependsOn(removeStaleXaml)
         task.nugetPackages.set(project.provider {
             extension.packageReferences.nugetPackages.filterNot { it.generateProjection }
                 .map { "${it.packageId}@${it.version.get()}" }
