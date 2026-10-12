@@ -18,12 +18,12 @@ data class WinRTModuleData(
     val targets: List<WinRTTargetData>,
     val packages: List<WinRTNuGetData>,
     val manifestFiles: List<String>,
-    val xamlCompilations: List<WinRTXamlCompilationData> = emptyList(),
+    val xamlCompilations: List<WinUiXamlCompilationData> = emptyList(),
     val packageLayouts: List<WinRTPackageLayoutData> = emptyList(),
     val nuGetConfigFile: String = "",
     val nuGetConfigDirectory: String = projectDirectory,
     val restoreLockFiles: List<String> = emptyList(),
-    val hotReloadLaunches: List<WinRTHotReloadLaunchData> = emptyList(),
+    val hotReloadLaunches: List<WinUiXamlHotReloadLaunchData> = emptyList(),
     val staticPreview: WinRTStaticPreviewData? = null,
     val runTasks: List<String> = emptyList(),
 ) : AbstractExternalEntityData(GradleConstants.SYSTEM_ID) {
@@ -41,12 +41,12 @@ data class WinRTModuleData(
                 model.targets.map { WinRTTargetData(it.name, it.platform, it.sourceSets.toList()) },
                 model.nuGetPackages.map { WinRTNuGetData(it.id, it.version, it.isGenerateProjection) },
                 model.manifestFiles.toList(),
-                model.xamlCompilations.map { WinRTXamlCompilationData(it.taskName, it.sourceRoots.toList(),
+                model.xamlCompilations.map { WinUiXamlCompilationData(it.taskName, it.sourceRoots.toList(),
                     it.declarationsFile, it.inputFile, it.compilerDirectory, it.metadataIndexFile) },
                 model.packageLayouts.map { WinRTPackageLayoutData(it.taskName, it.variant, it.packageDirectory,
                     it.resourceReportFile, it.minWindowsVersion, it.maxVersionTested) },
                 model.nuGetConfigFile, model.nuGetConfigDirectory, model.restoreLockFiles.toList(),
-                model.hotReloadLaunches.map { WinRTHotReloadLaunchData(it.taskName, it.executable, it.workingDirectory, it.previewExecutable) },
+                model.hotReloadLaunches.map { WinUiXamlHotReloadLaunchData(it.taskName, it.executable, it.workingDirectory, it.previewExecutable) },
                 model.staticPreview?.let { WinRTStaticPreviewData(it.taskName, it.executable, it.workingDirectory, it.metadataReferencesFile) },
                 model.runTasks.toList(),
             )
@@ -54,12 +54,12 @@ data class WinRTModuleData(
     }
 }
 
-data class WinRTHotReloadLaunchData(val taskName: String, val executable: String, val workingDirectory: String,
+data class WinUiXamlHotReloadLaunchData(val taskName: String, val executable: String, val workingDirectory: String,
     val previewExecutable: String = executable) : Serializable
 
 data class WinRTStaticPreviewData(val taskName: String, val executable: String, val workingDirectory: String,
     val metadataReferencesFile: String) : Serializable {
-    fun launch() = WinRTHotReloadLaunchData(taskName, executable, workingDirectory)
+    fun launch() = WinUiXamlHotReloadLaunchData(taskName, executable, workingDirectory)
 }
 
 data class WinRTSourceSetData(
@@ -75,7 +75,7 @@ data class WinRTNuGetData(val id: String, val version: String, val generateProje
 data class WinRTPackageLayoutData(val taskName: String, val variant: String, val packageDirectory: String,
     val resourceReportFile: String, val minWindowsVersion: String, val maxVersionTested: String) : Serializable
 
-data class WinRTXamlCompilationData(
+data class WinUiXamlCompilationData(
     val taskName: String,
     val sourceRoots: List<String>,
     val declarationsFile: String,

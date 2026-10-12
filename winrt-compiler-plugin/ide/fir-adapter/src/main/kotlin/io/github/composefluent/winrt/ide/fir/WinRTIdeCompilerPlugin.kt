@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.ide.fir
 
 import io.github.composefluent.winrt.compiler.xaml.XamlFirRegistrar
-import io.github.composefluent.winrt.metadata.WinRTXamlDeclarations
+import io.github.composefluent.winrt.metadata.WinUiXamlDeclarations
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
@@ -23,7 +23,7 @@ class WinRTIdeCompilerPlugin : CompilerPluginRegistrar() {
         val text = configuration[IDE_DECLARATIONS] ?: configuration[DECLARATIONS_PATH]?.let { path ->
             Path.of(path).takeIf(Files::isRegularFile)?.let(Files::readString)
         } ?: return
-        FirExtensionRegistrarAdapter.registerExtension(XamlFirRegistrar(WinRTXamlDeclarations.parse(text)))
+        FirExtensionRegistrarAdapter.registerExtension(XamlFirRegistrar(WinUiXamlDeclarations.parse(text)))
     }
 
     // The Kotlin plugin isolates compiler plugin classes. The IDE configuration

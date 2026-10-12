@@ -1,11 +1,11 @@
 // Port of CommunityToolkit/Windows components/Primitives/src/SwitchPresenter/SwitchPresenter.cs (MIT).
 package io.github.composefluent.winrt.gallery.toolkit
-import io.github.composefluent.winrt.runtime.WinRTXamlContentProperty
+import io.github.composefluent.winrt.runtime.WinUiXamlContentProperty
 import io.github.composefluent.winrt.runtime.WinRTObservableList
 import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.ContentPresenter
-@WinRTXamlContentProperty("SwitchCases")
+@WinUiXamlContentProperty("SwitchCases")
 internal class SwitchPresenter : ContentPresenter() {
     val SwitchCases: MutableList<Case> = WinRTObservableList()
     var Value: Any?

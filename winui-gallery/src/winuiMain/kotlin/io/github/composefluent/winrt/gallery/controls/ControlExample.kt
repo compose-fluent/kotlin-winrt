@@ -1,12 +1,12 @@
 package io.github.composefluent.winrt.gallery.controls
 import io.github.composefluent.winrt.gallery.*
 import io.github.composefluent.winrt.gallery.code.*
-import io.github.composefluent.winrt.runtime.WinRTXamlContentProperty
+import io.github.composefluent.winrt.runtime.WinUiXamlContentProperty
 import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
 import microsoft.ui.xaml.media.*
-@WinRTXamlContentProperty("Example")
+@WinUiXamlContentProperty("Example")
 internal class ControlExample : UserControl() {
     init {
         // Gallery's shadowed property defaults to Left. Initialize the inherited

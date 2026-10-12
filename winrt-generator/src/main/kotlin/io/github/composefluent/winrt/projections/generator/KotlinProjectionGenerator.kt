@@ -334,7 +334,7 @@ class KotlinProjectionGenerator(
             types = projectionContext.include,
             excludedNamespaces = excludedNamespaces,
             excludedTypes = projectionContext.excludedTypes,
-            additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
+            additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
         )
         return WinRTMetadataModel(
             namespaces = supplementalModel.namespaces + normalizedModel.namespaces,
@@ -932,7 +932,7 @@ class KotlinProjectionGenerator(
             parameterBindings = parameters.map { parameter ->
                 KotlinProjectionAbiParameterBinding(
                     name = parameter.name,
-                    typeBinding = KotlinProjectionPlanner(useWinAppSdkTypeRedirects = plan.requiresWinAppSdkTypeRedirects()).classifyAbiTypeBinding(
+                    typeBinding = KotlinProjectionPlanner(useWinUiXamlTypeRedirects = plan.requiresWinUiXamlTypeRedirects()).classifyAbiTypeBinding(
                         typeName = parameter.typeName,
                         currentNamespace = factoryType.namespace,
                         typesByQualifiedName = plan.typesByQualifiedName,
@@ -1887,7 +1887,7 @@ class KotlinProjectionGenerator(
                 useInterfaceProjectionArtifacts = true,
                 suppressProjectedMemberSlotConstants = groupProjectionFilesByPackageOnWrite,
                 projectedSlotLiterals = projectedSlotLiterals,
-                useWinAppSdkTypeRedirects = currentPlan?.requiresWinAppSdkTypeRedirects() == true,
+                useWinUiXamlTypeRedirects = currentPlan?.requiresWinUiXamlTypeRedirects() == true,
                 useKotlinDurationAlias = currentPlan?.packageName?.let(durationAliasPackages::contains) == true,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
                 supportOwnerIdentity = supportOwnerIdentity,
@@ -1907,7 +1907,7 @@ class KotlinProjectionGenerator(
                     useInterfaceProjectionArtifacts = configured.useInterfaceProjectionArtifacts,
                     suppressProjectedMemberSlotConstants = configured.suppressProjectedMemberSlotConstants,
                     projectedSlotLiterals = configured.projectedSlotLiterals + projectedSlotLiterals,
-                    useWinAppSdkTypeRedirects = configured.useWinAppSdkTypeRedirects,
+                    useWinUiXamlTypeRedirects = configured.useWinUiXamlTypeRedirects,
                     useKotlinDurationAlias = configured.useKotlinDurationAlias,
                     modulePlatformAbiCalls = configured.modulePlatformAbiCalls,
                     supportOwnerIdentity = configured.supportOwnerIdentity,
@@ -1917,7 +1917,7 @@ class KotlinProjectionGenerator(
             }
         }
 
-    private fun KotlinTypeProjectionPlan.requiresWinAppSdkTypeRedirects(): Boolean =
+    private fun KotlinTypeProjectionPlan.requiresWinUiXamlTypeRedirects(): Boolean =
         type.qualifiedName.startsWith("Microsoft.UI.")
 
     private fun List<KotlinTypeProjectionPlan>.kotlinDurationAliasPackages(): Set<String> =

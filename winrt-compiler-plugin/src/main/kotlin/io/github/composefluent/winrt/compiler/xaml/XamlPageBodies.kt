@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.compiler.xaml
 
-import io.github.composefluent.winrt.metadata.WinRTXamlDeclarationIndex
+import io.github.composefluent.winrt.metadata.WinUiXamlDeclarationIndex
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
@@ -20,7 +20,7 @@ import org.jetbrains.kotlin.name.*
 
 /** Bodies execute on the original page; no generated superclass or second COM identity. */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
-internal class XamlPageBodies(private val index: WinRTXamlDeclarationIndex, private val semanticOnly: Boolean,
+internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, private val semanticOnly: Boolean,
     private val dependencyRegistrars: List<String> = emptyList()) : IrGenerationExtension {
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         val classes = moduleFragment.files.flatMap { it.declarations }.filterIsInstance<IrClass>()
@@ -50,7 +50,7 @@ internal class XamlPageBodies(private val index: WinRTXamlDeclarationIndex, priv
                 properties.values.mapNotNull { it.getter }.forEach { getter ->
                     val builder = DeclarationIrBuilder(pluginContext, getter.symbol)
                     getter.annotations += builder.irAnnotation(constructor, emptyList()).apply {
-                        arguments[0] = builder.irString("getKotlinWinRTXaml_" + getter.correspondingPropertySymbol!!.owner.name.asString())
+                        arguments[0] = builder.irString("getKotlinWinUiXaml_" + getter.correspondingPropertySymbol!!.owner.name.asString())
                     }
                 }
             }
@@ -160,7 +160,7 @@ internal class XamlPageBodies(private val index: WinRTXamlDeclarationIndex, priv
                     +bindings.lifecycleSubscription(this, klass, page, function(xamlBindingsLoadingName), irGet(requireNotNull(load.dispatchReceiverParameter)), true)
                     +bindings.lifecycleSubscription(this, klass, page, function(xamlBindingsUnloadedName), irGet(requireNotNull(load.dispatchReceiverParameter)), false)
                 }
-                +irCall(runtime("completeWinRTXamlHotReloadComponent")).apply {
+                +irCall(runtime("completeWinUiXamlHotReloadComponent")).apply {
                     arguments[0] = irGet(requireNotNull(load.dispatchReceiverParameter))
                     arguments[1] = irString(page.className)
                     arguments[2] = irString(page.resourcePath)
@@ -239,7 +239,7 @@ internal class XamlPageBodies(private val index: WinRTXamlDeclarationIndex, priv
                                 }
                                 if (!bindingOnly && !connection.isTemplateChild) {
                                     (connection.elementName ?: connection.fieldName)?.let { name ->
-                                        +irCall(runtime("registerWinRTXamlHotReloadElement")).apply {
+                                        +irCall(runtime("registerWinUiXamlHotReloadElement")).apply {
                                             arguments[0] = irGet(requireNotNull(connect.dispatchReceiverParameter))
                                             arguments[1] = irString(page.className)
                                             arguments[2] = irString(page.resourcePath)

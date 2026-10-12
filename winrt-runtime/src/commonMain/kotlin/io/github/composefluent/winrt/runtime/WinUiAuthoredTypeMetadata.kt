@@ -13,10 +13,10 @@ import kotlin.reflect.KClass
 internal object WinUiAuthoredTypeMetadata {
     private data class Type(val type: KClass<*>, val name: String, val baseName: String)
     private val types = ConcurrentCacheMap<String, Type>()
-    private val definitions = ConcurrentCacheMap<String, WinRTXamlTypeDefinition>()
-    private val definitionsByType = ConcurrentCacheMap<KClass<*>, WinRTXamlTypeDefinition>()
+    private val definitions = ConcurrentCacheMap<String, WinUiXamlTypeDefinition>()
+    private val definitionsByType = ConcurrentCacheMap<KClass<*>, WinUiXamlTypeDefinition>()
     private val projectedDefinitions = ConcurrentCacheMap<String, Unit>()
-    private val valueTypeDefinitions = ConcurrentCacheMap<String, WinRTXamlValueTypeDefinition>()
+    private val valueTypeDefinitions = ConcurrentCacheMap<String, WinUiXamlValueTypeDefinition>()
     private data class EnumType(val type: KClass<*>, val parse: (String) -> Any)
     private val enumTypes = ConcurrentCacheMap<String, EnumType>()
 
@@ -29,39 +29,39 @@ internal object WinUiAuthoredTypeMetadata {
     fun literalParser(type: KClass<*>): ((String) -> Any)? =
         definitionsByType[type]?.createFromString ?: enumTypes.values.firstOrNull { it.type == type }?.parse
 
-    fun registerDefinition(definition: WinRTXamlTypeDefinition) {
+    fun registerDefinition(definition: WinUiXamlTypeDefinition) {
         definitions.putIfAbsent(definition.name, definition)
         definitionsByType.putIfAbsent(definition.type, definition)
         definition.valueTypes.forEach(::registerValueType)
         definition.members.values.forEach { member ->
             member.valueTypes.forEach(::registerValueType)
             member.collection?.let {
-                registerValueType(WinRTXamlValueTypeDefinition(member.typeName, it.type,
+                registerValueType(WinUiXamlValueTypeDefinition(member.typeName, it.type,
                     itemTypeName = it.itemTypeName, itemType = it.itemType, addToVector = it.add))
             }
             member.dictionary?.let {
-                registerValueType(WinRTXamlValueTypeDefinition(member.typeName, it.type,
+                registerValueType(WinUiXamlValueTypeDefinition(member.typeName, it.type,
                     itemTypeName = it.itemTypeName, itemType = it.itemType,
                     keyTypeName = it.keyTypeName, keyType = it.keyType, addToMap = it.add))
             }
         }
     }
 
-    fun registerProjectedDefinition(definition: WinRTXamlTypeDefinition) {
+    fun registerProjectedDefinition(definition: WinUiXamlTypeDefinition) {
         projectedDefinitions.putIfAbsent(definition.name, Unit)
         register(definition.type, definition.name, definition.baseName)
         registerDefinition(definition)
     }
 
     /** Development accessors do not advertise SDK classes as authored XAML types. */
-    fun registerPropertyAccessors(definition: WinRTXamlTypeDefinition) {
+    fun registerPropertyAccessors(definition: WinUiXamlTypeDefinition) {
         definitionsByType.putIfAbsent(definition.type, definition)
     }
 
     fun tryCreateAuthored(name: String, resolveType: (String) -> RawAddress): RawAddress =
         if (projectedDefinitions[name] != null) PlatformAbi.nullPointer else tryCreate(name, resolveType)
 
-    private fun registerValueType(definition: WinRTXamlValueTypeDefinition) {
+    private fun registerValueType(definition: WinUiXamlValueTypeDefinition) {
         valueTypeDefinitions.putIfAbsent(definition.name, definition)
         TypeNameSupport.registerProjectionType(definition.type, definition.name)
     }
@@ -246,11 +246,11 @@ internal object WinUiAuthoredTypeMetadata {
     }
 
     private fun publishInstance(instance: Any): RawAddress {
-        if (instance is WinRTXamlComponent) initializeWinRTXamlComponent(instance)
+        if (instance is WinUiXamlComponent) initializeWinUiXamlComponent(instance)
         return WinRTObjectMarshaller.fromManaged(instance)
     }
 
-    private fun createMember(owner: WinRTXamlTypeDefinition, member: WinRTXamlMemberDefinition,
+    private fun createMember(owner: WinUiXamlTypeDefinition, member: WinUiXamlMemberDefinition,
         resolveType: (String) -> RawAddress): RawAddress {
         fun output(write: (RawAddress) -> Unit) = WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr) {
             write(it[0] as RawAddress); KnownHResults.S_OK.value
@@ -297,7 +297,7 @@ internal object WinUiAuthoredTypeMetadata {
             WinRTTypeClassifier.classify(it)?.xamlLiteralParser) } ?: PlatformAbi.nullPointer
     }
 
-    private fun createValueType(value: WinRTXamlValueTypeDefinition,
+    private fun createValueType(value: WinUiXamlValueTypeDefinition,
         resolveType: (String) -> RawAddress): RawAddress {
         val name = value.name
         val addToVector = value.addToVector

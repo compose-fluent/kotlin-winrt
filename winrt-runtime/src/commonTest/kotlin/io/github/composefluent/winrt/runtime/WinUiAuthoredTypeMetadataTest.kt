@@ -17,7 +17,7 @@ class WinUiAuthoredTypeMetadataTest {
         // component authoring and consults the library's metadata provider.
         var constructed = 0
         val wasWinRT = Projections.isTypeWindowsRuntimeType(Model::class)
-        registerWinRTXamlProjectedTypeDefinition(WinRTXamlTypeDefinition(
+        registerWinUiXamlProjectedTypeDefinition(WinUiXamlTypeDefinition(
             Model::class, "Test.ProjectedXamlModel", "System.Object", baseType = Any::class,
             activate = { constructed++; Model() }, isBindable = false,
         ))
@@ -46,17 +46,17 @@ class WinUiAuthoredTypeMetadataTest {
     @Test
     fun ordinary_models_expose_inherited_members_content_and_factories_without_component_authoring() {
         // XamlCompiler XamlUserType/XamlMember delegates and CsWinRT's ICustomPropertyProvider.
-        registerWinRTXamlTypeDefinition(WinRTXamlTypeDefinition(
+        registerWinUiXamlTypeDefinition(WinUiXamlTypeDefinition(
             Model::class, "Test.XamlModel", "System.Object", baseType = Any::class,
             contentProperty = "Title", isWinRTComponent = false,
             members = listOf(
-                WinRTXamlMemberDefinition("Title", "String", String::class,
+                WinUiXamlMemberDefinition("Title", "String", String::class,
                     get = { (it as Model).title }, set = { instance, value -> (instance as Model).title = value as String }),
-                WinRTXamlMemberDefinition("ReadOnly", "String", String::class, get = { (it as Model).readOnly }),
+                WinUiXamlMemberDefinition("ReadOnly", "String", String::class, get = { (it as Model).readOnly }),
             ),
         ))
         var initialized = 0
-        registerWinRTXamlTypeDefinition(WinRTXamlTypeDefinition(
+        registerWinUiXamlTypeDefinition(WinUiXamlTypeDefinition(
             DerivedModel::class, "Test.DerivedXamlModel", "Test.XamlModel", baseType = Model::class,
             activate = { DerivedModel() }, createFromString = { text -> DerivedModel().apply { title = text } },
             initializer = { initialized++ }, isWinRTComponent = false,
@@ -161,19 +161,19 @@ class WinUiAuthoredTypeMetadataTest {
         // XamlCompiler CSharpTypeInfoPass2.tt: XamlUserType.KeyType/ItemType/DictionaryAdd.
         val name = "Windows.Foundation.Collections.IMap`2<String,String>"
         val values = mutableMapOf<String, String>()
-        WinUiAuthoredTypeMetadata.registerDefinition(WinRTXamlTypeDefinition(
+        WinUiAuthoredTypeMetadata.registerDefinition(WinUiXamlTypeDefinition(
             DerivedControl::class, "Test.DictionaryOwner", "System.Object",
-            members = listOf(WinRTXamlMemberDefinition("Values", name, get = { values },
-                dictionary = WinRTXamlDictionaryDefinition(MutableMap::class, "String", String::class,
+            members = listOf(WinUiXamlMemberDefinition("Values", name, get = { values },
+                dictionary = WinUiXamlDictionaryDefinition(MutableMap::class, "String", String::class,
                     "String", String::class, add = { instance, key, item ->
                         @Suppress("UNCHECKED_CAST")
                         (instance as MutableMap<String, String>)[key as String] = item as String
                     })),
-                WinRTXamlMemberDefinition("Optional", "Windows.Foundation.IReference`1<Int32>", Int::class, get = { null },
-                    valueTypes = listOf(WinRTXamlValueTypeDefinition("Windows.Foundation.IReference`1<Int32>", Int::class,
+                WinUiXamlMemberDefinition("Optional", "Windows.Foundation.IReference`1<Int32>", Int::class, get = { null },
+                    valueTypes = listOf(WinUiXamlValueTypeDefinition("Windows.Foundation.IReference`1<Int32>", Int::class,
                         boxedTypeName = "Int32", boxedType = Int::class))),
-                WinRTXamlMemberDefinition("Labels", "String[]", Array::class, get = { arrayOf("label") },
-                    valueTypes = listOf(WinRTXamlValueTypeDefinition("String[]", Array::class, isArray = true,
+                WinUiXamlMemberDefinition("Labels", "String[]", Array::class, get = { arrayOf("label") },
+                    valueTypes = listOf(WinUiXamlValueTypeDefinition("String[]", Array::class, isArray = true,
                         itemTypeName = "String", itemType = String::class))),
             ),
         ))

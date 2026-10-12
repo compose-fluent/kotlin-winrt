@@ -14,8 +14,8 @@ import org.jetbrains.kotlin.name.*
 
 internal object XamlDeclarationKey : GeneratedDeclarationKey()
 internal val xamlConnectorId = ClassId.topLevel(FqName("microsoft.ui.xaml.markup.IComponentConnector"))
-internal val xamlStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRTXamlLoadState"))
-internal val xamlComponentId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRTXamlComponent"))
+internal val xamlStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlLoadState"))
+internal val xamlComponentId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlComponent"))
 internal val xamlStateName = Name.identifier("_kotlinXamlState")
 internal val xamlConstructionStateName = Name.identifier("_kotlinXamlConstructionState")
 internal val xamlConstructionName = Name.identifier("_kotlinXamlCompleteConstruction")
@@ -23,20 +23,20 @@ internal val xamlLoadName = Name.identifier("_kotlinXamlLoad")
 internal val xamlInitializeName = Name.identifier("_kotlinXamlInitialize")
 internal val xamlConnectName = Name.identifier("connect")
 internal val xamlBindingName = Name.identifier("getBindingConnector")
-internal val xamlPageBindingOwnerId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRTXamlPageBindingOwner"))
+internal val xamlPageBindingOwnerId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlPageBindingOwner"))
 internal val xamlPageBindingConnectName = Name.identifier("_kotlinXamlConnectBindings")
-internal val xamlBindingStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRTXamlBindingState"))
+internal val xamlBindingStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlBindingState"))
 internal val xamlBindingStateName = Name.identifier("_kotlinXamlBindings")
 internal val xamlUpdateBindingsName = Name.identifier("_kotlinXamlUpdateBindings")
 internal val xamlBindingsChangedName = Name.identifier("_kotlinXamlBindingsChanged")
 internal val xamlBindingsLoadingName = Name.identifier("_kotlinXamlBindingsLoading")
 internal val xamlBindingsUnloadedName = Name.identifier("_kotlinXamlBindingsUnloaded")
 internal val xamlRefreshBindingsName = Name.identifier("updateBindings")
-internal val xamlBindingScopeId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRTXamlBindingScope"))
-internal val xamlBindingScopeOwnerId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRTXamlBindingScopeOwner"))
-internal val xamlPropertyEventId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRTXamlPropertyChangedEvent"))
-internal fun WinRTXamlPropertyDeclaration.eventStorageName() = Name.identifier("_kotlinXamlPropertyEvent_$name")
-internal fun WinRTXamlPropertyDeclaration.eventFunctions(): List<Name> = changedHandler?.let {
+internal val xamlBindingScopeId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlBindingScope"))
+internal val xamlBindingScopeOwnerId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlBindingScopeOwner"))
+internal val xamlPropertyEventId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlPropertyChangedEvent"))
+internal fun WinUiXamlPropertyDeclaration.eventStorageName() = Name.identifier("_kotlinXamlPropertyEvent_$name")
+internal fun WinUiXamlPropertyDeclaration.eventFunctions(): List<Name> = changedHandler?.let {
     listOf(Name.identifier("add$it"), Name.identifier("remove$it"))
 }.orEmpty()
 internal val xamlScopeUpdateName = Name.identifier("_kotlinXamlUpdateScope")
@@ -44,17 +44,17 @@ internal val xamlScopeConnectName = Name.identifier("_kotlinXamlConnectScope")
 internal val xamlScopeWriteBackName = Name.identifier("_kotlinXamlWriteBackScope")
 internal val xamlScopeCreateName = Name.identifier("_kotlinXamlCreateScopeConnector")
 internal val xamlScopeNames = setOf(xamlScopeUpdateName, xamlScopeConnectName, xamlScopeWriteBackName, xamlScopeCreateName)
-internal fun WinRTXamlPageDeclaration.hasTemplateScopes() = connections.any { it.isTemplateChild && it.isScopeRoot }
-internal fun WinRTXamlConnectionDeclaration.isControlTemplateScope() =
+internal fun WinUiXamlPageDeclaration.hasTemplateScopes() = connections.any { it.isTemplateChild && it.isScopeRoot }
+internal fun WinUiXamlConnectionDeclaration.isControlTemplateScope() =
     isScopeRoot && isTemplateChild && typeName == "Microsoft.UI.Xaml.Controls.ControlTemplate"
 
-internal fun WinRTXamlPageDeclaration.hasCompiledBindings() = connections.any { it.bindings.isNotEmpty() }
-internal fun WinRTXamlPageDeclaration.bindBackNames(): Set<Name> = connections.flatMap { connection ->
+internal fun WinUiXamlPageDeclaration.hasCompiledBindings() = connections.any { it.bindings.isNotEmpty() }
+internal fun WinUiXamlPageDeclaration.bindBackNames(): Set<Name> = connections.flatMap { connection ->
     connection.bindings.filter { !connection.isTemplateChild && it.mode == "TwoWay" }.map { binding -> binding.bindBackName(connection) }
 }.toSet()
-internal fun WinRTXamlBindingDeclaration.bindBackName(connection: WinRTXamlConnectionDeclaration): Name =
+internal fun WinUiXamlBindingDeclaration.bindBackName(connection: WinUiXamlConnectionDeclaration): Name =
     Name.identifier("_kotlinXamlBindBack${connection.id}_$name")
-internal fun WinRTXamlConnectionDeclaration.storageName(): String? =
+internal fun WinUiXamlConnectionDeclaration.storageName(): String? =
     if (isTemplateChild) null else fieldName ?: if (bindings.isNotEmpty()) "_kotlinXamlConnection$id" else null
 
 // Same namespace casing contract as KotlinProjectionTypeResolver.projectionClassNameForQualifiedName.
@@ -62,7 +62,7 @@ internal fun xamlProjectionClassId(name: String): ClassId = ClassId(
     FqName(name.substringBeforeLast('.', "").lowercase()), Name.identifier(name.substringAfterLast('.')),
 )
 
-internal class XamlFirRegistrar(index: WinRTXamlDeclarationIndex) : FirExtensionRegistrar() {
+internal class XamlFirRegistrar(index: WinUiXamlDeclarationIndex) : FirExtensionRegistrar() {
     private val pages = index.pages.associateBy { ClassId.topLevel(FqName(it.className)) }
     override fun ExtensionRegistrarContext.configurePlugin() {
         +FirDeclarationGenerationExtension.Factory { XamlDeclarations(it, pages) }
@@ -71,7 +71,7 @@ internal class XamlFirRegistrar(index: WinRTXamlDeclarationIndex) : FirExtension
     }
 }
 
-private class XamlDeclarations(session: FirSession, private val pages: Map<ClassId, WinRTXamlPageDeclaration>) :
+private class XamlDeclarations(session: FirSession, private val pages: Map<ClassId, WinUiXamlPageDeclaration>) :
     FirDeclarationGenerationExtension(session) {
     override fun getCallableNamesForClass(classSymbol: FirClassSymbol<*>, context: MemberGenerationContext): Set<Name> {
         val page = pages[classSymbol.classId] ?: return emptySet()
@@ -158,7 +158,7 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
     }
 }
 
-private class XamlSupertypes(session: FirSession, private val pages: Map<ClassId, WinRTXamlPageDeclaration>) : FirSupertypeGenerationExtension(session) {
+private class XamlSupertypes(session: FirSession, private val pages: Map<ClassId, WinUiXamlPageDeclaration>) : FirSupertypeGenerationExtension(session) {
     override fun needTransformSupertypes(declaration: FirClassLikeDeclaration) = declaration.symbol.classId in pages
     override fun computeAdditionalSupertypes(classLikeDeclaration: FirClassLikeDeclaration,
         resolvedSupertypes: List<FirResolvedTypeRef>, typeResolver: TypeResolveService): List<ConeKotlinType> =

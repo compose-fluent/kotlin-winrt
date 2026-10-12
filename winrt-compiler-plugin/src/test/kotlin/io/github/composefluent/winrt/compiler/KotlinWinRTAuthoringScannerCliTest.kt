@@ -27,7 +27,7 @@ class KotlinWinRTAuthoringScannerCliTest {
         KotlinWinRTAuthoringScannerCli.main(arrayOf("--metadata-index", index.toString(),
             "--source-root", root.toString(), "--output", output.toString()))
         val candidate = KotlinWinRTAuthoringCandidateFile.read(output).single()
-        assertEquals("io.github.composefluent.winrt.generated.xaml.KotlinWinRTXamlPreviewApplication", candidate.sourceTypeName)
+        assertEquals("io.github.composefluent.winrt.generated.xaml.KotlinWinUiXamlPreviewApplication", candidate.sourceTypeName)
         assertEquals(listOf("Microsoft.UI.Xaml.IApplicationOverrides"), candidate.overridableInterfaceNames)
         assertTrue(!candidate.isPublic)
     }

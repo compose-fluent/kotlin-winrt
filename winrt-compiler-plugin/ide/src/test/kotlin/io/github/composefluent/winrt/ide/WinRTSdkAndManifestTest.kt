@@ -6,7 +6,7 @@ import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.xml.XmlFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import io.github.composefluent.winrt.ide.resources.WinRTManifestSchemaProvider
+import io.github.composefluent.winrt.ide.resources.AppxManifestSchemaProvider
 import io.github.composefluent.winrt.ide.resources.WinRTXmlFormEditorProvider
 import io.github.composefluent.winrt.ide.templates.WinRTInstalledSdks
 import io.github.composefluent.winrt.ide.templates.WinRTInstalledSdkState
@@ -54,7 +54,7 @@ class WinRTSdkAndManifestTest : BasePlatformTestCase() {
         val checkout = Path.of(System.getProperty("winrt.ide.toolchain"))
         val text = Files.readString(checkout.resolve("winui-gallery/src/winuiMain/appxResources/AppxManifest.xml"))
         val xml = myFixture.configureByText("AppxManifest.xml", text) as XmlFile
-        val provider = WinRTManifestSchemaProvider()
+        val provider = AppxManifestSchemaProvider()
         assertNotNull(provider.getSchema(xml.rootTag!!.namespace, null, xml))
         listOf("uap", "desktop", "com", "rescap").forEach { prefix ->
             val ns = xml.rootTag!!.getNamespaceByPrefix(prefix)

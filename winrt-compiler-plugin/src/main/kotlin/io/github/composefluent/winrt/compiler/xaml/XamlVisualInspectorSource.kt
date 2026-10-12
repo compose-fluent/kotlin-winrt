@@ -4,14 +4,14 @@ import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeC
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringTypeDetailsRenderer
 import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegistrarName
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
-import io.github.composefluent.winrt.metadata.WinRTXamlNamespaces
+import io.github.composefluent.winrt.metadata.WinUiXamlNamespaces
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
 
 /** SDK calls shared by application inspection and the project-independent designer. */
 internal fun xamlDevelopmentConfigurationSource(inspector: String): String = """
-    io.github.composefluent.winrt.runtime.configureWinRTXamlHotReload(
+    io.github.composefluent.winrt.runtime.configureWinUiXamlHotReload(
       dispatcherFactory = {
         val queue = microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()
         val enqueue: (() -> Unit) -> Boolean = { action ->
@@ -42,7 +42,7 @@ private fun xamlPreviewWindowSource(): String = """
       host.move(windows.graphics.PointInt32(-32000, -32000))
       host.show(false)
       host.hide()
-      completeWinRTXamlHotReloadComponent(this, WinRTXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
+      completeWinUiXamlHotReloadComponent(this, WinUiXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
     }
 """.trimIndent()
 
@@ -53,7 +53,7 @@ private fun xamlPreviewWindowSource(): String = """
  * after WinUI has initialized its resources (WinUIDesktopSample/App.xaml.cs).
  */
 fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
-    val sdkNamespaces = WinRTXamlNamespaces.namespaces(WinRTXamlNamespaces.PRESENTATION).toSet()
+    val sdkNamespaces = WinUiXamlNamespaces.namespaces(WinUiXamlNamespaces.PRESENTATION).toSet()
     val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
     // The property inspector visits visual nodes, not SDK event args or metadata
     // helper classes. Its member tables follow the real UIElement base hierarchy.
@@ -68,8 +68,8 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
     require(overrides.isNotEmpty()) { "The selected WinUI SDK does not expose Application overrides for the design host." }
     KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(listOf(KotlinWinRTAuthoredTypeCandidate(
         packageName = hostPackage,
-        className = "KotlinWinRTXamlPreviewApplication",
-        sourceTypeName = "$hostPackage.KotlinWinRTXamlPreviewApplication",
+        className = "KotlinWinUiXamlPreviewApplication",
+        sourceTypeName = "$hostPackage.KotlinWinUiXamlPreviewApplication",
         winRTBaseClassName = "Microsoft.UI.Xaml.Application",
         winRTInterfaceNames = overrides,
         overridableInterfaceNames = overrides,
@@ -78,17 +78,17 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
     val accessors = writeXamlProjectedTypeRegistrationSource(root, model, names, "SdkPreview")
     writeXamlMemberConversionSource(root)
     val inspector = writeXamlVisualInspectorSource(root, "SdkPreview", false, emptyList())
-    root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinRTXamlPreviewHost.kt").writeText("""
+    root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinUiXamlPreviewHost.kt").writeText("""
         package io.github.composefluent.winrt.generated.xaml
         import microsoft.ui.xaml.*
         import io.github.composefluent.winrt.runtime.*
-        internal class KotlinWinRTXamlPreviewApplication : Application() {
+        internal class KotlinWinUiXamlPreviewApplication : Application() {
           override fun onLaunched(args: LaunchActivatedEventArgs) {
-            try { KotlinWinRTXamlPreviewHost.showWindow() }
+            try { KotlinWinUiXamlPreviewHost.showWindow() }
             catch (error: Throwable) { error.printStackTrace(); throw error }
           }
         }
-        object KotlinWinRTXamlPreviewHost {
+        object KotlinWinUiXamlPreviewHost {
           private var application: Application? = null
           private var window: Window? = null
           @kotlin.jvm.JvmStatic fun main(args: Array<String>) {
@@ -97,7 +97,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
               ${xamlDevelopmentConfigurationSource(inspector).prependIndent("              ").trimStart()}
               ${accessors?.let { "$it()" }.orEmpty()}
               io.github.composefluent.winrt.projections.support.${authoringTypeDetailsRegistrarName(hostAssembly)}.register()
-              application = KotlinWinRTXamlPreviewApplication()
+              application = KotlinWinUiXamlPreviewApplication()
             }
             window = null; application = null
           }
@@ -114,7 +114,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
  * https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.media.imaging.rendertargetbitmap */
 internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, application: Boolean, registrars: List<String>): String {
     val suffix = assemblyName.orEmpty().replace(Regex("[^A-Za-z0-9_]"), "_")
-    val name = "kotlinWinRTXamlVisualInspector_$suffix"
+    val name = "kotlinWinUiXamlVisualInspector_$suffix"
     val file = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_$suffix.kt")
     Files.createDirectories(file.parent)
     file.writeText("""
@@ -126,7 +126,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
         import microsoft.ui.xaml.*
         import microsoft.ui.xaml.media.VisualTreeHelper
         import microsoft.ui.xaml.media.imaging.RenderTargetBitmap
-        internal fun $name(): WinRTXamlVisualInspector = WinRTXamlVisualInspector(
+        internal fun $name(): WinUiXamlVisualInspector = WinUiXamlVisualInspector(
           visualRoot = { owner -> if (owner is Window) owner.content else owner },
           children = { value ->
             val element = value.asWinRT<DependencyObject>()
@@ -139,19 +139,19 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val bounds = element?.let { item -> runCatching {
               val rect = item.transformToVisual(root.asWinRT<UIElement>()).transformBounds(
                 windows.foundation.Rect(0f, 0f, item.actualWidth.toFloat(), item.actualHeight.toFloat()))
-              WinRTXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
-            }.getOrNull() } ?: WinRTXamlVisualBounds(0.0, 0.0, 0.0, 0.0)
+              WinUiXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
+            }.getOrNull() } ?: WinUiXamlVisualBounds(0.0, 0.0, 0.0, 0.0)
             val type = (value as IWinRTObject).nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
-            WinRTXamlVisualNode(emptyList(), type, element?.name.orEmpty(), bounds)
+            WinUiXamlVisualNode(emptyList(), type, element?.name.orEmpty(), bounds)
           },
           properties = { value ->
             val element = runCatching { value.asWinRT<FrameworkElement>() }.getOrNull()
-            val basic = element?.let { listOf(WinRTXamlVisualProperty("Name", it.name),
-              WinRTXamlVisualProperty("ActualWidth", it.actualWidth.toString()), WinRTXamlVisualProperty("ActualHeight", it.actualHeight.toString()),
-              WinRTXamlVisualProperty("Visibility", it.visibility.toString()), WinRTXamlVisualProperty("Opacity", it.opacity.toString()),
-              WinRTXamlVisualProperty("DataContext", it.dataContext?.toString().orEmpty()),
-              WinRTXamlVisualProperty("XamlRoot.IsHostVisible", it.xamlRoot?.isHostVisible?.toString().orEmpty())) }.orEmpty()
-            (basic + winRTXamlInspectionProperties(value)).distinctBy { it.name }
+            val basic = element?.let { listOf(WinUiXamlVisualProperty("Name", it.name),
+              WinUiXamlVisualProperty("ActualWidth", it.actualWidth.toString()), WinUiXamlVisualProperty("ActualHeight", it.actualHeight.toString()),
+              WinUiXamlVisualProperty("Visibility", it.visibility.toString()), WinUiXamlVisualProperty("Opacity", it.opacity.toString()),
+              WinUiXamlVisualProperty("DataContext", it.dataContext?.toString().orEmpty()),
+              WinUiXamlVisualProperty("XamlRoot.IsHostVisible", it.xamlRoot?.isHostVisible?.toString().orEmpty())) }.orEmpty()
+            (basic + winUiXamlInspectionProperties(value)).distinctBy { it.name }
           },
           capture = { value, complete ->
             val element = value.asWinRT<FrameworkElement>()
@@ -179,8 +179,8 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 require(bitmap.pixelWidth in 1..768 && bitmap.pixelHeight in 1..768 && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
                   "WinUI returned an unsupported bitmap size or pixel buffer."
                 }
-                val bytes = readWinRTXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())
-                complete(Result.success(WinRTXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes)))
+                val bytes = readWinUiXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())
+                complete(Result.success(WinUiXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes)))
               } catch (error: Exception) { complete(Result.failure(IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error))) }
               finally { lifetime.cancel() }
             }
@@ -208,23 +208,23 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
         )
     """.trimIndent())
     if (application) {
-        file.parent.resolve("KotlinWinRTXamlPreviewHost.kt").writeText("""
+        file.parent.resolve("KotlinWinUiXamlPreviewHost.kt").writeText("""
             package io.github.composefluent.winrt.generated.xaml
             import microsoft.ui.xaml.*
             import io.github.composefluent.winrt.runtime.*
             // The authoring scanner emits ApplicationOverrides for internal classes.
             // A private subclass would never receive WinUI's OnLaunched callback.
-            internal class KotlinWinRTXamlPreviewApplication : Application() {
-              override fun onLaunched(args: LaunchActivatedEventArgs) { KotlinWinRTXamlPreviewHost.showWindow() }
+            internal class KotlinWinUiXamlPreviewApplication : Application() {
+              override fun onLaunched(args: LaunchActivatedEventArgs) { KotlinWinUiXamlPreviewHost.showWindow() }
             }
             /** Isolated design host: the user's application main/constructor is not invoked. */
-            object KotlinWinRTXamlPreviewHost {
+            object KotlinWinUiXamlPreviewHost {
               private var application: Application? = null
               private var window: Window? = null
               @kotlin.jvm.JvmStatic fun main(args: Array<String>) {
                 Application.start {
                   ${registrars.joinToString("\n                  ") { "$it.registerAll()" }}
-                  application = KotlinWinRTXamlPreviewApplication()
+                  application = KotlinWinUiXamlPreviewApplication()
                 }
                 window = null; application = null
               }

@@ -7,7 +7,7 @@ import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMo
 import com.intellij.openapi.externalSystem.task.TaskCallback
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
 import com.intellij.openapi.project.Project
-import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
+import io.github.composefluent.winrt.ide.analysis.WinUiXamlSnapshotService
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import org.jetbrains.plugins.gradle.util.GradleConstants
 
@@ -18,7 +18,7 @@ object WinRTGradleTasks {
             add("generateWinRTProjections")
             // runWinRTXamlSdkPreview already owns preparation through its task
             // dependencies. Compile the SDK host when the user opens a preview.
-        }, "Prepare Kotlin WinRT XAML analysis") { project.service<WinRTXamlSnapshotService>().refresh() }
+        }, "Prepare Kotlin WinRT XAML analysis") { project.service<WinUiXamlSnapshotService>().refresh() }
     }
 
     fun run(project: Project, module: WinRTModuleData, tasks: List<String>, title: String,

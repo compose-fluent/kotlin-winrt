@@ -88,12 +88,12 @@ annotation class WinRTAuthoredRuntimeClass(
 /** Names the Kotlin property receiving implicit XAML child content. */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.CLASS)
-annotation class WinRTXamlContentProperty(val name: String)
+annotation class WinUiXamlContentProperty(val name: String)
 
 /** Maps WinUI CreateFromStringAttribute.MethodName to a public companion/object factory. */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.CLASS)
-annotation class WinRTXamlCreateFromString(val methodName: String)
+annotation class WinUiXamlCreateFromString(val methodName: String)
 
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.CLASS)

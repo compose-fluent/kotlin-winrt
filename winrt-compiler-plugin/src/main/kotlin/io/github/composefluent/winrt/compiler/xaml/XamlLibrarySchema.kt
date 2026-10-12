@@ -98,7 +98,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
                 if (name in names) name else resolveIndexedWinRTTypeByProjectedName(name, types)
                     ?.takeIf { it.kind == WinRTTypeKind.RuntimeClass.name }?.qualifiedName
             }
-            WinRTXamlApplicationTypeDescriptor(klass.fqNameWhenAvailable!!.asString(), base,
+            WinUiXamlApplicationTypeDescriptor(klass.fqNameWhenAvailable!!.asString(), base,
                 interfaces.getValue(klass).map { it.first.typeName },
                 isActivatable = defaultConstructor(klass) != null, isSealed = klass.modality == Modality.FINAL,
                 enumEntries = if (klass.kind == ClassKind.ENUM_CLASS) klass.declarations.filterIsInstance<IrEnumEntry>()
@@ -121,10 +121,10 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
                 val name = descriptor.runtimeClassName
                 if (klass.kind == ClassKind.ENUM_CLASS) {
                     val entries = requireNotNull(descriptor.enumEntries).joinToString(", ") { literal(it) }
-                    appendLine("    io.github.composefluent.winrt.runtime.registerWinRTXamlEnumType($name::class, ${literal(name)}, $name.entries.filter { it.name in setOf($entries) }.toTypedArray())")
+                    appendLine("    io.github.composefluent.winrt.runtime.registerWinUiXamlEnumType($name::class, ${literal(name)}, $name.entries.filter { it.name in setOf($entries) }.toTypedArray())")
                     continue
                 }
-                appendLine("    io.github.composefluent.winrt.runtime.registerWinRTXamlTypeDefinition(io.github.composefluent.winrt.runtime.WinRTXamlTypeDefinition(")
+                appendLine("    io.github.composefluent.winrt.runtime.registerWinUiXamlTypeDefinition(io.github.composefluent.winrt.runtime.WinUiXamlTypeDefinition(")
                 appendLine("      type = $name::class, name = ${literal(name)},")
                 val baseType = klass.superTypes.firstOrNull { type -> type.classFqName?.asString() == descriptor.baseRuntimeClassName ||
                     resolveIndexedWinRTTypeByProjectedName(type.classFqName?.asString().orEmpty(), types)?.qualifiedName == descriptor.baseRuntimeClassName }

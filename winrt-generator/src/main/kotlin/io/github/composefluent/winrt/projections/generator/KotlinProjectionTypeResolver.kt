@@ -160,8 +160,8 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
     }.withOuterNullability(nullable)
 }
 
-internal fun redirectedWinAppSdkAbiTypeName(typeName: String, useWinAppSdkTypeRedirects: Boolean): String {
-    if (!useWinAppSdkTypeRedirects) {
+internal fun redirectedWinUiXamlAbiTypeName(typeName: String, useWinUiXamlTypeRedirects: Boolean): String {
+    if (!useWinUiXamlTypeRedirects) {
         return typeName
     }
     return when {
@@ -183,13 +183,13 @@ internal fun redirectedWinAppSdkAbiTypeName(typeName: String, useWinAppSdkTypeRe
     }
 }
 
-internal fun redirectedWinAppSdkAbiTypeExpression(typeName: String, useWinAppSdkTypeRedirects: Boolean): String {
-    return redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects, emptyMap())
+internal fun redirectedWinUiXamlAbiTypeExpression(typeName: String, useWinUiXamlTypeRedirects: Boolean): String {
+    return redirectedWinUiXamlAbiTypeExpression(typeName, useWinUiXamlTypeRedirects, emptyMap())
 }
 
-internal fun redirectedWinAppSdkAbiTypeExpression(
+internal fun redirectedWinUiXamlAbiTypeExpression(
     typeName: String,
-    useWinAppSdkTypeRedirects: Boolean,
+    useWinUiXamlTypeRedirects: Boolean,
     typesByQualifiedName: Map<String, WinRTTypeDefinition>,
 ): String {
     val trimmed = typeName.trim()
@@ -197,9 +197,9 @@ internal fun redirectedWinAppSdkAbiTypeExpression(
     val effectiveTypeName = trimmed.removeSuffix("?")
     val genericStart = effectiveTypeName.indexOf('<')
     if (genericStart >= 0 && effectiveTypeName.endsWith('>')) {
-        val rawType = redirectedWinAppSdkAbiTypeName(
+        val rawType = redirectedWinUiXamlAbiTypeName(
             effectiveTypeName.substring(0, genericStart),
-            useWinAppSdkTypeRedirects,
+            useWinUiXamlTypeRedirects,
         )
         val resolvedRawType = if (rawType != effectiveTypeName.substring(0, genericStart) &&
             !typesByQualifiedName.containsKey(rawType)
@@ -210,11 +210,11 @@ internal fun redirectedWinAppSdkAbiTypeExpression(
         }
         val arguments = splitGenericArguments(effectiveTypeName.substring(genericStart + 1, effectiveTypeName.length - 1))
             .joinToString(", ") { argument ->
-                redirectedWinAppSdkAbiTypeExpression(argument, useWinAppSdkTypeRedirects, typesByQualifiedName)
+                redirectedWinUiXamlAbiTypeExpression(argument, useWinUiXamlTypeRedirects, typesByQualifiedName)
             }
         return "$resolvedRawType<$arguments>$nullableSuffix"
     }
-    val redirected = redirectedWinAppSdkAbiTypeName(effectiveTypeName, useWinAppSdkTypeRedirects)
+    val redirected = redirectedWinUiXamlAbiTypeName(effectiveTypeName, useWinUiXamlTypeRedirects)
     val resolved = if (redirected != effectiveTypeName && !typesByQualifiedName.containsKey(redirected)) {
         effectiveTypeName
     } else {
@@ -223,8 +223,8 @@ internal fun redirectedWinAppSdkAbiTypeExpression(
     return resolved + nullableSuffix
 }
 
-fun redirectedWinAppSdkProjectionSurfaceTypeReferences(type: WinRTTypeRef): List<WinRTTypeRef> {
-    val redirected = redirectedWinAppSdkAbiTypeExpression(type.typeName, useWinAppSdkTypeRedirects = true)
+fun redirectedWinUiXamlProjectionSurfaceTypeReferences(type: WinRTTypeRef): List<WinRTTypeRef> {
+    val redirected = redirectedWinUiXamlAbiTypeExpression(type.typeName, useWinUiXamlTypeRedirects = true)
     return if (redirected == type.typeName) {
         emptyList()
     } else {
@@ -233,10 +233,10 @@ fun redirectedWinAppSdkProjectionSurfaceTypeReferences(type: WinRTTypeRef): List
 }
 
 internal fun KotlinProjectionRenderer.redirectedAbiTypeName(typeName: String): String =
-    redirectedWinAppSdkAbiTypeName(typeName, useWinAppSdkTypeRedirects)
+    redirectedWinUiXamlAbiTypeName(typeName, useWinUiXamlTypeRedirects)
 
 internal fun KotlinProjectionRenderer.redirectedAbiTypeExpression(typeName: String): String =
-    redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects)
+    redirectedWinUiXamlAbiTypeExpression(typeName, useWinUiXamlTypeRedirects)
 
 internal fun KotlinProjectionRenderer.resolveStructFieldTypeName(
     @Suppress("UNUSED_PARAMETER") plan: KotlinTypeProjectionPlan,

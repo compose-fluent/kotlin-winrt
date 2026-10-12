@@ -13,7 +13,7 @@ import io.github.composefluent.winrt.ide.gradle.*
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.settings.WinRTIdeConfigurable
 import io.github.composefluent.winrt.ide.settings.WinRTIdeSettings
-import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -32,8 +32,8 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
         val module = WinRTModuleData(":app", "$root/app", "$root/app/build", "2.4.0", "", emptyList(),
             listOf(WinRTTargetData("jvm", "jvm", emptyList()), WinRTTargetData("mingwX64", "native", emptyList())),
             emptyList(), emptyList(), hotReloadLaunches = listOf(
-                WinRTHotReloadLaunchData("runWinAppHostJvmMain", "$root/app.exe", "$root/app"),
-                WinRTHotReloadLaunchData("runWinAppPackageJvmMain", "$root/app.exe", "$root/app")))
+                WinUiXamlHotReloadLaunchData("runWinAppHostJvmMain", "$root/app.exe", "$root/app"),
+                WinUiXamlHotReloadLaunchData("runWinAppPackageJvmMain", "$root/app.exe", "$root/app")))
         project.service<WinRTProjectService>().replaceBuildModels(root, listOf(module))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
@@ -65,7 +65,7 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
                 assertEquals(Path.of(root, "app/build/kotlin-winrt/ide-hot-reload"), launch.directory.parent)
                 assertTrue(directories.add(launch.directory))
                 assertFalse(Files.exists(launch.directory)) // State preparation does not launch or create files.
-                assertEquals(launch.directory.toString(), nativeSettings.env[WinRTXamlHotReloadProtocol.SESSION_DIRECTORY])
+                assertEquals(launch.directory.toString(), nativeSettings.env[WinUiXamlHotReloadProtocol.SESSION_DIRECTORY])
                 assertEquals("preserved", nativeSettings.env["USER_OPTION"])
                 assertFalse(nativeSettings.isPassParentEnvs)
                 assertEquals(listOf(":app:$task"), nativeSettings.taskNames)

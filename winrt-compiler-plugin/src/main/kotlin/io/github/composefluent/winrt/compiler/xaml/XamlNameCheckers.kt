@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.compiler.xaml
 
-import io.github.composefluent.winrt.metadata.WinRTXamlPageDeclaration
+import io.github.composefluent.winrt.metadata.WinUiXamlPageDeclaration
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.diagnostics.DiagnosticReporter
 import org.jetbrains.kotlin.diagnostics.reportOn
@@ -22,7 +22,7 @@ import org.jetbrains.kotlin.name.ClassId
 /** Named fields use the literal XAML name, as CSharpPagePass1.tt does.
  * Kotlin cannot safely hide a projected mutable property with a read-only field.
  */
-internal class XamlNameCheckers(session: FirSession, pages: Map<ClassId, WinRTXamlPageDeclaration>) :
+internal class XamlNameCheckers(session: FirSession, pages: Map<ClassId, WinUiXamlPageDeclaration>) :
     FirAdditionalCheckersExtension(session) {
     override val declarationCheckers = object : DeclarationCheckers() {
         override val regularClassCheckers = setOf(object : FirRegularClassChecker(MppCheckerKind.Common) {

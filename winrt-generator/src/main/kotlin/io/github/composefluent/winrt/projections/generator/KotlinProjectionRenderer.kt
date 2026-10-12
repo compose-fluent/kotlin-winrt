@@ -118,7 +118,7 @@ class KotlinProjectionRenderer(
     internal val useInterfaceProjectionArtifacts: Boolean = false,
     internal val suppressProjectedMemberSlotConstants: Boolean = false,
     internal val projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int> = emptyMap(),
-    internal val useWinAppSdkTypeRedirects: Boolean = false,
+    internal val useWinUiXamlTypeRedirects: Boolean = false,
     internal val useKotlinDurationAlias: Boolean = false,
     internal val modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
     internal val supportOwnerIdentity: String? = null,
@@ -137,7 +137,7 @@ class KotlinProjectionRenderer(
         useInterfaceProjectionArtifacts = useInterfaceProjectionArtifacts,
         suppressProjectedMemberSlotConstants = suppressProjectedMemberSlotConstants,
         projectedSlotLiterals = projectedSlotLiterals,
-        useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects,
+        useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects,
         useKotlinDurationAlias = useKotlinDurationAlias,
         modulePlatformAbiCalls = calls,
         supportOwnerIdentity = ownerIdentity,
@@ -438,7 +438,7 @@ class KotlinProjectionRenderer(
                 if (useKotlinDurationAlias) {
                     addAliasedImport(KOTLIN_DURATION_CLASS_NAME, KOTLIN_DURATION_ALIAS_CLASS_NAME.simpleName)
                 }
-                if (useWinAppSdkTypeRedirects && plan.requiresApplicationModelCoreAliasImports()) {
+                if (useWinUiXamlTypeRedirects && plan.requiresApplicationModelCoreAliasImports()) {
                     addAliasedImport(WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_CLASS_NAME, "WindowsApplicationModelCoreIFrameworkView")
                     addAliasedImport(
                         WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_SOURCE_CLASS_NAME,
@@ -483,7 +483,7 @@ class KotlinProjectionRenderer(
     internal fun renderInterfaceShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan)
-        winAppSdkCoveredApplicationModelCoreInterface(plan.type.qualifiedName)?.let { coveredInterface ->
+        winUiCoveredApplicationModelCoreInterface(plan.type.qualifiedName)?.let { coveredInterface ->
             builder.addSuperinterface(resolveTypeName(coveredInterface))
         }
         plan.type.implementedInterfaces.forEach { implemented ->
@@ -1429,7 +1429,7 @@ class KotlinProjectionRenderer(
         currentNamespace: String? = null,
     ): KotlinProjectionAbiTypeBinding =
         KotlinProjectionPlanner(
-            useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects,
+            useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects,
             guidSignatureHelpers = guidSignatureHelpers,
         ).classifyAbiTypeBinding(
             typeName = redirectedAbiTypeExpression(typeName),
@@ -1698,7 +1698,7 @@ class KotlinProjectionRenderer(
             }
             .filterNot { implemented ->
                 plan.defaultInterfaceName?.let { defaultInterfaceName ->
-                    winAppSdkCoveredApplicationModelCoreInterface(defaultInterfaceName) ==
+                    winUiCoveredApplicationModelCoreInterface(defaultInterfaceName) ==
                         implemented.interfaceName.substringBefore('<').removeSuffix("?")
                 } == true
             }
@@ -4365,7 +4365,7 @@ class KotlinProjectionRenderer(
             .build()
 }
 
-private fun winAppSdkCoveredApplicationModelCoreInterface(interfaceName: String): String? =
+private fun winUiCoveredApplicationModelCoreInterface(interfaceName: String): String? =
     when (interfaceName.substringBefore('<').removeSuffix("?")) {
         "Microsoft.UI.Xaml.IFrameworkView" -> "Windows.ApplicationModel.Core.IFrameworkView"
         "Microsoft.UI.Xaml.IFrameworkViewSource" -> "Windows.ApplicationModel.Core.IFrameworkViewSource"
@@ -4382,7 +4382,7 @@ private val WINRT_ENUM_CONSTANT_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.runtime", "WinRTEnumConstant")
 
 private fun KotlinTypeProjectionPlan.requiresApplicationModelCoreAliasImports(): Boolean =
-    winAppSdkCoveredApplicationModelCoreInterface(type.qualifiedName) != null
+    winUiCoveredApplicationModelCoreInterface(type.qualifiedName) != null
 
 internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): Boolean =
     type.kind == WinRTTypeKind.RuntimeClass &&

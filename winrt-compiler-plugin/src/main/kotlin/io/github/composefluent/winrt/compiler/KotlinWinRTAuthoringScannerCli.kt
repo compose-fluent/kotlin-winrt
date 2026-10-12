@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
-import io.github.composefluent.winrt.metadata.WinRTXamlNamespaces
+import io.github.composefluent.winrt.metadata.WinUiXamlNamespaces
 
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.KotlinImports
@@ -15,18 +15,18 @@ import io.github.composefluent.winrt.compiler.authoring.projectionPackageToMetad
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRTTypeByProjectedName
-import io.github.composefluent.winrt.metadata.WinRTXamlDeclarations
+import io.github.composefluent.winrt.metadata.WinUiXamlDeclarations
 import io.github.composefluent.winrt.metadata.WinRTAuthoredRuntimeClassDescriptor
 import io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.WinRTTypeRef
-import io.github.composefluent.winrt.metadata.WinRTXamlApplicationProperty
-import io.github.composefluent.winrt.metadata.WinRTXamlApplicationEvent
-import io.github.composefluent.winrt.metadata.WinRTXamlApplicationMethod
+import io.github.composefluent.winrt.metadata.WinUiXamlApplicationProperty
+import io.github.composefluent.winrt.metadata.WinUiXamlApplicationEvent
+import io.github.composefluent.winrt.metadata.WinUiXamlApplicationMethod
 import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
-import io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeMembers
-import io.github.composefluent.winrt.metadata.WinRTXamlApplicationTypeDescriptor
+import io.github.composefluent.winrt.metadata.WinUiXamlApplicationTypeMembers
+import io.github.composefluent.winrt.metadata.WinUiXamlApplicationTypeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTCollectionInterfaceKind
 import io.github.composefluent.winrt.compiler.xaml.writeXamlBindingSupportSource
 import io.github.composefluent.winrt.compiler.xaml.loadXamlReferenceTypeAssemblyNames
@@ -80,7 +80,7 @@ object KotlinWinRTAuthoringScannerCli {
         }
         val sourceTypeNames = mutableSetOf<String>()
         val scanned = scan(options.sourceRoots, index, options.sourceRootOwners, sourceTypeNames)
-        val pages = options.xamlDeclarations.flatMap { WinRTXamlDeclarations.parse(it.readText()).pages }.distinctBy { it.className }
+        val pages = options.xamlDeclarations.flatMap { WinUiXamlDeclarations.parse(it.readText()).pages }.distinctBy { it.className }
         val byName = scanned.associateBy { it.sourceTypeName }
         val connector = "Microsoft.UI.Xaml.Markup.IComponentConnector"
         if (pages.isNotEmpty()) {
@@ -166,7 +166,7 @@ object KotlinWinRTAuthoringScannerCli {
         fun sourceSchema(name: String): Result<XamlSourceMembers> = sourceSchemas.getOrPut(name) {
             val type = classes.getValue(name)
             runCatching { if (type.source.enumEntries(type.klass) != null)
-                XamlSourceMembers(WinRTXamlApplicationTypeMembers(), emptyList())
+                XamlSourceMembers(WinUiXamlApplicationTypeMembers(), emptyList())
             else type.source.xamlApplicationMembers(type.klass, applicationNames, index, enumNames) }
         }
         // Private x:Bind inputs belong only to the compiler's temporary schema. An
@@ -208,7 +208,7 @@ object KotlinWinRTAuthoringScannerCli {
         val applicationClasses = selected.sorted().map(classes::getValue)
         val members = schemas.mapValues { it.value.metadata }
         val descriptors = applicationClasses.map { type ->
-            WinRTXamlApplicationTypeDescriptor(type.name, type.schemaBaseName,
+            WinUiXamlApplicationTypeDescriptor(type.name, type.schemaBaseName,
                 ((if (type.name in pageNames) listOf("Microsoft.UI.Xaml.Markup.IComponentConnector")
                 else type.candidate?.winRTInterfaceNames.orEmpty()) + interfaces(type.name).map { it.first.typeName }).distinct(),
                 isActivatable = type.source.enumEntries(type.klass) == null && !type.source.isObjectDeclaration(type.klass) && !type.source.isAbstractClass(type.klass) &&
@@ -241,17 +241,17 @@ object KotlinWinRTAuthoringScannerCli {
                 stream.filter { Files.isRegularFile(it) && it.extension.equals("xaml", true) }.toList()
             } else emptyList()
         }.distinct().sorted().forEach { path ->
-            WinRTXamlNamespaces.typeReferences(path).forEach { candidates ->
+            WinUiXamlNamespaces.typeReferences(path).forEach { candidates ->
                 candidates.firstOrNull { it in names }?.let(::add)
             }
         }
     }
 
-    private data class XamlSourceProperty(val metadata: WinRTXamlApplicationProperty, val kotlinType: String)
-    private data class XamlSourceMethod(val metadata: WinRTXamlApplicationMethod,
+    private data class XamlSourceProperty(val metadata: WinUiXamlApplicationProperty, val kotlinType: String)
+    private data class XamlSourceMethod(val metadata: WinUiXamlApplicationMethod,
         val kotlinReturnType: String, val kotlinParameterTypes: List<String>)
     private data class XamlSourceMembers(
-        val metadata: WinRTXamlApplicationTypeMembers,
+        val metadata: WinUiXamlApplicationTypeMembers,
         val properties: List<XamlSourceProperty>,
         val methods: List<XamlSourceMethod> = emptyList(),
     )
@@ -285,10 +285,10 @@ object KotlinWinRTAuthoringScannerCli {
             val klass = type.klass
             val candidate = type
             val schema = schemas.getValue(candidate.name)
-            val registerName = "registerKotlinWinRTXaml${candidate.className}"
+            val registerName = "registerKotlinWinUiXaml${candidate.className}"
             val ownerRoot = candidate.sourceSetName?.let { root.resolve("sourceSets/$it") } ?: root
             val file = ownerRoot.resolve(candidate.packageName.replace('.', '/'))
-                .resolve("KotlinWinRTXaml${candidate.className}.kt")
+                .resolve("KotlinWinUiXaml${candidate.className}.kt")
             Files.createDirectories(file.parent)
             val code = buildString {
                 appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
@@ -297,13 +297,13 @@ object KotlinWinRTAuthoringScannerCli {
                 appendLine()
                 appendLine("internal fun $registerName() {")
                 if (source.enumEntries(klass) != null) {
-                    appendLine("  io.github.composefluent.winrt.runtime.registerWinRTXamlEnumType(${candidate.className}::class,")
+                    appendLine("  io.github.composefluent.winrt.runtime.registerWinUiXamlEnumType(${candidate.className}::class,")
                     appendLine("    ${candidate.name.kotlinLiteral()}, ${candidate.className}.entries.toTypedArray())")
                     appendLine("}")
                     return@buildString
                 }
-                appendLine("  io.github.composefluent.winrt.runtime.registerWinRTXamlTypeDefinition(")
-                appendLine("    io.github.composefluent.winrt.runtime.WinRTXamlTypeDefinition(")
+                appendLine("  io.github.composefluent.winrt.runtime.registerWinUiXamlTypeDefinition(")
+                appendLine("    io.github.composefluent.winrt.runtime.WinUiXamlTypeDefinition(")
                 appendLine("      type = ${candidate.className}::class,")
                 appendLine("      name = ${candidate.name.kotlinLiteral()},")
                 appendLine("      baseName = ${(candidate.schemaBaseName ?: "System.Object").kotlinLiteral()},")
@@ -317,7 +317,7 @@ object KotlinWinRTAuthoringScannerCli {
                 xamlCreateFromStringMethodSource(candidate.name, schemas.mapValues { it.value.metadata })?.let { factory ->
                     appendLine("      createFromString = { $factory(it) },")
                 }
-                val convert: (String, String) -> String = { value, type -> "io.github.composefluent.winrt.generated.xaml.kotlinWinRTXamlMemberValue<$type>($value)" }
+                val convert: (String, String) -> String = { value, type -> "io.github.composefluent.winrt.generated.xaml.kotlinWinUiXamlMemberValue<$type>($value)" }
                 val shape = xamlCollectionRegistrationSources(superInterfaces[candidate.name].orEmpty(), convert)
                 if (shape.isNotEmpty()) {
                     appendLine("      shape = ${shape.last()},")
@@ -355,7 +355,7 @@ object KotlinWinRTAuthoringScannerCli {
             val marker = supportRoot.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlResources$suffix.kt")
             Files.createDirectories(marker.parent)
             marker.writeText("package io.github.composefluent.winrt.generated.xaml\n" +
-                "private const val kotlinWinRTXamlResources$suffix = ${(assemblyName ?: "KotlinXaml").kotlinLiteral()}\n")
+                "private const val kotlinWinUiXamlResources$suffix = ${(assemblyName ?: "KotlinXaml").kotlinLiteral()}\n")
             root.resolve("registrars.tsv").writeText("className\n")
             return
         }
@@ -885,14 +885,14 @@ object KotlinWinRTAuthoringScannerCli {
                     val mutable = property.descendants().any { it.tokenType == KtTokens.VAR_KEYWORD }
                     val rawType = nodeText(typeNode).trim()
                     val resolved = if (private) runCatching { resolve(rawType) }.getOrNull() ?: return@mapNotNull null else resolve(rawType)
-                    XamlSourceProperty(WinRTXamlApplicationProperty(name, resolved,
+                    XamlSourceProperty(WinUiXamlApplicationProperty(name, resolved,
                         isReadOnly = !mutable || setter?.let {
                             hasModifier(it, KtTokens.PRIVATE_KEYWORD, KtTokens.PROTECTED_KEYWORD)
                         } == true, isPublic = !private, isStatic = isStatic,
                         isDependencyProperty = !isStatic && "${name}Property" in dependencyPropertyNames), rawType)
                 }
-            val contentProperty = xamlStringAnnotation(classNode, "WinRTXamlContentProperty", "name")
-            val parser = xamlStringAnnotation(classNode, "WinRTXamlCreateFromString", "methodName")?.let { value ->
+            val contentProperty = xamlStringAnnotation(classNode, "WinUiXamlContentProperty", "name")
+            val parser = xamlStringAnnotation(classNode, "WinUiXamlCreateFromString", "methodName")?.let { value ->
                 if ('.' !in value) value else {
                     val owner = resolveApplicationTypeName(value.substringBeforeLast('.'), packageName(), parseImports(this), applicationNames)
                     (owner ?: value.substringBeforeLast('.')) + "." + value.substringAfterLast('.')
@@ -916,7 +916,7 @@ object KotlinWinRTAuthoringScannerCli {
                     if (raw != handlerType(remove)) return@mapNotNull null
                     val type = runCatching { resolve(raw) }.getOrNull() ?: return@mapNotNull null
                     if (indexedTypes[type.qualifiedName?.substringBefore('`')]?.kind != WinRTTypeKind.Delegate.name) return@mapNotNull null
-                    WinRTXamlApplicationEvent(name.removePrefix("add"), type)
+                    WinUiXamlApplicationEvent(name.removePrefix("add"), type)
                 }
             val methods = (listOf(classNode) + companions).flatMap { owner ->
                 owner.children().firstOrNull { it.tokenType == KtNodeTypes.CLASS_BODY }?.children().orEmpty()
@@ -937,14 +937,14 @@ object KotlinWinRTAuthoringScannerCli {
                         val rawReturn = function.children().firstOrNull { it.tokenType == KtNodeTypes.TYPE_REFERENCE }?.let(::nodeText)
                             ?: if (function.children().any { it.tokenType == KtNodeTypes.BLOCK }) "Unit" else return@mapNotNull null
                         runCatching {
-                            XamlSourceMethod(WinRTXamlApplicationMethod(name, resolve(rawReturn), rawParameters.map(resolve),
+                            XamlSourceMethod(WinUiXamlApplicationMethod(name, resolve(rawReturn), rawParameters.map(resolve),
                                 isStatic = isObjectDeclaration(owner),
                                 isPublic = !hasModifier(function, KtTokens.PRIVATE_KEYWORD, KtTokens.PROTECTED_KEYWORD) &&
                                     !hasModifier(owner, KtTokens.PRIVATE_KEYWORD, KtTokens.PROTECTED_KEYWORD)), rawReturn, rawParameters)
                         }.getOrNull()
                     }
             }
-            return XamlSourceMembers(WinRTXamlApplicationTypeMembers(
+            return XamlSourceMembers(WinUiXamlApplicationTypeMembers(
                 properties.map(XamlSourceProperty::metadata), contentProperty, events, methods.map(XamlSourceMethod::metadata), parser), properties, methods)
         }
 

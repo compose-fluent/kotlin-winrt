@@ -105,9 +105,9 @@ class AppxResourcePublicationTest {
                     def usages = publishing.publications.kotlinMultiplatform.component.get().usages.collect { it.name }
                     assert !usages.contains('kotlinAppxResourcesElements')
                     assert usages.contains('kotlinAppxResourcesElementsLibraryDesktopMain')
-                    assert !usages.any { it.contains('WinRTXaml') }
-                    assert !tasks.names.any { it.startsWith('packageAppxResources') && it.contains('WinRTXaml') }
-                    assert !tasks.names.any { it.startsWith('generateAppxResources') && it.contains('WinRTXaml') }
+                    assert !usages.any { it.contains('WinUiXaml') }
+                    assert !tasks.names.any { it.startsWith('packageAppxResources') && it.contains('WinUiXaml') }
+                    assert !tasks.names.any { it.startsWith('generateAppxResources') && it.contains('WinUiXaml') }
                 }
             }
         """.trimIndent())

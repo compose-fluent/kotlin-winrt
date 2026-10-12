@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.compiler.xaml
 
-import io.github.composefluent.winrt.runtime.WinRTXamlBindingScope
+import io.github.composefluent.winrt.runtime.WinUiXamlBindingScope
 import io.github.composefluent.winrt.metadata.*
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.cli.common.ExitCode
@@ -137,16 +137,16 @@ class XamlTemplateConnectorTest {
             import io.github.composefluent.winrt.runtime.*
             import io.github.composefluent.winrt.generated.xaml.KotlinXamlBindingScopeConnector
             import microsoft.ui.xaml.FrameworkElement
-            class Owner(val root: FrameworkElement, val child: FrameworkElement, var source: Any) : WinRTXamlBindingScopeOwner {
+            class Owner(val root: FrameworkElement, val child: FrameworkElement, var source: Any) : WinUiXamlBindingScopeOwner {
                 var updates = 0
-                override fun _kotlinXamlUpdateScope(scope: WinRTXamlBindingScope, initial: Boolean) {
+                override fun _kotlinXamlUpdateScope(scope: WinUiXamlBindingScope, initial: Boolean) {
                     check(scope.dataRoot === source)
                     check(scope.target(1) === root)
                     check(scope.target(2) === child)
                     updates++
                 }
-                override fun _kotlinXamlConnectScope(scope: WinRTXamlBindingScope, connectionId: Int, target: Any?) { }
-                override fun _kotlinXamlWriteBackScope(scope: WinRTXamlBindingScope, bindingId: Int) { }
+                override fun _kotlinXamlConnectScope(scope: WinUiXamlBindingScope, connectionId: Int, target: Any?) { }
+                override fun _kotlinXamlWriteBackScope(scope: WinUiXamlBindingScope, bindingId: Int) { }
                 override fun _kotlinXamlCreateScopeConnector(connectionId: Int, target: Any?): Any? = null
             }
             fun exercise(): String {
@@ -223,46 +223,46 @@ class XamlTemplateConnectorTest {
             package io.github.composefluent.winrt.generated.xaml
             object KotlinXamlApplicationDefinitionsProbe { fun registerAll() { } }
         """.trimIndent())
-        val location = WinRTXamlSourceLocation(1, 1)
+        val location = WinUiXamlSourceLocation(1, 1)
         // The Controls namespace and scope shape are exported by XamlCompiler's
         // actual ControlTemplate harvester; the data root is TargetType (Button).
-        val index = WinRTXamlDeclarationIndex(3, listOf(WinRTXamlPageDeclaration(
+        val index = WinUiXamlDeclarationIndex(3, listOf(WinUiXamlPageDeclaration(
             "probe.MainPage", "MainPage.xaml", "Microsoft.UI.Xaml.Controls.Page", false,
             listOf("templates", "compiled-bindings", "deferred-elements", "named-elements", "events"), listOf(
-                WinRTXamlConnectionDeclaration(1, "Microsoft.UI.Xaml.Controls.Page", null, location, emptyList(),
+                WinUiXamlConnectionDeclaration(1, "Microsoft.UI.Xaml.Controls.Page", null, location, emptyList(),
                     scopeId = 1, isScopeRoot = true),
-                WinRTXamlConnectionDeclaration(2, "Microsoft.UI.Xaml.Controls.ControlTemplate", null, location, emptyList(),
+                WinUiXamlConnectionDeclaration(2, "Microsoft.UI.Xaml.Controls.ControlTemplate", null, location, emptyList(),
                     scopeId = 2, isScopeRoot = true, isTemplateChild = true,
                     dataTypeName = "Microsoft.UI.Xaml.Controls.Button", children = listOf(3, 4, 5)),
-                WinRTXamlConnectionDeclaration(3, "Microsoft.UI.Xaml.Controls.Grid", null, location, emptyList(),
+                WinUiXamlConnectionDeclaration(3, "Microsoft.UI.Xaml.Controls.Grid", null, location, emptyList(),
                     scopeId = 2, isTemplateChild = true),
-                WinRTXamlConnectionDeclaration(4, "Microsoft.UI.Xaml.Controls.TextBlock", null, location, emptyList(),
+                WinUiXamlConnectionDeclaration(4, "Microsoft.UI.Xaml.Controls.TextBlock", null, location, emptyList(),
                     elementName = "DeferredTemplateText", scopeId = 2, isTemplateChild = true,
                     canBeInstantiatedLater = true, isUnloadableRoot = true, bindings = listOf(
-                        WinRTXamlBindingDeclaration("Load", "Microsoft.UI.Xaml.Controls.TextBlock", "System.Boolean", "OneWay",
-                            WinRTXamlBindingExpression("member", "IsEnabled", receiver = WinRTXamlBindingExpression("root")),
+                        WinUiXamlBindingDeclaration("Load", "Microsoft.UI.Xaml.Controls.TextBlock", "System.Boolean", "OneWay",
+                            WinUiXamlBindingExpression("member", "IsEnabled", receiver = WinUiXamlBindingExpression("root")),
                             location, isLoad = true))),
-                WinRTXamlConnectionDeclaration(5, "Microsoft.UI.Xaml.Controls.Button", null, location,
-                    listOf(WinRTXamlEventDeclaration("Click", "onTemplateClick", "Microsoft.UI.Xaml.Controls.Button",
+                WinUiXamlConnectionDeclaration(5, "Microsoft.UI.Xaml.Controls.Button", null, location,
+                    listOf(WinUiXamlEventDeclaration("Click", "onTemplateClick", "Microsoft.UI.Xaml.Controls.Button",
                         "Microsoft.UI.Xaml.RoutedEventHandler", location)), scopeId = 2, isTemplateChild = true),
-                WinRTXamlConnectionDeclaration(6, "Microsoft.UI.Xaml.Controls.Button", "fileButton", location,
-                    listOf(WinRTXamlEventDeclaration("Click", "onClick", "Microsoft.UI.Xaml.Controls.Button",
+                WinUiXamlConnectionDeclaration(6, "Microsoft.UI.Xaml.Controls.Button", "fileButton", location,
+                    listOf(WinUiXamlEventDeclaration("Click", "onClick", "Microsoft.UI.Xaml.Controls.Button",
                         "Microsoft.UI.Xaml.RoutedEventHandler", location)), scopeId = 1, bindings = listOf(
-                        WinRTXamlBindingDeclaration("IsEnabled", "Microsoft.UI.Xaml.Controls.Button", "System.Boolean", "OneTime",
-                            WinRTXamlBindingExpression("member", "PageEnabled", receiver = WinRTXamlBindingExpression("root")), location),
-                        WinRTXamlBindingDeclaration("Click", "Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.RoutedEventHandler", "OneTime",
-                            WinRTXamlBindingExpression("member", "BoundClick", receiver = WinRTXamlBindingExpression("root")), location,
+                        WinUiXamlBindingDeclaration("IsEnabled", "Microsoft.UI.Xaml.Controls.Button", "System.Boolean", "OneTime",
+                            WinUiXamlBindingExpression("member", "PageEnabled", receiver = WinUiXamlBindingExpression("root")), location),
+                        WinUiXamlBindingDeclaration("Click", "Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.RoutedEventHandler", "OneTime",
+                            WinUiXamlBindingExpression("member", "BoundClick", receiver = WinUiXamlBindingExpression("root")), location,
                             isEvent = true))),
             ))), emptyList())
-        val declarations = File(root, "declarations.json").apply { writeText(WinRTXamlDeclarations.canonicalText(index)) }
+        val declarations = File(root, "declarations.json").apply { writeText(WinUiXamlDeclarations.canonicalText(index)) }
         val implementation = File(root, "implementation.json").apply { writeText(buildJsonObject {
             put("KotlinDeclarations", Json.parseToJsonElement(declarations.readText()))
             put("KotlinImplementation", buildJsonObject {
-                put("SchemaVersion", 3); put("DeclarationFingerprint", WinRTXamlDeclarations.fingerprint(index))
+                put("SchemaVersion", 3); put("DeclarationFingerprint", WinUiXamlDeclarations.fingerprint(index))
             })
         }.toString()) }
         val output = File(root, "classes")
-        val classpath = listOf(Unit::class.java, WinRTXamlBindingScope::class.java).joinToString(File.pathSeparator) {
+        val classpath = listOf(Unit::class.java, WinUiXamlBindingScope::class.java).joinToString(File.pathSeparator) {
             File(it.protectionDomain.codeSource.location.toURI()).absolutePath
         }
         val sources = root.walkTopDown().filter { it.isFile && it.extension == "kt" }.map { it.absolutePath }.toList()

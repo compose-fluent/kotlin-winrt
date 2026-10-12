@@ -16,12 +16,12 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.XmlAttributeValue
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
+import io.github.composefluent.winrt.ide.analysis.WinUiXamlSnapshotService
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
-import io.github.composefluent.winrt.ide.gradle.WinRTXamlCompilationData
+import io.github.composefluent.winrt.ide.gradle.WinUiXamlCompilationData
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
-import io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation
-import io.github.composefluent.winrt.ide.xaml.WinRTXamlNameRenameHandler
+import io.github.composefluent.winrt.ide.xaml.WinUiXamlGeneratedNavigation
+import io.github.composefluent.winrt.ide.xaml.WinUiXamlNameRenameHandler
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.permissions.allowAnalysisOnEdt
@@ -68,8 +68,8 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         myFixture.addFileToProject("Connector.kt", "package microsoft.ui.xaml.markup\ninterface IComponentConnector")
         myFixture.addFileToProject("Component.kt", """
             package io.github.composefluent.winrt.runtime
-            interface WinRTXamlComponent { fun initializeComponent() { _kotlinXamlInitialize() }; fun _kotlinXamlInitialize(); fun _kotlinXamlCompleteConstruction() }
-            class WinRTXamlLoadState
+            interface WinUiXamlComponent { fun initializeComponent() { _kotlinXamlInitialize() }; fun _kotlinXamlInitialize(); fun _kotlinXamlCompleteConstruction() }
+            class WinUiXamlLoadState
         """.trimIndent())
         val file = myFixture.configureByText("Shell.kt", """
             package sample
@@ -79,7 +79,7 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
             }
         """.trimIndent()) as KtFile
         val models = listOf(WinRTModuleData(":gallery", root.toString(), root.resolve("build").toString(), "2.4.0", "",
-            emptyList(), emptyList(), emptyList(), emptyList(), listOf(WinRTXamlCompilationData("analyzeWinRTXamlWinuiJvmMain",
+            emptyList(), emptyList(), emptyList(), emptyList(), listOf(WinUiXamlCompilationData("analyzeWinRTXamlWinuiJvmMain",
                 listOf(file.originalFile.virtualFile.parent.path), declarations.toString(), "", "", ""))))
         ApplicationManager.getApplication().runWriteAction { WinRTFirModuleConfiguration.configure(project, models) }
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
@@ -116,7 +116,7 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         myFixture.addFileToProject("Button.kt", "package microsoft.ui.xaml.controls\nclass Button")
         myFixture.addFileToProject("Page.kt", "package microsoft.ui.xaml.controls\nopen class Page { val Launch: Button? = null }")
         myFixture.addFileToProject("Connector.kt", "package microsoft.ui.xaml.markup\ninterface IComponentConnector")
-        myFixture.addFileToProject("Component.kt", "package io.github.composefluent.winrt.runtime\ninterface WinRTXamlComponent\nclass WinRTXamlLoadState")
+        myFixture.addFileToProject("Component.kt", "package io.github.composefluent.winrt.runtime\ninterface WinUiXamlComponent\nclass WinUiXamlLoadState")
         val file = myFixture.configureByText("Shell.kt", "package sample\nclass Shell : microsoft.ui.xaml.controls.Page() { fun element() = Open; fun parameter(Open: Int) = Open; fun local(): Int { val Open = 2; return Open } }") as KtFile
         val markup = root.resolve("Shell.xaml")
         Files.writeString(markup, """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Shell"><Button x:Name="Open"/><Button Content="{Binding ElementName=Open}"/></Page>""")
@@ -125,10 +125,10 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         project.service<WinRTProjectService>().replaceBuildModels(root.toString(), listOf(
             WinRTModuleData(":", root.toString(), root.resolve("build").toString(), "2.4.0", "",
                 emptyList(), emptyList(), emptyList(), emptyList(), listOf(
-                    WinRTXamlCompilationData("analyzeWinRTXamlMain", listOf(root.toString()), declarations.toString(), "", "", ""),
+                    WinUiXamlCompilationData("analyzeWinRTXamlMain", listOf(root.toString()), declarations.toString(), "", "", ""),
                 )),
         ))
-        val snapshots = project.service<WinRTXamlSnapshotService>()
+        val snapshots = project.service<WinUiXamlSnapshotService>()
         PlatformTestUtil.waitWithEventsDispatching("XAML snapshot", { snapshots.currentText(declarations.toString()) != null }, 10)
         assertTrue(memberNames(file).contains("Launch"))
         assertTrue(supertypeNames(file).any { it.contains("IComponentConnector") })
@@ -141,7 +141,7 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         assertTrue(nameConflictDiagnostics(file).isEmpty())
         val reference = PsiTreeUtil.findChildrenOfType(file, KtNameReferenceExpression::class.java).first { it.getReferencedName() == "Open" }
         val target = allowAnalysisOnEdt {
-            WinRTXamlGeneratedNavigation().getGotoDeclarationTargets(reference, reference.textOffset, myFixture.editor)
+            WinUiXamlGeneratedNavigation().getGotoDeclarationTargets(reference, reference.textOffset, myFixture.editor)
         }!!.single() as XmlAttributeValue
         assertEquals("Open", target.value)
         val usages = allowAnalysisOnEdt { ReferencesSearch.search(target).findAll() }
@@ -151,19 +151,19 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
             .filter { it.getReferencedName() == "Open" && it != reference }
         assertEquals(2, shadowed.size)
         shadowed.forEach { shadow ->
-            assertTrue(allowAnalysisOnEdt { WinRTXamlGeneratedNavigation.targets(shadow) }.isEmpty())
+            assertTrue(allowAnalysisOnEdt { WinUiXamlGeneratedNavigation.targets(shadow) }.isEmpty())
             myFixture.editor.caretModel.moveToOffset(shadow.textOffset)
             val context = SimpleDataContext.builder().add(CommonDataKeys.PROJECT, project)
                 .add(CommonDataKeys.PSI_FILE, file).add(CommonDataKeys.EDITOR, myFixture.editor).add(CommonDataKeys.PSI_ELEMENT, shadow).build()
-            val handler = WinRTXamlNameRenameHandler()
+            val handler = WinUiXamlNameRenameHandler()
             // The quick availability check cannot resolve Kotlin scope. Its
             // off-thread FIR result must return control to native rename.
             assertTrue(handler.isAvailableOnDataContext(context))
-            val native = WinRTXamlNameRenameHandler.nativeContext(context)
+            val native = WinUiXamlNameRenameHandler.nativeContext(context)
             assertFalse(handler.isAvailableOnDataContext(native))
             val handlers = allowAnalysisOnEdt { RenameHandlerRegistry.getInstance().getRenameHandlers(native) }
             assertTrue(handlers.toString(), handlers.isNotEmpty())
-            assertFalse(handlers.any { it is WinRTXamlNameRenameHandler })
+            assertFalse(handlers.any { it is WinUiXamlNameRenameHandler })
             assertFalse(usages.any { it.element == shadow })
         }
         allowAnalysisOnEdt { RenameProcessor(project, target, "Run", false, false).run() }
@@ -177,7 +177,7 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
         assertFalse(memberNames(file).contains("Open"))
         assertTrue(memberNames(file).contains("Run"))
-        snapshots.publish(declarations.toString(), WinRTXamlSnapshotService.EMPTY_DECLARATIONS)
+        snapshots.publish(declarations.toString(), WinUiXamlSnapshotService.EMPTY_DECLARATIONS)
         PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
         assertFalse(memberNames(file).contains("Open"))
         assertFalse(memberNames(file).contains("Run"))

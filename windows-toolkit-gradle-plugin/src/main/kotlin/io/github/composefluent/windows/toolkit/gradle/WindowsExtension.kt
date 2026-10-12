@@ -172,7 +172,7 @@ abstract class WindowsExtension @Inject constructor(
 
     /** The forked compiler package; local overrides use the same versioned protocol. */
     @get:Nested
-    val xaml: WinRTXamlConfiguration = objects.newInstance(WinRTXamlConfiguration::class.java).apply {
+    val xaml: WinUiXamlConfiguration = objects.newInstance(WinUiXamlConfiguration::class.java).apply {
         val projectDirectory = project.layout.projectDirectory
         compilerDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.compilerDirectory").map { projectDirectory.dir(it) })
         genXbfDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.genXbfDirectory").map { projectDirectory.dir(it) })
@@ -187,7 +187,7 @@ abstract class WindowsExtension @Inject constructor(
             .map(String::toBoolean).orElse(true))
     }
 
-    fun xaml(action: Action<in WinRTXamlConfiguration>) = action.execute(xaml)
+    fun xaml(action: Action<in WinUiXamlConfiguration>) = action.execute(xaml)
     /** Stable namespace owned by this module's generated AppX resource accessor. */
     val appxResourcePackageName: Property<String> = objects.property(String::class.java).convention(
         defaultAppxResourcePackageName(project.name),
@@ -234,7 +234,7 @@ abstract class WindowsExtension @Inject constructor(
     internal val runtimeAssets get() = application.runtimeAssets
 }
 
-abstract class WinRTXamlConfiguration @Inject constructor(objects: ObjectFactory) {
+abstract class WinUiXamlConfiguration @Inject constructor(objects: ObjectFactory) {
     val compilerVersion: Property<String> = objects.property(String::class.java)
     val archiveSha256: Property<String> = objects.property(String::class.java)
     val archiveUrl: Property<String> = objects.property(String::class.java)

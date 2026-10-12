@@ -2,13 +2,13 @@
 package io.github.composefluent.winrt.gallery.converters
 
 import io.github.composefluent.winrt.gallery.models.*
-import io.github.composefluent.winrt.runtime.WinRTXamlContentProperty
+import io.github.composefluent.winrt.runtime.WinUiXamlContentProperty
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.DataTemplateSelector
 import io.github.composefluent.winrt.runtime.asWinRT
 import windows.foundation.Uri
 
-@WinRTXamlContentProperty("ItemTemplate")
+@WinUiXamlContentProperty("ItemTemplate")
 internal class MenuItemTemplateSelector : DataTemplateSelector() {
     var ItemTemplate: DataTemplate? = null
     private val templates = ResourceDictionary().apply {

@@ -61,7 +61,7 @@ internal fun winRTSourceRootOwners(project: Project): Map<String, String> = buil
     }
 }
 
-internal fun winRTXamlCompilationSourceRoots(project: Project, compilation: KotlinCompilation<*>): List<File> =
+internal fun winUiXamlCompilationSourceRoots(project: Project, compilation: KotlinCompilation<*>): List<File> =
     (compilation.allKotlinSourceSets.flatMap { it.kotlin.srcDirs + it.resources.srcDirs } +
         appxResourceRoots(project, listOf(compilation.defaultSourceSet.name)).map(Path::toFile))
     .filterNot { isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it.toPath()) }

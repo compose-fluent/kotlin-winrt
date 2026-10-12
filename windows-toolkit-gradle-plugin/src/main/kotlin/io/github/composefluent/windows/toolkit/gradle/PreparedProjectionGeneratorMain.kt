@@ -6,7 +6,7 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.WinRTMetadataSourceResolver
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
-import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
+import io.github.composefluent.winrt.projections.generator.redirectedWinUiXamlProjectionSurfaceTypeReferences
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -43,7 +43,7 @@ object PreparedProjectionGeneratorMain {
                 types = (effectiveIncludeTypes + dependencySurfaceTypes).toSet(),
                 excludedNamespaces = values("excludeNamespaces").toSet(),
                 excludedTypes = values("excludeTypes").toSet(),
-                additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
+                additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
             )
         }
         val context = WinRTMetadataProjectionContext(

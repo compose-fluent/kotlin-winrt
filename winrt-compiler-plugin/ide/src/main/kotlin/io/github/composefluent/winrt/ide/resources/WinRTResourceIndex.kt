@@ -35,7 +35,7 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
             projects.refreshFromGradleCache()
             val changes = project.service<WinRTResourceChanges>()
             combine(projects.modules, changes.revision, projects.dependencyRevision,
-                project.service<io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalogService>().changes) { modules, revision, dependencyRevision, _ ->
+                project.service<io.github.composefluent.winrt.ide.xaml.WinUiXamlCatalogService>().changes) { modules, revision, dependencyRevision, _ ->
                 Triple(modules, revision, dependencyRevision)
             }.collectLatest { (modules, revision, dependencyRevision) ->
                 delay(250)

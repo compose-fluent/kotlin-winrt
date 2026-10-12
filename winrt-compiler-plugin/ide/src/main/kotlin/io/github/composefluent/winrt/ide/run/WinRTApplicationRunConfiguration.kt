@@ -13,7 +13,7 @@ import org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.project.WinRTRunConfigurationNames
 import io.github.composefluent.winrt.ide.settings.WinRTIdeSettings
-import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol
 import java.nio.file.Path
 import java.util.UUID
 
@@ -39,7 +39,7 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
         // for Debug. Clone the native configuration rather than wrapping its state
         // or mutating the user's persistent environment for each execution.
         val execution = clone() as WinRTApplicationRunConfiguration
-        execution.settings.env = settings.env + (WinRTXamlHotReloadProtocol.SESSION_DIRECTORY to directory.toString())
+        execution.settings.env = settings.env + (WinUiXamlHotReloadProtocol.SESSION_DIRECTORY to directory.toString())
         val state = execution.gradleState(executor, environment)
         if (state != null) environment.putUserData(WinRTApplicationHotReload.KEY, WinRTApplicationHotReload(module, launch, directory))
         return state

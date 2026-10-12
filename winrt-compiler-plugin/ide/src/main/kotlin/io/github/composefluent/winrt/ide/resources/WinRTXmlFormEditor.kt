@@ -91,12 +91,12 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
         val value = remember { TextFieldState() }
         val scope = rememberCoroutineScope()
         val installed by service<WinRTInstalledSdks>().state.collectAsState()
-        var catalog by remember { mutableStateOf(WinRTManifestCatalog.Empty) }
+        var catalog by remember { mutableStateOf(AppxManifestCatalog.Empty) }
         var generating by remember { mutableStateOf(false) }
         LaunchedEffect(installed.sdks, module?.windowsSdkVersion) {
             if (!resw) catalog = withContext(Dispatchers.IO) {
                 val sdk = if (module?.windowsSdkVersion?.isNotBlank() == true) installed.sdks.firstOrNull { it.version == module.windowsSdkVersion } else installed.sdks.firstOrNull()
-                runCatching { sdk?.let { WinRTManifestCatalog.read(it.schemas) } ?: WinRTManifestCatalog.Empty }.getOrDefault(WinRTManifestCatalog.Empty)
+                runCatching { sdk?.let { AppxManifestCatalog.read(it.schemas) } ?: AppxManifestCatalog.Empty }.getOrDefault(AppxManifestCatalog.Empty)
             }
         }
         fun command(action: () -> Unit) {
@@ -105,7 +105,7 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
             }
         }
         if (!resw) {
-            WinRTManifestDesigner(
+            AppxManifestDesigner(
                 snapshot = snapshot,
                 errors = snapshot.errors + listOfNotNull(failure),
                 windowsVersions = module?.packageLayouts?.distinctBy { it.variant }?.map { "${it.variant}: Windows ${it.minWindowsVersion} · tested ${it.maxVersionTested}" }.orEmpty(),
@@ -116,23 +116,23 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
                 onExtension = { application, text, extension -> command { WinRTXmlForms.addExtension(project, virtualFile, application, text, extension) } },
                 onContentUri = { application, match, type -> command { WinRTXmlForms.addContentUriRule(project, virtualFile, application, match, type) } },
                 onGradle = { module?.let { project.service<WinRTProjectService>().openFile("${it.projectDirectory}/build.gradle.kts") } },
-                onBrowse = { field -> WinRTManifestAssets.choose(project, virtualFile) { asset ->
-                    command { val relative = WinRTManifestAssets.import(project, virtualFile, asset); WinRTXmlForms.set(project, virtualFile, field, relative) }
+                onBrowse = { field -> AppxManifestAssets.choose(project, virtualFile) { asset ->
+                    command { val relative = AppxManifestAssets.import(project, virtualFile, asset); WinRTXmlForms.set(project, virtualFile, field, relative) }
                 } },
-                assetPath = { text -> WinRTManifestAssets.resolve(virtualFile.toNioPath().parent, text) },
+                assetPath = { text -> AppxManifestAssets.resolve(virtualFile.toNioPath().parent, text) },
                 catalog = catalog,
                 onCatalogCapability = { capability -> command { WinRTXmlForms.addCapability(project, virtualFile, capability) } },
                 onDeclaration = { application, declaration -> command { WinRTXmlForms.addDeclaration(project, virtualFile, application, declaration) } },
                 onAddNode = { node, child -> command { WinRTXmlForms.addNode(project, virtualFile, node, child.namespace, child.name) } },
                 onRemoveNode = { node -> command { WinRTXmlForms.removeNode(project, virtualFile, node) } },
                 onSelection = { application, rotation, selection, checked -> command { WinRTXmlForms.setSelection(project, virtualFile, application, rotation, selection, checked) } },
-                onCertificate = { field -> WinRTPackageIdentity.chooseCertificate(project, virtualFile,
+                onCertificate = { field -> WindowsPackageIdentity.chooseCertificate(project, virtualFile,
                     { subject -> command { WinRTXmlForms.set(project, virtualFile, field, subject) } }, { failure = it }) },
                 onGenerateAssets = { request -> if (!generating) {
                     generating = true
-                    val fields = WinRTManifestAssetKind.entries.mapNotNull { kind -> kind.field(snapshot, request.application)?.let { kind to it } }.toMap()
+                    val fields = AppxManifestAssetKind.entries.mapNotNull { kind -> kind.field(snapshot, request.application)?.let { kind to it } }.toMap()
                     scope.launch {
-                        val result = withContext(Dispatchers.IO) { runCatching { WinRTManifestAssets.generate(virtualFile.toNioPath().parent, request, fields) } }
+                        val result = withContext(Dispatchers.IO) { runCatching { AppxManifestAssets.generate(virtualFile.toNioPath().parent, request, fields) } }
                         generating = false
                         result.fold({ (files, edits) -> command {
                             com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, "Generate manifest assets", null, Runnable {
@@ -140,18 +140,18 @@ private class WinRTXmlFormEditor(private val project: Project, private val virtu
                                 val xml = PsiManager.getInstance(project).findFile(virtualFile) as? XmlFile ?: error("No editable manifest.")
                                 val current = WinRTXmlForms.snapshot(xml).fields.associateBy { it.id }
                                 require(edits.keys.all { current[it.id]?.value == it.value }) { "The asset paths changed while generating. Try again." }
-                                WinRTManifestAssets.write(project, virtualFile, files, request.overwrite)
+                                AppxManifestAssets.write(project, virtualFile, files, request.overwrite)
                                 edits.forEach { (field, text) -> WinRTXmlForms.set(project, virtualFile, field, text) }
                             })
                         } }, { failure = it.message })
                     }
                 } },
-                onBrowseAssetVariant = { field, scale -> WinRTManifestAssets.choose(project, virtualFile) { asset -> command {
-                    val base = WinRTManifestAssets.importVariant(project, virtualFile, asset, field, scale)
+                onBrowseAssetVariant = { field, scale -> AppxManifestAssets.choose(project, virtualFile) { asset -> command {
+                    val base = AppxManifestAssets.importVariant(project, virtualFile, asset, field, scale)
                     if (base != field.value) WinRTXmlForms.set(project, virtualFile, field, base)
                 } } },
-                onRemoveAssetVariant = { field, scale -> command { WinRTManifestAssets.removeVariant(project, virtualFile, field, scale) } },
-                onChooseAssetSource = { chosen -> WinRTManifestAssets.choose(project, virtualFile) { chosen(it.path) } },
+                onRemoveAssetVariant = { field, scale -> command { AppxManifestAssets.removeVariant(project, virtualFile, field, scale) } },
+                onChooseAssetSource = { chosen -> AppxManifestAssets.choose(project, virtualFile) { chosen(it.path) } },
                 generatingAssets = generating,
             )
             return

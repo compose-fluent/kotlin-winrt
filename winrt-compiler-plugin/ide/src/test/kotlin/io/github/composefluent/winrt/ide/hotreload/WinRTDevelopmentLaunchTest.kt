@@ -8,7 +8,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.EdtTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import io.github.composefluent.winrt.ide.gradle.WinRTHotReloadLaunchData
+import io.github.composefluent.winrt.ide.gradle.WinUiXamlHotReloadLaunchData
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.gradle.WinRTStaticPreviewData
 import kotlinx.coroutines.*
@@ -47,7 +47,7 @@ class WinRTDevelopmentLaunchTest : BasePlatformTestCase() {
             val blockedBuild = myFixture.addFileToProject("blocked-build", "not a directory").virtualFile.path
             val root = Path.of(file.path).parent.toString()
             module = WinRTModuleData(":app", root, blockedBuild, "2.4.0", "", emptyList(), emptyList(), emptyList(), emptyList(),
-                hotReloadLaunches = listOf(WinRTHotReloadLaunchData("runWindows", "$root/App.exe", root)),
+                hotReloadLaunches = listOf(WinUiXamlHotReloadLaunchData("runWindows", "$root/App.exe", root)),
                 staticPreview = WinRTStaticPreviewData("runWinRTXamlSdkPreview", "$root/Designer.exe", root, "$root/references.txt"))
             WinRTDevelopmentSession(project, scope, isolatedPreview = preview)
         }

@@ -812,7 +812,7 @@ private fun KotlinProjectionRenderer.prepareActivationFactoryCall(
     val parameterBindings = method.parameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             parameter.name,
-            KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
+            KotlinProjectionPlanner(useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects)
                 .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
         )
     }
@@ -931,7 +931,7 @@ private fun KotlinProjectionRenderer.prepareComposableFactoryCall(
     val parameterBindings = userParameters.map { parameter ->
         KotlinProjectionAbiParameterBinding(
             parameter.name,
-            KotlinProjectionPlanner(useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects)
+            KotlinProjectionPlanner(useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects)
                 .classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
         )
     }

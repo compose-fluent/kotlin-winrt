@@ -10,13 +10,13 @@ object WinRTPortableExecutableMetadataWriter {
     fun writeXamlApplicationWinmd(
         assemblyName: String,
         runtimeClasses: List<WinRTAuthoredRuntimeClassDescriptor>,
-        members: Map<String, WinRTXamlApplicationTypeMembers>,
+        members: Map<String, WinUiXamlApplicationTypeMembers>,
         outputFile: Path,
         externalTypeAssemblies: Map<String, String>,
         valueTypeNames: Set<String> = emptySet(),
     ) {
         writeXamlSchemaWinmd(assemblyName, runtimeClasses.map {
-            WinRTXamlApplicationTypeDescriptor(it.runtimeClassName, it.baseRuntimeClassName,
+            WinUiXamlApplicationTypeDescriptor(it.runtimeClassName, it.baseRuntimeClassName,
                 it.interfaceNames, it.isActivatable, it.isSealed)
         }, members, outputFile, externalTypeAssemblies, valueTypeNames)
     }
@@ -24,8 +24,8 @@ object WinRTPortableExecutableMetadataWriter {
     /** Plain Kotlin data models participate in XAML schema without becoming exported WinRT components. */
     fun writeXamlSchemaWinmd(
         assemblyName: String,
-        runtimeClasses: List<WinRTXamlApplicationTypeDescriptor>,
-        members: Map<String, WinRTXamlApplicationTypeMembers>,
+        runtimeClasses: List<WinUiXamlApplicationTypeDescriptor>,
+        members: Map<String, WinUiXamlApplicationTypeMembers>,
         outputFile: Path,
         externalTypeAssemblies: Map<String, String>,
         valueTypeNames: Set<String> = emptySet(),
@@ -82,7 +82,7 @@ data class WinRTPortableExecutableInterfaceDescriptor(
     val implementedInterfaceNames: List<String> = emptyList(),
 )
 
-data class WinRTXamlApplicationTypeDescriptor(
+data class WinUiXamlApplicationTypeDescriptor(
     val runtimeClassName: String,
     val baseRuntimeClassName: String? = null,
     val interfaceNames: List<String> = emptyList(),
@@ -112,7 +112,7 @@ private class WinmdBuilder(
     private val runtimeClasses: List<WinmdClass>,
     private val interfaces: List<WinRTPortableExecutableInterfaceDescriptor> = emptyList(),
     private val externalTypeAssemblies: Map<String, String>? = null,
-    private val applicationMembers: Map<String, WinRTXamlApplicationTypeMembers> = emptyMap(),
+    private val applicationMembers: Map<String, WinUiXamlApplicationTypeMembers> = emptyMap(),
     private val valueTypeNames: Set<String> = emptySet(),
     private val isApplicationSchema: Boolean = false,
 ) {

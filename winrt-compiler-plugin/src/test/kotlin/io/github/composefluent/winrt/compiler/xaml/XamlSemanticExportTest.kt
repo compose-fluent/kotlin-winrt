@@ -14,7 +14,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import java.net.URLClassLoader
-import io.github.composefluent.winrt.runtime.WinRTXamlLoadState
+import io.github.composefluent.winrt.runtime.WinUiXamlLoadState
 
 class XamlSemanticExportTest {
     @Test
@@ -38,9 +38,9 @@ class XamlSemanticExportTest {
         try {
             val reference = root.toPath().resolve("Library.winmd")
             WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Library", listOf(
-                WinRTXamlApplicationTypeDescriptor("library.ToolTip"),
-                WinRTXamlApplicationTypeDescriptor("library.NoActivation", isActivatable = false),
-                WinRTXamlApplicationTypeDescriptor("library.Unused"),
+                WinUiXamlApplicationTypeDescriptor("library.ToolTip"),
+                WinUiXamlApplicationTypeDescriptor("library.NoActivation", isActivatable = false),
+                WinUiXamlApplicationTypeDescriptor("library.Unused"),
             ), emptyMap(), reference, mapOf(
                 "Windows.Foundation.Metadata.VersionAttribute" to "Windows.Foundation.FoundationContract",
                 "Windows.Foundation.Metadata.ActivatableAttribute" to "Windows.Foundation.FoundationContract",
@@ -53,7 +53,7 @@ class XamlSemanticExportTest {
             assertNotNull(writeXamlProjectedTypeRegistrationSource(output, listOf(reference),
                 setOf("library.ToolTip", "library.NoActivation"), "Application"))
             val source = output.toFile().walkTopDown().single { it.isFile && it.extension == "kt" }.readText()
-            assertTrue(source.contains("registerWinRTXamlProjectedTypeDefinition"))
+            assertTrue(source.contains("registerWinUiXamlProjectedTypeDefinition"))
             assertTrue(source.contains("activate = { library.ToolTip() }"))
             assertFalse(source.contains("NoActivation"))
             assertFalse(source.contains("Unused"))
@@ -95,7 +95,7 @@ class XamlSemanticExportTest {
             val metadata = File(root, "metadata.tsv").apply { writeText("") }
             val references = File(root, "references.txt").apply { writeText("") }
             val schema = File(root, "schema")
-            val classpath = listOf(Unit::class.java, WinRTXamlLoadState::class.java).joinToString(File.pathSeparator) {
+            val classpath = listOf(Unit::class.java, WinUiXamlLoadState::class.java).joinToString(File.pathSeparator) {
                 File(it.protectionDomain.codeSource.location.toURI()).absolutePath
             }
             fun compile(sources: List<File>, destination: String, export: Boolean) {
@@ -136,8 +136,8 @@ class XamlSemanticExportTest {
         val schema = root.resolve("Library.KotlinXaml.winmd")
         val component = root.resolve("Library.winmd")
         WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Library.KotlinXaml",
-            listOf(WinRTXamlApplicationTypeDescriptor("sample.Component"),
-                WinRTXamlApplicationTypeDescriptor("sample.Model")), emptyMap(), schema, emptyMap())
+            listOf(WinUiXamlApplicationTypeDescriptor("sample.Component"),
+                WinUiXamlApplicationTypeDescriptor("sample.Model")), emptyMap(), schema, emptyMap())
         WinRTPortableExecutableMetadataWriter.writeAuthoredWinmd("Library",
             listOf(WinRTAuthoredRuntimeClassDescriptor("sample.Component",
                 interfaceNames = listOf("Windows.Foundation.IStringable"))), component,
@@ -159,7 +159,7 @@ class XamlSemanticExportTest {
         val schema = root.resolve("Library.KotlinXaml.winmd")
         val component = root.resolve("Other.winmd")
         WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Library.KotlinXaml",
-            listOf(WinRTXamlApplicationTypeDescriptor("sample.Component")), emptyMap(), schema, emptyMap())
+            listOf(WinUiXamlApplicationTypeDescriptor("sample.Component")), emptyMap(), schema, emptyMap())
         WinRTPortableExecutableMetadataWriter.writeAuthoredWinmd("Other",
             listOf(WinRTAuthoredRuntimeClassDescriptor("sample.Component",
                 interfaceNames = listOf("Windows.Foundation.IStringable"))), component,
@@ -206,10 +206,10 @@ class XamlSemanticExportTest {
         }
         val header = File(root, "Header.winmd")
         WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd(
-            "Header", listOf(WinRTXamlApplicationTypeDescriptor(
+            "Header", listOf(WinUiXamlApplicationTypeDescriptor(
                 "probe.MainPage", "Microsoft.UI.Xaml.Controls.Page"),
-                WinRTXamlApplicationTypeDescriptor("probe.Choice", "System.Enum", enumEntries = listOf("Zero", "One")),
-                WinRTXamlApplicationTypeDescriptor("probe.ParsedValue")), emptyMap(), header.toPath(),
+                WinUiXamlApplicationTypeDescriptor("probe.Choice", "System.Enum", enumEntries = listOf("Zero", "One")),
+                WinUiXamlApplicationTypeDescriptor("probe.ParsedValue")), emptyMap(), header.toPath(),
             WinRTMetadataLoader.loadTypeAssemblyNames(directories.flatMap {
                 it.listFiles()!!.filter { file -> file.extension == "winmd" }.map { file -> file.toPath() }
             }))
@@ -235,8 +235,8 @@ class XamlSemanticExportTest {
             return Json.parseToJsonElement(outputFile.readText()).jsonObject
         }
         invokeXaml("declaration", compilerInput)
-        val declarations = WinRTXamlDeclarations.readCompilerOutput(File(root, "declaration.output.json").toPath())
-        val input = File(root, "declarations.json").apply { writeText(WinRTXamlDeclarations.canonicalText(declarations)) }
+        val declarations = WinUiXamlDeclarations.readCompilerOutput(File(root, "declaration.output.json").toPath())
+        val input = File(root, "declarations.json").apply { writeText(WinUiXamlDeclarations.canonicalText(declarations)) }
         val index = File(root, "metadata.tsv").apply { writeText(
             "Microsoft.UI.Xaml.Controls.Page\tRuntimeClass\t\tSystem.Object\n" +
                 "Microsoft.UI.Xaml.Controls.Button\tRuntimeClass\t\tSystem.Object\n" +
@@ -247,7 +247,7 @@ class XamlSemanticExportTest {
         val source = File(root, "MainPage.kt").apply { writeText("""
             package probe
             enum class Choice { Zero, One }
-            @io.github.composefluent.winrt.runtime.WinRTXamlCreateFromString("parse")
+            @io.github.composefluent.winrt.runtime.WinUiXamlCreateFromString("parse")
             class ParsedValue(val value: Int) { companion object { fun parse(text: String) = ParsedValue(text.toInt()) } }
             class MainPage(failConstruction: Boolean = false) : microsoft.ui.xaml.controls.Page() {
                 var constructed = false
@@ -354,14 +354,14 @@ class XamlSemanticExportTest {
         val registrar = File(root, "Definitions.kt").apply { writeText("""
             package io.github.composefluent.winrt.generated.xaml
             object KotlinXamlApplicationDefinitionsProbe { fun registerAll() {
-                io.github.composefluent.winrt.runtime.registerWinRTXamlEnumType(probe.Choice::class, "probe.Choice", probe.Choice.entries.toTypedArray())
-                io.github.composefluent.winrt.runtime.registerWinRTXamlTypeDefinition(io.github.composefluent.winrt.runtime.WinRTXamlTypeDefinition(
+                io.github.composefluent.winrt.runtime.registerWinUiXamlEnumType(probe.Choice::class, "probe.Choice", probe.Choice.entries.toTypedArray())
+                io.github.composefluent.winrt.runtime.registerWinUiXamlTypeDefinition(io.github.composefluent.winrt.runtime.WinUiXamlTypeDefinition(
                     type = probe.ParsedValue::class, name = "probe.ParsedValue", baseName = "System.Object", isWinRTComponent = false,
                     createFromString = { probe.ParsedValue.parse(it) }))
             } }
-            internal inline fun <reified T> kotlinWinRTXamlMemberValue(value: Any?): T {
+            internal inline fun <reified T> kotlinWinUiXamlMemberValue(value: Any?): T {
                 if (value is T || value !is String) return value as T
-                return io.github.composefluent.winrt.runtime.convertWinRTXamlLiteral(T::class, value) { type, text ->
+                return io.github.composefluent.winrt.runtime.convertWinUiXamlLiteral(T::class, value) { type, text ->
                     check(type == Int::class); text.toInt()
                 } as T
             }
@@ -376,7 +376,7 @@ class XamlSemanticExportTest {
             } }
         """.trimIndent()) }
         fun compile(final: Boolean = false): Pair<ExitCode, String> {
-            val classpath = listOf(Unit::class.java, WinRTXamlLoadState::class.java).joinToString(File.pathSeparator) {
+            val classpath = listOf(Unit::class.java, WinUiXamlLoadState::class.java).joinToString(File.pathSeparator) {
                 File(it.protectionDomain.codeSource.location.toURI()).absolutePath
             }
             val options = mapOf("xamlDeclarations" to input.absolutePath) + if (final)
@@ -395,7 +395,7 @@ class XamlSemanticExportTest {
         val (result, diagnostics) = compile()
         assertEquals(diagnostics, ExitCode.OK, result)
         val output = Json.parseToJsonElement(symbols.readText()).jsonObject
-        assertEquals(WinRTXamlDeclarations.fingerprint(declarations), output.getValue("DeclarationFingerprint").jsonPrimitive.content)
+        assertEquals(WinUiXamlDeclarations.fingerprint(declarations), output.getValue("DeclarationFingerprint").jsonPrimitive.content)
         val handler = output.getValue("Pages").jsonArray.single().jsonObject.getValue("Handlers").jsonArray.single().jsonObject
         assertEquals("onClick", handler.getValue("Name").jsonPrimitive.content)
         assertEquals(listOf("System.Object", "Microsoft.UI.Xaml.RoutedEventArgs"),
@@ -412,7 +412,7 @@ class XamlSemanticExportTest {
             "IsPass1" to JsonPrimitive(false), "KotlinSymbols" to output,
             "LocalAssembly" to JsonArray(listOf(item(File(root, "KotlinXaml.winmd")))),
         )))
-        assertEquals(WinRTXamlDeclarations.fingerprint(declarations), finalOutput.getValue("KotlinImplementation")
+        assertEquals(WinUiXamlDeclarations.fingerprint(declarations), finalOutput.getValue("KotlinImplementation")
             .jsonObject.getValue("DeclarationFingerprint").jsonPrimitive.content)
         val xbf = finalOutput.getValue("GeneratedXbfFiles").jsonArray.single().jsonPrimitive.content
         assertTrue("XBF is missing or empty", Files.size(Path.of(xbf)) > 16)
@@ -434,7 +434,7 @@ class XamlSemanticExportTest {
         """.trimIndent()) }
         // A separate consumer has no XAML declaration input; the serialized managed interface
         // must suffice to preserve construction behavior for direct calls and references.
-        val consumerClasspath = listOf(File(root, "final")) + listOf(Unit::class.java, WinRTXamlLoadState::class.java).map {
+        val consumerClasspath = listOf(File(root, "final")) + listOf(Unit::class.java, WinUiXamlLoadState::class.java).map {
             File(it.protectionDomain.codeSource.location.toURI())
         }
         val consumerDiagnostics = ByteArrayOutputStream()
@@ -458,7 +458,7 @@ class XamlSemanticExportTest {
         source.writeText("""
             package probe
             enum class Choice { Zero, One }
-            @io.github.composefluent.winrt.runtime.WinRTXamlCreateFromString("parse")
+            @io.github.composefluent.winrt.runtime.WinUiXamlCreateFromString("parse")
             class ParsedValue(val value: Int) { companion object { fun parse(text: String) = ParsedValue(text.toInt()) } }
             class MainPage : microsoft.ui.xaml.controls.Page() {
                 private fun onClick(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { myButton.text += "clicked" }

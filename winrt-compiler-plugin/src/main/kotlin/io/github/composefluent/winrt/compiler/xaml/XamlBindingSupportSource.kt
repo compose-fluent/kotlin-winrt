@@ -20,7 +20,7 @@ internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = n
         // The SDK invokes ordinary Connect and binding Connect independently.
         // Kotlin's native composition owner retains the live page. Forward
         // weakly, as template scopes do, to avoid a COM/managed ownership cycle.
-        internal class $pageClassName(owner: WinRTXamlPageBindingOwner) : IComponentConnector {
+        internal class $pageClassName(owner: WinUiXamlPageBindingOwner) : IComponentConnector {
             private val owner = WeakReference(owner)
             override fun connect(connectionId: Int, target: Any?) {
                 owner.tryGetTarget()?._kotlinXamlConnectBindings(connectionId, target)
@@ -38,12 +38,12 @@ internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = n
         import microsoft.ui.xaml.markup.*
 
         internal class $className(
-            owner: WinRTXamlBindingScopeOwner,
+            owner: WinUiXamlBindingScopeOwner,
             scopeId: Int,
             target: Any?,
             controlTemplate: Boolean,
         ) : IComponentConnector, IDataTemplateComponent, IDataTemplateExtension {
-            private val scope = WinRTXamlBindingScope(owner, scopeId)
+            private val scope = WinUiXamlBindingScope(owner, scopeId)
             private val root = requireNotNull(target).asWinRT<FrameworkElement>()
             private val isControlTemplate = controlTemplate
             private var dataContextHandlerRemoved = false

@@ -115,7 +115,7 @@ import kotlin.io.path.extension
 
 class KotlinProjectionPlanner(
     private val validator: KotlinProjectionContractValidator = KotlinProjectionContractValidator(),
-    private val useWinAppSdkTypeRedirects: Boolean = false,
+    private val useWinUiXamlTypeRedirects: Boolean = false,
     private val guidSignatureHelpers: WinRTMetadataSemanticHelpers? = null,
 ) {
     fun plan(
@@ -143,7 +143,7 @@ class KotlinProjectionPlanner(
             normalized.namespaces.flatMap {
                 val namespacePlanner = KotlinProjectionPlanner(
                     validator = validator,
-                    useWinAppSdkTypeRedirects = useWinAppSdkTypeRedirects || it.requiresWinAppSdkTypeRedirects(),
+                    useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects || it.requiresWinUiXamlTypeRedirects(),
                     guidSignatureHelpers = semanticHelpers,
                 )
                 namespacePlanner.planNamespace(
@@ -158,7 +158,7 @@ class KotlinProjectionPlanner(
             }
         }
 
-    private fun WinRTNamespace.requiresWinAppSdkTypeRedirects(): Boolean =
+    private fun WinRTNamespace.requiresWinUiXamlTypeRedirects(): Boolean =
         name == "Microsoft.UI" || name.startsWith("Microsoft.UI.")
 
     fun planNamespace(
@@ -175,7 +175,7 @@ class KotlinProjectionPlanner(
             val planner = if (guidSignatureHelpers === helpers) {
                 this
             } else {
-                KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects, helpers)
+                KotlinProjectionPlanner(validator, useWinUiXamlTypeRedirects, helpers)
             }
             normalizedNamespace.types.mapNotNull { type ->
                 planner.planType(
@@ -195,7 +195,7 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
     ): KotlinTypeProjectionPlan? =
-        KotlinProjectionPlanner(validator, useWinAppSdkTypeRedirects, semanticHelpers).planType(
+        KotlinProjectionPlanner(validator, useWinUiXamlTypeRedirects, semanticHelpers).planType(
             type = type,
             interfaceIidsByName = typesByQualifiedName
                 .asSequence()
@@ -1480,7 +1480,7 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRTTypeDefinition>,
         includeDelegateInvokeShape: Boolean = true,
     ): KotlinProjectionAbiTypeBinding {
-        val projectedTypeName = redirectedWinAppSdkAbiTypeExpression(typeName, useWinAppSdkTypeRedirects, typesByQualifiedName)
+        val projectedTypeName = redirectedWinUiXamlAbiTypeExpression(typeName, useWinUiXamlTypeRedirects, typesByQualifiedName)
         val normalizedType = WinRTTypeRef.fromDisplayName(projectedTypeName).normalized()
         val trimmedTypeName = normalizedType.typeName
         val rawTypeName = when (normalizedType.kind) {

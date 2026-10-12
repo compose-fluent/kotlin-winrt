@@ -46,21 +46,21 @@ import com.intellij.platform.backend.workspace.WorkspaceModel
 import com.intellij.platform.backend.workspace.WorkspaceModelCache
 import com.intellij.workspaceModel.ide.impl.WorkspaceModelCacheImpl
 import com.intellij.workspaceModel.ide.impl.WorkspaceModelImpl
-import io.github.composefluent.winrt.ide.analysis.WinRTXamlSnapshotService
+import io.github.composefluent.winrt.ide.analysis.WinUiXamlSnapshotService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.run.WinRTApplicationRunConfiguration
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
-import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadClient
-import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadService
-import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadLaunchState
-import io.github.composefluent.winrt.ide.xaml.WinRTXamlGeneratedNavigation
-import io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeAnalysis
-import io.github.composefluent.winrt.ide.xaml.WinRTXamlAttributeNavigation
-import io.github.composefluent.winrt.ide.hotreload.WinRTHotReloadMarkup
-import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadPatch
-import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
-import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadRead
-import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadTarget
+import io.github.composefluent.winrt.ide.hotreload.WinUiXamlHotReloadClient
+import io.github.composefluent.winrt.ide.hotreload.WinUiXamlHotReloadService
+import io.github.composefluent.winrt.ide.hotreload.WinUiXamlHotReloadLaunchState
+import io.github.composefluent.winrt.ide.xaml.WinUiXamlGeneratedNavigation
+import io.github.composefluent.winrt.ide.xaml.WinUiXamlAttributeAnalysis
+import io.github.composefluent.winrt.ide.xaml.WinUiXamlAttributeNavigation
+import io.github.composefluent.winrt.ide.hotreload.WinUiXamlHotReloadMarkup
+import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadPatch
+import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadRead
+import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadTarget
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.analyze
@@ -180,15 +180,15 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             // Optional actual WinUI process: persist the plugin through the
             // platform component store, then reconnect from a new project service.
             val savedLaunch = System.getProperty("winrt.ide.recoveredHotReloadSession")?.takeIf { checkEditor }?.let { session ->
-                val clients = WinRTHotReloadClient.discover(Path.of(session))
+                val clients = WinUiXamlHotReloadClient.discover(Path.of(session))
                 require(clients.size == 1)
                 clients.single().use { client ->
                     // runWindows can alias a variant's launch task for the same host.
                     val launch = app.hotReloadLaunches.first { it.executable.replace('\\', '/').equals(
                         client.process.info().command().orElseThrow().replace('\\', '/'), true) }
-                    val saved = WinRTHotReloadLaunchState(app.projectDirectory, launch.taskName, session,
+                    val saved = WinUiXamlHotReloadLaunchState(app.projectDirectory, launch.taskName, session,
                         client.process.pid(), client.started.toString())
-                    val hot = imported.service<WinRTHotReloadService>()
+                    val hot = imported.service<WinUiXamlHotReloadService>()
                     hot.automatic.value = false
                     hot.loadState(saved)
                     hot.reconnect()
@@ -237,7 +237,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             assertTrue("Restored cache: ${cacheKeys(imported)}", cacheModules(imported).isNotEmpty())
             assertWorkspaceRecovered(imported, root, checkEditor)
             if (savedLaunch != null) {
-                val hot = imported.service<WinRTHotReloadService>()
+                val hot = imported.service<WinUiXamlHotReloadService>()
                 assertEquals("Native workspace store must restore the previous development launch", savedLaunch, hot.getState())
                 hot.automatic.value = false
                 hot.reconnect()
@@ -282,12 +282,12 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         val settings = RunManager.getInstance(imported).allSettings.single {
             it.configuration is WinRTApplicationRunConfiguration && it.name.contains("[jvm, $deployment]")
         }
-        assertNull("Opening the WinRT tool window must not be a prerequisite", imported.getServiceIfCreated(WinRTHotReloadService::class.java))
+        assertNull("Opening the WinRT tool window must not be a prerequisite", imported.getServiceIfCreated(WinUiXamlHotReloadService::class.java))
         ProgramRunnerUtil.executeConfiguration(settings, DefaultRunExecutor.getRunExecutorInstance())
         PlatformTestUtil.waitWithEventsDispatching("Native IDE Run connects automatically to the actual WinUI process", {
-            imported.getServiceIfCreated(WinRTHotReloadService::class.java)?.state?.value?.connected == true
+            imported.getServiceIfCreated(WinUiXamlHotReloadService::class.java)?.state?.value?.connected == true
         }, 300)
-        val hot = imported.service<WinRTHotReloadService>()
+        val hot = imported.service<WinUiXamlHotReloadService>()
         try {
             assertTrue(hot.automatic.value)
             assertTrue(hot.state.value.pid!! > 0)
@@ -369,7 +369,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         val expectedText = greeting.getAttributeValue("Text")!!
         assertEquals("Created and edited by Kotlin WinRT IDE", expectedText)
         pooled("Read the newly built native template's actual WinUI properties") {
-            val clients = WinRTHotReloadClient.discover(Path.of(session))
+            val clients = WinUiXamlHotReloadClient.discover(Path.of(session))
             assertEquals(1, clients.size)
             clients.single().use { client ->
                 assertTrue(model.hotReloadLaunches.any { it.executable.replace('\\', '/').equals(
@@ -379,11 +379,11 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
                 assertTrue("The authored control module must also load in the real application", snapshot.roots.any {
                     it.className == "sample.controls.GreetingControl"
                 })
-                assertEquals(WinRTHotReloadMarkup.parse(Files.readString(source)).hash, running.sourceHash)
-                val result = client.request(WinRTXamlHotReloadPatch(running.className, running.resourcePath, running.sourceHash,
+                assertEquals(WinUiXamlHotReloadMarkup.parse(Files.readString(source)).hash, running.sourceHash)
+                val result = client.request(WinUiXamlHotReloadPatch(running.className, running.resourcePath, running.sourceHash,
                     running.sourceHash, running.version + 1, emptyList(), reads = listOf(
-                        WinRTXamlHotReloadRead(WinRTXamlHotReloadTarget("Greeting"), "Text"))))
-                assertEquals(result.message, WinRTXamlHotReloadProtocol.APPLIED, result.status)
+                        WinUiXamlHotReloadRead(WinUiXamlHotReloadTarget("Greeting"), "Text"))))
+                assertEquals(result.message, WinUiXamlHotReloadProtocol.APPLIED, result.status)
                 assertEquals(expectedText, result.values.single { it.element == "Greeting" && it.property == "Text" }.value)
             }
         }
@@ -408,7 +408,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         var saved = false
         val declarationFiles = project.service<WinRTProjectService>().modules.value.single { it.projectPath == ":app" }
             .xamlCompilations.filter { compilation -> compilation.sourceRoots.any { source.startsWith(Path.of(it)) } }
-            .map { WinRTXamlSnapshotService.key(it.declarationsFile) }
+            .map { WinUiXamlSnapshotService.key(it.declarationsFile) }
         assertTrue(declarationFiles.toString(), declarationFiles.isNotEmpty())
         val probe = beforeKotlin.substringBefore(" {").trimEnd() + " {\n" +
             "    override fun initializeComponent() { super.initializeComponent() }\n" +
@@ -421,7 +421,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             assertTrue(resolutionDiagnostics(file).toString(), resolutionDiagnostics(file).isEmpty())
             fun edit(text: String, name: String, exists: Boolean) {
                 WriteCommandAction.runWriteCommandAction(project) { xaml.setText(text) }
-                val snapshots = project.service<WinRTXamlSnapshotService>()
+                val snapshots = project.service<WinUiXamlSnapshotService>()
                 PlatformTestUtil.waitWithEventsDispatching("Live imported XAMLC name $name", {
                     // A shared source is compiled for both JVM and Native. Wait
                     // for every owning input, rather than observing the target
@@ -482,7 +482,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         PsiDocumentManager.getInstance(project).commitAllDocuments()
         val expression = PsiTreeUtil.findChildrenOfType(file, KtNameReferenceExpression::class.java).single { it.getReferencedName() == name }
         val editor = FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file.virtualFile), false)!!
-        val target = allowAnalysisOnEdt { WinRTXamlGeneratedNavigation().getGotoDeclarationTargets(expression, expression.textOffset, editor) }!!.single() as XmlAttributeValue
+        val target = allowAnalysisOnEdt { WinUiXamlGeneratedNavigation().getGotoDeclarationTargets(expression, expression.textOffset, editor) }!!.single() as XmlAttributeValue
         assertEquals(name, target.value)
         val xml = target.containingFile as XmlFile
         val classValue = xml.rootTag!!.getAttribute("Class", "http://schemas.microsoft.com/winfx/2006/xaml")!!.valueElement!!
@@ -536,7 +536,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             .map { it.defaultMessage }
     } }
 
-    private fun awaitHotReload(service: WinRTHotReloadService) {
+    private fun awaitHotReload(service: WinUiXamlHotReloadService) {
         PlatformTestUtil.waitWithEventsDispatching("Native WinUI development handshake", {
             service.state.value.connected && !service.state.value.busy
         }, 30)
@@ -556,7 +556,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         }
 
     private fun assertEditingReady(project: Project, root: Path) {
-        val snapshots = project.service<WinRTXamlSnapshotService>()
+        val snapshots = project.service<WinUiXamlSnapshotService>()
         PlatformTestUtil.waitWithEventsDispatching("Imported XAML declarations", {
             snapshots.state.value.values.any { it.declarations.pages.any { page -> page.className == "sample.hello.MainWindow" } }
         }, 60)
@@ -592,7 +592,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         val markup = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(
             source(root, "app", "sample/hello/MainWindow.xaml"))!!
         val xml = PsiManager.getInstance(project).findFile(markup) as XmlFile
-        val catalog = project.service<io.github.composefluent.winrt.ide.xaml.WinRTXamlCatalogService>()
+        val catalog = project.service<io.github.composefluent.winrt.ide.xaml.WinUiXamlCatalogService>()
         PlatformTestUtil.waitWithEventsDispatching("Imported WinMD XAML property vocabulary", {
             catalog.forFile(markup.path) != null
         }, 60)
@@ -603,7 +603,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
         awaitSmart(project)
         listOf("Text", "FontSize").forEach { property ->
             val attribute = block.getAttribute(property)!!
-            val member = requireNotNull(allowAnalysisOnEdt { WinRTXamlAttributeAnalysis.forAttribute(attribute) }) {
+            val member = requireNotNull(allowAnalysisOnEdt { WinUiXamlAttributeAnalysis.forAttribute(attribute) }) {
                 "$property could not resolve after indexing in ${com.intellij.openapi.module.ModuleUtilCore.findModuleForPsiElement(xml)?.name}"
             }
             assertNotNull("$property needs its actual projected getter", member.primary)
@@ -612,7 +612,7 @@ class WinRTGradleImportTest : BasePlatformTestCase() {
             assertEquals(expected, (member.primary as org.jetbrains.kotlin.psi.KtNamedDeclaration).name)
             assertEquals(expected + "Property", (member.dependencyProperty as org.jetbrains.kotlin.psi.KtNamedDeclaration).name)
             val offset = attribute.nameElement!!.textOffset + 1
-            val destinations = allowAnalysisOnEdt { WinRTXamlAttributeNavigation().getGotoDeclarationTargets(
+            val destinations = allowAnalysisOnEdt { WinUiXamlAttributeNavigation().getGotoDeclarationTargets(
                 xml.findElementAt(offset), offset, editor) }!!.toList()
             assertEquals(member.targets, destinations)
             destinations.forEach { assertTrue(it.containingFile.virtualFile.path,

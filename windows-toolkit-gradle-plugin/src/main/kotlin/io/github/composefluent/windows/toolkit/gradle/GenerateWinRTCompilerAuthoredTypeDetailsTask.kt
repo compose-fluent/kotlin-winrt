@@ -9,7 +9,7 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataSource
 import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
-import io.github.composefluent.winrt.projections.generator.redirectedWinAppSdkProjectionSurfaceTypeReferences
+import io.github.composefluent.winrt.projections.generator.redirectedWinUiXamlProjectionSurfaceTypeReferences
 import io.github.composefluent.winrt.runtime.Guid
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -137,7 +137,7 @@ abstract class GenerateWinRTCompilerAuthoredTypeDetailsTask @Inject constructor(
             types = (includeTypes.get() + dependencyProjectionSurfaceTypeNames(dependencyIdentityFiles.files) + authoringCandidateMetadataRoots).toSet(),
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
-            additionalTypeReferences = ::redirectedWinAppSdkProjectionSurfaceTypeReferences,
+            additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
         )
         val projectionRegistrarInputFiles = projectionRegistrarFiles.files
         val projectionRegistrarInterfaceIids = readProjectionRegistrarInterfaceIids(projectionRegistrarInputFiles)

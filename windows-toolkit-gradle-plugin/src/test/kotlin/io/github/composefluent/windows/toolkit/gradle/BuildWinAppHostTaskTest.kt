@@ -11,7 +11,7 @@ class BuildWinAppHostTaskTest {
     @Test fun preview_entrypoint_is_separate_from_the_users_main_and_consumes_its_host_argument() {
         val source = applicationHostSource("sample.MainKt", WindowsPackageType.Packaged.name, WinAppJvmRuntimeMode.Bundled.name, "")
         assertTrue(source.contains("--kotlin-winrt-xaml-preview"))
-        assertTrue(source.contains("io/github/composefluent/winrt/generated/xaml/KotlinWinRTXamlPreviewHost"))
+        assertTrue(source.contains("io/github/composefluent/winrt/generated/xaml/KotlinWinUiXamlPreviewHost"))
         assertTrue(source.contains("kotlin_winrt_preview_requested ?"))
     }
     @Test

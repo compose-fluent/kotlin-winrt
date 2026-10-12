@@ -1,0 +1,238 @@
+package io.github.composefluent.winrt.metadata
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.*
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.MessageDigest
+
+/** Versioned view of XamlCompiler's DOM/harvester, before Kotlin semantic analysis. */
+@Serializable
+data class WinUiXamlDeclarationIndex(
+    @SerialName("SchemaVersion") val schemaVersion: Int,
+    @SerialName("Pages") val pages: List<WinUiXamlPageDeclaration>,
+    @SerialName("Resources") val resources: List<String>,
+)
+
+@Serializable
+data class WinUiXamlPageDeclaration(
+    @SerialName("ClassName") val className: String,
+    @SerialName("ResourcePath") val resourcePath: String,
+    @SerialName("BaseTypeName") val baseTypeName: String,
+    @SerialName("IsApplication") val isApplication: Boolean,
+    @SerialName("Features") val features: List<String>,
+    @SerialName("Connections") val connections: List<WinUiXamlConnectionDeclaration>,
+    @SerialName("Properties") val properties: List<WinUiXamlPropertyDeclaration> = emptyList(),
+    /** Added by the build owner from the exact source passed to XAMLC; absent on older indexes. */
+    @SerialName("SourceHash") val sourceHash: String = "",
+)
+
+@Serializable
+data class WinUiXamlPropertyDeclaration(
+    @SerialName("Name") val name: String,
+    @SerialName("TypeName") val typeName: String,
+    @SerialName("IsReadOnly") val isReadOnly: Boolean,
+    @SerialName("IsValueType") val isValueType: Boolean,
+    @SerialName("ChangedHandler") val changedHandler: String?,
+    @SerialName("DefaultValue") val defaultValue: String?,
+    @SerialName("DefaultValueMarkup") val defaultValueMarkup: String?,
+    @SerialName("Location") val location: WinUiXamlSourceLocation,
+)
+
+@Serializable
+data class WinUiXamlConnectionDeclaration(
+    @SerialName("Id") val id: Int,
+    @SerialName("TypeName") val typeName: String,
+    @SerialName("FieldName") val fieldName: String?,
+    @SerialName("Location") val location: WinUiXamlSourceLocation,
+    @SerialName("Events") val events: List<WinUiXamlEventDeclaration>,
+    @SerialName("ElementName") val elementName: String? = null,
+    @SerialName("ScopeId") val scopeId: Int = 0,
+    @SerialName("IsScopeRoot") val isScopeRoot: Boolean = false,
+    @SerialName("IsTemplateChild") val isTemplateChild: Boolean = false,
+    @SerialName("DataTypeName") val dataTypeName: String? = null,
+    @SerialName("Phase") val phase: Int = 0,
+    @SerialName("CanBeInstantiatedLater") val canBeInstantiatedLater: Boolean = false,
+    @SerialName("IsUnloadableRoot") val isUnloadableRoot: Boolean = false,
+    @SerialName("Children") val children: List<Int> = emptyList(),
+    @SerialName("Bindings") val bindings: List<WinUiXamlBindingDeclaration> = emptyList(),
+)
+
+@Serializable
+data class WinUiXamlBindingDeclaration(
+    @SerialName("Name") val name: String,
+    @SerialName("DeclaringTypeName") val declaringTypeName: String,
+    @SerialName("TypeName") val typeName: String,
+    @SerialName("Mode") val mode: String,
+    @SerialName("Expression") val expression: WinUiXamlBindingExpression,
+    @SerialName("Location") val location: WinUiXamlSourceLocation,
+    @SerialName("IsAttachable") val isAttachable: Boolean = false,
+    @SerialName("IsEvent") val isEvent: Boolean = false,
+    @SerialName("IsLoad") val isLoad: Boolean = false,
+    @SerialName("Phase") val phase: Int = 0,
+    @SerialName("BindBack") val bindBack: WinUiXamlBindingExpression? = null,
+    @SerialName("Converter") val converter: String? = null,
+    @SerialName("ConverterParameter") val converterParameter: String? = null,
+    @SerialName("ConverterLanguage") val converterLanguage: String? = null,
+    @SerialName("FallbackValue") val fallbackValue: WinUiXamlBindingExpression? = null,
+    @SerialName("TargetNullValue") val targetNullValue: WinUiXamlBindingExpression? = null,
+    @SerialName("UpdateSourceTrigger") val updateSourceTrigger: String? = null,
+)
+
+/** Syntax exported by XamlCompiler's BindingPath parser; it is never interpreted at runtime. */
+@Serializable
+data class WinUiXamlBindingExpression(
+    @SerialName("Kind") val kind: String,
+    @SerialName("Name") val name: String? = null,
+    @SerialName("TypeName") val typeName: String? = null,
+    @SerialName("Value") val value: String? = null,
+    @SerialName("Receiver") val receiver: WinUiXamlBindingExpression? = null,
+    @SerialName("Arguments") val arguments: List<WinUiXamlBindingExpression> = emptyList(),
+)
+
+@Serializable
+data class WinUiXamlEventDeclaration(
+    @SerialName("Name") val name: String,
+    @SerialName("HandlerName") val handlerName: String,
+    @SerialName("DeclaringTypeName") val declaringTypeName: String,
+    @SerialName("DelegateTypeName") val delegateTypeName: String,
+    @SerialName("Location") val location: WinUiXamlSourceLocation,
+)
+
+@Serializable
+data class WinUiXamlSourceLocation(
+    @SerialName("Line") val line: Int,
+    @SerialName("Column") val column: Int,
+)
+
+object WinUiXamlDeclarations {
+    const val SCHEMA_VERSION = 3
+    private val json = Json { encodeDefaults = true }
+    private val supportedFeatures = setOf("named-elements", "events", "compiled-bindings", "templates", "phased-bindings", "deferred-elements", "properties")
+
+    /** Never accept a partial/stale index from a compiler invocation that reported an error. */
+    fun readCompilerOutput(path: Path): WinUiXamlDeclarationIndex {
+        val output = json.parseToJsonElement(Files.readString(path)).jsonObject
+        val errors = output["MSBuildLogEntries"]?.jsonArray.orEmpty().filter {
+            it.jsonObject["Type"]?.jsonPrimitive?.intOrNull == 2
+        }
+        require(errors.isEmpty()) { "XamlCompiler failed: " + errors.joinToString("; ") {
+            it.jsonObject["Message"]?.jsonPrimitive?.content.orEmpty()
+        } }
+        val index = output["KotlinDeclarations"]
+        require(index != null && index != JsonNull) { "XamlCompiler did not produce Kotlin declarations: $path" }
+        return parse(index.toString())
+    }
+
+    fun parse(text: String): WinUiXamlDeclarationIndex {
+        val element = json.parseToJsonElement(text)
+        require(element.jsonObject["SchemaVersion"]?.jsonPrimitive?.intOrNull in 1..SCHEMA_VERSION) {
+            "Unsupported Kotlin XAML declaration schema; expected $SCHEMA_VERSION."
+        }
+        return json.decodeFromJsonElement<WinUiXamlDeclarationIndex>(element).also(::validate)
+    }
+
+    fun canonicalText(index: WinUiXamlDeclarationIndex): String {
+        validate(index)
+        return json.encodeToString(index.copy(
+            resources = index.resources.sorted(),
+            pages = index.pages.sortedBy { it.className }.map { page -> page.copy(
+                features = page.features.sorted(),
+                properties = page.properties.sortedBy { it.name },
+                connections = page.connections.sortedBy { it.id }.map { connection -> connection.copy(
+                    events = connection.events.sortedBy { it.name },
+                    bindings = connection.bindings.sortedBy { it.name },
+                    children = connection.children.sorted(),
+                ) },
+            ) },
+        ))
+    }
+
+    fun fingerprint(index: WinUiXamlDeclarationIndex): String = MessageDigest.getInstance("SHA-256")
+        .digest(canonicalText(index).toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+
+    /** Native IDE documents normalize line endings and omit a UTF-8 BOM. */
+    fun sourceFingerprint(text: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(text.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n').toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+
+    private fun validate(index: WinUiXamlDeclarationIndex) {
+        require(index.schemaVersion in 1..SCHEMA_VERSION) { "Unsupported Kotlin XAML schema ${index.schemaVersion}." }
+        require(index.pages.map { it.className }.distinct().size == index.pages.size) { "Duplicate x:Class." }
+        val paths = index.resources + index.pages.map { it.resourcePath }
+        paths.forEach(::validateResourcePath)
+        require(paths.map { it.lowercase(java.util.Locale.ROOT) }.distinct().size == paths.size) { "Duplicate XAML resource path." }
+        for (page in index.pages) {
+            require(page.className.isNotBlank() && page.baseTypeName.isNotBlank()) { "Missing XAML class or base type." }
+            require(page.sourceHash.isEmpty() || Regex("[0-9a-f]{64}").matches(page.sourceHash)) { "Invalid XAML source fingerprint in ${page.resourcePath}." }
+            require(page.features.all { it in supportedFeatures }) { "Unsupported Kotlin XAML features: ${page.features - supportedFeatures}" }
+            require(page.connections.map { it.id }.distinct().size == page.connections.size) { "Duplicate connection ID in ${page.resourcePath}." }
+            val fields = page.connections.filterNot { it.isTemplateChild }.mapNotNull { it.fieldName }
+            require(fields.distinct().size == fields.size) { "Duplicate x:Name in ${page.resourcePath}." }
+            val propertyNames = page.properties.map { it.name }
+            require(propertyNames.distinct().size == propertyNames.size) { "Duplicate x:Property in ${page.resourcePath}." }
+            require(propertyNames.none { it in fields }) { "x:Property conflicts with x:Name in ${page.resourcePath}." }
+            require(page.properties.isEmpty() || (index.schemaVersion >= 3 && "properties" in page.features)) { "Missing properties feature." }
+            require(page.properties.mapNotNull { it.changedHandler }.distinct().size == page.properties.count { it.changedHandler != null }) { "Duplicate x:Property ChangedHandler." }
+            for (property in page.properties) {
+                require(property.name.isNotBlank() && property.typeName.isNotBlank()) { "Incomplete x:Property in ${page.resourcePath}." }
+                require(property.isReadOnly == (property.changedHandler == null) && property.changedHandler?.isNotBlank() != false) { "Invalid x:Property ChangedHandler." }
+                require(property.defaultValue == null || property.defaultValueMarkup == null) { "Conflicting x:Property defaults." }
+                validateLocation(property.location)
+            }
+            require(fields.isEmpty() || "named-elements" in page.features) { "Missing named-elements feature." }
+            require(page.connections.all { it.events.isEmpty() } || "events" in page.features) { "Missing events feature." }
+            require(page.connections.all { it.bindings.isEmpty() } ||
+                (index.schemaVersion >= 2 && "compiled-bindings" in page.features)) { "Missing compiled-bindings feature." }
+            for (connection in page.connections) {
+                require(connection.id > 0 && connection.typeName.isNotBlank()) { "Invalid XAML connection in ${page.resourcePath}." }
+                require(connection.fieldName == null || connection.fieldName.isNotBlank()) { "Empty x:Name." }
+                require(connection.phase in 0..31) { "Invalid XAML phase." }
+                require(connection.phase == 0 || "phased-bindings" in page.features) { "Missing phased-bindings feature." }
+                require(!connection.canBeInstantiatedLater || "deferred-elements" in page.features) { "Missing deferred-elements feature." }
+                require(connection.children.distinct().size == connection.children.size &&
+                    connection.children.all { child -> child != connection.id && page.connections.any { it.id == child } }) { "Invalid deferred child connection." }
+                validateLocation(connection.location)
+                require(connection.events.map { it.name }.distinct().size == connection.events.size) { "Duplicate XAML event." }
+                for (event in connection.events) {
+                    require(listOf(event.name, event.handlerName, event.declaringTypeName, event.delegateTypeName).all(String::isNotBlank)) { "Incomplete XAML event in ${page.resourcePath}." }
+                    validateLocation(event.location)
+                }
+                require(connection.bindings.map { it.name }.distinct().size == connection.bindings.size) { "Duplicate compiled binding." }
+                for (binding in connection.bindings) {
+                    require(listOf(binding.name, binding.declaringTypeName, binding.typeName).all(String::isNotBlank) &&
+                        binding.mode in setOf("OneTime", "OneWay", "TwoWay")) { "Incomplete compiled binding in ${page.resourcePath}." }
+                    require(connection.scopeId > 0) { "Compiled binding has no scope in ${page.resourcePath}." }
+                    require(binding.phase in 0..31) { "Invalid compiled binding phase." }
+                    require(!binding.isLoad || connection.isUnloadableRoot) { "x:Load binding has no unloadable element." }
+                    validateExpression(binding.expression)
+                    listOfNotNull(binding.bindBack, binding.fallbackValue, binding.targetNullValue).forEach(::validateExpression)
+                    validateLocation(binding.location)
+                }
+            }
+        }
+    }
+
+    private fun validateExpression(expression: WinUiXamlBindingExpression) {
+        require(expression.kind in setOf("root", "member", "call", "static", "cast", "index", "attached", "literal")) {
+            "Unsupported compiled binding expression ${expression.kind}."
+        }
+        if (expression.kind in setOf("member", "call", "attached")) require(!expression.name.isNullOrBlank()) { "Binding member has no name." }
+        if (expression.kind in setOf("static", "cast", "attached", "literal")) require(!expression.typeName.isNullOrBlank()) { "Binding expression has no type." }
+        if (expression.kind in setOf("member", "call", "cast", "index", "attached")) require(expression.receiver != null) { "Binding expression has no receiver." }
+        expression.receiver?.let(::validateExpression)
+        expression.arguments.forEach(::validateExpression)
+    }
+
+    private fun validateLocation(location: WinUiXamlSourceLocation) {
+        require(location.line > 0 && location.column > 0) { "Missing XAML source location." }
+    }
+
+    private fun validateResourcePath(path: String) {
+        require(path.isNotBlank() && !path.startsWith('/') && ':' !in path && '\\' !in path &&
+            path.split('/').none { it.isEmpty() || it == "." || it == ".." }) { "Invalid relative XAML resource path: $path" }
+    }
+}

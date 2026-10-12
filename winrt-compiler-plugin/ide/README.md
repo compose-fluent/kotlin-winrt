@@ -169,7 +169,7 @@ directory beneath the user's temporary directory. Invocation-owned directories
 are removed after the child compiler exits, including cancellation. Short copied
 source names keep their original package identities through `MSBuild_Link`.
 
-`WinRTXamlDocumentCompilerTest` optionally exercises real document events,
+`WinUiXamlDocumentCompilerTest` optionally exercises real document events,
 the Windows compiler and the IDE FIR adapter together. It validates unsaved
 name addition/removal/rename, generated members and unresolved-reference
 diagnostics, preservation across model reimport, invalid markup and temporary
@@ -243,7 +243,7 @@ actual delegate parameter types, shortens imports and opens its body. It uses
 native cross-file undo and never duplicates an existing method. Creation waits
 for the projected delegate signature and writable owning class to be available.
 
-`WinRTXamlEditorTest` covers the real XML pipeline with a WinMD written and read
+`WinUiXamlEditorTest` covers the real XML pipeline with a WinMD written and read
 by the metadata owner, closed generic event signatures, inherited handlers,
 completion filtering and native diagnostic ranges. `WinRTFirAnalysisTest` also
 covers generated-member source navigation and native x:Name renaming across
@@ -275,7 +275,7 @@ usages; class rename also adds its required same-basename XAML file to the
 transaction. A Compose/Jewel x:Name form delegates to the native rename/usage
 preview machinery. Identical names in other templates and shadowing Kotlin
 variables are excluded by resolution, not a text replacement. Dynamic Binding
-paths with an unknown source remain unchanged. `WinRTXamlBindingTest` validates
+paths with an unknown source remain unchanged. `WinUiXamlBindingTest` validates
 these paths, completion insertion and native refactoring scope boundaries.
 Private handlers and typed properties referenced by XAML contribute to Kotlin's
 native Usage Code Vision and unused-symbol inspection. The indexed search still
@@ -616,7 +616,7 @@ value absent from XAML, and verifies failed-setter rollback after a collection e
 The baseline fixture has Layout with Greeting/Second TextBlocks and one unchanged
 authored control. Run resource and graph host tests in separate fresh processes.
 
-`WinRTHotReloadTest` covers markup classification, the compiler's source fingerprint
+`WinUiXamlHotReloadTest` covers markup classification, the compiler's source fingerprint
 and a real authenticated loopback client. Its optional actual-host test accepts
 `-Pwinrt.ide.hotReloadSession=<session directory>` and checks native text, dimensions,
 brush conversion and failed-setter rollback through compiler-generated accessors.
@@ -625,7 +625,7 @@ and `-Pwinrt.ide.hotReloadResourcesSource=<MainWindow.xaml>` for a template with
 named Layout, local Accent brush/GreetingStyle and Greeting/Second TextBlocks. It
 checks native shared colors, sealed styles, effective font sizes, transactional
 rollback and subsequent brush changes through the SDK loader/accessors.
-`WinRTHotReloadServiceTest` validates native state serialization/service recreation,
+`WinUiXamlHotReloadServiceTest` validates native state serialization/service recreation,
 cancelled handshake/update sockets and lifetime rejection against a controlled
 loopback peer. Add `-Pwinrt.ide.recoveredHotReloadSession=<module session directory>`
 to `WinRTGradleImportTest` to save through the real project component store, close

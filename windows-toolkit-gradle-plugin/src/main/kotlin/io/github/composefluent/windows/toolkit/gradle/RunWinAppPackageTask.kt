@@ -1,6 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
-import io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
@@ -104,12 +104,12 @@ abstract class RunWinAppPackageTask @Inject constructor(
         winAppCliVersion.convention(WinAppCliDefaults.VERSION)
         winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
         offline.convention(false)
-        developmentSessionDirectory.convention(project.providers.environmentVariable(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY))
+        developmentSessionDirectory.convention(project.providers.environmentVariable(WinUiXamlHotReloadProtocol.SESSION_DIRECTORY))
         supportsXamlHotReload.convention(false)
         supportsDevelopmentRun.convention(packageType.zip(selfContained) { type, bundled ->
             type == WindowsPackageType.Packaged.name && !bundled
         })
-        designPreview.convention(project.providers.environmentVariable(WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
+        designPreview.convention(project.providers.environmentVariable(WinUiXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
         previewHostExecutable.convention(hostExecutable)
         outputs.upToDateWhen { false }
     }
@@ -155,7 +155,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         ).resolve()
         val applicationArguments = winAppDevelopmentArguments(if (designPreview.get()) {
             check(supportsXamlHotReload.get()) { "The XAML preview host requires a JVM WinUI development launch." }
-            WinRTXamlHotReloadProtocol.PREVIEW_ARGUMENT
+            WinUiXamlHotReloadProtocol.PREVIEW_ARGUMENT
         } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
         val arguments = buildList {
@@ -177,7 +177,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         execOperations.exec { spec ->
             spec.commandLine(winAppCliCommandLine(cli.command, arguments))
             spec.workingDir = winAppWorkspace.get().asFile
-            spec.environment.remove(WinRTXamlHotReloadProtocol.SESSION_DIRECTORY)
+            spec.environment.remove(WinUiXamlHotReloadProtocol.SESSION_DIRECTORY)
         }
     }
 }

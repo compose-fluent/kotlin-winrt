@@ -12,9 +12,9 @@ internal fun writeXamlMemberConversionSource(root: Path) {
     Files.createDirectories(file.parent)
     file.writeText("""
         package io.github.composefluent.winrt.generated.xaml
-        internal inline fun <reified T> kotlinWinRTXamlMemberValue(value: Any?): T {
+        internal inline fun <reified T> kotlinWinUiXamlMemberValue(value: Any?): T {
           if (value is T || value !is String) return value as T
-          return io.github.composefluent.winrt.runtime.convertWinRTXamlLiteral(T::class, value) { type, text ->
+          return io.github.composefluent.winrt.runtime.convertWinUiXamlLiteral(T::class, value) { type, text ->
             microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text)
           } as T
         }
@@ -42,7 +42,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
     val semantics = model.semanticHelpers()
     val specialTypes = model.specialTypeResolver()
     val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
-    val sdkNamespaces = WinRTXamlNamespaces.namespaces(WinRTXamlNamespaces.PRESENTATION).toSet()
+    val sdkNamespaces = WinUiXamlNamespaces.namespaces(WinUiXamlNamespaces.PRESENTATION).toSet()
     fun sdk(type: WinRTTypeDefinition) = type.qualifiedName.substringBeforeLast('.') in sdkNamespaces
     val requested = names.toMutableSet()
     names.mapNotNull(definitions::get).filter(::sdk).forEach { original ->
@@ -58,7 +58,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
     }.sortedBy { it.qualifiedName }
     if (types.isEmpty()) return null
     val suffix = assemblyName.orEmpty().replace(Regex("[^A-Za-z0-9_]"), "_")
-    val register = "registerKotlinWinRTXamlProjectedTypes_$suffix"
+    val register = "registerKotlinWinUiXamlProjectedTypes_$suffix"
     val packageName = "io.github.composefluent.winrt.generated.xaml"
     val file = root.resolve("${packageName.replace('.', '/')}/KotlinXamlProjectedTypes_$suffix.kt")
     Files.createDirectories(file.parent)
@@ -72,15 +72,15 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
             val owner = xamlTypeClassId(name).asSingleFqName().asString()
             val baseName = type.baseTypeName ?: "System.Object"
             val base = xamlTypeClassId(baseName).asSingleFqName().asString()
-            val registration = if (development) "registerWinRTXamlHotReloadAccessors" else "registerWinRTXamlProjectedTypeDefinition"
-            appendLine("  io.github.composefluent.winrt.runtime.$registration(io.github.composefluent.winrt.runtime.WinRTXamlTypeDefinition(")
+            val registration = if (development) "registerWinUiXamlHotReloadAccessors" else "registerWinUiXamlProjectedTypeDefinition"
+            appendLine("  io.github.composefluent.winrt.runtime.$registration(io.github.composefluent.winrt.runtime.WinUiXamlTypeDefinition(")
             appendLine("    type = $owner::class, name = ${literal(name)},")
             appendLine("    baseName = ${literal(baseName)}, baseType = $base::class,")
             if (!development) appendLine("    activate = { $owner() },")
             else appendLine("    isWinRTComponent = false,")
             appendLine("    isBindable = false,")
             appendLine("    members = listOf(")
-            val convert: (String, String) -> String = { value, target -> "kotlinWinRTXamlMemberValue<$target>($value)" }
+            val convert: (String, String) -> String = { value, target -> "kotlinWinUiXamlMemberValue<$target>($value)" }
             val inherited = definitions[type.baseTypeName]?.let { semantics.classMemberMergeDescriptor(it).mergedProperties }
                 .orEmpty().associateBy { it.propertyName }
             for (member in semantics.classMemberMergeDescriptor(type).mergedProperties.filter { it.isPublic && !it.isPrivate && it.getterTarget != null }) {
@@ -90,7 +90,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                     it.getterTarget == member.getterTarget && it.setterTarget == member.setterTarget
                 } == true) continue
                 val ref = WinRTTypeRef.fromDisplayName(member.propertyTypeName)
-                val property = WinRTXamlApplicationProperty(member.propertyName, ref, isReadOnly = member.setterTarget == null)
+                val property = WinUiXamlApplicationProperty(member.propertyName, ref, isReadOnly = member.setterTarget == null)
                 // Match the projection's shared property nullability and collection mappings.
                 val nullable = WinRTPropertyDefinition(member.propertyName, member.propertyTypeName)
                     .isNullablePropertyProjection(name, definitions)
@@ -111,7 +111,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
         appendLine("internal fun $register() {")
         types.forEachIndexed { index, type -> if (!sdk(type)) appendLine("  ${register}_$index()") }
         if (types.any(::sdk)) {
-            appendLine("  if (io.github.composefluent.winrt.runtime.isWinRTXamlHotReloadEnabled()) {")
+            appendLine("  if (io.github.composefluent.winrt.runtime.isWinUiXamlHotReloadEnabled()) {")
             types.forEachIndexed { index, type -> if (sdk(type)) appendLine("    ${register}_$index()") }
             appendLine("  }")
         }

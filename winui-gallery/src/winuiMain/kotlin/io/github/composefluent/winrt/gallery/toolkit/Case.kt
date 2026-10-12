@@ -1,8 +1,8 @@
 // Port of CommunityToolkit/Windows components/Primitives/src/SwitchPresenter/Case.cs (MIT).
 package io.github.composefluent.winrt.gallery.toolkit
-import io.github.composefluent.winrt.runtime.WinRTXamlContentProperty
+import io.github.composefluent.winrt.runtime.WinUiXamlContentProperty
 import microsoft.ui.xaml.*
-@WinRTXamlContentProperty("Content")
+@WinUiXamlContentProperty("Content")
 internal class Case : DependencyObject() {
     var Content: Any?
         get() = getValue(ContentProperty) as Any?

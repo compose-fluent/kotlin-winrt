@@ -5,7 +5,7 @@ import io.github.composefluent.winrt.runtime.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.UserControl
 
-@WinRTXamlContentProperty("ExampleContent")
+@WinUiXamlContentProperty("ExampleContent")
 internal class ColorPageExample : UserControl() {
     var Description: String
         get() = getValue(DescriptionProperty) as? String ?: ""

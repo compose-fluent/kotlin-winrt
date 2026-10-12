@@ -72,7 +72,7 @@ object WinRTXmlForms {
             }
         }
         val count = root.findSubTags("Applications").flatMap { it.findSubTags("Application").asIterable() }.size
-        WinRTManifestFields.fields(count).forEach { descriptor ->
+        AppxManifestFields.fields(count).forEach { descriptor ->
             val existing = fields.indexOfFirst { it.id == descriptor.id }
             if (existing >= 0) fields[existing] = descriptor.copy(value = fields[existing].value)
             else fields += descriptor
@@ -141,7 +141,7 @@ object WinRTXmlForms {
         insertCapability(section, capability)
     }
 
-    internal fun addCapability(project: Project, file: VirtualFile, capability: WinRTManifestCapability) = edit(project, file, "Add AppX capability") { root ->
+    internal fun addCapability(project: Project, file: VirtualFile, capability: AppxManifestCapability) = edit(project, file, "Add AppX capability") { root ->
         val section = child(root, "Capabilities", FOUNDATION)
         val name = if (capability.device) "DeviceCapability" else "Capability"
         require(section.subTags.none { it.namespace == capability.namespace && it.localName == name && it.getAttributeValue("Name") == capability.name }) { "The capability already exists." }
@@ -151,8 +151,8 @@ object WinRTXmlForms {
         insertCapability(section, tag)
     }
 
-    internal fun addDeclaration(project: Project, file: VirtualFile, application: Int, declaration: WinRTManifestDeclaration) = edit(project, file, "Add manifest declaration") { root ->
-        val owner = if (declaration.packageLevel) root else resolve(root, WinRTManifestFields.application(application)) ?: error("Select an application entry.")
+    internal fun addDeclaration(project: Project, file: VirtualFile, application: Int, declaration: AppxManifestDeclaration) = edit(project, file, "Add manifest declaration") { root ->
+        val owner = if (declaration.packageLevel) root else resolve(root, AppxManifestFields.application(application)) ?: error("Select an application entry.")
         val section = child(owner, "Extensions", FOUNDATION)
         if (declaration.namespace != FOUNDATION) prefix(root, declaration.namespace, namespacePrefix(declaration.namespace))
         val extension = section.addSubTag(section.createChildTag("Extension", declaration.namespace, null, false), false)
@@ -225,7 +225,7 @@ object WinRTXmlForms {
         val allowed = if (rotation) listOf("landscape", "portrait", "landscapeFlipped", "portraitFlipped")
             else listOf("square150x150Logo", "wide310x150Logo", "square310x310Logo")
         require(value in allowed)
-        val path = WinRTManifestFields.visual(application) + if (rotation) listOf(WinRTXmlStep(UAP, "InitialRotationPreference", 0))
+        val path = AppxManifestFields.visual(application) + if (rotation) listOf(WinRTXmlStep(UAP, "InitialRotationPreference", 0))
             else listOf(WinRTXmlStep(UAP, "DefaultTile", 0), WinRTXmlStep(UAP, "ShowNameOnTiles", 0))
         val group = resolve(root, path) ?: if (checked) ensure(root, path) else return@edit
         val name = if (rotation) "Rotation" else "ShowOn"

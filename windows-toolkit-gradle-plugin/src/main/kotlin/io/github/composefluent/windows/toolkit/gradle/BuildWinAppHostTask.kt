@@ -744,11 +744,11 @@ internal fun applicationHostSource(
             if (wcsncmp(wargv[i], prefix, prefix_length) == 0) {
                 const wchar_t *directory = wargv[i] + prefix_length;
                 if (enabled || directory[0] == L'\0' ||
-                    !SetEnvironmentVariableW(L"${io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.SESSION_DIRECTORY}", directory)) {
+                    !SetEnvironmentVariableW(L"${io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol.SESSION_DIRECTORY}", directory)) {
                     return 1;
                 }
                 enabled = 1;
-            } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
+            } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
                 kotlin_winrt_preview_requested = 1;
             } else {
                 wargv[next++] = wargv[i];
@@ -783,7 +783,7 @@ internal fun applicationHostSource(
             return 1;
         }
         main_class = (*env)->FindClass(env, kotlin_winrt_preview_requested ?
-            "io/github/composefluent/winrt/generated/xaml/KotlinWinRTXamlPreviewHost" : "$mainClassPath");
+            "io/github/composefluent/winrt/generated/xaml/KotlinWinUiXamlPreviewHost" : "$mainClassPath");
         if (main_class == NULL) {
             exit_code = 1;
             kotlin_winrt_handle_pending_exception(env);
