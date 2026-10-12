@@ -18,6 +18,45 @@ import io.github.composefluent.winrt.runtime.WinUiXamlLoadState
 
 class XamlSemanticExportTest {
     @Test
+    fun semantic_only_compilation_exports_symbols_without_business_class_files() {
+        val root = Files.createTempDirectory("xaml-semantic-no-codegen").toFile()
+        try {
+            val declarations = File(root, "declarations.json").apply {
+                writeText(WinUiXamlDeclarations.canonicalText(WinUiXamlDeclarationIndex(
+                    WinUiXamlDeclarations.SCHEMA_VERSION, emptyList(), emptyList())))
+            }
+            val index = File(root, "metadata.tsv").apply { writeText("") }
+            val references = File(root, "references.txt").apply { writeText("") }
+            val source = File(root, "Business.kt").apply {
+                writeText("class Business { fun values() = listOf(1, 2).map { it * 2 } }")
+            }
+            val output = File(root, "classes")
+            val symbols = File(root, "symbols.json")
+            val options = mapOf("xamlDeclarations" to declarations.absolutePath, "metadataIndex" to index.absolutePath,
+                "xamlSemanticOutput" to symbols.absolutePath, "xamlReferencesFile" to references.absolutePath)
+            val args = listOf("-no-stdlib", "-no-reflect", "-classpath",
+                File(Unit::class.java.protectionDomain.codeSource.location.toURI()).absolutePath,
+                "-Xplugin=${System.getProperty("winrt.test.fullPluginJar")}", "-d", output.absolutePath,
+                source.absolutePath) + options.flatMap { (key, value) ->
+                listOf("-P", "plugin:io.github.composefluent.winrt.compiler:$key=$value")
+            }
+            val diagnostics = ByteArrayOutputStream()
+            val result = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *args.toTypedArray()) }
+            assertEquals(diagnostics.toString(), ExitCode.OK, result)
+            assertTrue(symbols.isFile)
+            assertTrue(File(root, "KotlinXaml.winmd").isFile)
+            assertFalse(output.walkTopDown().any { it.extension == "class" })
+            source.writeText("class Business { fun values(): Int = \"wrong type\" }")
+            val failure = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *args.toTypedArray()) }
+            assertEquals(diagnostics.toString(), ExitCode.COMPILATION_ERROR, failure)
+            assertFalse(symbols.exists())
+            assertFalse(File(root, "KotlinXaml.winmd").exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun semantic_pass_reports_nullable_delegate_mismatch_as_a_source_error() {
         val root = Files.createTempDirectory("xaml-handler-nullability").toFile()
         try {

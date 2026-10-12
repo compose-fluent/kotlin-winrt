@@ -199,5 +199,11 @@ private class XamlSemanticExport(
                 .mapTo(mutableSetOf()) { it.qualifiedName },
         )
         Files.writeString(output, symbols.toString())
+        // This isolated compilation owns only schema/symbol outputs. Keep full frontend
+        // analysis (including inferred and inherited signatures), but consume its IR after
+        // export so JVM/Native lowering and code generation do not compile business bodies
+        // that the final application compilation must compile again. Never do this in the
+        // final XAML implementation pass or a library's ordinary compilation.
+        moduleFragment.files.clear()
     }
 }

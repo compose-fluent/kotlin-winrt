@@ -242,7 +242,7 @@ internal fun configureWinUiXamlPipeline(
             }
             val semantic = kotlinApi.registerKotlinJvmCompileTask("compileKotlinWinRTXamlSemantic$suffix", semanticOptions)
             semantic.configure { task ->
-                task.description = "Compiles isolated XAML semantic symbols; output classes are never packaged."
+                task.description = "Analyzes XAML semantic symbols without generating application bytecode."
                 task.group = "kotlin-winrt"
                 task.source(business.sources)
                 if (kmp == null) task.source(applicationHeader.flatMap { it.sourceOutputDirectory })
@@ -256,6 +256,7 @@ internal fun configureWinUiXamlPipeline(
                 targetStructure.refinesEdges.set(sourceStructure.refinesEdges)
                 targetStructure.defaultFragmentName.set(sourceStructure.defaultFragmentName)
                 task.destinationDirectory.set(semanticRoot.map { it.dir("classes") })
+                // The exporter consumes a complete module, not an incremental set of dirty files.
                 (task as org.jetbrains.kotlin.gradle.tasks.KotlinCompile).incremental = false
                 task.inputs.file(declarations.flatMap { it.semanticDeclarationsFile })
                 task.inputs.file(metadataManifest)
