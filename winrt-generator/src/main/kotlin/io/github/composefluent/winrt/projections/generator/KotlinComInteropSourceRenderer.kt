@@ -273,7 +273,10 @@ internal class KotlinComInteropSourceRenderer(
                     typesByQualifiedName,
                     descriptor.namespace,
                 )
-                "WinRTAsyncOperationReference<${projectionClassNameForQualifiedName(resultBinding.resolvedTypeName).simpleName}>"
+                CodeBlock.of("%T<%T>", WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME,
+                    typeRenderer.resolveValueTypeName(resultBinding))
+                    .renderComInteropSource(descriptor.projectedPackageName)
+                    .replace("kotlin.", "")
             }
             WinRTComInteropResultDescriptor.UnitResult,
             is WinRTComInteropResultDescriptor.ProjectedRuntimeClass,

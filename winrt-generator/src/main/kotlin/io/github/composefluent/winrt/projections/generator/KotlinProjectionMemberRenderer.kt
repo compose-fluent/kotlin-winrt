@@ -258,8 +258,8 @@ internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRTMethodD
                 addModifiers(KModifier.OVERRIDE)
             }
         }
-        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveValueTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveValueTypeName(method.projectedKotlinReturnTypeName()))
         .build()
 }
 
@@ -267,8 +267,8 @@ internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRTMethodDefini
     val objectShape = runtimeObjectMethodShape(method)
     val builder = FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addMethodGenericParameters(method, objectShape)
-        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveValueTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveValueTypeName(method.projectedKotlinReturnTypeName()))
         .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
     if (override || objectShape != null) {
         builder.addModifiers(KModifier.OVERRIDE)
@@ -307,7 +307,7 @@ internal fun KotlinProjectionRenderer.renderInterfaceProperty(
 ): PropertySpec {
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)),
+        resolveValueTypeName(property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)),
     )
         .mutable(!property.isReadOnly)
         .addModifiers(KModifier.ABSTRACT)
@@ -326,7 +326,7 @@ internal fun KotlinProjectionRenderer.renderStubProperty(
     val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(propertyTypeName),
+        resolveValueTypeName(propertyTypeName),
     ).mutable(!property.isReadOnly)
     if (override) {
         builder.addModifiers(KModifier.OVERRIDE)
@@ -339,7 +339,7 @@ internal fun KotlinProjectionRenderer.renderStubProperty(
     if (!property.isReadOnly) {
         builder.setter(
             FunSpec.setterBuilder()
-                .addParameter("value", resolveTypeName(propertyTypeName))
+                .addParameter("value", resolveValueTypeName(propertyTypeName))
                 .addCode("%L\n", missingAbiBindingError("property ${property.name} setter"))
                 .build(),
         )
@@ -401,8 +401,8 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(modifiers)
-        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
-        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveValueTypeName(method.projectedKotlinReturnTypeName()))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveValueTypeName(it.typeName)).build() })
         .apply {
             if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
                 addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
@@ -606,7 +606,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     val calls = prepareBoundPropertyCalls(plan, property)
     val (getterBinding, getterPlan) = calls.firstOrNull() ?: return null
     val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
-    val builder = PropertySpec.builder(property.name.replaceFirstChar(Char::lowercase), resolveTypeName(propertyTypeName))
+    val builder = PropertySpec.builder(property.name.replaceFirstChar(Char::lowercase), resolveValueTypeName(propertyTypeName))
         .mutable(!property.isReadOnly)
         .addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
         .addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
@@ -617,7 +617,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         val setterInvocation = calls.getOrNull(1)?.let { (binding, callPlan) ->
             renderInlineAbiInvocation(binding.ownerCachePropertyName, binding.slotExpressionString(), callPlan)
         } ?: missingAbiBindingError("property ${property.name} setter")
-        builder.setter(FunSpec.setterBuilder().addParameter("value", resolveTypeName(propertyTypeName))
+        builder.setter(FunSpec.setterBuilder().addParameter("value", resolveValueTypeName(propertyTypeName))
             .addCode("%L\n", setterInvocation).build())
     }
     return builder.build()
@@ -1013,10 +1013,10 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
             )
             .addMethodGenericParameters(method)
             .addModifiers(runtimeClassInterfaceMemberModifiers(plan, ownerInterfaceName))
-            .returns(resolveTypeName(method.projectedKotlinReturnTypeName()))
+            .returns(resolveValueTypeName(method.projectedKotlinReturnTypeName()))
             .addParameters(
                 method.projectedKotlinParameters().map { parameter ->
-                    ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+                    ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build()
                 },
             )
             .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
@@ -1038,8 +1038,8 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
         .addProjectedAttributeAnnotations(projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(if (objectShape != null) listOf(KModifier.OVERRIDE) else runtimeClassInterfaceMemberModifiers(plan, ownerInterfaceName))
-        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
-        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveValueTypeName(method.projectedKotlinReturnTypeName()))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveValueTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
         .build()
 }
@@ -1088,7 +1088,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
     plan: KotlinTypeProjectionPlan,
     property: RequiredForwardProperty,
 ): PropertySpec? {
-    val propertyType = resolveTypeName(property.propertyTypeName)
+    val propertyType = resolveValueTypeName(property.propertyTypeName)
     val accessor = listOfNotNull(property.getter, property.setter).firstOrNull { accessor ->
         plan.classMemberMergeDescriptor?.interfaceDescriptors
             ?.firstOrNull { it.interfaceTypeName == accessor.ownerInterfaceName.substringBefore('<') }

@@ -102,13 +102,13 @@ internal fun KotlinProjectionRenderer.readOnlyCollectionProjectedType(
     binding: KotlinProjectionReadOnlyCollectionBinding,
 ): TypeName = when (binding.kind) {
     KotlinProjectionReadOnlyCollectionKind.Iterable ->
-        Iterable::class.asClassName().parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).typeName))
+        Iterable::class.asClassName().parameterizedBy(resolveValueTypeName(requireNotNull(binding.elementBinding)))
     KotlinProjectionReadOnlyCollectionKind.VectorView ->
-        List::class.asClassName().parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).typeName))
+        List::class.asClassName().parameterizedBy(resolveValueTypeName(requireNotNull(binding.elementBinding)))
     KotlinProjectionReadOnlyCollectionKind.MapView ->
         Map::class.asClassName().parameterizedBy(
-            resolveTypeName(requireNotNull(binding.keyBinding).typeName),
-            resolveTypeName(requireNotNull(binding.valueBinding).typeName),
+            resolveValueTypeName(requireNotNull(binding.keyBinding)),
+            resolveValueTypeName(requireNotNull(binding.valueBinding)),
         )
 }
 
@@ -116,11 +116,11 @@ internal fun KotlinProjectionRenderer.mutableCollectionProjectedType(
     binding: KotlinProjectionMutableCollectionBinding,
 ): TypeName = when (binding.kind) {
     KotlinProjectionMutableCollectionKind.Vector ->
-        MUTABLE_LIST_CLASS_NAME.parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).typeName))
+        MUTABLE_LIST_CLASS_NAME.parameterizedBy(resolveValueTypeName(requireNotNull(binding.elementBinding)))
     KotlinProjectionMutableCollectionKind.Map ->
         MUTABLE_MAP_CLASS_NAME.parameterizedBy(
-            resolveTypeName(requireNotNull(binding.keyBinding).typeName),
-            resolveTypeName(requireNotNull(binding.valueBinding).typeName),
+            resolveValueTypeName(requireNotNull(binding.keyBinding)),
+            resolveValueTypeName(requireNotNull(binding.valueBinding)),
         )
 }
 
@@ -225,7 +225,7 @@ internal fun KotlinProjectionRenderer.renderVectorCollectionDelegateInitializer(
     binding: KotlinProjectionMutableCollectionBinding,
 ): CodeBlock {
     val elementBinding = requireNotNull(binding.elementBinding)
-    val elementType = resolveTypeName(elementBinding.typeName)
+    val elementType = resolveValueTypeName(elementBinding)
     val projectedType = mutableCollectionProjectedType(binding)
     val abstractMutableListType = ABSTRACT_MUTABLE_LIST_CLASS_NAME.parameterizedBy(elementType)
     return CodeBlock.of(
@@ -368,8 +368,8 @@ internal fun KotlinProjectionRenderer.renderMapCollectionDelegateInitializer(
 ): CodeBlock {
     val keyBinding = requireNotNull(binding.keyBinding)
     val valueBinding = requireNotNull(binding.valueBinding)
-    val keyType = resolveTypeName(keyBinding.typeName)
-    val valueType = resolveTypeName(valueBinding.typeName)
+    val keyType = resolveValueTypeName(keyBinding)
+    val valueType = resolveValueTypeName(valueBinding)
     val projectedType = mutableCollectionProjectedType(binding)
     val abstractMutableMapType = ABSTRACT_MUTABLE_MAP_CLASS_NAME.parameterizedBy(keyType, valueType)
     val entryType = MUTABLE_MAP_CLASS_NAME.nestedClass("MutableEntry").parameterizedBy(keyType, valueType)
@@ -683,7 +683,7 @@ internal fun KotlinProjectionRenderer.renderIterableCollectionDelegateInitialize
     binding: KotlinProjectionReadOnlyCollectionBinding,
 ): CodeBlock {
     val elementBinding = requireNotNull(binding.elementBinding)
-    val elementType = resolveTypeName(elementBinding.typeName)
+    val elementType = resolveValueTypeName(elementBinding)
     val projectedType = readOnlyCollectionProjectedType(binding)
     val iteratorType = Iterator::class.asClassName().parameterizedBy(elementType)
     return CodeBlock.of(
@@ -717,7 +717,7 @@ internal fun KotlinProjectionRenderer.renderVectorViewCollectionDelegateInitiali
     binding: KotlinProjectionReadOnlyCollectionBinding,
 ): CodeBlock {
     val elementBinding = requireNotNull(binding.elementBinding)
-    val elementType = resolveTypeName(elementBinding.typeName)
+    val elementType = resolveValueTypeName(elementBinding)
     val projectedType = readOnlyCollectionProjectedType(binding)
     val abstractListType = ABSTRACT_LIST_CLASS_NAME.parameterizedBy(elementType)
     return CodeBlock.of(
@@ -773,8 +773,8 @@ internal fun KotlinProjectionRenderer.renderMapViewCollectionDelegateInitializer
 ): CodeBlock {
     val keyBinding = requireNotNull(binding.keyBinding)
     val valueBinding = requireNotNull(binding.valueBinding)
-    val keyType = resolveTypeName(keyBinding.typeName)
-    val valueType = resolveTypeName(valueBinding.typeName)
+    val keyType = resolveValueTypeName(keyBinding)
+    val valueType = resolveValueTypeName(valueBinding)
     val projectedType = readOnlyCollectionProjectedType(binding)
     val abstractMapType = ABSTRACT_MAP_CLASS_NAME.parameterizedBy(keyType, valueType)
     val entryType = Map.Entry::class.asClassName().parameterizedBy(keyType, valueType)
@@ -866,10 +866,10 @@ internal fun KotlinProjectionRenderer.renderMappedIteratorCreationCode(
         }
     val returnType = when {
         effectiveEntryBinding != null -> Map.Entry::class.asClassName().parameterizedBy(
-            resolveTypeName(requireNotNull(effectiveEntryBinding.keyBinding).typeName),
-            resolveTypeName(requireNotNull(effectiveEntryBinding.valueBinding).typeName),
+            resolveValueTypeName(requireNotNull(effectiveEntryBinding.keyBinding)),
+            resolveValueTypeName(requireNotNull(effectiveEntryBinding.valueBinding)),
         )
-        else -> resolveTypeName(requireNotNull(elementBinding).typeName)
+        else -> resolveValueTypeName(requireNotNull(elementBinding))
     }
     return CodeBlock.of(
         """
@@ -942,8 +942,8 @@ internal fun KotlinProjectionRenderer.renderMappedIteratorCurrentCode(
     if (entryBinding != null) {
         val keyBinding = requireNotNull(entryBinding.keyBinding)
         val valueBinding = requireNotNull(entryBinding.valueBinding)
-        val keyType = resolveTypeName(keyBinding.typeName)
-        val valueType = resolveTypeName(valueBinding.typeName)
+        val keyType = resolveValueTypeName(keyBinding)
+        val valueType = resolveValueTypeName(valueBinding)
         return CodeBlock.of(
             """
             fun __readPairReference(): %T {

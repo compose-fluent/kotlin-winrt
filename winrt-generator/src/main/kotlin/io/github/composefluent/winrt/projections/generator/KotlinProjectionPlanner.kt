@@ -36,6 +36,7 @@ import io.github.composefluent.winrt.metadata.WinRTMappedTypeDescriptor
 import io.github.composefluent.winrt.metadata.WinRTMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
+import io.github.composefluent.winrt.metadata.isNullableReferenceProjection
 import io.github.composefluent.winrt.metadata.projectedAttributes
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
@@ -1638,12 +1639,13 @@ class KotlinProjectionPlanner(
         val isNullableDisplayName = typeName.trim().endsWith("?")
         return KotlinProjectionAbiTypeBinding(
             kind = kind,
+            referenceNullable = normalizedType.isNullableReferenceProjection(currentNamespace, typesByQualifiedName),
             typeName = if (typeArguments.isNotEmpty()) {
                 "$rawTypeName<${typeArguments.joinToString(", ") { it.typeName }}>".let {
                     if (isNullableDisplayName) it.withNullableSuffix() else it
                 }
             } else if (isNullableDisplayName) trimmedTypeName.withNullableSuffix() else trimmedTypeName,
-            resolvedTypeName = if (isNullableDisplayName) resolvedTypeName.withNullableSuffix() else resolvedTypeName,
+            resolvedTypeName = resolvedTypeName,
             sourceTypeKind = resolvedType?.kind,
             abiSize = resolvedType?.abiSize,
             abiAlignment = resolvedType?.abiAlignment,

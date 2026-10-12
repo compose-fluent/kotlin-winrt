@@ -438,7 +438,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
 ): FunSpec? {
     if (isActivationFactoryCreateMethod(plan, method)) {
         return FunSpec.builder(method.projectedMethodName())
-            .returns(resolveTypeName(method.returnTypeName))
+            .returns(resolveValueTypeName(method.returnTypeName))
             .addCode("return Metadata.wrap(ActivationFactory.activate())\n")
             .build()
     }
@@ -449,10 +449,10 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     return FunSpec.builder(method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method)
-        .returns(resolveTypeName(method.projectedKotlinReturnTypeName()))
+        .returns(resolveValueTypeName(method.projectedKotlinReturnTypeName()))
         .addParameters(
             method.projectedKotlinParameters().map { parameter ->
-                ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+                ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build()
             },
         )
         .addCode("%L\n", invocation)
@@ -502,7 +502,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(propertyTypeName),
+        resolveValueTypeName(propertyTypeName),
     ).mutable(!property.isReadOnly)
     val getterInvocation = renderBoundStaticInvocation(getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
@@ -517,7 +517,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
         }
         builder.setter(
             FunSpec.setterBuilder()
-                .addParameter("value", resolveTypeName(propertyTypeName))
+                .addParameter("value", resolveValueTypeName(propertyTypeName))
                 .addCode(
                     "%L\n",
                     setterBinding?.let(::renderBoundStaticInvocation)
@@ -723,7 +723,7 @@ internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinType
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .map { method ->
             FunSpec.constructorBuilder()
-                .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build() })
                 .callThisConstructor(
                     CodeBlock.of(
                         "ActivationFactory.%L(%L), kotlin.Unit",
@@ -748,7 +748,7 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
         .map { (factoryAndMethod, userParameters) ->
             val (factory, method) = factoryAndMethod
             val constructor = FunSpec.constructorBuilder()
-                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build() })
                 .apply {
                     if (!factory.isVisible) {
                         addModifiers(KModifier.PROTECTED)
@@ -861,7 +861,7 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
             )
             FunSpec.builder(factoryCreateFunctionName(method))
                 .addModifiers(KModifier.INTERNAL)
-                .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build() })
                 .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addCode("%L\n", invocation)
                 .build()
@@ -882,7 +882,7 @@ internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(pla
             val (method, userParameters) = methodAndUserParameters
             FunSpec.builder(factoryCreateFunctionName(method))
                 .addModifiers(KModifier.INTERNAL)
-                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build() })
                 .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addCode(
                     "%L\n",
@@ -911,7 +911,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("value", ANY)
                 .addParameter("outerInterfaceId", GUID_CLASS_NAME)
-                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build() })
                 .returns(WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME)
                 .addCode(
                     "%L\n",

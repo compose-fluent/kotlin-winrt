@@ -326,7 +326,7 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayElementMarshalerExpressio
             CodeBlock.of("%T.inspectable(%T::class)", MARSHALER_CLASS_NAME, projectedType)
         }
         KotlinProjectionAbiValueKind.GenericParameter ->
-            CodeBlock.of("%T.genericParameter<%T>()", MARSHALER_CLASS_NAME, resolveTypeName(elementBinding.typeName))
+            CodeBlock.of("%T.genericParameter<%T>()", MARSHALER_CLASS_NAME, resolveValueTypeName(elementBinding))
         KotlinProjectionAbiValueKind.MappedKeyValuePair -> {
             val keyAdapter = collectionReferenceAdapterCode(elementBinding.typeArguments.getOrNull(0) ?: return null) ?: return null
             val valueAdapter = collectionReferenceAdapterCode(elementBinding.typeArguments.getOrNull(1) ?: return null) ?: return null

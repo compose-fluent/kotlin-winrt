@@ -125,6 +125,7 @@ class KotlinProjectionRenderer(
     internal val projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
     internal val guidSignatureHelpers: WinRTMetadataSemanticHelpers? = null,
 ) {
+    internal var projectionTypesByQualifiedName: Map<String, WinRTTypeDefinition> = emptyMap()
     private var cachedRuntimeClassForwardTargetsPlan: KotlinTypeProjectionPlan? = null
     private var cachedRuntimeClassForwardTargets: Map<String, RuntimeClassInterfaceProjectionForwardTarget> = emptyMap()
     private var cachedGuidSignatureTypes: Map<String, WinRTTypeDefinition>? = null
@@ -153,6 +154,7 @@ class KotlinProjectionRenderer(
      * and final output cannot drift into separate ABI classification rules.
      */
     internal fun collectCallSites(plan: KotlinTypeProjectionPlan) {
+        projectionTypesByQualifiedName = plan.typesByQualifiedName
         // Inbound delegate declarations contain managed calls and annotations only. They do
         // not register outbound ABI calls; emit them once in the final projection pass.
         collectCallSitePlans(plan)
@@ -433,6 +435,7 @@ class KotlinProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         renderContents: Boolean,
     ): KotlinProjectionFile {
+        projectionTypesByQualifiedName = plan.typesByQualifiedName
         val file = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()
             .addGeneratedProjectionAtomicOptIn()
@@ -1022,12 +1025,12 @@ class KotlinProjectionRenderer(
                 objectShape?.parameters ?: method.projectedKotlinParameters().map { parameter ->
                     ParameterSpec.builder(
                         parameter.name,
-                        resolveTypeName(parameter.typeName.substituteProjectedGenericTypeArguments(genericTypeArguments)),
+                        resolveValueTypeName(parameter.typeName.substituteProjectedGenericTypeArguments(genericTypeArguments)),
                     ).build()
                 },
             )
             .returns(
-                objectShape?.returnType ?: resolveTypeName(
+                objectShape?.returnType ?: resolveValueTypeName(
                     method.projectedKotlinReturnTypeName()
                         .substituteProjectedGenericTypeArguments(genericTypeArguments),
                 ),
@@ -1048,7 +1051,7 @@ class KotlinProjectionRenderer(
             .substituteProjectedGenericTypeArguments(genericTypeArguments)
         val builder = PropertySpec.builder(
             property.name.replaceFirstChar(Char::lowercase),
-            resolveTypeName(propertyTypeName),
+            resolveValueTypeName(propertyTypeName),
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
@@ -1111,7 +1114,7 @@ class KotlinProjectionRenderer(
             val setterSlotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_SETTER_SLOT")
             builder.setter(
                 FunSpec.setterBuilder()
-                    .addParameter("value", resolveTypeName(propertyTypeName))
+                    .addParameter("value", resolveValueTypeName(propertyTypeName))
                     .addCode(
                         "%L\n",
                         renderInlineAbiInvocation(
@@ -1892,13 +1895,13 @@ class KotlinProjectionRenderer(
         methodName: String,
     ): FunSpec {
         val parameterSpecs = method.projectedKotlinParameters().map { parameter ->
-            ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+            ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build()
         }
         val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name.escapeAsKotlinIdentifierIfNeeded() }
         val returns = if (isWinRTVoidTypeName(method.projectedKotlinReturnTypeName())) {
             UNIT
         } else {
-            resolveTypeName(method.projectedKotlinReturnTypeName())
+            resolveValueTypeName(method.projectedKotlinReturnTypeName())
         }
         return FunSpec.builder(authoringInvokeBridgeName(method))
             .addParameters(parameterSpecs)
@@ -1996,10 +1999,10 @@ class KotlinProjectionRenderer(
         val functionName = objectShape?.name ?: method.projectedRuntimeClassMethodName(plan, modifiers)
         val targetFunctionName = objectShape?.name ?: method.projectedMethodName()
         val parameterSpecs = objectShape?.parameters ?: method.projectedKotlinParameters().map { parameter ->
-            ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+            ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build()
         }
         val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name.escapeAsKotlinIdentifierIfNeeded() }
-        val returns = objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName())
+        val returns = objectShape?.returnType ?: resolveValueTypeName(method.projectedKotlinReturnTypeName())
         return FunSpec.builder(functionName)
             .addProjectedAttributeAnnotations(binding.projectedAttributes)
             .addMethodGenericParameters(method, objectShape)
@@ -2042,7 +2045,7 @@ class KotlinProjectionRenderer(
         val getterBinding = plan.instanceMemberBindings.first { it.bindingName == "${property.name.uppercase()}_GETTER_SLOT" }
         val propertyName = property.name.replaceFirstChar(Char::lowercase)
         val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
-        val builder = PropertySpec.builder(propertyName, resolveTypeName(propertyTypeName))
+        val builder = PropertySpec.builder(propertyName, resolveValueTypeName(propertyTypeName))
             .mutable(!property.isReadOnly)
             .addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
             .addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
@@ -2062,7 +2065,7 @@ class KotlinProjectionRenderer(
                 ?: return null
             builder.setter(
                 FunSpec.setterBuilder()
-                    .addParameter("value", resolveTypeName(propertyTypeName))
+                    .addParameter("value", resolveValueTypeName(propertyTypeName))
                     .addCode("%L.%N=value\n", setterTarget.projectionPropertyName, propertyName)
                     .build(),
             )
@@ -2326,7 +2329,7 @@ class KotlinProjectionRenderer(
     ) {
         when (binding.kind) {
             KotlinProjectionReadOnlyCollectionKind.Iterable -> {
-                val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
+                val elementType = resolveValueTypeName(requireNotNull(binding.elementBinding))
                 builder.addFunction(
                     FunSpec.builder("iterator")
                         .addModifiers(KModifier.OVERRIDE)
@@ -2336,7 +2339,7 @@ class KotlinProjectionRenderer(
                 )
             }
             KotlinProjectionReadOnlyCollectionKind.VectorView -> {
-                val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
+                val elementType = resolveValueTypeName(requireNotNull(binding.elementBinding))
                 builder.addProperty(
                     PropertySpec.builder("size", Int::class)
                         .addModifiers(KModifier.OVERRIDE)
@@ -2355,8 +2358,8 @@ class KotlinProjectionRenderer(
                 builder.addFunction(FunSpec.builder("lastIndexOf").addModifiers(KModifier.OVERRIDE).addParameter("element", elementType).returns(Int::class).addCode("return %L.lastIndexOf(element)\n", binding.delegatePropertyName).build())
             }
             KotlinProjectionReadOnlyCollectionKind.MapView -> {
-                val keyType = resolveTypeName(requireNotNull(binding.keyBinding).typeName)
-                val valueType = resolveTypeName(requireNotNull(binding.valueBinding).typeName)
+                val keyType = resolveValueTypeName(requireNotNull(binding.keyBinding))
+                val valueType = resolveValueTypeName(requireNotNull(binding.valueBinding))
                 val entryType = Map.Entry::class.asClassName().parameterizedBy(keyType, valueType)
                 builder.addProperty(PropertySpec.builder("size", Int::class).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.size\n", binding.delegatePropertyName).build()).build())
                 builder.addProperty(PropertySpec.builder("entries", Set::class.asClassName().parameterizedBy(entryType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.entries\n", binding.delegatePropertyName).build()).build())
@@ -2374,7 +2377,7 @@ class KotlinProjectionRenderer(
         builder: TypeSpec.Builder,
         binding: KotlinProjectionMutableCollectionBinding,
     ) {
-        val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
+        val elementType = resolveValueTypeName(requireNotNull(binding.elementBinding))
         val collectionType = Collection::class.asClassName().parameterizedBy(elementType)
         val mutableListType = MUTABLE_LIST_CLASS_NAME.parameterizedBy(elementType)
         builder.addProperty(
@@ -2427,8 +2430,8 @@ class KotlinProjectionRenderer(
         builder: TypeSpec.Builder,
         binding: KotlinProjectionMutableCollectionBinding,
     ) {
-        val keyType = resolveTypeName(requireNotNull(binding.keyBinding).typeName)
-        val valueType = resolveTypeName(requireNotNull(binding.valueBinding).typeName)
+        val keyType = resolveValueTypeName(requireNotNull(binding.keyBinding))
+        val valueType = resolveValueTypeName(requireNotNull(binding.valueBinding))
         val entryType = MUTABLE_MAP_CLASS_NAME.nestedClass("MutableEntry").parameterizedBy(keyType, valueType)
         builder.addProperty(PropertySpec.builder("size", Int::class).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.size\n", binding.delegatePropertyName).build()).build())
         builder.addProperty(PropertySpec.builder("entries", MUTABLE_SET_CLASS_NAME.parameterizedBy(entryType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.entries\n", binding.delegatePropertyName).build()).build())
@@ -2458,8 +2461,8 @@ class KotlinProjectionRenderer(
     }
 
     private fun mapIterableType(binding: KotlinProjectionMutableCollectionBinding): TypeName {
-        val keyType = resolveTypeName(requireNotNull(binding.keyBinding).typeName)
-        val valueType = resolveTypeName(requireNotNull(binding.valueBinding).typeName)
+        val keyType = resolveValueTypeName(requireNotNull(binding.keyBinding))
+        val valueType = resolveValueTypeName(requireNotNull(binding.valueBinding))
         return Iterable::class.asClassName().parameterizedBy(Map.Entry::class.asClassName().parameterizedBy(keyType, valueType))
     }
 
@@ -2649,7 +2652,7 @@ class KotlinProjectionRenderer(
         iteratorBinding: RequiredIteratorBinding,
     ) {
         val elementBinding = iteratorBinding.elementBinding
-        val elementType = resolveTypeName(elementBinding.typeName)
+        val elementType = resolveValueTypeName(elementBinding)
         builder.addSuperinterface(Iterator::class.asClassName().parameterizedBy(elementType))
         builder.addProperty(
             PropertySpec.builder("__iteratorInitialized", Boolean::class)
@@ -4047,10 +4050,10 @@ class KotlinProjectionRenderer(
                 .addModifiers(KModifier.ABSTRACT, KModifier.OPERATOR)
                 .addParameters(
                     invokeMethod.parameters.map { parameter ->
-                        ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+                        ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName)).build()
                     },
                 )
-                .returns(resolveTypeName(invokeMethod.returnTypeName))
+                .returns(resolveValueTypeName(invokeMethod.returnTypeName))
                 .build(),
         )
         if (invokeShape != null && invokeShape.isSupportedProjectedDelegateShape()) {
@@ -4109,7 +4112,7 @@ class KotlinProjectionRenderer(
         val annotation = AnnotationSpec.builder(WINRT_PROJECTION_INBOUND_CALL_SITE_CLASS_NAME)
             .addMember(
                 "returnAbiType = %S",
-                resolveTypeName(invokeShape.returnBinding.typeName).toString(),
+                resolveValueTypeName(invokeShape.returnBinding).toString(),
             )
             .build()
         val invocation = CodeBlock.builder()
@@ -4130,12 +4133,12 @@ class KotlinProjectionRenderer(
                 invokeMethod.parameters.forEachIndexed { index, parameter ->
                     val binding = invokeShape.parameterBindings[index]
                     addParameter(
-                        ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName))
+                        ParameterSpec.builder(parameter.name, resolveValueTypeName(parameter.typeName))
                             .addAnnotation(
                                 AnnotationSpec.builder(WINRT_PROJECTION_PARAMETER_CLASS_NAME)
                                     .addMember(
                                         "abiType = %S",
-                                        resolveTypeName(binding.typeBinding.typeName).toString(),
+                                        resolveValueTypeName(binding.typeBinding).toString(),
                                     )
                                     .build(),
                             )
@@ -4143,7 +4146,7 @@ class KotlinProjectionRenderer(
                     )
                 }
             }
-            .returns(resolveTypeName(invokeMethod.returnTypeName))
+            .returns(resolveValueTypeName(invokeMethod.returnTypeName))
             .addCode(
                 "return %L.also { TODO(%S) }\n",
                 invocation,
@@ -4261,8 +4264,8 @@ class KotlinProjectionRenderer(
                     WINRT_OBJECT_BASE_CLASS_NAME,
                     WINRT_DELEGATE_REFERENCE_CLASS_NAME,
                     projectedType,
-                    invokeMethod.parameters.joinToString(", ") { "${it.name}: ${resolveTypeName(it.typeName)}" },
-                    resolveTypeName(invokeMethod.returnTypeName),
+                    invokeMethod.parameters.joinToString(", ") { "${it.name}: ${resolveValueTypeName(it.typeName)}" },
+                    resolveValueTypeName(invokeMethod.returnTypeName),
                     delegateInvokeBodyCode(invokeShape),
                 ),
             )

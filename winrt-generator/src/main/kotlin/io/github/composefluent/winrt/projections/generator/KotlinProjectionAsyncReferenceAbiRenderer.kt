@@ -158,7 +158,7 @@ private fun KotlinProjectionRenderer.asyncActionWithProgressExpression(
     val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
     val progressGuidSignature = progressBinding.guidSignature
     return CodeBlock.builder()
-        .add("%T.actionWithProgress<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(progressBinding.typeName))
+        .add("%T.actionWithProgress<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveValueTypeName(progressBinding))
         .indent()
         .add("pointer = %L,\n", pointerExpression)
         .apply {
@@ -210,7 +210,7 @@ private fun KotlinProjectionRenderer.asyncOperationExpression(
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
     val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding, hoistMetadata) ?: return null
     return CodeBlock.builder()
-        .add("%T.operation<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(resultBinding.typeName))
+        .add("%T.operation<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveValueTypeName(resultBinding))
         .indent()
         .add("pointer = %L,\n", pointerExpression)
         .apply {
@@ -265,8 +265,8 @@ private fun KotlinProjectionRenderer.asyncOperationWithProgressExpression(
         .add(
             "%T.operationWithProgress<%T, %T>(\n",
             WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME,
-            resolveTypeName(resultBinding.typeName),
-            resolveTypeName(progressBinding.typeName),
+            resolveValueTypeName(resultBinding),
+            resolveValueTypeName(progressBinding),
         )
         .indent()
         .add("pointer = %L,\n", pointerExpression)
@@ -349,7 +349,7 @@ internal fun KotlinProjectionRenderer.referenceReadbackExpression(
     resultOutName: String,
     hoistMetadata: Boolean = false,
 ): CodeBlock? {
-    val projectedType = resolveTypeName(typeBinding.typeName)
+    val projectedType = resolveValueTypeName(typeBinding)
     val interfaceId = referenceInterfaceIdCode(typeBinding, hoistMetadata) ?: return null
     return CodeBlock.of(
         "%T.fromAbi(%T.readPointer(%L), %L) as %T",
@@ -841,6 +841,17 @@ internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpress
     resultBinding: KotlinProjectionAbiTypeBinding,
     hoistMetadata: Boolean = false,
 ): CodeBlock? {
+    val expression = asyncNonNullMappedCollectionResultReadbackExpression(resultBinding, hoistMetadata) ?: return null
+    return if (resultBinding.isNullableAbiReturn) {
+        CodeBlock.of("if (%T.isNull(%T.readPointer(__operationResultOut))) null else %L",
+            PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, expression)
+    } else expression
+}
+
+private fun KotlinProjectionRenderer.asyncNonNullMappedCollectionResultReadbackExpression(
+    resultBinding: KotlinProjectionAbiTypeBinding,
+    hoistMetadata: Boolean,
+): CodeBlock? {
     readOnlyCollectionBindingForReturn(resultBinding)?.let { binding ->
         asyncRuntimeReadOnlyCollectionResultReadback(binding, hoistMetadata)?.let { return it }
         return CodeBlock.of(
@@ -1088,8 +1099,8 @@ internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
         requireSupportedBinding = true,
         bindingLocationLabel = "return",
     ) ?: return null
-    val elementType = resolveTypeName(elementBinding.typeName)
-    val observableVectorType = resolveTypeName(returnBinding.typeName)
+    val elementType = resolveValueTypeName(elementBinding)
+    val observableVectorType = resolveValueTypeName(returnBinding).copy(nullable = false)
     val vectorChangedHandlerType = projectionClassName("Windows.Foundation.Collections.VectorChangedEventHandler")
         .parameterizedBy(elementType)
     val vectorChangedEventType = WINRT_EVENT_CLASS_NAME.parameterizedBy(vectorChangedHandlerType)
@@ -1190,13 +1201,16 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     fun hoistAdapter(
         projectedType: TypeName,
         expression: CodeBlock,
-    ): CodeBlock = if (!hoistMetadata) {
-        expression
-    } else {
-        hoistModuleMetadata(
+    ): CodeBlock {
+        val nullable = typeBinding.isNullableAbiTypeName && !projectedType.isNullable
+        val adapterExpression = if (nullable) {
+            CodeBlock.of("%T.nullableReference(%L)", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME, expression)
+        } else expression
+        if (!hoistMetadata) return adapterExpression
+        return hoistModuleMetadata(
             identity = typeBinding.moduleMetadataIdentity("reference-adapter"),
-            type = WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME.parameterizedBy(projectedType),
-            initializer = expression,
+            type = WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME.parameterizedBy(projectedType.copy(nullable = nullable || projectedType.isNullable)),
+            initializer = adapterExpression,
         )
     }
 
@@ -1338,7 +1352,7 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     if (typeBinding.kind == KotlinProjectionAbiValueKind.GuidValue ||
         winRTFundamentalTypeForName(typeBinding.typeName)?.isWinRTValueType == true
     ) {
-        val projectedType = resolveTypeName(typeBinding.typeName).copy(nullable = false)
+        val projectedType = resolveValueTypeName(typeBinding).copy(nullable = false)
         val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
         return hoistAdapter(projectedType, CodeBlock.of(
             "%T.valueType(%T::class, %S, %L)",
@@ -1349,7 +1363,7 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.Enum) {
-        val projectedType = resolveTypeName(typeBinding.typeName).copy(nullable = false)
+        val projectedType = resolveValueTypeName(typeBinding).copy(nullable = false)
         val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
         return hoistAdapter(projectedType, CodeBlock.of(
             "%T.valueType(%T::class, %S, %L)",
@@ -1371,7 +1385,7 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         ))
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.GenericParameter) {
-        val projectedType = resolveTypeName(typeBinding.typeName)
+        val projectedType = resolveValueTypeName(typeBinding)
         return CodeBlock.of(
             "%T.genericParameter<%T>(%S)",
             WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
@@ -1380,7 +1394,10 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         )
     }
     typeBinding.closedGenericProjectionHelperClassName(supportOwnerIdentity)?.let { helperClass ->
-        return CodeBlock.of("%T.referenceValueAdapter", helperClass)
+        val adapter = CodeBlock.of("%T.referenceValueAdapter", helperClass)
+        return if (typeBinding.isNullableAbiTypeName) {
+            CodeBlock.of("%T.nullableReference(%L)", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME, adapter)
+        } else adapter
     }
     when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
@@ -1456,7 +1473,7 @@ private fun KotlinProjectionRenderer.mappedCollectionProjectedType(
 ): TypeName {
     val rawTypeName = typeBinding.resolvedTypeName.substringBefore('<').removeSuffix("?")
     val mappedType = mappedTypeByAbiName(rawTypeName)
-        ?: return resolveTypeName(typeBinding.typeName).copy(nullable = false)
+        ?: return resolveValueTypeName(typeBinding).copy(nullable = false)
     val arguments = typeBinding.typeArguments.map { argument -> mappedCollectionArgumentProjectedType(argument) }
     return mappedType.projectedTypeResolver(arguments).copy(nullable = false)
 }
@@ -1471,7 +1488,8 @@ private fun KotlinProjectionRenderer.mappedCollectionArgumentProjectedType(
         KotlinProjectionAbiValueKind.MappedMap,
         KotlinProjectionAbiValueKind.MappedMapView,
         KotlinProjectionAbiValueKind.MappedKeyValuePair -> mappedCollectionProjectedType(typeBinding)
-        else -> resolveTypeName(typeBinding.typeName)
+            .copy(nullable = typeBinding.isNullableAbiTypeName)
+        else -> resolveValueTypeName(typeBinding)
     }
 
 internal fun KotlinProjectionRenderer.bindableCollectionReturnReadback(

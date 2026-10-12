@@ -179,6 +179,7 @@ private fun closedGenericProjectionHelperInputs(
         modulePlatformAbiCalls = modulePlatformAbiCalls,
         supportOwnerIdentity = supportOwnerIdentity,
     )
+    renderer.projectionTypesByQualifiedName = typesByQualifiedName
     val inputs = instantiations
         .asSequence()
         .mapNotNull { instantiation ->
@@ -262,7 +263,7 @@ private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(
     genericArguments: List<io.github.composefluent.winrt.metadata.WinRTTypeRef>,
 ): TypeSpec {
     val helperClass = requireNotNull(binding.closedGenericProjectionHelperClassName(supportOwnerIdentity))
-    val projectedType = resolveTypeName(binding.typeName).copy(nullable = false)
+    val projectedType = resolveValueTypeName(binding).copy(nullable = false)
     val typeSignature = abiTypeSignature(binding)
         ?: error("Closed generic projection '${binding.typeName}' has no parameterized WinRT signature.")
     val mappedAdapter = listOf(binding.resolvedTypeName, binding.typeName)
@@ -299,8 +300,8 @@ private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(
 
     val isMappedKeyValuePair = binding.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair
     val entrySnapshot = if (isMappedKeyValuePair) {
-        val keyType = resolveTypeName(binding.typeArguments[0].typeName)
-        val valueType = resolveTypeName(binding.typeArguments[1].typeName)
+        val keyType = resolveValueTypeName(binding.typeArguments[0])
+        val valueType = resolveValueTypeName(binding.typeArguments[1])
         TypeSpec.classBuilder("EntrySnapshot")
             .addModifiers(KModifier.PRIVATE, KModifier.DATA)
             .primaryConstructor(

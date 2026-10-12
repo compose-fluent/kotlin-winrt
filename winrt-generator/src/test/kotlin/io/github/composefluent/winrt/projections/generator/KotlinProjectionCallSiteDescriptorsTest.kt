@@ -496,7 +496,7 @@ class KotlinProjectionCallSiteDescriptorsTest {
 
         val recipe = renderer.buildCallSiteRecipe(binding, category = null).recipe
 
-        assertEquals("kotlin.collections.List<kotlin.Int>", recipe.projectedKotlinTypeName)
+        assertEquals("kotlin.collections.List<kotlin.Int>?", recipe.projectedKotlinTypeName)
         assertTrue(recipe.typeSignature.contains("Windows.Foundation.Collections.IVectorView<Int32>"))
     }
 

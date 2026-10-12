@@ -1407,6 +1407,7 @@ data class KotlinProjectionAbiTypeBinding(
     val typeArguments: List<KotlinProjectionAbiTypeBinding> = emptyList(),
     val structFieldBindings: List<KotlinProjectionAbiTypeBinding> = emptyList(),
     val structFieldOffsets: List<Int> = emptyList(),
+    val referenceNullable: Boolean = false,
 )
 
 internal fun KotlinProjectionAbiTypeBinding.substituteGenericTypeArguments(

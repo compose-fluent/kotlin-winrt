@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.metadata.WinRTFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRTFieldDefinition
 import io.github.composefluent.winrt.metadata.isWinRTGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
+import io.github.composefluent.winrt.metadata.isNullableReferenceProjection
 import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
 import io.github.composefluent.winrt.metadata.WinRTGuidSignatureDescriptor
@@ -88,6 +89,7 @@ import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import com.squareup.kotlinpoet.ParameterizedTypeName
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
@@ -114,7 +116,7 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
     if (genericStart >= 0 && effectiveTypeName.endsWith('>')) {
         val rawType = effectiveTypeName.substring(0, genericStart)
         val arguments = splitGenericArguments(effectiveTypeName.substring(genericStart + 1, effectiveTypeName.length - 1))
-            .map(::resolveTypeName)
+            .map(::resolveValueTypeName)
         if (rawType == "Array") {
             return Array::class.asClassName().parameterizedBy(arguments).withOuterNullability(nullable)
         }
@@ -159,6 +161,24 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         else -> if ('.' in effectiveTypeName) projectionClassName(effectiveTypeName) else ClassName.bestGuess(effectiveTypeName)
     }.withOuterNullability(nullable)
 }
+
+/** Value positions share CsWinRT's null COM-reference semantics. Declaration
+ * positions (base classes, implemented interfaces and factories) use resolveTypeName.
+ */
+internal fun KotlinProjectionRenderer.resolveValueTypeName(typeName: String): TypeName {
+    val projected = resolveTypeName(typeName)
+    val nullable = guidSignatureHelpers?.isNullableReferenceProjection(typeName)
+        ?: WinRTTypeRef.fromDisplayName(typeName).isNullableReferenceProjection("", projectionTypesByQualifiedName)
+    return if (nullable) projected.copy(nullable = true) else projected
+}
+
+internal fun KotlinProjectionRenderer.resolveValueTypeName(binding: KotlinProjectionAbiTypeBinding): TypeName {
+    val type = resolveValueTypeName(binding.typeName)
+    val composed = if (type is ParameterizedTypeName && binding.typeArguments.size == type.typeArguments.size) {
+        type.rawType.parameterizedBy(binding.typeArguments.map(::resolveValueTypeName)).copy(nullable = type.isNullable)
+    } else type
+    return if (binding.referenceNullable) composed.copy(nullable = true) else composed
+    }
 
 internal fun redirectedWinUiXamlAbiTypeName(typeName: String, useWinUiXamlTypeRedirects: Boolean): String {
     if (!useWinUiXamlTypeRedirects) {
@@ -239,10 +259,11 @@ internal fun KotlinProjectionRenderer.redirectedAbiTypeExpression(typeName: Stri
     redirectedWinUiXamlAbiTypeExpression(typeName, useWinUiXamlTypeRedirects)
 
 internal fun KotlinProjectionRenderer.resolveStructFieldTypeName(
-    @Suppress("UNUSED_PARAMETER") plan: KotlinTypeProjectionPlan,
+    plan: KotlinTypeProjectionPlan,
     typeName: String,
 ): TypeName {
-    return resolveTypeName(typeName)
+    projectionTypesByQualifiedName = plan.typesByQualifiedName
+    return resolveValueTypeName(typeName)
 }
 
 internal fun KotlinTypeProjectionPlan.requiresKotlinDurationAlias(): Boolean =

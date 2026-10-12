@@ -92,6 +92,7 @@ internal class KotlinExpectActualProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         renderContents: Boolean,
     ): List<KotlinProjectionFile> {
+        baseRenderer.projectionTypesByQualifiedName = plan.typesByQualifiedName
         return when {
             canRenderExpectActualInterfaceSlice(plan) -> listOf(
                 renderCommonInterface(plan, renderContents),
@@ -602,10 +603,10 @@ internal class KotlinExpectActualProjectionRenderer(
         val objectShape = runtimeObjectMethodShape(method)
         return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
             .addModifiers(KModifier.OVERRIDE)
-            .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, baseRenderer.resolveTypeName(it.typeName)).build() })
-            .returns(objectShape?.returnType ?: baseRenderer.resolveTypeName(method.returnTypeName))
+            .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, baseRenderer.resolveValueTypeName(it.typeName)).build() })
+            .returns(objectShape?.returnType ?: baseRenderer.resolveValueTypeName(method.returnTypeName))
             .addCode(
-                if ((objectShape?.returnType ?: baseRenderer.resolveTypeName(method.returnTypeName)) == UNIT) {
+                if ((objectShape?.returnType ?: baseRenderer.resolveValueTypeName(method.returnTypeName)) == UNIT) {
                     "%L.%L(%L)\n"
                 } else {
                     "return %L.%L(%L)\n"
@@ -625,14 +626,14 @@ internal class KotlinExpectActualProjectionRenderer(
     ): PropertySpec {
         val propertyName = property.name.replaceFirstChar(Char::lowercase)
         val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)
-        val builder = PropertySpec.builder(propertyName, baseRenderer.resolveTypeName(propertyTypeName))
+        val builder = PropertySpec.builder(propertyName, baseRenderer.resolveValueTypeName(propertyTypeName))
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
             .getter(FunSpec.getterBuilder().addCode("return %L.%N\n", cacheName, propertyName).build())
         if (!property.isReadOnly) {
             builder.setter(
                 FunSpec.setterBuilder()
-                    .addParameter("value", baseRenderer.resolveTypeName(propertyTypeName))
+                    .addParameter("value", baseRenderer.resolveValueTypeName(propertyTypeName))
                     .addCode("%L.%N = value\n", cacheName, propertyName)
                     .build(),
             )
@@ -765,8 +766,8 @@ internal class KotlinExpectActualProjectionRenderer(
         return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
             .addModifiers(KModifier.OVERRIDE)
             .addMethodGenericParameters(method, objectShape)
-            .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, baseRenderer.resolveTypeName(it.typeName)).build() })
-            .returns(objectShape?.returnType ?: baseRenderer.resolveTypeName(method.projectedKotlinReturnTypeName()))
+            .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, baseRenderer.resolveValueTypeName(it.typeName)).build() })
+            .returns(objectShape?.returnType ?: baseRenderer.resolveValueTypeName(method.projectedKotlinReturnTypeName()))
             .addCode("%L\n", invocation)
             .build()
     }
@@ -780,7 +781,7 @@ internal class KotlinExpectActualProjectionRenderer(
         val propertyTypeName = property.projectedPropertyTypeName(slotInterfaceType.qualifiedName, typesByQualifiedName)
         val builder = PropertySpec.builder(
             property.name.replaceFirstChar(Char::lowercase),
-            baseRenderer.resolveTypeName(propertyTypeName),
+            baseRenderer.resolveValueTypeName(propertyTypeName),
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
@@ -827,7 +828,7 @@ internal class KotlinExpectActualProjectionRenderer(
             ) ?: error("Generator interface proxy parity failed to plan setter ${slotInterfaceType.qualifiedName}.${property.name}")
             builder.setter(
                 FunSpec.setterBuilder()
-                    .addParameter("value", baseRenderer.resolveTypeName(propertyTypeName))
+                    .addParameter("value", baseRenderer.resolveValueTypeName(propertyTypeName))
                     .addCode(
                         "%L\n",
                         baseRenderer.renderInlineAbiInvocation(

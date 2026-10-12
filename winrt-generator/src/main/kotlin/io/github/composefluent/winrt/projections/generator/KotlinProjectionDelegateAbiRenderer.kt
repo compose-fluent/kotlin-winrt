@@ -403,12 +403,12 @@ internal fun KotlinProjectionRenderer.staticDelegateFromBorrowedAbiCode(
     val invokeShape = outboundDelegateInvokeShape(binding) ?: return null
     val invokeBody = directDelegateInvokeBodyCode(invokeShape) ?: return null
     val interfaceId = delegateInterfaceIdCode(binding, invokeShape) ?: return null
-    val projectedType = runCatching { resolveTypeName(binding.typeName).copy(nullable = false) }.getOrNull()
+    val projectedType = runCatching { resolveValueTypeName(binding).copy(nullable = false) }.getOrNull()
         ?: return null
     val parameters = invokeShape.parameterBindings.joinToString(", ") { parameter ->
-        "${parameter.name.escapeAsKotlinIdentifierIfNeeded()}: ${resolveTypeName(parameter.typeBinding.typeName)}"
+        "${parameter.name.escapeAsKotlinIdentifierIfNeeded()}: ${resolveValueTypeName(parameter.typeBinding)}"
     }
-    val returnType = resolveTypeName(invokeShape.returnBinding.typeName)
+    val returnType = resolveValueTypeName(invokeShape.returnBinding)
     return CodeBlock.of(
         """
         run {
@@ -546,22 +546,22 @@ internal fun KotlinProjectionRenderer.delegateInvokeReturnCode(
     KotlinProjectionAbiValueKind.Object ->
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.GenericParameter ->
-        CodeBlock.of("return %L as %T\n", nativeInvokeExpression, resolveTypeName(returnBinding.typeName))
+        CodeBlock.of("return %L as %T\n", nativeInvokeExpression, resolveValueTypeName(returnBinding))
     KotlinProjectionAbiValueKind.InspectableReference ->
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncAction ->
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
-        val progressType = returnBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+        val progressType = returnBinding.typeArguments.singleOrNull()?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(progressType))
     }
     KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
-        val resultType = returnBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+        val resultType = returnBinding.typeArguments.singleOrNull()?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(resultType))
     }
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
-        val resultType = returnBinding.typeArguments.getOrNull(0)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
-        val progressType = returnBinding.typeArguments.getOrNull(1)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+        val resultType = returnBinding.typeArguments.getOrNull(0)?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
+        val progressType = returnBinding.typeArguments.getOrNull(1)?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resultType, progressType))
     }
     KotlinProjectionAbiValueKind.MappedIterable,
@@ -591,9 +591,9 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
     typeBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock {
     // CsWinRT Marshaler<T>.FromAbi preserves a null reference before wrapping it.
-    if (typeBinding.typeName.endsWith('?')) {
+    if (typeBinding.isNullableAbiTypeName) {
         return CodeBlock.of("if (__args[%L] == null) null else %L", index,
-            delegateCallbackArgumentCode(index, typeBinding.copy(
+            delegateNonNullCallbackArgumentCode(index, typeBinding.copy(
                 typeName = typeBinding.typeName.removeSuffix("?"),
                 resolvedTypeName = typeBinding.resolvedTypeName.removeSuffix("?"),
             )))
@@ -684,16 +684,16 @@ private fun KotlinProjectionRenderer.delegateNonNullCallbackArgumentCode(
     KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("__args[%L] as %T", index, IUNKNOWN_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncAction -> CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
-        val progressType = typeBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+        val progressType = typeBinding.typeArguments.singleOrNull()?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
         CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(progressType))
     }
     KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
-        val resultType = typeBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+        val resultType = typeBinding.typeArguments.singleOrNull()?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
         CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(resultType))
     }
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
-        val resultType = typeBinding.typeArguments.getOrNull(0)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
-        val progressType = typeBinding.typeArguments.getOrNull(1)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+        val resultType = typeBinding.typeArguments.getOrNull(0)?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
+        val progressType = typeBinding.typeArguments.getOrNull(1)?.let { resolveValueTypeName(it) } ?: ANY.copy(nullable = true)
         CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resultType, progressType))
     }
     KotlinProjectionAbiValueKind.MappedIterable,
@@ -701,8 +701,8 @@ private fun KotlinProjectionRenderer.delegateNonNullCallbackArgumentCode(
     KotlinProjectionAbiValueKind.MappedMap,
     KotlinProjectionAbiValueKind.MappedVectorView,
     KotlinProjectionAbiValueKind.MappedMapView -> delegateCollectionCallbackArgumentCode(index, typeBinding)
-    KotlinProjectionAbiValueKind.Array -> CodeBlock.of("__args[%L] as %T", index, resolveTypeName(typeBinding.typeName))
-    KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("__args[%L] as %T", index, resolveTypeName(typeBinding.typeName))
+    KotlinProjectionAbiValueKind.Array -> CodeBlock.of("__args[%L] as %T", index, resolveValueTypeName(typeBinding))
+    KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("__args[%L] as %T", index, resolveValueTypeName(typeBinding))
     KotlinProjectionAbiValueKind.Object -> CodeBlock.of("__args[%L]", index)
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("__args[%L] as %T", index, IINSPECTABLE_REFERENCE_CLASS_NAME)
     else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")

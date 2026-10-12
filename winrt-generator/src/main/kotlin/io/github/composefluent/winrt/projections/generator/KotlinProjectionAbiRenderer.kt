@@ -174,7 +174,7 @@ internal val KotlinProjectionAbiTypeBinding.isNullableAbiReturn: Boolean
     get() = isNullableAbiTypeName
 
 internal val KotlinProjectionAbiTypeBinding.isNullableAbiTypeName: Boolean
-    get() = typeName.trim().endsWith("?") || resolvedTypeName.trim().endsWith("?")
+    get() = referenceNullable || typeName.trim().endsWith("?") || resolvedTypeName.trim().endsWith("?")
 
 internal fun KotlinProjectionRenderer.resolvedReturnClassName(
     returnBinding: KotlinProjectionAbiTypeBinding,
@@ -204,7 +204,7 @@ internal fun KotlinProjectionRenderer.delegateFromBorrowedAbiCode(
         if (index > 0) {
             typeArguments.add(", ")
         }
-        typeArguments.add("%T", resolveTypeName(typeArgument.typeName))
+        typeArguments.add("%T", resolveValueTypeName(typeArgument))
     }
     return CodeBlock.of(
         """
@@ -262,7 +262,7 @@ internal fun KotlinProjectionRenderer.delegateFromOwnedAbiCode(
         if (index > 0) {
             typeArguments.add(", ")
         }
-        typeArguments.add("%T", resolveTypeName(typeArgument.typeName))
+        typeArguments.add("%T", resolveValueTypeName(typeArgument))
     }
     return CodeBlock.of(
         "%T.Metadata.fromAbi<%L>(%L, %L)",
@@ -278,8 +278,8 @@ internal fun KotlinProjectionRenderer.mappedKeyValuePairReturnReadback(
 ): CodeBlock? {
     val keyBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
     val valueBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
-    val keyType = resolveTypeName(keyBinding.typeName)
-    val valueType = resolveTypeName(valueBinding.typeName)
+    val keyType = resolveValueTypeName(keyBinding)
+    val valueType = resolveValueTypeName(valueBinding)
     return CodeBlock.of(
         """
         val __pairRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))

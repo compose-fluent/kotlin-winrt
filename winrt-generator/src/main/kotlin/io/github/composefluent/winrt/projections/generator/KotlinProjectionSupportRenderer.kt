@@ -197,6 +197,9 @@ class KotlinProjectionSupportRenderer private constructor(
         semanticHelpers: WinRTMetadataSemanticHelpers,
     ): List<KotlinProjectionFile> {
         val inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames)
+        val projectionTypes = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
+        typeRenderer.projectionTypesByQualifiedName = projectionTypes
+        supportTypeRenderer.projectionTypesByQualifiedName = projectionTypes
         validateAuthoringMetadataProjectionPlans(inventory, plans)
         val genericInstantiationWorklist = semanticHelpers.genericInstantiationWorklist(context)
         val registrarPlans = registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames)
@@ -2948,7 +2951,7 @@ class KotlinProjectionSupportRenderer private constructor(
         shape: WinRTDirectInboundShapeDescriptor,
         binding: KotlinProjectionAbiTypeBinding,
     ): String = when (shape.kind) {
-        WinRTDirectInboundShapeKind.Value -> typeRenderer.resolveTypeName(binding.typeName).toString()
+        WinRTDirectInboundShapeKind.Value -> typeRenderer.resolveValueTypeName(binding).toString()
         WinRTDirectInboundShapeKind.Enum,
         WinRTDirectInboundShapeKind.Projection -> shape.abiTypeName
         WinRTDirectInboundShapeKind.Unit -> UNIT.toString()
@@ -2958,7 +2961,7 @@ class KotlinProjectionSupportRenderer private constructor(
         shape: WinRTDirectInboundShapeDescriptor,
         binding: KotlinProjectionAbiTypeBinding,
     ): TypeName =
-        typeRenderer.resolveTypeName(shape.projectedType.typeName)
+        typeRenderer.resolveValueTypeName(shape.projectedType.typeName)
             .copy(nullable = binding.isNullableAbiTypeName)
 
     private fun authoredCcwBindingHasMemberBody(
@@ -3113,7 +3116,7 @@ class KotlinProjectionSupportRenderer private constructor(
                         index = 0,
                     ),
                 )
-                code.add("val token = value.add%L(handler)\n", event.name)
+                code.add("val token = value.add%L(requireNotNull(handler))\n", event.name)
                 code.add("%T.Metadata.copyTo(token, rawArgs[1] as %T)\n", EVENT_REGISTRATION_TOKEN_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
                 code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
             }
@@ -3353,7 +3356,7 @@ class KotlinProjectionSupportRenderer private constructor(
                 CodeBlock.of(
                     "%T<%T>()",
                     WINRT_OUT_CLASS_NAME,
-                    typeRenderer.resolveTypeName(parameter.typeBinding.typeName),
+                    typeRenderer.resolveValueTypeName(parameter.typeBinding),
                 )
             else -> authoringCcwDecodeArgumentCode(parameter.typeBinding, rawIndex)
         }
@@ -3406,7 +3409,7 @@ class KotlinProjectionSupportRenderer private constructor(
         KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of(
             "%T.fromAbi<%T>(rawArgs[%L] as %T)",
             WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME,
-            typeRenderer.resolveTypeName(binding.typeName),
+            typeRenderer.resolveValueTypeName(binding),
             index,
             RAW_ADDRESS_CLASS_NAME,
         )
@@ -3534,7 +3537,7 @@ class KotlinProjectionSupportRenderer private constructor(
             index,
             RAW_ADDRESS_CLASS_NAME,
             interfaceId,
-            typeRenderer.resolveTypeName(binding.typeName),
+            typeRenderer.resolveValueTypeName(binding),
         )
     }
 
@@ -3555,7 +3558,7 @@ class KotlinProjectionSupportRenderer private constructor(
         return CodeBlock.builder()
             .add("%T.fromAbi(rawArgs[%L] as %T", projectionClass, index, RAW_ADDRESS_CLASS_NAME)
             .apply { adapterArguments.forEach { adapter -> add(", %L", adapter) } }
-            .add(") as %T", typeRenderer.resolveTypeName(binding.typeName))
+            .add(") as %T", typeRenderer.resolveValueTypeName(binding))
             .build()
     }
 
@@ -3574,7 +3577,7 @@ class KotlinProjectionSupportRenderer private constructor(
             valueAdapter,
             index,
             RAW_ADDRESS_CLASS_NAME,
-            typeRenderer.resolveTypeName(binding.typeName),
+            typeRenderer.resolveValueTypeName(binding),
         )
     }
 
@@ -3593,7 +3596,7 @@ class KotlinProjectionSupportRenderer private constructor(
             projectionClass,
             index,
             RAW_ADDRESS_CLASS_NAME,
-            typeRenderer.resolveTypeName(binding.typeName),
+            typeRenderer.resolveValueTypeName(binding),
         )
     }
 
@@ -3700,7 +3703,7 @@ class KotlinProjectionSupportRenderer private constructor(
                 rawIndex + 1,
                 RAW_ADDRESS_CLASS_NAME,
                 elementMarshaler,
-                typeRenderer.resolveTypeName(binding.typeName),
+                typeRenderer.resolveValueTypeName(binding),
             )
         }
         val elementRead = typeRenderer.nativeArrayElementReadCode(
@@ -3714,7 +3717,7 @@ class KotlinProjectionSupportRenderer private constructor(
             rawIndex + 1,
             RAW_ADDRESS_CLASS_NAME,
             elementRead,
-            typeRenderer.resolveTypeName(binding.typeName),
+            typeRenderer.resolveValueTypeName(binding),
         )
     }
 
@@ -4521,7 +4524,7 @@ ${invocation.toString().prependIndent("                        ")}
         supportOwnerIdentity: String?,
     ): CodeBlock =
         if (mappedTypeByAbiName(binding.typeName) != null) {
-            CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveTypeName(binding.typeName))
+            CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveValueTypeName(binding))
         } else if (binding.hasClosedGenericProjectionHelper(plansByType)) {
             CodeBlock.of(
                 "%T.wrap(__args[%L] as %T)",
@@ -4560,7 +4563,7 @@ ${invocation.toString().prependIndent("                        ")}
         val lambdaParameterList = CodeBlock.builder().apply {
             invokeShape.parameterBindings.forEachIndexed { index, binding ->
                 if (index > 0) add(", ")
-                add("%L: %T", binding.name, typeRenderer.resolveTypeName(binding.typeBinding.typeName))
+                add("%L: %T", binding.name, typeRenderer.resolveValueTypeName(binding.typeBinding))
             }
         }.build()
         val lambdaBody = eventSourceStateLambdaBody(invokeShape, invokeArguments)
@@ -4775,7 +4778,7 @@ ${invocation.toString().prependIndent("                        ")}
         val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return null
         val interfaceIdExpression = interfaceIdPropertyName?.let { CodeBlock.of("%L", it) } ?: interfaceId
         val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
-        val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
+        val argumentType = typeRenderer.resolveValueTypeName(argumentBinding)
         return CodeBlock.builder()
             .add(
                 "%T<%T>(objectReference = objectReference, interfaceId = %L, argsKind = %L, " +

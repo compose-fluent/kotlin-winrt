@@ -196,8 +196,8 @@ private fun KotlinProjectionRenderer.buildCallSiteInputFactory(
                 .apply { arguments.forEach { argument -> add(", %L", argument) } }
                 .add(")")
                 .apply {
-                    if (adapter.rejectNullInputFactory) {
-                        add(" ?: error(%S)", "Unable to marshal closed WinRT input ${binding.typeName}.")
+                    if (adapter.rejectNullInputFactory && !isNullableProjectedType(binding)) {
+                        add(" ?: error(%S)", "Unable to marshal closed WinRT input ${binding.closedCallSiteAbiTypeName()}.")
                     }
                 }
                 .add("\n")
@@ -205,7 +205,7 @@ private fun KotlinProjectionRenderer.buildCallSiteInputFactory(
         }
     }
     return KotlinProjectionCallSiteFactory(
-        returnType = returnType.copy(nullable = adapter.inputFactoryNullable),
+        returnType = returnType.copy(nullable = adapter.inputFactoryNullable || isNullableProjectedType(binding)),
         body = body,
         carrierProperties = listOf("abi"),
     )
@@ -768,7 +768,7 @@ internal fun KotlinProjectionRenderer.buildProjectionOutputCodec(
     require(recipe.children.single().kind == WinRTProjectionCallSiteRecipeKind.COM_REFERENCE) {
         "Projection '${recipe.typeSignature}' must compose one COM-reference ABI child."
     }
-    val returnType = resolveTypeName(binding.typeName)
+    val returnType = resolveValueTypeName(binding)
     val consumesOwnedAbi = projectionOutputCodecConsumesOwnedAbi(binding)
     return KotlinProjectionCallSiteOutputCodec(
         abiTypeName = binding.callSiteAbiMetadataName(returnType),
@@ -1052,13 +1052,13 @@ private fun WinRTIntegralType.callSiteValueTransform(): WinRTProjectionCallSiteV
     }
 
 private fun KotlinProjectionRenderer.callSiteTypeSignature(binding: KotlinProjectionAbiTypeBinding): String =
-    binding.canonicalCallSiteTypeSignature(resolveTypeName(binding.typeName).toString())
+    binding.canonicalCallSiteTypeSignature(resolveValueTypeName(binding).toString())
 
 private fun KotlinProjectionRenderer.isNullableProjectedType(binding: KotlinProjectionAbiTypeBinding): Boolean =
-    resolveTypeName(binding.typeName).isNullable
+    resolveValueTypeName(binding).isNullable
 
 internal fun KotlinProjectionAbiTypeBinding.canonicalCallSiteTypeSignature(
-    projectedTypeName: String = typeName,
+    projectedTypeName: String = typeName.removeSuffix("?") + if (isNullableAbiTypeName) "?" else "",
 ): String {
     if (hasKnownInspectableOutputInterface()) {
         return "InspectableReference(${closedCallSiteAbiTypeName()}|default-interface)"

@@ -145,7 +145,7 @@ internal fun KotlinProjectionRenderer.composeTypedProjectionCallSite(
             },
             recipe = recipe,
         )
-        runCatching { resolveTypeName(callPlan.returnBinding.typeName) }
+        runCatching { resolveValueTypeName(callPlan.returnBinding) }
             .getOrElse { failure -> callPlan.returnBinding.failCallSitePlan("cannot resolve its projected return type", failure) }
     }
 
@@ -1001,7 +1001,7 @@ private fun WinRTProjectionCallSiteRecipe.withCallSiteProjection(
     )
 
 private fun KotlinProjectionRenderer.projectedCallSiteType(binding: KotlinProjectionAbiTypeBinding): TypeName =
-    runCatching { resolveTypeName(binding.typeName) }
+    runCatching { resolveValueTypeName(binding) }
         .getOrElse { failure -> binding.failCallSitePlan("cannot resolve its projected type", failure) }
 
 private fun KotlinProjectionComArgumentKind.callSiteCarrierType(): TypeName =
