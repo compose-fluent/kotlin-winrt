@@ -214,11 +214,11 @@ class WinRTMetadataModelTest {
         )
 
         assertEquals(
-            "Microsoft.UI.Xaml.DependencyProperty",
+            "Microsoft.UI.Xaml.DependencyProperty?",
             dependencyProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.Controls.IControlStatics", types),
         )
         assertEquals(
-            "Microsoft.UI.Xaml.SetterBaseCollection",
+            "Microsoft.UI.Xaml.SetterBaseCollection?",
             settersProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.IStyle", types),
         )
         assertEquals(
@@ -226,7 +226,7 @@ class WinRTMetadataModelTest {
             basedOnProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.IStyle", types),
         )
         assertEquals(
-            "Microsoft.UI.Xaml.ResourceDictionary",
+            "Microsoft.UI.Xaml.ResourceDictionary?",
             resourcesProperty.projectedPropertyTypeName("Microsoft.UI.Xaml.IApplication", types),
         )
     }

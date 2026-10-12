@@ -8085,7 +8085,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(generatedContents, generatedContents.contains("role = WinRTProjectionAbiCodecRole.TO_ABI"))
         assertTrue(widgetContents.contains("public companion object Metadata"))
         assertTrue(widgetContents.contains("val staticToken: DependencyProperty"))
-        assertFalse(widgetContents.contains("val staticToken: DependencyProperty?"))
+        assertTrue(widgetContents.contains("val staticToken: DependencyProperty?"))
         assertTrue(widgetContents.contains("STATIC_STATICTOKEN_GETTER_SLOT"))
         assertTrue(widgetContents.contains("staticToken"))
         assertTrue(widgetContents.contains("val changed: WinRTEvent<EventHandler<Int>> by"))
@@ -14194,7 +14194,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_keeps_xaml_collection_properties_non_nullable() {
+    fun generator_projects_xaml_collection_properties_as_nullable_references() {
         val settersProperty = WinRTPropertyDefinition(
             name = "Setters",
             typeName = "Microsoft.UI.Xaml.SetterBaseCollection",
@@ -14258,15 +14258,14 @@ class KotlinProjectionGeneratorTest {
         val basedOnPropertySource = renderer.renderBoundProperty(stylePlan, basedOnProperty).toString()
 
         assertEquals(
-            "Microsoft.UI.Xaml.SetterBaseCollection",
+            "Microsoft.UI.Xaml.SetterBaseCollection?",
             stylePlan.instanceMemberBindings.first { it.bindingName == "SETTERS_GETTER_SLOT" }.returnBinding.typeName,
         )
         assertTrue(
             settersPropertySource,
             settersPropertySource.contains("val setters: microsoft.ui.xaml.SetterBaseCollection"),
         )
-        assertFalse(settersPropertySource.contains("val setters: microsoft.ui.xaml.SetterBaseCollection?"))
-        assertFalse(settersPropertySource.contains("getNullableProjectedRuntimeClass("))
+        assertTrue(settersPropertySource.contains("val setters: microsoft.ui.xaml.SetterBaseCollection?"))
         assertEquals(
             "Microsoft.UI.Xaml.Style?",
             stylePlan.instanceMemberBindings.first { it.bindingName == "BASEDON_GETTER_SLOT" }.returnBinding.typeName,

@@ -123,9 +123,6 @@ private fun WinRTTypeRef.isNullableWinRTPropertyReference(
         return false
     }
     val rawTypeName = normalized.qualifiedName ?: normalized.typeName
-    if (rawTypeName.isNonNullableXamlPropertyRuntimeClassTypeName()) {
-        return false
-    }
     if (isWinRTObjectTypeName(rawTypeName)) {
         return true
     }
@@ -135,19 +132,4 @@ private fun WinRTTypeRef.isNullableWinRTPropertyReference(
         WinRTTypeKind.Delegate,
         WinRTTypeKind.RuntimeClass,
     )
-}
-
-private fun String.isXamlDependencyPropertyTypeName(): Boolean =
-    this == "Microsoft.UI.Xaml.DependencyProperty" ||
-        this == "Windows.UI.Xaml.DependencyProperty"
-
-private fun String.isNonNullableXamlPropertyRuntimeClassTypeName(): Boolean =
-    isXamlDependencyPropertyTypeName() || isXamlCollectionRuntimeClassTypeName()
-
-private fun String.isXamlCollectionRuntimeClassTypeName(): Boolean {
-    if (!startsWith("Microsoft.UI.Xaml.") && !startsWith("Windows.UI.Xaml.")) {
-        return false
-    }
-    val simpleName = substringAfterLast('.')
-    return simpleName.endsWith("Collection") || simpleName == "ResourceDictionary"
 }
