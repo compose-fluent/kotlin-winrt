@@ -8,6 +8,24 @@ import kotlin.test.assertTrue
 
 class WinRTCollectionProjectionTest {
     @Test
+    fun null_key_value_pair_uses_projected_defaults_without_unboxing_null() {
+        // CsWinRT Projections/KeyValuePair.cs FromAbi(0) returns default(KeyValuePair<K,V>).
+        val integer = WinRTReferenceValueAdapters.valueType(Int::class, "Int32", WinRTTypeSignature.int32(), IID.NullableInt)
+        val pair = winRTKeyValuePairAdapter(integer, WinRTReferenceValueAdapters.object_)
+        val result = pair.projectAbi(PlatformAbi.nullPointer)
+        assertEquals(0, result.key)
+        assertEquals(null, result.value)
+        assertFailsWith<WinRTInvalidCastException> { integer.projector(null) }
+        val nested = winRTKeyValuePairAdapter(WinRTReferenceValueAdapters.string, pair)
+            .projectAbi(PlatformAbi.nullPointer)
+        // Kotlin's non-null HSTRING mapping deliberately uses "" for CLR default(string).
+        assertEquals("", nested.key)
+        assertEquals(0, nested.value.key)
+        assertEquals(null, nested.value.value)
+        assertEquals(null, WinRTReferenceValueAdapters.nullableReference(WinRTReferenceValueAdapters.inspectable).defaultValue())
+    }
+
+    @Test
     fun nullable_reference_elements_preserve_null_and_the_underlying_signature() {
         // CsWinRT MarshalInterface<T>.FromAbi/CreateMarshaler in Marshalers.cs.
         val allocated = mutableListOf<AutoCloseable>()

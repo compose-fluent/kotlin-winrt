@@ -21,6 +21,9 @@ open class WinRTReferenceValueAdapter<T>(
     val projector: (IUnknownReference?) -> T,
     val marshaller: (T) -> ComObjectReference,
 ) {
+    /** Default projected value, independent of unmarshaling a null IReference<T>. */
+    open fun defaultValue(): T = error("No projected default for $projectedTypeName")
+
     open val abiValueIsComReference: Boolean = true
 
     open fun createInputMarshaler(value: T): WinRTObjectMarshaler =
@@ -104,6 +107,8 @@ object WinRTReferenceValueAdapters {
             projector = { reference -> reference?.let(adapter.projector) },
             marshaller = { value -> adapter.marshaller(requireNotNull(value)) },
         ) {
+            override fun defaultValue(): T? = null
+
             override fun createInputMarshaler(value: T?): WinRTObjectMarshaler =
                 if (value == null) WinRTObjectMarshaler(PlatformAbi.nullPointer) else adapter.createInputMarshaler(value)
 
@@ -139,6 +144,10 @@ object WinRTReferenceValueAdapters {
             },
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, IID.NullableString) },
         ) {
+            // Kotlin projects HSTRING as non-null String, so CLR default(string) = null
+            // maps to the empty string here, just as a zero HSTRING does.
+            override fun defaultValue(): String = ""
+
             override val abiValueIsComReference: Boolean = false
 
             override fun createInputMarshaler(value: String): WinRTObjectMarshaler {
@@ -203,6 +212,8 @@ object WinRTReferenceValueAdapters {
                 ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
             },
         ) {
+            override fun defaultValue(): Any? = null
+
             override fun createInputMarshaler(value: Any?): WinRTObjectMarshaler =
                 WinRTObjectMarshaller.createMarshaler(value)
 
@@ -244,7 +255,7 @@ object WinRTReferenceValueAdapters {
         typeSignature: WinRTTypeSignature,
         nullableInterfaceId: Guid,
     ): WinRTReferenceValueAdapter<T> =
-        WinRTReferenceValueAdapter(
+        object : WinRTReferenceValueAdapter<T>(
             projectedTypeName = projectedTypeName,
             typeSignature = typeSignature,
             projector = { reference ->
@@ -264,7 +275,10 @@ object WinRTReferenceValueAdapters {
                 }
             },
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, nullableInterfaceId) },
-        )
+        ) {
+            @Suppress("UNCHECKED_CAST")
+            override fun defaultValue(): T = defaultWinRTValue(projectedType) as T
+        }
 
     @Suppress("UNCHECKED_CAST")
     fun <T : Any> runtimeClass(
@@ -1552,19 +1566,19 @@ fun <K, V> winRTKeyValuePairAdapter(
     keyAdapter: WinRTReferenceValueAdapter<K>,
     valueAdapter: WinRTReferenceValueAdapter<V>,
 ): WinRTReferenceValueAdapter<Map.Entry<K, V>> =
-    WinRTReferenceValueAdapter(
+    object : WinRTReferenceValueAdapter<Map.Entry<K, V>>(
         projectedTypeName = "kotlin.collections.Map.Entry<${keyAdapter.projectedTypeName}, ${valueAdapter.projectedTypeName}>",
         typeSignature = WinRTCollectionInterfaceIds.keyValuePairSignature(keyAdapter.typeSignature, valueAdapter.typeSignature),
-        projector = { reference ->
+        projector = pairProjector@{ reference ->
             val pair = reference?.let {
                 WinRTKeyValuePairReference(
                     it.pointer.asRawAddress(),
                     keyValuePairInterfaceId(keyAdapter, valueAdapter),
                     preventReleaseOnDispose = true,
                 )
-            } ?: return@WinRTReferenceValueAdapter ProjectionEntrySnapshot(
-                keyAdapter.projector(null),
-                valueAdapter.projector(null),
+            } ?: return@pairProjector ProjectionEntrySnapshot(
+                keyAdapter.defaultValue(),
+                valueAdapter.defaultValue(),
             )
             pair.use {
                 ProjectionEntrySnapshot(
@@ -1602,7 +1616,10 @@ fun <K, V> winRTKeyValuePairAdapter(
                 reference
             }
         },
-    )
+    ) {
+        override fun defaultValue(): Map.Entry<K, V> =
+            ProjectionEntrySnapshot(keyAdapter.defaultValue(), valueAdapter.defaultValue())
+    }
 
 private fun createCollectionHost(
     managedValue: Any,
