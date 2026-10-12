@@ -14,7 +14,7 @@ internal fun geometryRange(title: String, initial: Double, minimum: Double, maxi
 internal fun pointLabels(canvas: Canvas, values: List<Triple<String, Double, Double>>): ToggleSwitch {
     val labels = values.map { (text, x, y) -> label(text).apply {
         Canvas.setLeft(this, x); Canvas.setTop(this, y); Canvas.setZIndex(this, 1)
-        visibility = Visibility.Collapsed; canvas.children.add(this)
+        visibility = Visibility.Collapsed; canvas.children!!.add(this)
     } }
     return ToggleSwitch().apply {
         header = "Show points"

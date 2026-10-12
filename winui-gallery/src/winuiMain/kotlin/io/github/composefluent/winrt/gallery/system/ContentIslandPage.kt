@@ -24,7 +24,7 @@ internal class ContentIslandPage : Page() {
     override fun initializeComponent() { super.initializeComponent(); unloaded.add(::OnUnloaded) }
     private fun LoadModel_Click(sender: Any?, args: RoutedEventArgs) { _rectanglePanel.visibility = Visibility.Visible; tasks.launch { LoadModel() } }
     suspend fun LoadModel() {
-        val rect = _rectanglePanel.children.getOrNull(nextHostElementIndex++)?.asWinRT<microsoft.ui.xaml.shapes.Rectangle>() ?: return
+        val rect = _rectanglePanel.children!!.getOrNull(nextHostElementIndex++)?.asWinRT<microsoft.ui.xaml.shapes.Rectangle>() ?: return
         val root = checkNotNull(xamlRoot)
         val compositor = checkNotNull(microsoft.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(rect).compositor)
         val placement = compositor.createContainerVisual()

@@ -27,7 +27,7 @@ internal abstract class ItemsPageBase : Page(), INotifyPropertyChanged {
     }
     protected fun OnItemGridViewContainerContentChanging(sender: ListViewBase, args: ContainerContentChangingEventArgs) {
         OnItemContainerChanged(sender,args)
-        sender.items.lastOrNull()?.let { item ->
+        sender.items!!.lastOrNull()?.let { item ->
             sender.containerFromItem(item)?.asWinRT<GridViewItem>()?.let { it.xYFocusDown = it }
         }
     }

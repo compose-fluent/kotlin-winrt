@@ -59,7 +59,7 @@ internal class SampleCodePresenter : UserControl() {
         val palette = if (actualTheme == ElementTheme.Dark) KotlinCodePalette.Dark else KotlinCodePalette.Light
         val highContrast = AccessibilitySettings().highContrast
         var start = 0
-        document.spans.forEach { span -> text.inlines.add(Run().apply { this.text = document.source.substring(start, span.end); foreground = if (highContrast) GalleryTheme.brush("TextFillColorPrimaryBrush") else brush(palette.style(span.kind).foreground); fontStyle = if (palette.style(span.kind).italic) FontStyle.Italic else FontStyle.Normal }); start = span.end }
+        document.spans.forEach { span -> text.inlines!!.add(Run().apply { this.text = document.source.substring(start, span.end); foreground = if (highContrast) GalleryTheme.brush("TextFillColorPrimaryBrush") else brush(palette.style(span.kind).foreground); fontStyle = if (palette.style(span.kind).italic) FontStyle.Italic else FontStyle.Normal }); start = span.end }
         CodePresenter.content = text
         text.selectionChanged.add { _, _ -> CopyButtonBorder.visibility = if (IsCopyButtonVisible && text.selectedText.isEmpty()) Visibility.Visible else Visibility.Collapsed }
         Substitutions.filterNot(subscriptions::containsKey).forEach { value -> val listener: () -> Unit = { Refresh() }; subscriptions[value] = listener; value.addValueChanged(listener) }

@@ -28,9 +28,9 @@ internal class InfoBadgePage : Page() {
         if (!ready) return
         val name = InfoBadgeStyleComboBox.selectedItem?.toString() ?: return
         val resources = checkNotNull(Application.current).resources
-        infoBadge2.style = checkNotNull(resources["${name}IconInfoBadgeStyle"]).asWinRT<Style>()
-        infoBadge3.style = checkNotNull(resources["${name}ValueInfoBadgeStyle"]).asWinRT<Style>()
-        infoBadge4.style = checkNotNull(resources["${name}DotInfoBadgeStyle"]).asWinRT<Style>()
+        infoBadge2.style = checkNotNull(resources!!["${name}IconInfoBadgeStyle"]).asWinRT<Style>()
+        infoBadge3.style = checkNotNull(resources!!["${name}ValueInfoBadgeStyle"]).asWinRT<Style>()
+        infoBadge4.style = checkNotNull(resources!!["${name}DotInfoBadgeStyle"]).asWinRT<Style>()
     }
     private fun ValueNumberBox_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) {
         if (ready && args.newValue.isFinite() && args.newValue >= -1.0) DynamicInfoBadge.value = args.newValue.toInt()

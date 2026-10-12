@@ -40,8 +40,8 @@ internal class ItemsViewPage : ItemsPageBase() {
         val name = checkNotNull(sender).asWinRT<RadioButton>().content.toString()
         when (name) {
             "LinedFlowLayout" -> { if (linedFlowLayout == null) linedFlowLayout = SwappableLayoutsItemsView.layout?.asWinRT<LinedFlowLayout>(); if (linedFlowLayoutItemTemplate == null) linedFlowLayoutItemTemplate = SwappableLayoutsItemsView.itemTemplate?.asWinRT<DataTemplate>(); SwappableLayoutsItemsView.layout = linedFlowLayout; SwappableLayoutsItemsView.itemTemplate = linedFlowLayoutItemTemplate }
-            "StackLayout" -> { if (stackLayout == null) stackLayout = StackLayout().apply { spacing = 5.0 }; SwappableLayoutsItemsView.layout = stackLayout; SwappableLayoutsItemsView.itemTemplate = checkNotNull(resources["StackLayoutItemTemplate"]).asWinRT<DataTemplate>() }
-            "UniformGridLayout" -> { if (uniformGridLayout == null) uniformGridLayout = UniformGridLayout().apply { minColumnSpacing = 5.0; minRowSpacing = 5.0; maximumRowsOrColumns = 3 }; SwappableLayoutsItemsView.layout = uniformGridLayout; SwappableLayoutsItemsView.itemTemplate = checkNotNull(resources["UniformGridLayoutItemTemplate"]).asWinRT<DataTemplate>() }
+            "StackLayout" -> { if (stackLayout == null) stackLayout = StackLayout().apply { spacing = 5.0 }; SwappableLayoutsItemsView.layout = stackLayout; SwappableLayoutsItemsView.itemTemplate = checkNotNull(resources!!["StackLayoutItemTemplate"]).asWinRT<DataTemplate>() }
+            "UniformGridLayout" -> { if (uniformGridLayout == null) uniformGridLayout = UniformGridLayout().apply { minColumnSpacing = 5.0; minRowSpacing = 5.0; maximumRowsOrColumns = 3 }; SwappableLayoutsItemsView.layout = uniformGridLayout; SwappableLayoutsItemsView.itemTemplate = checkNotNull(resources!!["UniformGridLayoutItemTemplate"]).asWinRT<DataTemplate>() }
         }
         spLinedFlowLayoutOptions.visibility = if (name == "LinedFlowLayout") Visibility.Visible else Visibility.Collapsed
         spStackLayoutOptions.visibility = if (name == "StackLayout") Visibility.Visible else Visibility.Collapsed

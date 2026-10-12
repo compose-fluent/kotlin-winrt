@@ -50,9 +50,9 @@ internal class ListViewPage : ItemsPageBase() {
         val deferral = args.getDeferral()
         try { moved.forEach { contact ->
             var index = 0
-            if (target.items.isNotEmpty()) {
+            if (target.items!!.isNotEmpty()) {
                 val first = checkNotNull(target.containerFromIndex(0)).asWinRT<ListViewItem>(); val height = first.actualHeight + first.margin.top + first.margin.bottom
-                index = (args.getPosition(checkNotNull(target.itemsPanelRoot)).y / height).toInt().coerceIn(0, target.items.lastIndex)
+                index = (args.getPosition(checkNotNull(target.itemsPanelRoot)).y / height).toInt().coerceIn(0, target.items!!.lastIndex)
                 val item = checkNotNull(target.containerFromIndex(index)).asWinRT<ListViewItem>()
                 if (args.getPosition(item).y > height / 2) index++
             }
@@ -71,11 +71,11 @@ internal class ListViewPage : ItemsPageBase() {
         filtered.filterNot(contacts3Filtered::contains).forEach(contacts3Filtered::add)
         announce(FilteredListView, "Found ${filtered.size} contacts", "ContactListViewFilteredActivityId")
     }
-    private fun AddItemToEnd() { if (ready) InvertedListView.items.add(Message("Message ${++messageNumber}", kotlin.time.Clock.System.now(), HorizontalAlignment.Right)) }
-    private fun MessageReceived(sender: Any?, args: RoutedEventArgs) { InvertedListView.items.add(Message("Message ${++messageNumber}", kotlin.time.Clock.System.now(), HorizontalAlignment.Left)) }
+    private fun AddItemToEnd() { if (ready) InvertedListView.items!!.add(Message("Message ${++messageNumber}", kotlin.time.Clock.System.now(), HorizontalAlignment.Right)) }
+    private fun MessageReceived(sender: Any?, args: RoutedEventArgs) { InvertedListView.items!!.add(Message("Message ${++messageNumber}", kotlin.time.Clock.System.now(), HorizontalAlignment.Left)) }
     private fun TextBlock_IsTextTrimmedChanged(sender: TextBlock, args: IsTextTrimmedChangedEventArgs) { ToolTipService.setToolTip(sender, if (sender.isTextTrimmed) sender.text else "") }
     private fun ContactDeleteMenuItem_Click(sender: Any?, args: RoutedEventArgs) { (checkNotNull(sender).asWinRT<FrameworkElement>().dataContext as? Contact)?.let(contacts4ContextMenu::remove) }
     private fun SavePositionButton_Click(sender: Any?, args: RoutedEventArgs) { persistedPosition = ListViewPersistenceHelper.getRelativeScrollPosition(RestoreScrollListView) { it as? String ?: "" }; RestorePositionButton.isEnabled = true }
     private fun RestorePositionButton_Click(sender: Any?, args: RoutedEventArgs) { if (persistedPosition.isNotEmpty()) tasks.launch { ListViewPersistenceHelper.setRelativeScrollPositionAsync(RestoreScrollListView, persistedPosition) { key -> AsyncInfo.fromInspectableResult(contacts5.firstOrNull { it == key }) }.await() } }
-    private fun ScrollIntoViewButton_Click(sender: Any?, args: RoutedEventArgs) { val index = ScrollIndexNumberBox.value.toInt(); if (index in ScrollIntoViewListView.items.indices) ScrollIntoViewListView.scrollIntoView(ScrollIntoViewListView.items[index], if (ScrollAlignmentComboBox.selectedIndex == 1) ScrollIntoViewAlignment.Leading else ScrollIntoViewAlignment.Default) }
+    private fun ScrollIntoViewButton_Click(sender: Any?, args: RoutedEventArgs) { val index = ScrollIndexNumberBox.value.toInt(); if (index in ScrollIntoViewListView.items!!.indices) ScrollIntoViewListView.scrollIntoView(ScrollIntoViewListView.items!![index], if (ScrollAlignmentComboBox.selectedIndex == 1) ScrollIntoViewAlignment.Leading else ScrollIntoViewAlignment.Default) }
 }

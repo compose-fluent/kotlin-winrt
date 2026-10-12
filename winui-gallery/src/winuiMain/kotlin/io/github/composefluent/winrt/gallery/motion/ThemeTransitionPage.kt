@@ -20,7 +20,7 @@ internal class ThemeTransitionPage : Page() {
 
     override fun initializeComponent() {
         super.initializeComponent()
-        repeat(itemCount) { AddRemoveListView.items.add(ListViewItem().apply { content = "Item $it" }) }
+        repeat(itemCount) { AddRemoveListView.items!!.add(ListViewItem().apply { content = "Item $it" }) }
         AddItemsToContentListView()
         unloaded.add { _, _ -> ExamplePopup.isOpen = false }
     }
@@ -45,13 +45,13 @@ internal class ThemeTransitionPage : Page() {
     }
 
     private fun AddButton_Click(sender: Any?, args: RoutedEventArgs) {
-        AddRemoveListView.items.add(ListViewItem().apply { content = "New Item ${itemCount++}" })
+        AddRemoveListView.items!!.add(ListViewItem().apply { content = "New Item ${itemCount++}" })
         announce(checkNotNull(sender).asWinRT<UIElement>(), "Item added.", "AddDeleteItemAddedNotificationId")
     }
 
     private fun DeleteButton_Click(sender: Any?, args: RoutedEventArgs) {
-        if (AddRemoveListView.items.isNotEmpty()) {
-            AddRemoveListView.items.removeAt(0)
+        if (AddRemoveListView.items!!.isNotEmpty()) {
+            AddRemoveListView.items!!.removeAt(0)
             announce(checkNotNull(sender).asWinRT<UIElement>(), "Item deleted.", "AddDeleteItemDeletedNotificationId")
         }
     }
@@ -65,7 +65,7 @@ internal class ThemeTransitionPage : Page() {
     private fun EntranceAddButton_Click(sender: Any?, args: RoutedEventArgs) {
         val count = checkNotNull(sender).asWinRT<Button>().tag?.toString()?.toIntOrNull() ?: return
         repeat(count) {
-            EntranceStackPanel.children.add(Rectangle().apply {
+            EntranceStackPanel.children!!.add(Rectangle().apply {
                 width = 50.0; height = 50.0
                 margin = Thickness(5.0, 5.0, 5.0, 5.0)
                 fill = brush(0xADD8E6u)
@@ -76,7 +76,7 @@ internal class ThemeTransitionPage : Page() {
     }
 
     private fun EntranceClearButton_Click(sender: Any?, args: RoutedEventArgs) {
-        EntranceStackPanel.children.clear()
+        EntranceStackPanel.children!!.clear()
         announce(checkNotNull(sender).asWinRT<UIElement>(), "All rectangles cleared.", "EntranceClearNotificationId")
     }
 

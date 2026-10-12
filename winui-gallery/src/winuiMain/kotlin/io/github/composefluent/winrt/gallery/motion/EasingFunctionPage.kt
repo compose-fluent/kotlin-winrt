@@ -17,7 +17,7 @@ internal class EasingFunctionPage : Page() {
         gotFocus.add { _, args -> val control = runCatching { args.originalSource?.asWinRT<Control>() }.getOrNull(); if (control != null && control.focusState != FocusState.Pointer) control.startBringIntoView() }
     }
     private fun animate(storyboard: Storyboard, translation: TranslateTransform) {
-        val animation = storyboard.children[0].asWinRT<DoubleAnimation>()
+        val animation = storyboard.children!![0].asWinRT<DoubleAnimation>()
         animation.from = translation.x; animation.to = if (translation.x > 0) 0.0 else 200.0; storyboard.begin()
     }
     private fun Button1_Click(sender: Any?, args: RoutedEventArgs) { animate(Storyboard1, Translation1) }
@@ -29,5 +29,5 @@ internal class EasingFunctionPage : Page() {
         storyboardAnimation(Storyboard4).easingFunction = selected.EasingFunctionBase
         animate(Storyboard4, Translation4)
     }
-    private fun storyboardAnimation(storyboard: Storyboard): DoubleAnimation = storyboard.children[0].asWinRT<DoubleAnimation>()
+    private fun storyboardAnimation(storyboard: Storyboard): DoubleAnimation = storyboard.children!![0].asWinRT<DoubleAnimation>()
 }

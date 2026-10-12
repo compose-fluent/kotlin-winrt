@@ -50,13 +50,13 @@ internal class ItemsRepeaterPage : ItemsPageBase() {
         val key = checkNotNull(sender).asWinRT<RadioButtons>().selectedItem?.asWinRT<FrameworkElement>()?.tag?.toString() ?: return
         val template = when (key) { "HorizontalStackLayout" -> "VerticalBarTemplate"; "UniformGridLayout" -> "CircularTemplate"; else -> "HorizontalBarTemplate" }
         repeater.maxWidth = when (key) { "HorizontalStackLayout" -> 6000.0; "UniformGridLayout" -> 540.0; else -> MaxLength + 12.0 }
-        repeater.layout = checkNotNull(resources[key]).asWinRT<VirtualizingLayout>(); repeater.itemTemplate = checkNotNull(resources[template]).asWinRT<DataTemplate>(); repeater.itemsSource = BarItems
+        repeater.layout = checkNotNull(resources!![key]).asWinRT<VirtualizingLayout>(); repeater.itemTemplate = checkNotNull(resources!![template]).asWinRT<DataTemplate>(); repeater.itemsSource = BarItems
         layout.Value = key; elementGenerator.Value = template; SetCode(key, template)
     }
     private fun LayoutBtn_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
         if (!ready) return
         val key = checkNotNull(sender).asWinRT<RadioButtons>().selectedItem?.asWinRT<RadioButton>()?.tag?.toString() ?: return
-        repeater2.layout = checkNotNull(resources[key]).asWinRT<VirtualizingLayout>(); layout2.Value = key
+        repeater2.layout = checkNotNull(resources!![key]).asWinRT<VirtualizingLayout>(); layout2.Value = key
         SampleCodeLayout2.Value = GalleryCodeCatalog.sourceDocument("ItemsRepeater/$key.txt")?.source ?: ""
     }
     private fun OnAnimatedItemGotFocus(sender: Any?, args: RoutedEventArgs) { val item = checkNotNull(sender).asWinRT<FrameworkElement>(); PreviouslyFocusedAnimatedScrollRepeaterIndex = animatedScrollRepeater.getElementIndex(item); item.startBringIntoView(BringIntoViewOptions().apply { verticalAlignmentRatio = 0.5; animationDesired = true }) }

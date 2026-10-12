@@ -33,7 +33,7 @@ internal class WrapPanel : Panel() {
     private fun size(u: Double,v: Double): Size = if (Orientation == microsoft.ui.xaml.controls.Orientation.Horizontal) Size(u.toFloat(),v.toFloat()) else Size(v.toFloat(),u.toFloat())
     override fun measureOverride(availableSize: Size): Size {
         val available = Size(max(0.0,availableSize.width-Padding.left-Padding.right).toFloat(),max(0.0,availableSize.height-Padding.top-Padding.bottom).toFloat())
-        children.forEach { it.measure(available) }
+        children!!.forEach { it.measure(available) }
         return UpdateRows(availableSize)
     }
     override fun arrangeOverride(finalSize: Size): Size {
@@ -50,16 +50,16 @@ internal class WrapPanel : Panel() {
     private fun UpdateRows(available: Size): Size {
         rows.clear()
         val start = uv(Padding.left,Padding.top); val end = uv(Padding.right,Padding.bottom)
-        if (children.isEmpty()) return size(start.first+end.first,start.second+end.second)
+        if (children!!.isEmpty()) return size(start.first+end.first,start.second+end.second)
         val parent = uv(available.width.toDouble(),available.height.toDouble()); val spacing = uv(HorizontalSpacing,VerticalSpacing)
         var u = start.first; var v = start.second; var row = Row(); var requiredU = 0.0
-        children.forEachIndexed { index,child ->
+        children!!.forEachIndexed { index,child ->
             if (child.visibility != Visibility.Collapsed) {
                 val desired = uv(child.desiredSize.width.toDouble(),child.desiredSize.height.toDouble())
                 if (desired.first+u+end.first > parent.first || u >= parent.first) {
                     u = start.first; v += row.height+spacing.second; rows.add(row); row = Row()
                 }
-                val width = if (index == children.lastIndex && StretchChild == io.github.composefluent.winrt.gallery.toolkit.StretchChild.Last && parent.first.isFinite()) parent.first-u else desired.first
+                val width = if (index == children!!.lastIndex && StretchChild == io.github.composefluent.winrt.gallery.toolkit.StretchChild.Last && parent.first.isFinite()) parent.first-u else desired.first
                 row.children.add(Placement(child,u,v,width)); row.height = max(row.height,desired.second)
                 u += width+spacing.first; requiredU = max(requiredU,u)
             }

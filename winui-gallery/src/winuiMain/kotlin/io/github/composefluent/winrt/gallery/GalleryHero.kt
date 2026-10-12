@@ -21,8 +21,8 @@ internal fun galleryHero() = Grid().apply {
         margin = Thickness(0.0, -100.0, 0.0, 0.0)
         source = BitmapImage(Uri("ms-appx:///Assets/GalleryHeaderImage.png")); stretch = Stretch.UniformToFill
     }
-    val source = Grid().apply { children.add(image) }
-    children.add(source)
+    val source = Grid().apply { children!!.add(image) }
+    children!!.add(source)
     val accessibility = AccessibilitySettings()
     var surface: CompositionVisualSurface? = null
     var surfaceBrush: CompositionSurfaceBrush? = null
@@ -36,8 +36,8 @@ internal fun galleryHero() = Grid().apply {
         val dark = actualTheme == ElementTheme.Dark
         source.background = if (accessibility.highContrast) brush(0x000000u) else if (dark) brush(0x020B20u) else LinearGradientBrush().apply {
             startPoint = Point(0.5f, 0f); endPoint = Point(0.5f, 1f)
-            gradientStops.add(GradientStop().apply { offset = 0.0; color = rgb(0xCED8E4u) })
-            gradientStops.add(GradientStop().apply { offset = 1.0; color = rgb(0xD5DBE3u) })
+            gradientStops!!.add(GradientStop().apply { offset = 0.0; color = rgb(0xCED8E4u) })
+            gradientStops!!.add(GradientStop().apply { offset = 1.0; color = rgb(0xD5DBE3u) })
         }
         image.opacity = if (dark || accessibility.highContrast) 0.8 else 0.9
         opacityMask?.let { gradient ->

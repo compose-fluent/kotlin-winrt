@@ -35,7 +35,7 @@ internal fun stack(spacing: Double = 12.0, horizontal: Boolean = false, content:
 }
 internal class ExamplePage : StackPanel() {
     internal fun example(title: String, sample: UIElement, options: UIElement? = null, output: UIElement? = null) {
-        children.add(renderExample(title, sample, options, output))
+        children!!.add(renderExample(title, sample, options, output))
     }
 }
 
@@ -68,7 +68,7 @@ internal fun brush(value: UInt) = microsoft.ui.xaml.media.SolidColorBrush(rgb(va
 internal fun transparentBrush() = SolidColorBrush(Color(0u, 0u, 0u, 0u))
 internal fun select(title: String, values: List<String>, initial: Int = 0, changed: (Int) -> Unit) = ComboBox().apply {
     header = title
-    values.forEach { items.add(it) }
+    values.forEach { items!!.add(it) }
     selectedIndex = initial
     selectionChanged.add { _, _ -> if (selectedIndex >= 0) changed(selectedIndex) }
 }
@@ -100,7 +100,7 @@ internal fun named(element: DependencyObject, value: String) {
 // behavior are shared with XAML pages through GalleryExampleBindings.
 private fun renderExample(title: String, sample: UIElement, options: UIElement?, output: UIElement?): StackPanel = stack(0.0) exampleRoot@ {
     margin = Thickness(0.0, 16.0, 0.0, 0.0)
-    children.add(label(title).apply {
+    children!!.add(label(title).apply {
         margin = Thickness(0.0, 12.0, 0.0, 12.0)
         fontWeight = windows.ui.text.FontWeight(600u)
         AutomationProperties.setHeadingLevel(this, microsoft.ui.xaml.automation.peers.AutomationHeadingLevel.Level3)
@@ -111,8 +111,8 @@ private fun renderExample(title: String, sample: UIElement, options: UIElement?,
         maxWidth = 320.0
         margin = Thickness(0.0, 12.0, 12.0, 12.0)
         cornerRadius = corners(8.0)
-        children.add(label("Output:"))
-        children.add(outputElement)
+        children!!.add(label("Output:"))
+        children!!.add(outputElement)
     } }
     val optionsPanel = options?.let { optionsElement -> Border().apply {
         Grid.setColumn(this, 2)
@@ -126,21 +126,21 @@ private fun renderExample(title: String, sample: UIElement, options: UIElement?,
     val body = Grid().apply {
         cornerRadius = CornerRadius(8.0, 8.0, 0.0, 0.0)
         borderThickness = inset(1.0)
-        rowDefinitions.add(starRow())
-        rowDefinitions.add(autoRow())
-        columnDefinitions.add(column(1.0, GridUnitType.Star))
-        columnDefinitions.add(column(1.0, GridUnitType.Auto))
-        columnDefinitions.add(column(1.0, GridUnitType.Auto))
-        children.add(Border().apply {
+        rowDefinitions!!.add(starRow())
+        rowDefinitions!!.add(autoRow())
+        columnDefinitions!!.add(column(1.0, GridUnitType.Star))
+        columnDefinitions!!.add(column(1.0, GridUnitType.Auto))
+        columnDefinitions!!.add(column(1.0, GridUnitType.Auto))
+        children!!.add(Border().apply {
             padding = inset(12.0)
             minHeight = 80.0
             child = sample
         })
-        outputPanel?.let { children.add(it) }
-        optionsPanel?.let { children.add(it) }
+        outputPanel?.let { children!!.add(it) }
+        optionsPanel?.let { children!!.add(it) }
     }
     GalleryTheme.sampleBeingConstructed?.sampleBodies?.add(body)
-    children.add(body)
+    children!!.add(body)
     val sourceExpander = Expander().apply {
         header = "Source code"
         horizontalAlignment = HorizontalAlignment.Stretch
@@ -148,7 +148,7 @@ private fun renderExample(title: String, sample: UIElement, options: UIElement?,
         cornerRadius = CornerRadius(0.0, 0.0, 8.0, 8.0)
         bindExampleSource(this, title)
     }
-    children.add(sourceExpander)
+    children!!.add(sourceExpander)
     fun updateChrome() {
         val dark = body.actualTheme == ElementTheme.Dark
         body.background = sampleChromeBrush(dark, 0xFF202020u, 0xFFF3F3F3u, "SystemColorWindowColor")

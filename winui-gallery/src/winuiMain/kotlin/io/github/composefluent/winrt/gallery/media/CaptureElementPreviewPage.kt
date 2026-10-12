@@ -30,8 +30,8 @@ internal class CaptureElementPreviewPage : Page(), microsoft.ui.xaml.data.INotif
                 if (groups.isEmpty()) frameSourceName.text = "No camera devices found."
                 else { cameraSourceComboBox.itemsSource = groups; cameraSourceComboBox.selectedIndex = 0 }
                 if (!snapshotsExpanded) {
-                    snapshotsExpanded = true; val viewer = captureContainer.children.removeAt(0)
-                    captureContainer.children.add(ExpandToFillContainer().apply { children.add(viewer) })
+                    snapshotsExpanded = true; val viewer = captureContainer.children!!.removeAt(0)
+                    captureContainer.children!!.add(ExpandToFillContainer().apply { children!!.add(viewer) })
                 }
                 kotlinx.coroutines.awaitCancellation()
             } finally { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { cameraLock.withLock { generation++; captureElement.source = null; releaseCapture() } } }
@@ -81,7 +81,7 @@ internal class CaptureElementPreviewPage : Page(), microsoft.ui.xaml.data.INotif
         windows.storage.streams.InMemoryRandomAccessStream().use { stream ->
             capture.capturePhotoToStreamAsync(windows.media.mediaproperties.ImageEncodingProperties.createJpeg(), stream).await(); stream.seek(0uL)
             val bitmap = microsoft.ui.xaml.media.imaging.BitmapImage(); bitmap.setSourceAsync(stream).await()
-            snapshots.children.add(0, Image().apply { source = bitmap }); capturedText.visibility = Visibility.Visible
+            snapshots.children!!.add(0, Image().apply { source = bitmap }); capturedText.visibility = Visibility.Visible
             announce(captureButton, "Photo successfully captured.", "CameraPreviewSampleCaptureNotificationId")
         }
     } } }

@@ -29,7 +29,7 @@ internal class PullToRefreshPage : Page() {
     override fun initializeComponent() {
         super.initializeComponent()
         "AcrylicBrush ColorPicker NavigationView ParallaxView PersonPicture PullToRefreshPage RatingsControl RevealBrush TreeView"
-            .split(' ').forEach { lv.items.add(it) }
+            .split(' ').forEach { lv.items!!.add(it) }
         initializeCustomRefresh()
     }
 
@@ -39,7 +39,7 @@ internal class PullToRefreshPage : Page() {
             borderThickness = Thickness(1.0, 1.0, 1.0, 1.0)
             horizontalAlignment = HorizontalAlignment.Center
             borderBrush = GalleryTheme.brush("TextControlBorderBrush")
-            "Mike Ben Barbra Claire Justin Shawn Drew Lili".split(' ').forEach { items.add(it) }
+            "Mike Ben Barbra Claire Justin Shawn Drew Lili".split(' ').forEach { items!!.add(it) }
         }
         val sun = Image().apply { width = 35.0; height = 35.0 }
         fun updateSun() {
@@ -60,7 +60,7 @@ internal class PullToRefreshPage : Page() {
             refreshRequested.add { sender, args -> rc2_RefreshRequested(sender, args) }
         }
         Grid.setRow(container, 1)
-        Ex2Grid.children.add(container)
+        Ex2Grid.children!!.add(container)
     }
 
     private fun rc_RefreshRequested(sender: RefreshContainer, args: RefreshRequestedEventArgs) {
@@ -68,7 +68,7 @@ internal class PullToRefreshPage : Page() {
         tasks.launch {
             try {
                 delay(500)
-                lv.items.add(0, "NewControl ${controlCount++}")
+                lv.items!!.add(0, "NewControl ${controlCount++}")
             } finally {
                 deferral.complete()
                 deferral.close()
@@ -81,7 +81,7 @@ internal class PullToRefreshPage : Page() {
         tasks.launch {
             try {
                 delay(800)
-                customList.items.add(0, "New Friend ${friendCount++}")
+                customList.items!!.add(0, "New Friend ${friendCount++}")
             } finally {
                 deferral.complete()
                 deferral.close()

@@ -47,14 +47,14 @@ internal class ValidatedPasswordBox : Control() {
         IsValid = errors.isEmpty()
         val text = ValidationRichText ?: return
         text.visibility = if (Password.isEmpty()) Visibility.Collapsed else Visibility.Visible
-        text.blocks.clear(); if (Password.isEmpty()) return
+        text.blocks!!.clear(); if (Password.isEmpty()) return
         val critical = !IsValid; val light = actualTheme == ElementTheme.Light
         val color = brush(if (critical) { if (light) 0xC42B1Cu else 0xFF99A4u } else { if (light) 0x0F7B0Fu else 0x6CCB5Fu })
-        text.blocks.add(Paragraph().apply {
+        text.blocks!!.add(Paragraph().apply {
             (if (critical) errors else listOf("Password is valid")).forEachIndexed { index, message ->
-                if (index > 0) inlines.add(LineBreak())
-                inlines.add(InlineUIContainer().apply { child = FontIcon().apply { glyph = if (critical) "\uEA39" else "\uE930"; fontSize = 14.0; foreground = color } })
-                inlines.add(Run().apply { this.text = " " }); inlines.add(Run().apply { this.text = message; foreground = color })
+                if (index > 0) inlines!!.add(LineBreak())
+                inlines!!.add(InlineUIContainer().apply { child = FontIcon().apply { glyph = if (critical) "\uEA39" else "\uE930"; fontSize = 14.0; foreground = color } })
+                inlines!!.add(Run().apply { this.text = " " }); inlines!!.add(Run().apply { this.text = message; foreground = color })
             }
         })
         if (AutomationPeer.listenerExists(AutomationEvents.LiveRegionChanged))

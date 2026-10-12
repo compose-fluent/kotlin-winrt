@@ -108,7 +108,7 @@ internal object GalleryTheme {
             (requestedTheme ?: root?.actualTheme) == ElementTheme.Dark -> "Dark"
             else -> "Light"
         }
-        val appResources = checkNotNull(Application.current).resources
+        val appResources = checkNotNull(checkNotNull(Application.current).resources)
         val hasRequestedTheme = requestedTheme != null
         fun resolve(key: String): Any? =
             (if (hasRequestedTheme) lookupThemeResource(appResources, key, theme) else null)
@@ -198,16 +198,16 @@ internal object GalleryTheme {
 
     private fun updateGradient(source: Any, destination: LinearGradientBrush) {
         val solid = when (source) { is Color -> source; is SolidColorBrush -> source.color; else -> null }
-        destination.gradientStops.clear()
+        destination.gradientStops!!.clear()
         if (solid != null) {
-            destination.gradientStops.add(GradientStop().apply { color = solid; offset = 0.0 })
-            destination.gradientStops.add(GradientStop().apply { color = solid; offset = 1.0 })
+            destination.gradientStops!!.add(GradientStop().apply { color = solid; offset = 0.0 })
+            destination.gradientStops!!.add(GradientStop().apply { color = solid; offset = 1.0 })
         } else {
             val gradient = source.asWinRT<LinearGradientBrush>()
             destination.startPoint = gradient.startPoint; destination.endPoint = gradient.endPoint
             destination.mappingMode = gradient.mappingMode; destination.spreadMethod = gradient.spreadMethod
             destination.colorInterpolationMode = gradient.colorInterpolationMode; destination.opacity = gradient.opacity
-            gradient.gradientStops.forEach { stop -> destination.gradientStops.add(GradientStop().apply { color = stop.color; offset = stop.offset }) }
+            gradient.gradientStops!!.forEach { stop -> destination.gradientStops!!.add(GradientStop().apply { color = stop.color; offset = stop.offset }) }
         }
     }
 

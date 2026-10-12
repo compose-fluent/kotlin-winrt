@@ -25,8 +25,8 @@ internal class GalleryHomeSelectorBar(
         verticalAlignment = VerticalAlignment.Top
         AutomationProperties.setName(this, "Home view selector")
         AutomationProperties.setAutomationId(this, "HomeViewSelectorBar")
-        children.add(recent.view)
-        children.add(favorites.view)
+        children!!.add(recent.view)
+        children!!.add(favorites.view)
         recent.onSelected = { selectFavorites(false) }
         favorites.onSelected = { selectFavorites(true) }
         selectFavorites(false, notify = false)
@@ -78,8 +78,8 @@ private class GalleryHomeSelectorPill(
         }
         view.child = stack(8.0, horizontal = true) {
             verticalAlignment = VerticalAlignment.Center
-            children.add(iconBox)
-            children.add(textBlock)
+            children!!.add(iconBox)
+            children!!.add(textBlock)
         }
         view.pointerEntered.add { _, _ -> pointerOver = true; updateVisuals() }
         view.pointerExited.add { _, _ -> pointerOver = false; pressed = false; updateVisuals() }

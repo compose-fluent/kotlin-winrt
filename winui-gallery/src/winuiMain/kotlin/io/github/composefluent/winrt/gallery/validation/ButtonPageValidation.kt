@@ -22,7 +22,7 @@ internal fun validateButtonPage(page: ButtonPage) = with(page) {
         check(textOutput.text == "You clicked: Standard XAML button")
         check(imageOutput.text == "You clicked: Image button")
         check(disableButton.isChecked == true && !standardButton.isEnabled)
-        check(checkNotNull(content).asWinRT<StackPanel>().children.size == 4)
+        check(checkNotNull(content).asWinRT<StackPanel>().children!!.size == 4)
         check(accentButton.style != null && subtleButton.style != null)
         check(wrappedFirst.maxWidth == 240.0 && wrappedSecond.maxWidth == 240.0)
         check(checkNotNull(wrappedFirst.content).asWinRT<TextBlock>().textWrapping == TextWrapping.WrapWholeWords)
@@ -36,7 +36,7 @@ internal fun validateButtonPage(page: ButtonPage) = with(page) {
         check("Slices.png" in imageMarkup && "standardButton" !in imageMarkup)
         check("onImageClick" !in checkNotNull(GalleryCodeCatalog.document("Button", "", 0)).source)
         stylesExample.sourcePresenter.isExpanded = true
-        val tabs = checkNotNull(stylesExample.sourcePresenter.content).asWinRT<Grid>().children[0].asWinRT<SelectorBar>()
+        val tabs = checkNotNull(stylesExample.sourcePresenter.content).asWinRT<Grid>().children!![0].asWinRT<SelectorBar>()
         check(tabs.items.size == 1 && tabs.items[0].text == "XAML")
     })
 }

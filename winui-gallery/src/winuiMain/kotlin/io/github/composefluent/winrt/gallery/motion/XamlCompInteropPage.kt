@@ -34,12 +34,12 @@ internal class XamlCompInteropPage : Page() {
         for (index in 1..3) { animation.setExpressionReferenceParameter("above", buttons[index - 1]); animation.setScalarParameter("index", index.toFloat()); buttons[index].startAnimation(animation) }
     }
     private fun ActualSizeExample_Loaded(sender: Any?, args: RoutedEventArgs) {
-        if (LayoutPanel.children.isNotEmpty()) return
+        if (LayoutPanel.children!!.isNotEmpty()) return
         val radius = "(source.ActualSize.X / 2)"
         val theta = ".02 * $radius + ((2 * Pi)/total)*index"
         repeat(8) { index ->
             val button = Button().apply { content = "Button"; microsoft.ui.xaml.automation.AutomationProperties.setName(this, "Button $index") }
-            LayoutPanel.children.add(button)
+            LayoutPanel.children!!.add(button)
             val animation = compositor.createExpressionAnimation("Vector3($radius*cos($theta)+$radius, $radius*sin($theta)+0,0)").apply {
                 setScalarParameter("index", (index + 1).toFloat()); setScalarParameter("total", 8f); target = "Translation"; setExpressionReferenceParameter("source", LayoutPanel)
             }

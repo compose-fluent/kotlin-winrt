@@ -21,7 +21,7 @@ internal class GridViewPage : ItemsPageBase() {
     private fun ItemTemplate_Checked(sender: Any?, args: RoutedEventArgs) {
         if (!ready) return
         val key = checkNotNull(sender).asWinRT<FrameworkElement>().tag?.toString() ?: return
-        ContentGridView.itemTemplate = checkNotNull(resources[key]).asWinRT<DataTemplate>(); itemTemplate.Value = key
+        ContentGridView.itemTemplate = checkNotNull(resources!![key]).asWinRT<DataTemplate>(); itemTemplate.Value = key
         DisplayDT.Value = GalleryCodeCatalog.sourceDocument("GridView/$key.txt")?.source ?: ""
     }
     private fun ContentGridView_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) SelectionOutput.text = "You have selected ${ContentGridView.selectedItems.size} item(s)." }
@@ -35,6 +35,6 @@ internal class GridViewPage : ItemsPageBase() {
         if (!ready) return
         val panel = StyledGridIWG ?: return
         if (sender == WrapItemCount) { panel.maximumRowsOrColumns = WrapItemCount.value.toInt(); return }
-        for (index in StyledGrid.items.indices) StyledGrid.containerFromIndex(index)?.asWinRT<GridViewItem>()?.let { it.margin = Thickness(ColumnSpace.value, RowSpace.value, ColumnSpace.value, RowSpace.value) }
+        for (index in StyledGrid.items!!.indices) StyledGrid.containerFromIndex(index)?.asWinRT<GridViewItem>()?.let { it.margin = Thickness(ColumnSpace.value, RowSpace.value, ColumnSpace.value, RowSpace.value) }
     }
 }

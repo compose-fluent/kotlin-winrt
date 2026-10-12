@@ -15,9 +15,9 @@ internal fun appCommand(title: String, symbol: Symbol, action: () -> Unit = {}) 
 internal fun samplePath() = PathIcon().apply {
     data = PathGeometry().apply {
         fillRule = FillRule.Nonzero
-        figures.add(PathFigure().apply {
+        figures!!.add(PathFigure().apply {
             startPoint = Point(20f, 20f)
-            listOf(Point(24f, 10f), Point(24f, 24f), Point(5f, 24f)).forEach { next -> segments.add(LineSegment().apply { point = next }) }
+            listOf(Point(24f, 10f), Point(24f, 24f), Point(5f, 24f)).forEach { next -> segments!!.add(LineSegment().apply { point = next }) }
         })
     }
 }

@@ -12,7 +12,7 @@ internal fun galleryHorizontalScroll(content: UIElement): Grid = Grid().apply {
         verticalScrollBarVisibility = ScrollBarVisibility.Hidden
         this.content = Grid().apply {
             margin = Thickness(36.0, 0.0, 36.0, 0.0)
-            children.add(content)
+            children!!.add(content)
         }
     }
     fun arrow(left: Boolean) = Button().apply {
@@ -27,9 +27,9 @@ internal fun galleryHorizontalScroll(content: UIElement): Grid = Grid().apply {
         // Keep the native Button's keyboard, pointer and accessibility behavior,
         // supplying the same state brushes as the Gallery's scroll template.
         listOf("", "PointerOver", "Pressed").forEach { state ->
-            resources["ButtonBackground$state"] = GalleryTheme.brush("FlipViewNextPreviousButtonBackground$state")
-            resources["ButtonBorderBrush$state"] = GalleryTheme.brush("FlipViewNextPreviousButtonBorderBrush$state")
-            resources["ButtonForeground$state"] = GalleryTheme.brush("FlipViewNextPreviousArrowForeground$state")
+            resources!!["ButtonBackground$state"] = GalleryTheme.brush("FlipViewNextPreviousButtonBackground$state")
+            resources!!["ButtonBorderBrush$state"] = GalleryTheme.brush("FlipViewNextPreviousButtonBorderBrush$state")
+            resources!!["ButtonForeground$state"] = GalleryTheme.brush("FlipViewNextPreviousArrowForeground$state")
         }
     }
     val back = arrow(true)
@@ -49,6 +49,6 @@ internal fun galleryHorizontalScroll(content: UIElement): Grid = Grid().apply {
     scroller.viewChanging.add { _, args -> update(checkNotNull(args.finalView).horizontalOffset) }
     scroller.sizeChanged.add { _, _ -> update() }
     scroller.loaded.add { _, _ -> update() }
-    children.add(scroller); children.add(back); children.add(forward)
+    children!!.add(scroller); children!!.add(back); children!!.add(forward)
     update()
 }
