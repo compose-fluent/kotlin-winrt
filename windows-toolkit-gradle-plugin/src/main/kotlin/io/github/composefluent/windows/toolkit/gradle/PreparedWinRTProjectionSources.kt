@@ -100,7 +100,9 @@ private val projectionImplementationPrefixes = listOf(
     "com/squareup/kotlinpoet/",
 )
 
-private fun projectionImplementationEntry(name: String): Boolean = projectionImplementationPrefixes.any(name::startsWith)
+private fun projectionImplementationEntry(name: String): Boolean =
+    !name.startsWith("io/github/composefluent/winrt/compiler/callsites/lowering/") &&
+        projectionImplementationPrefixes.any(name::startsWith)
 
 internal fun preparedStaticImplementationFingerprint(roots: Iterable<Path>): String {
     val entries = sortedSetOf<String>()
