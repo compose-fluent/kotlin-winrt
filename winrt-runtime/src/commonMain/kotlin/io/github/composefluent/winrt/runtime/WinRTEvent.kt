@@ -25,14 +25,10 @@ class WinRTEvent<T : Any>(
         val token = subscribe(handler)
         val tokensByHandler = tokensByHandler
             ?: mutableMapOf<T, MutableList<EventRegistrationToken>>().also { this.tokensByHandler = it }
-        val handlersByToken = if (unsubscribeHandler != null) {
-            handlersByToken
-                ?: mutableMapOf<EventRegistrationToken, T>().also { this.handlersByToken = it }
-        } else {
-            null
-        }
+        val handlersByToken = handlersByToken
+            ?: mutableMapOf<EventRegistrationToken, T>().also { this.handlersByToken = it }
         tokensByHandler.getOrPut(handler) { mutableListOf() }.add(token)
-        handlersByToken?.set(token, handler)
+        handlersByToken[token] = handler
         return token
     }
 
@@ -43,24 +39,28 @@ class WinRTEvent<T : Any>(
     fun remove(token: EventRegistrationToken) {
         if (token == EventRegistrationToken()) return
         val handler = handlersByToken?.remove(token)
+        if (handler != null) {
+            val tokens = tokensByHandler?.get(handler)
+            tokens?.remove(token)
+            if (tokens.isNullOrEmpty()) tokensByHandler?.remove(handler)
+            // CsWinRT EventSource.Unsubscribe releases the delegate before native removal.
+            // Drop empty bookkeeping as well, including handlers removed by native token.
+            if (tokensByHandler.isNullOrEmpty()) tokensByHandler = null
+            if (handlersByToken.isNullOrEmpty()) handlersByToken = null
+        }
         if (handler != null && unsubscribeHandler != null) {
             unsubscribeHandler.invoke(handler)
         } else {
             unsubscribe(token)
         }
-        tokensByHandler?.values?.forEach { it.remove(token) }
     }
 
     fun remove(handler: T?): Boolean {
         if (handler == null) return false
         val tokensByHandler = tokensByHandler ?: return false
         val tokens = tokensByHandler[handler] ?: return false
-        val token = tokens.removeLastOrNull() ?: return false
-        if (tokens.isEmpty()) {
-            tokensByHandler.remove(handler)
-        }
-        handlersByToken?.remove(token)
-        unsubscribeHandler?.invoke(handler) ?: unsubscribe(token)
+        val token = tokens.lastOrNull() ?: return false
+        remove(token)
         return true
     }
 
