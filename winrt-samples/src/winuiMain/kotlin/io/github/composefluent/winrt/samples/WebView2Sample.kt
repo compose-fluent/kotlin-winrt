@@ -190,7 +190,7 @@ internal class WebView2SampleApp(
     private var browser: WebView2? = null
     private var initializationAction: WinRTAsyncActionReference? = null
 
-    override fun onLaunched(args: LaunchActivatedEventArgs) {
+    override fun onLaunched(args: LaunchActivatedEventArgs?) {
         executeWebView2Callback(
             failures = failures,
             name = "launch callback",
@@ -206,20 +206,20 @@ internal class WebView2SampleApp(
         val application = checkNotNull(Application.current) {
             "Expected current WinUI application while installing standard control resources."
         }
-        application.resources.mergedDictionaries.add(XamlControlsResources())
-        val subtleButtonStyle = checkNotNull(application.resources["SubtleButtonStyle"]) {
+        checkNotNull(checkNotNull(application.resources).mergedDictionaries).add(XamlControlsResources())
+        val subtleButtonStyle = checkNotNull(checkNotNull(application.resources)["SubtleButtonStyle"]) {
             "Expected SubtleButtonStyle after installing standard control resources."
         }
         val selectedSurfaceBrush =
-            checkNotNull(application.resources["LayerOnMicaBaseAltFillColorDefaultBrush"]) {
+            checkNotNull(checkNotNull(application.resources)["LayerOnMicaBaseAltFillColorDefaultBrush"]) {
                 "Expected the layer-on-Mica surface brush after installing standard control resources."
             }
         val cardStrokeBrush =
-            checkNotNull(application.resources["CardStrokeColorDefaultBrush"]) {
+            checkNotNull(checkNotNull(application.resources)["CardStrokeColorDefaultBrush"]) {
                 "Expected the default card stroke brush after installing standard control resources."
             }
         val transparentBrush =
-            checkNotNull(application.resources["SubtleFillColorTransparentBrush"]) {
+            checkNotNull(checkNotNull(application.resources)["SubtleFillColorTransparentBrush"]) {
                 "Expected the transparent subtle-fill brush after installing standard control resources."
             }
         println("webview2: standard control resources installed")
@@ -252,6 +252,7 @@ internal class WebView2SampleApp(
                 name = "navigation starting callback",
                 exit = ::exitAfterFatalFailure,
             ) {
+                checkNotNull(eventArgs)
                 loading.visibility = Visibility.Visible
                 status.visibility = Visibility.Collapsed
                 println("webview2: navigation starting uri=${eventArgs.uri}")
@@ -263,6 +264,7 @@ internal class WebView2SampleApp(
                 name = "navigation completed callback",
                 exit = ::exitAfterFatalFailure,
             ) {
+                checkNotNull(eventArgs)
                 back.isEnabled = webView.canGoBack
                 forward.isEnabled = webView.canGoForward
                 println("webview2: navigation completed success=${eventArgs.isSuccess}")
@@ -283,6 +285,7 @@ internal class WebView2SampleApp(
                 name = "core initialization callback",
                 exit = ::exitAfterFatalFailure,
             ) {
+                checkNotNull(eventArgs)
                 if (webView.coreWebView2 == null) {
                     val error = eventArgs.exception
                     println("webview2: core initialization failed error=${error.message}")
@@ -333,6 +336,7 @@ internal class WebView2SampleApp(
                     name = "address key down callback",
                     exit = ::exitAfterFatalFailure,
                 ) {
+                    checkNotNull(eventArgs)
                     if (shouldSubmitWebView2Address(eventArgs.key, go.isEnabled)) {
                         eventArgs.handled = true
                         navigate(webView, address, loading, status)
@@ -359,6 +363,7 @@ internal class WebView2SampleApp(
                 name = "window size changed callback",
                 exit = ::exitAfterFatalFailure,
             ) {
+                checkNotNull(eventArgs)
                 home.visibility = webView2HomeVisibility(eventArgs.size.width.toDouble())
             }
         }

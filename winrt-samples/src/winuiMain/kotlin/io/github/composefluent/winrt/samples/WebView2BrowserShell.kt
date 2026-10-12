@@ -75,9 +75,9 @@ internal fun createWebView2BrowserShell(
             horizontalAlignment = HorizontalAlignment.Stretch
             verticalAlignment = VerticalAlignment.Stretch
             tabStripFooter = titleBarDragRegion
-            tabItems.add(
+            checkNotNull(tabItems).add(
                 TabViewItem().apply {
-                    resources["TabViewItemHeaderBackgroundSelected"] = selectedSurfaceBrush
+                    checkNotNull(resources)["TabViewItemHeaderBackgroundSelected"] = selectedSurfaceBrush
                     header = "Kotlin WinRT"
                     isClosable = false
                 },
@@ -102,23 +102,23 @@ internal fun createWebView2BrowserShell(
             setValue(Control.backgroundProperty, selectedSurfaceBrush)
             setValue(Control.borderBrushProperty, cardStrokeBrush)
             borderThickness = Thickness(1.0, 1.0, 1.0, 1.0)
-            resources["TextControlBackground"] = selectedSurfaceBrush
-            resources["TextControlBackgroundPointerOver"] = selectedSurfaceBrush
-            resources["TextControlBackgroundFocused"] = selectedSurfaceBrush
-            resources["TextControlBorderBrush"] = cardStrokeBrush
-            resources["TextControlBorderBrushPointerOver"] = cardStrokeBrush
+            checkNotNull(resources)["TextControlBackground"] = selectedSurfaceBrush
+            checkNotNull(resources)["TextControlBackgroundPointerOver"] = selectedSurfaceBrush
+            checkNotNull(resources)["TextControlBackgroundFocused"] = selectedSurfaceBrush
+            checkNotNull(resources)["TextControlBorderBrush"] = cardStrokeBrush
+            checkNotNull(resources)["TextControlBorderBrushPointerOver"] = cardStrokeBrush
         }
 
     val toolbar =
         Grid().apply {
             padding = Thickness(8.0, 4.0, 8.0, 4.0)
             columnSpacing = 4.0
-            columnDefinitions.add(autoColumn())
-            columnDefinitions.add(autoColumn())
-            columnDefinitions.add(autoColumn())
-            columnDefinitions.add(autoColumn())
-            columnDefinitions.add(starColumn())
-            columnDefinitions.add(autoColumn())
+            checkNotNull(columnDefinitions).add(autoColumn())
+            checkNotNull(columnDefinitions).add(autoColumn())
+            checkNotNull(columnDefinitions).add(autoColumn())
+            checkNotNull(columnDefinitions).add(autoColumn())
+            checkNotNull(columnDefinitions).add(starColumn())
+            checkNotNull(columnDefinitions).add(autoColumn())
 
             addToolbarControl(back, 0)
             addToolbarControl(forward, 1)
@@ -143,14 +143,14 @@ internal fun createWebView2BrowserShell(
         }
     val statusHost =
         Grid().apply {
-            children.add(loading)
-            children.add(status)
+            checkNotNull(children).add(loading)
+            checkNotNull(children).add(status)
         }
     val transparentBackground = webView2TransparentColor()
     val webView =
         WebView2().apply {
             defaultBackgroundColor = transparentBackground
-            resources[WEBVIEW2_VISUAL_BRIDGE_BACKGROUND_RESOURCE] = selectedSurfaceBrush
+            checkNotNull(resources)[WEBVIEW2_VISUAL_BRIDGE_BACKGROUND_RESOURCE] = selectedSurfaceBrush
         }
     val webViewHost =
         Border().apply {
@@ -162,9 +162,9 @@ internal fun createWebView2BrowserShell(
 
     val contentSurface =
         Grid().apply {
-            rowDefinitions.add(row(1.0, GridUnitType.Auto))
-            rowDefinitions.add(row(1.0, GridUnitType.Auto))
-            rowDefinitions.add(row(1.0, GridUnitType.Star))
+            checkNotNull(rowDefinitions).add(row(1.0, GridUnitType.Auto))
+            checkNotNull(rowDefinitions).add(row(1.0, GridUnitType.Auto))
+            checkNotNull(rowDefinitions).add(row(1.0, GridUnitType.Star))
             setValue(Panel.backgroundProperty, selectedSurfaceBrush)
 
             addRootControl(toolbar, 0)
@@ -174,8 +174,8 @@ internal fun createWebView2BrowserShell(
 
     val root =
         Grid().apply {
-            rowDefinitions.add(row(40.0, GridUnitType.Pixel))
-            rowDefinitions.add(row(1.0, GridUnitType.Star))
+            checkNotNull(rowDefinitions).add(row(40.0, GridUnitType.Pixel))
+            checkNotNull(rowDefinitions).add(row(1.0, GridUnitType.Star))
 
             addRootControl(titleBar, 0)
             addRootControl(contentSurface, 1)
@@ -242,10 +242,10 @@ private fun row(value: Double, unit: GridUnitType): RowDefinition =
 
 private fun Grid.addToolbarControl(control: microsoft.ui.xaml.FrameworkElement, column: Int) {
     Grid.setColumn(control, column)
-    children.add(control)
+    checkNotNull(children).add(control)
 }
 
 private fun Grid.addRootControl(control: microsoft.ui.xaml.FrameworkElement, row: Int) {
     Grid.setRow(control, row)
-    children.add(control)
+    checkNotNull(children).add(control)
 }

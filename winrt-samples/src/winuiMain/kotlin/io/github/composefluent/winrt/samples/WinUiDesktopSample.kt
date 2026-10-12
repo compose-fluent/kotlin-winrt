@@ -37,7 +37,7 @@ object WinUiDesktopSample {
 class WinUiDesktopApp : Application() {
     private var myWindow: Window? = null
 
-    override fun onLaunched(args: LaunchActivatedEventArgs) {
+    override fun onLaunched(args: LaunchActivatedEventArgs?) {
         launchCore()
         println("winui: window activated")
     }
@@ -75,7 +75,7 @@ class WinUiDesktopApp : Application() {
         )
     }
 
-    private fun buttonClick(sender: Any?, args: RoutedEventArgs) {
+    private fun buttonClick(sender: Any?, args: RoutedEventArgs?) {
         println("winui: button click invoked")
         showMainPage()
     }
@@ -110,7 +110,7 @@ private data class WinUiDesktopMainPage(
             return WinUiDesktopMainPage(page, tappedHandlerRegistered = true)
         }
 
-        private fun pointerTapped(sender: Any?, args: TappedRoutedEventArgs) {
+        private fun pointerTapped(sender: Any?, args: TappedRoutedEventArgs?) {
         }
     }
 }

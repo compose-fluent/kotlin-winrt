@@ -41,14 +41,14 @@ object JsonApiCompatSample {
 
     fun run(): JsonApiCompatResult =
         RuntimeScope.initializeSingleThreaded().use {
-            val jsonObject = JsonObject.parse(sampleText)
-            val phoneJsonValue = jsonObject.getNamedValue("phone")
-            val education = jsonObject.getNamedArray("education", JsonArray())
+            val jsonObject = checkNotNull(JsonObject.parse(sampleText))
+            val phoneJsonValue = checkNotNull(jsonObject.getNamedValue("phone"))
+            val education = checkNotNull(jsonObject.getNamedArray("education", JsonArray()))
             JsonApiCompatResult(
                 id = jsonObject.getNamedString("id"),
                 nullValueType = phoneJsonValue.valueType,
                 verified = jsonObject.getNamedBoolean("verified"),
-                firstEducationType = education.getObjectAt(0u).getNamedString("type"),
+                firstEducationType = checkNotNull(education.getObjectAt(0u)).getNamedString("type"),
             )
         }
 }

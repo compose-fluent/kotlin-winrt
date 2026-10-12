@@ -77,7 +77,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
         myWindow = null
     }
 
-    override fun onLaunched(args: LaunchActivatedEventArgs) {
+    override fun onLaunched(args: LaunchActivatedEventArgs?) {
         println("winui-controls: onLaunched")
         launchWithResources()
         println("winui-controls: window activated")
@@ -114,9 +114,9 @@ class WinUiControlsApp : Application(), AutoCloseable {
         println("winui-controls: install resources current")
         val application = checkNotNull(Application.current) { "Expected current WinUI application while installing resources." }
         println("winui-controls: install resources dictionary")
-        val resources = application.resources
+        val resources = checkNotNull(application.resources)
         println("winui-controls: install resources merged dictionaries")
-        val mergedDictionaries = resources.mergedDictionaries
+        val mergedDictionaries = checkNotNull(resources.mergedDictionaries)
         println("winui-controls: install resources create controls resources")
         val controlsResources = loadXamlControlsResources()
         println("winui-controls: install resources add")

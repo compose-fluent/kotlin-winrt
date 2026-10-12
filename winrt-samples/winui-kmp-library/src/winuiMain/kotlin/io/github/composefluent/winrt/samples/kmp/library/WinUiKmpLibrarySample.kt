@@ -63,7 +63,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
     private var focusSmokeCompleted = false
     private var timerSmokeCompleted = false
 
-    public override fun onLaunched(args: LaunchActivatedEventArgs) {
+    public override fun onLaunched(args: LaunchActivatedEventArgs?) {
         launchWithResources()
     }
 
@@ -83,7 +83,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
     private fun launchWithResources() {
         if (WinUiKmpSamplePlatform.option("kotlin.winrt.samples.timerSmoke")) {
             println("winui-kmp-library: timer smoke using current thread dispatcher")
-            runTimerSmoke(DispatcherQueue.getForCurrentThread())
+            runTimerSmoke(checkNotNull(DispatcherQueue.getForCurrentThread()))
             return
         }
         installXamlControlsResources()
@@ -96,9 +96,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             return
         }
         println("winui-kmp-library: install resources dictionary")
-        val resources = this.resources
+        val resources = checkNotNull(this.resources)
         println("winui-kmp-library: install resources merged dictionaries")
-        val mergedDictionaries = resources.mergedDictionaries
+        val mergedDictionaries = checkNotNull(resources.mergedDictionaries)
         println("winui-kmp-library: install resources create controls resources")
         val controlsResources = loadXamlControlsResources()
         println("winui-kmp-library: install resources add")
@@ -191,7 +191,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             println("winui-kmp-library: local authored panel added")
         }
         check(children[0] is Button) {
-            "Canvas.children[0] did not recover the Button runtime-class wrapper: ${children[0]::class.qualifiedName}"
+            "Canvas.children[0] did not recover the Button runtime-class wrapper: ${children[0]?.let { it::class.qualifiedName }}"
         }
         println("winui-kmp-library: child runtime class recovered")
         Canvas.setLeft(button, 24.0)
@@ -213,7 +213,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             println("winui-kmp-library: window content skipped")
         }
         if (localPanel != null && !WinUiKmpSamplePlatform.option("kotlin.winrt.samples.skipAutomationPeerSmoke")) {
-            val localPanelPeer = FrameworkElementAutomationPeer.createPeerForElement(localPanel)
+            val localPanelPeer = checkNotNull(FrameworkElementAutomationPeer.createPeerForElement(localPanel))
             check(WinUiKmpLocalPanel.createAutomationPeerCalls == 1) {
                 "Local authored Panel OnCreateAutomationPeer was not dispatched; calls=${WinUiKmpLocalPanel.createAutomationPeerCalls}, peer=$localPanelPeer"
             }
@@ -357,12 +357,12 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
 
     private fun runTimerSmoke(dispatcherQueue: DispatcherQueue) {
         println("winui-kmp-library: timer smoke starting")
-        val timer = dispatcherQueue.createTimer()
+        val timer = checkNotNull(dispatcherQueue.createTimer())
         activeTimer = timer
         timer.interval = 16.milliseconds
         timer.isRepeating = false
         println("winui-kmp-library: timer interval=${timer.interval} repeating=${timer.isRepeating} runningBefore=${timer.isRunning}")
-        val tickHandler: TypedEventHandler<DispatcherQueueTimer, Any?> = { _, _ ->
+        val tickHandler: TypedEventHandler<DispatcherQueueTimer?, Any?> = { _, _ ->
             timerSmokeCompleted = true
             println("winui-kmp-library: timer tick callback running=${timer.isRunning}")
             timer.stop()
@@ -405,7 +405,7 @@ internal class WinUiKmpLocalContentControl : ContentControl() {
                 PropertyMetadata(null),
             )
             println("winui-kmp-library: local authored control register SampleTextProperty done")
-            property
+            checkNotNull(property)
         }
     }
 }
@@ -429,7 +429,7 @@ internal class WinUiKmpLocalGridHostPanel(
         }
     }
 
-    override fun onCreateAutomationPeer(): AutomationPeer {
+    override fun onCreateAutomationPeer(): AutomationPeer? {
         return super.onCreateAutomationPeer()
     }
 
@@ -481,12 +481,12 @@ internal class WinUiKmpLocalAutomationPeer(
 
     override fun getFocusedElementCore(): Any? = null
 
-    override fun getChildrenCore(): MutableList<AutomationPeer> =
+    override fun getChildrenCore(): MutableList<AutomationPeer?> =
         hitTestChild?.let { mutableListOf(it) } ?: mutableListOf()
 
     override fun getControlledPeersCore(): List<AutomationPeer> = emptyList()
 
-    override fun getAnnotationsCore(): MutableList<AutomationPeerAnnotation> = mutableListOf()
+    override fun getAnnotationsCore(): MutableList<AutomationPeerAnnotation?> = mutableListOf()
 
     override fun getDescribedByCore(): Iterable<AutomationPeer> = emptyList()
 
