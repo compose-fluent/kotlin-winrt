@@ -18,7 +18,10 @@ open class WinRTReferenceValueAdapter<T>(
     val projectedTypeName: String,
     val typeSignature: WinRTTypeSignature,
     val projector: (IUnknownReference?) -> T,
-    val marshaller: (T) -> ComObjectReference,
+    // Non-null COM-reference construction hook, not a public marshaling operation.
+    // Consumers use createInputMarshaler/createOutputMarshaler (CsWinRT CreateMarshaler/FromManaged),
+    // which also handle null references, HSTRINGs, and boxed value representations.
+    internal val marshaller: (T) -> ComObjectReference,
 ) {
     internal open val valueAbi: WinRTValueAdapter<*>? = null
 
@@ -209,8 +212,7 @@ object WinRTReferenceValueAdapters {
                 WinRTObjectMarshaller.fromAbi(reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer)
             },
             marshaller = { value ->
-                check(value != null) { "Null System.Object collection values are not supported by this adapter yet." }
-                ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
+                ComWrappersSupport.createCCWForObject(requireNotNull(value), IID.IInspectable)
             },
         ) {
             override fun defaultValue(): Any? = null
