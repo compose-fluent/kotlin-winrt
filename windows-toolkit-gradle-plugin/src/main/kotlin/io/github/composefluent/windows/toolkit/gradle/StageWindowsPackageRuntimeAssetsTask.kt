@@ -25,6 +25,7 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
+import java.util.zip.ZipFile
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -346,7 +347,7 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
             if (resolved.identity.isWindowsAppSdkVersionPackage()) {
                 stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
             }
-            stageLiftedRegistrations(resolved.identity, resolved.packageRoot, outputRoot)
+            stageWinRTRegistrations(resolved.identity, resolved.packageRoot, outputRoot)
             if (includeFrameworkRuntimeAssets.get()) {
                 stageFrameworkNativeAssets(
                     resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
@@ -354,6 +355,15 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
                 )
             }
             stageMsBuildCopyLocalPayloads(resolved.packageRoot, rid, outputRoot)
+        }
+        if (includeFrameworkRuntimeAssets.get()) {
+            stageWindowsAppSdkFrameworkDlls(
+                packageRoots = resolvedPackages
+                    .filter { isWindowsAppSdkPackageId(it.identity.normalizedPackageId) }
+                    .map { it.packageRoot },
+                runtimeIdentifier = rid,
+                outputRoot = outputRoot,
+            )
         }
         stageGeneratedComponentRegistrations(outputRoot)
         stageXamlMetadataProviderManifest(outputRoot)
@@ -484,6 +494,35 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
         }
     }
 
+    /**
+     * CsWinRT's WinUIDesktopSample enables WindowsAppSDKSelfContained. The SDK stages its
+     * component payloads first; some SDK releases only ship auxiliary DLLs in the framework
+     * MSIX. Supplement those omissions without replacing independently versioned components.
+     */
+    private fun stageWindowsAppSdkFrameworkDlls(
+        packageRoots: List<Path>,
+        runtimeIdentifier: String,
+        outputRoot: Path,
+    ) {
+        AppxManifestPackageSupport.discoverFrameworkPackageArchives(packageRoots, runtimeIdentifier)
+            .forEach { archive ->
+                ZipFile(archive.toFile()).use { zip ->
+                    zip.entries().asSequence()
+                        .filter { !it.isDirectory && it.name.endsWith(".dll", ignoreCase = true) }
+                        .sortedBy { it.name }
+                        .forEach { entry ->
+                            val target = outputRoot.resolve(
+                                entry.name.toSafeRelativePath("Windows App SDK framework DLL path"),
+                            )
+                            if (!Files.exists(target)) {
+                                Files.createDirectories(target.parent)
+                                zip.getInputStream(entry).use { input -> Files.copy(input, target) }
+                            }
+                        }
+                }
+            }
+    }
+
     private fun stageWinAppRuntimeAssets(runtimeRoot: Path, outputRoot: Path) {
         if (!runtimeRoot.isDirectory()) {
             return
@@ -549,14 +588,14 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
         Files.writeString(target, properties)
     }
 
-    private fun stageLiftedRegistrations(
+    private fun stageWinRTRegistrations(
         identity: WinRTNuGetPackageIdentity,
         packageRoot: Path,
         outputRoot: Path,
     ) {
         Files.walk(packageRoot).use { stream ->
             stream.asSequence()
-                .filter { it.isRegularFile() && it.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
+                .filter { isWinRTRegistrationFragment(it, includeFrameworkRuntimeAssets.get()) }
                 .forEach { source ->
                     GradleFileOperations.copyFile(
                         source,

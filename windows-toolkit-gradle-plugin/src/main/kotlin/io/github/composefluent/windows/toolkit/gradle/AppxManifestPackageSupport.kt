@@ -439,7 +439,7 @@ internal object AppxManifestPackageSupport {
         if (!packageRoot.isDirectory()) return registrations
         Files.walk(packageRoot).use { stream ->
             stream
-                .filter { path -> path.isRegularFile() && path.fileName.toString().equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
+                .filter { path -> isWinRTRegistrationFragment(path) }
                 .sorted()
                 .forEach { registration ->
                     readXml(registration)?.let { document ->
