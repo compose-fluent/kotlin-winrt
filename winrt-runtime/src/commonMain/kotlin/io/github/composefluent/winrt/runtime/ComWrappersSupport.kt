@@ -75,7 +75,7 @@ object ComWrappersSupport {
     @OptIn(ExperimentalAtomicApi::class)
     private val ccwHostCacheGeneration = AtomicInt(0)
     private val ccwSlowStateCreationLock = PlatformLock()
-    private val rcwCreationLocks = RcwCreationLocks()
+    private val rcwPublicationLock = PlatformLock()
     private val ccwHostCache =
         WeakKeyStateMap<Any, CachedCcwHosts> { cachedHosts ->
             cachedHosts.releaseCacheRoots()
@@ -326,15 +326,8 @@ object ComWrappersSupport {
         }
 
         if (!tryUseCache) return createRcwCore(pointer, staticallyDeterminedType)
-        return withRcwCreationLock(pointerKey) {
-            val rcw = findCachedRcw(pointerKey, staticallyDeterminedType)
-                ?: createRcwCore(pointer, staticallyDeterminedType)
-            if (rcw != null) {
-                rcwCache[pointerKey] = rcw
-                if (directPointerKey != pointerKey) rcwCache[directPointerKey] = rcw
-            }
-            rcw
-        }
+        val rcw = createRcwCore(pointer, staticallyDeterminedType) ?: return null
+        return publishRcw(rcw, pointerKey, directPointerKey, staticallyDeterminedType)
     }
 
     /**
@@ -371,7 +364,7 @@ object ComWrappersSupport {
             }
         }
 
-        return withRcwCreationLock(pointerKey) {
+        return run {
             if (tryUseCache) {
                 val cached = findCachedRcw(pointerKey)
                     ?: if (directPointerKey != pointerKey) {
@@ -385,7 +378,7 @@ object ComWrappersSupport {
                         rcwCache[directPointerKey] = cached
                     }
                     WinRTPlatformApi.releaseRaw(pointer)
-                    return@withRcwCreationLock cached
+                    return@run cached
                 }
             }
 
@@ -414,13 +407,8 @@ object ComWrappersSupport {
                             } finally {
                                 rawPointerNeedsRelease = false
                             }
-                            if (tryUseCache) {
-                                rcwCache[pointerKey] = projectedValue
-                                if (directPointerKey != pointerKey) {
-                                    rcwCache[directPointerKey] = projectedValue
-                                }
-                            }
-                            return@withRcwCreationLock projectedValue
+                            return@run if (tryUseCache) publishRcw(projectedValue, pointerKey, directPointerKey)
+                                else projectedValue
                         }
                 }
 
@@ -431,13 +419,7 @@ object ComWrappersSupport {
                     factory?.let {
                         val rcw = it(inspectable)
                         ownershipTransferred = true
-                        if (tryUseCache) {
-                            rcwCache[pointerKey] = rcw
-                            if (directPointerKey != pointerKey) {
-                                rcwCache[directPointerKey] = rcw
-                            }
-                        }
-                        return@withRcwCreationLock rcw
+                        return@run if (tryUseCache) publishRcw(rcw, pointerKey, directPointerKey) else rcw
                     }
                     tryProjectInspectableValue(
                         inspectable,
@@ -449,23 +431,12 @@ object ComWrappersSupport {
                         } finally {
                             ownershipTransferred = true
                         }
-                        if (tryUseCache) {
-                            rcwCache[pointerKey] = projectedValue
-                            if (directPointerKey != pointerKey) {
-                                rcwCache[directPointerKey] = projectedValue
-                            }
-                        }
-                        return@withRcwCreationLock projectedValue
+                        return@run if (tryUseCache) publishRcw(projectedValue, pointerKey, directPointerKey)
+                            else projectedValue
                     }
 
                     ownershipTransferred = true
-                    if (tryUseCache) {
-                        rcwCache[pointerKey] = inspectable
-                        if (directPointerKey != pointerKey) {
-                            rcwCache[directPointerKey] = inspectable
-                        }
-                    }
-                    inspectable
+                    if (tryUseCache) publishRcw(inspectable, pointerKey, directPointerKey) else inspectable
                 } catch (error: Throwable) {
                     if (!ownershipTransferred && !inspectable.isDisposed) {
                         inspectable.close()
@@ -512,7 +483,7 @@ object ComWrappersSupport {
                 }
             }
 
-            // The cold helper consumes the input even if acquiring the lock fails.
+            // The cold helper consumes the input even if construction or publication fails.
             rawPointerNeedsRelease = false
             return createTypedRcwForOwnedComObjectSlow(
                 pointer,
@@ -548,7 +519,7 @@ object ComWrappersSupport {
     ): T {
         var rawPointerNeedsRelease = true
         try {
-            return withRcwCreationLock(pointerKey) {
+            return run {
                 val cached = findCachedRcw(pointerKey, staticallyDeterminedType)
                     ?: if (directPointerKey != pointerKey) {
                         findCachedRcw(directPointerKey, staticallyDeterminedType)
@@ -560,7 +531,7 @@ object ComWrappersSupport {
                         rcwCache[pointerKey] = cached
                         rcwCache[directPointerKey] = cached
                     }
-                    return@withRcwCreationLock cached as T
+                    return@run cached as T
                 }
 
                 // This constructor explicitly consumes the ABI reference even if it
@@ -569,12 +540,8 @@ object ComWrappersSupport {
                 val comPtr = ComPtr.createForOwnedAbi(pointer.asRawComPtr(), staticallyDeterminedType.interfaceId)
                 try {
                     val reference = IUnknownReference(comPtr)
-                    factory(reference, staticallyDeterminedType).also { rcw ->
-                        rcwCache[pointerKey] = rcw
-                        if (directPointerKey != pointerKey) {
-                            rcwCache[directPointerKey] = rcw
-                        }
-                    }
+                    val rcw = factory(reference, staticallyDeterminedType)
+                    publishRcw(rcw, pointerKey, directPointerKey, staticallyDeterminedType) as T
                 } catch (error: Throwable) {
                     try {
                         comPtr.close()
@@ -712,7 +679,7 @@ object ComWrappersSupport {
             }
         }
 
-        return withRcwCreationLock(pointerKey) {
+        return run {
             val cached = findClosedInterfaceRcw(pointerKey, interfaceId)
                 ?: if (directPointerKey != pointerKey) {
                     findClosedInterfaceRcw(directPointerKey, interfaceId)
@@ -726,17 +693,14 @@ object ComWrappersSupport {
                 }
                 WinRTPlatformApi.releaseRaw(pointer)
                 @Suppress("UNCHECKED_CAST")
-                return@withRcwCreationLock cached as T
+                return@run cached as T
             }
 
             val typeHandle = typeHandleFactory()
             try {
-                factory(pointer, typeHandle).also { rcw ->
-                    cacheClosedInterfaceRcw(pointerKey, interfaceId, rcw)
-                    if (directPointerKey != pointerKey) {
-                        cacheClosedInterfaceRcw(directPointerKey, interfaceId, rcw)
-                    }
-                }
+                val rcw = factory(pointer, typeHandle)
+                @Suppress("UNCHECKED_CAST")
+                (publishClosedInterfaceRcw(rcw, pointerKey, directPointerKey, interfaceId) as T)
             } catch (error: Throwable) {
                 WinRTPlatformApi.releaseRaw(pointer)
                 throw error
@@ -744,9 +708,37 @@ object ComWrappersSupport {
         }
     }
 
+    // CsWinRT RuntimeWrapperCache.AddOrUpdate runs factories outside its publication lock.
+    // A racing factory may create a losing candidate. Keep that candidate's ordinary ComPtr
+    // finalization lifetime: eagerly closing it would invalidate a wrapper retained by the
+    // factory itself. Only the winning live wrapper is returned and stored under both aliases.
+    private fun publishRcw(
+        candidate: Any,
+        pointerKey: Long,
+        directPointerKey: Long,
+        staticallyDeterminedType: WinRTTypeHandle? = null,
+    ): Any {
+        if (!canCacheRcwIdentity(candidate)) return candidate
+        return rcwPublicationLock.withLock {
+            val winner = findCachedRcw(pointerKey, staticallyDeterminedType) ?: candidate
+            rcwCache[pointerKey] = winner
+            if (directPointerKey != pointerKey) rcwCache[directPointerKey] = winner
+            winner
+        }
+    }
+
     @PublishedApi
-    internal fun <R> withRcwCreationLock(identity: Long, block: () -> R): R =
-        rcwCreationLocks.withIdentity(identity, block)
+    internal fun publishClosedInterfaceRcw(
+        candidate: IWinRTObject,
+        pointerKey: Long,
+        directPointerKey: Long,
+        interfaceId: Guid,
+    ): IWinRTObject = rcwPublicationLock.withLock {
+        val winner = findClosedInterfaceRcw(pointerKey, interfaceId) ?: candidate
+        cacheClosedInterfaceRcw(pointerKey, interfaceId, winner)
+        if (directPointerKey != pointerKey) cacheClosedInterfaceRcw(directPointerKey, interfaceId, winner)
+        winner
+    }
 
     @PublishedApi
     internal fun findHotClosedInterfaceRcw(
@@ -902,13 +894,10 @@ object ComWrappersSupport {
             if (retained !== reference) reference.close()
         }
         val directPointerKey = PlatformAbi.pointerKey(pointer)
-        rcwCache[directPointerKey] = value
         val identityKey = rcwCacheKey(pointer)
-        // CsWinRT registers one weak wrapper per COM identity. An interface alias only
-        // needs another entry when its address differs from the canonical IUnknown.
-        if (identityKey != directPointerKey) {
-            rcwCache[identityKey] = value
-        }
+        // CsWinRT RegisterObjectForInterface uses TryAdd: a constructor racing another
+        // factory must not overwrite an already-published live wrapper for this identity.
+        publishRcw(value, identityKey, directPointerKey)
     }
 
     fun registerRuntimeClassWrapper(

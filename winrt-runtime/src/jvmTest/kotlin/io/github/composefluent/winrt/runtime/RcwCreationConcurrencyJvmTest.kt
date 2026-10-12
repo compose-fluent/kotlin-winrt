@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -47,46 +48,35 @@ class RcwCreationConcurrencyJvmTest {
     }
 
     @Test
-    fun concurrent_cold_requests_for_one_identity_publish_once() {
+    fun racing_factories_publish_one_wrapper_without_disposing_escaped_candidates() {
         ComWrappersSupport.clearRegistriesForTests()
-        val start = CountDownLatch(1)
-        val calls = AtomicInteger()
-        val pool = Executors.newFixedThreadPool(8)
+        val entered = CountDownLatch(2)
+        val candidates = ConcurrentLinkedQueue<IWinRTObject>()
+        val pool = Executors.newFixedThreadPool(2)
         val host = WinRTInspectableComObject.inspectableBox(null, "test.SingleRcw")
         var wrapper: IWinRTObject? = null
         ComWrappersSupport.registerRuntimeClassFactory("test.SingleRcw") { reference ->
-            calls.incrementAndGet()
-            object : IWinRTObject { override val nativeObject: ComObjectReference = reference }
+            val candidate = object : IWinRTObject { override val nativeObject: ComObjectReference = reference }
+            candidates += candidate
+            entered.countDown()
+            check(entered.await(10, TimeUnit.SECONDS)) { "Factory ran inside the publication lock" }
+            ComWrappersSupport.registerRuntimeClassWrapper(candidate, reference)
+            candidate
         }
         try {
-            val futures = List(8) { pool.submit<IWinRTObject> {
-                check(start.await(10, TimeUnit.SECONDS))
+            val futures = List(2) { pool.submit<IWinRTObject> {
                 ComWrappersSupport.createRcwForOwnedComObject(host.ownedPointer()) as IWinRTObject
             } }
-            start.countDown()
             wrapper = futures.first().get(15, TimeUnit.SECONDS)
             futures.forEach { assertSame(wrapper, it.get(15, TimeUnit.SECONDS)) }
-            assertEquals(1, calls.get())
+            assertEquals(2, candidates.size)
+            assertTrue(candidates.all { !it.nativeObject.isDisposed })
         } finally {
             pool.shutdownNow()
             assertTrue(pool.awaitTermination(15, TimeUnit.SECONDS))
-            wrapper?.nativeObject?.close()
+            candidates.forEach { it.nativeObject.close() }
             host.close()
             ComWrappersSupport.clearRegistriesForTests()
-        }
-    }
-
-    @Test
-    fun identity_lock_is_reentrant_and_released_after_failure() {
-        val locks = RcwCreationLocks()
-        kotlin.test.assertFailsWith<IllegalStateException> {
-            locks.withIdentity(1) { locks.withIdentity(1) { error("factory failed") } }
-        }
-        val pool = Executors.newSingleThreadExecutor()
-        try {
-            assertEquals(42, pool.submit<Int> { locks.withIdentity(1) { 42 } }.get(10, TimeUnit.SECONDS))
-        } finally {
-            pool.shutdownNow()
         }
     }
 
