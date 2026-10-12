@@ -46,7 +46,36 @@ data class WinAppHostConfiguration(
     val runtimeAssetsRoot: Path? = null,
     val windowsAppSdkVersion: WindowsAppSdkVersion? = null,
 ) {
+    /** Deployment metadata, kept outside the executable so packaging can reuse a linked host. */
+    fun toStagedProperties(): String =
+        "schemaVersion=1\npackageIdentity=${packageIdentity.name}\nwindowsAppSdkDeployment=${windowsAppSdkDeployment.name}\n"
+
     companion object {
+        const val STAGED_CONFIGURATION_FILE_NAME: String = "kotlin-winrt-host.properties"
+
+        /**
+         * Kotlin's deployment boundary for the Windows App SDK bootstrap/self-contained split.
+         * Generated JVM and Native hosts share this contract instead of baking packaging choices
+         * into application code. Explicit custom-host configurations remain supported below.
+         */
+        fun fromStagedRuntimeAssets(runtimeAssetsRoot: Path? = null): WinAppHostConfiguration {
+            val root = runtimeAssetsRoot ?: WindowsAppSdkDeployment.discoverRuntimeAssetsRoot()
+                ?: error("Application hosting requires a staged runtime assets root.")
+            val properties = Path(root, STAGED_CONFIGURATION_FILE_NAME)
+            require(properties.isRegularFile()) {
+                "Application host configuration is missing at $properties. Restage the application."
+            }
+            val values = parseStagedProperties(properties.readText())
+            check(values["schemaVersion"] == "1") { "Unsupported application host configuration at $properties." }
+            return fromStagedRuntimeAssets(
+                packageIdentity = WinAppPackageIdentity.valueOf(values["packageIdentity"]
+                    ?: error("Missing packageIdentity in $properties.")),
+                windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.valueOf(values["windowsAppSdkDeployment"]
+                    ?: error("Missing windowsAppSdkDeployment in $properties.")),
+                runtimeAssetsRoot = root,
+            )
+        }
+
         /**
          * Builds the explicit host contract from the version properties staged by the Gradle
          * plugin. Generated hosts use this path so Windows App SDK metadata never falls back to
@@ -342,14 +371,7 @@ object WindowsAppSdkDeployment {
             .firstOrNull()
 
     private fun parseVersionProperties(content: String): WindowsAppSdkVersion? {
-        val values = content.lineSequence()
-            .map(String::trim)
-            .filter { line -> line.isNotEmpty() && !line.startsWith('#') }
-            .mapNotNull { line ->
-                val separator = line.indexOf('=')
-                if (separator <= 0) null else line.substring(0, separator).trim() to line.substring(separator + 1).trim()
-            }
-            .toMap()
+        val values = parseStagedProperties(content)
         if (values["schemaVersion"] != "1") return null
         val majorMinor = values["majorMinorVersion"]?.toIntOrNull() ?: return null
         val versionTag = values["versionTag"] ?: return null
@@ -390,6 +412,15 @@ object WindowsAppSdkDeployment {
         }
     }
 }
+
+private fun parseStagedProperties(content: String): Map<String, String> = content.lineSequence()
+    .map(String::trim)
+    .filter { line -> line.isNotEmpty() && !line.startsWith('#') }
+    .mapNotNull { line ->
+        val separator = line.indexOf('=')
+        if (separator <= 0) null else line.substring(0, separator).trim() to line.substring(separator + 1).trim()
+    }
+    .toMap()
 
 internal expect fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileName: String): Path?
 internal expect fun platformWindowsApplicationManifestPath(root: Path): Path

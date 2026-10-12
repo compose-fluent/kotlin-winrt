@@ -1,5 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.runtime.WinAppHostConfiguration
+import io.github.composefluent.winrt.runtime.WindowsAppSdkDeploymentMode
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -209,6 +211,13 @@ abstract class BuildWinAppHostTask : DefaultTask() {
         )
         stageWinAppJvmRuntimeClasspath(runtimeClasspath.files, outputRoot)
         stageRuntimeAssets(outputRoot)
+        Files.writeString(
+            outputRoot.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME),
+            WinAppHostConfiguration(
+                WindowsPackageType.valueOf(packageType.get()).hostPackageIdentity(),
+                WindowsAppSdkDeploymentMode.valueOf(windowsAppSdkDeployment.get().name),
+            ).toStagedProperties(),
+        )
         WinAppManifestGenerator.writeApplicationManifest(
             outputRoot,
             executableBaseName.get(),
@@ -416,6 +425,7 @@ private fun runtimeJarDigest(jar: java.io.File): String =
     java.security.MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
         .joinToString("") { byte -> "%02x".format(byte) }
 
+@Suppress("UNUSED_PARAMETER") // Packaging arguments are retained for existing task/source callers.
 internal fun applicationHostSource(
     mainClass: String,
     packageType: String,
@@ -423,12 +433,7 @@ internal fun applicationHostSource(
     externalJvmHome: String,
     windowsAppSdkDeployment: WindowsAppSdkDeployment = WindowsAppSdkDeployment.FrameworkDependent,
 ): String {
-    require(windowsAppSdkDeployment != WindowsAppSdkDeployment.Auto) {
-        "Generated application hosts require a concrete Windows App SDK deployment mode."
-    }
     val mainClassPath = mainClass.replace('.', '/')
-    val unpackaged = packageType == WindowsPackageType.None.name
-    val packageIdentity = if (unpackaged) "Unpackaged" else "Packaged"
     val externalJvmHomePath = externalJvmHome
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
@@ -676,8 +681,6 @@ internal fun applicationHostSource(
     static jobject kotlin_winrt_initialize_application_host(JNIEnv *env) {
         jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WindowsAppSdkLauncherSupport");
         jmethodID initialize;
-        jstring package_identity;
-        jstring deployment_mode;
         jstring runtime_assets_root;
         wchar_t host_directory[MAX_PATH * 4];
         char host_directory_utf8[MAX_PATH * 4];
@@ -685,19 +688,8 @@ internal fun applicationHostSource(
         if (support_class == NULL) {
             return NULL;
         }
-        initialize = (*env)->GetStaticMethodID(env, support_class, "initializeApplicationHost", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/AutoCloseable;");
+        initialize = (*env)->GetStaticMethodID(env, support_class, "initializeApplicationHost", "(Ljava/lang/String;)Ljava/lang/AutoCloseable;");
         if (initialize == NULL) {
-            (*env)->DeleteLocalRef(env, support_class);
-            return NULL;
-        }
-        package_identity = (*env)->NewStringUTF(env, "$packageIdentity");
-        if (package_identity == NULL) {
-            (*env)->DeleteLocalRef(env, support_class);
-            return NULL;
-        }
-        deployment_mode = (*env)->NewStringUTF(env, "${windowsAppSdkDeployment.name}");
-        if (deployment_mode == NULL) {
-            (*env)->DeleteLocalRef(env, package_identity);
             (*env)->DeleteLocalRef(env, support_class);
             return NULL;
         }
@@ -706,14 +698,10 @@ internal fun applicationHostSource(
         kotlin_winrt_append_utf8(host_directory_utf8, sizeof(host_directory_utf8), host_directory);
         runtime_assets_root = (*env)->NewStringUTF(env, host_directory_utf8);
         if (runtime_assets_root == NULL) {
-            (*env)->DeleteLocalRef(env, package_identity);
-            (*env)->DeleteLocalRef(env, deployment_mode);
             (*env)->DeleteLocalRef(env, support_class);
             return NULL;
         }
-        result = (*env)->CallStaticObjectMethod(env, support_class, initialize, package_identity, deployment_mode, runtime_assets_root);
-        (*env)->DeleteLocalRef(env, package_identity);
-        (*env)->DeleteLocalRef(env, deployment_mode);
+        result = (*env)->CallStaticObjectMethod(env, support_class, initialize, runtime_assets_root);
         (*env)->DeleteLocalRef(env, runtime_assets_root);
         (*env)->DeleteLocalRef(env, support_class);
         return result;

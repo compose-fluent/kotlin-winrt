@@ -7,6 +7,14 @@ import kotlin.io.path.name
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
+// WindowsAppSDK.SelfContained.targets merges runtimes-framework/package.appxfragment
+// alongside WinUI's legacy LiftedWinRTClassRegistrations.xml registrations.
+internal fun isWinRTRegistrationFragment(path: Path, includeFrameworkFragments: Boolean = true): Boolean =
+    path.isRegularFile() &&
+        (path.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) ||
+            includeFrameworkFragments && path.name.equals("package.appxfragment", ignoreCase = true)
+        )
+
 internal object WinAppManifestGenerator {
     fun writeApplicationManifest(
         outputRoot: Path,
@@ -16,7 +24,7 @@ internal object WinAppManifestGenerator {
     ) {
         val fragmentXmls = Files.walk(outputRoot).use { stream ->
             stream.asSequence()
-                .filter { path -> path.isRegularFile() && path.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
+                .filter { path -> isWinRTRegistrationFragment(path) }
                 .sorted()
                 .map { path -> Files.readString(path) }
                 .toList()

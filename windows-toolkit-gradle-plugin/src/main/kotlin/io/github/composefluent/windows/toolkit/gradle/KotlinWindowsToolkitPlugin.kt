@@ -1,6 +1,8 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.runtime.WinAppPackageIdentity
+import io.github.composefluent.winrt.runtime.WindowsAppSdkDeploymentMode
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
@@ -717,7 +719,13 @@ private val WIN_APP_TASK_NAMES = listOf(
     "verifyWinAppPackage",
     "signWinAppPackage",
     "installWinAppPackage",
-)
+) + WinAppPackagingFormat.entries.flatMap { format ->
+    (if (format.packageType == WindowsPackageType.Packaged) {
+        listOf("packageWinApp", "verifyWinAppPackage", "signWinAppPackage", "installWinAppPackage")
+    } else {
+        listOf("packageWinApp")
+    }).map { it + format.name }
+}
 
 internal fun winAppTaskSuffix(name: String): String {
     require(name.matches(Regex("[A-Za-z][A-Za-z0-9_-]*"))) {
@@ -1028,14 +1036,16 @@ private fun configureWinAppTasks(
             task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
         },
     )
-    val stageRuntimeAssetsTask = project.tasks.register(
-        taskName("stageWindowsPackageRuntimeAssets"),
+    fun registerRuntimeAssets(format: WinAppPackagingFormat? = null) = project.tasks.register(
+        taskName("stageWindowsPackageRuntimeAssets" + format?.name.orEmpty()),
         StageWindowsPackageRuntimeAssetsTask::class.java,
         Action<StageWindowsPackageRuntimeAssetsTask> { task ->
             task.group = "windows-package"
             task.applicationCompilationTasks.set(selectedVariant.map { it.compilationTaskNames(project) })
             task.description = "Stages WinRT NuGet runtime and resource assets for application execution."
-            task.outputDirectory.set(runtimeAssetsDirectory)
+            task.outputDirectory.set(if (format == null) runtimeAssetsDirectory else project.layout.buildDirectory.dir(
+                selectedVariant.map { "kotlin-winrt/application-layout/${it.id.toSafeDirectoryName()}/${format.directoryName}/runtime-assets" },
+            ))
             task.nugetPackages.set(
                 project.provider {
                     allNuGetPackageSpecs(extension.packageReferences)
@@ -1054,6 +1064,7 @@ private fun configureWinAppTasks(
             )
             task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { restore -> restore.winmdLockFile })
             task.includeFrameworkRuntimeAssets.set(project.provider {
+                if (format != null) return@provider format.deployment == WindowsAppSdkDeployment.SelfContained
                 val outputFile = options.packageOutputFile.orNull?.asFile
                 resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.SelfContained ||
                     options.packageType.get() != WindowsPackageType.Packaged ||
@@ -1148,6 +1159,7 @@ private fun configureWinAppTasks(
             task.dependsOn(restoreWinAppDependenciesTask)
         },
     )
+    val stageRuntimeAssetsTask = registerRuntimeAssets()
     val prepareJvmRuntimeImageTask = project.tasks.register(
         taskName("prepareWinAppJvmRuntimeImage"),
         PrepareWinAppJvmRuntimeImageTask::class.java,
@@ -1198,8 +1210,6 @@ private fun configureWinAppTasks(
             )
             task.entryPointFunctionName.set("main$taskSuffix")
             task.mainClass.set(options.mainClass)
-            task.packageType.set(project.provider { options.packageType.get().name })
-            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
         },
     )
     addGeneratedSourcesToSelectedKotlinMultiplatformMingwCompilation(
@@ -1219,17 +1229,28 @@ private fun configureWinAppTasks(
             task.dependsOn(mingwApplicationEntryTask)
         }
     })
-    fun registerApplicationPackageStage(baseName: String) = project.tasks.register(
+    fun registerApplicationPackageStage(
+        baseName: String,
+        format: WinAppPackagingFormat? = null,
+        runtimeAssets: TaskProvider<StageWindowsPackageRuntimeAssetsTask> = stageRuntimeAssetsTask,
+    ) = project.tasks.register(
         taskName(baseName),
         StageWinAppPackageTask::class.java,
         Action<StageWinAppPackageTask> { task ->
             task.group = "windows-package"
             task.description = "Stages WinApp package resources and generates the application PRI."
-            task.runtimeAssetsDirectory.set(stageRuntimeAssetsTask.flatMap { it.outputDirectory })
+            task.runtimeAssetsDirectory.set(runtimeAssets.flatMap { it.outputDirectory })
+            task.packageIdentity.set(project.provider {
+                (format?.packageType ?: options.packageType.get()).hostPackageIdentity()
+            })
+            task.windowsAppSdkDeployment.set(project.provider {
+                WindowsAppSdkDeploymentMode.valueOf((format?.deployment ?: resolvedWindowsAppSdkDeployment.get()).name)
+            })
             task.outputDirectory.set(
                 project.provider {
                     project.layout.buildDirectory
-                        .dir("kotlin-winrt/application-layout/${selectedVariant.get().id.toSafeDirectoryName()}/package")
+                        .dir("kotlin-winrt/application-layout/${selectedVariant.get().id.toSafeDirectoryName()}/" +
+                            (format?.let { "${it.directoryName}/package" } ?: "package"))
                         .get()
                 },
             )
@@ -1237,7 +1258,8 @@ private fun configureWinAppTasks(
             task.resourceResolutionReport.set(
                 project.provider {
                     project.layout.buildDirectory.file(
-                        "kotlin-winrt/reports/${selectedVariant.get().id.toSafeDirectoryName()}/appx-resource-resolution.json",
+                        "kotlin-winrt/reports/${selectedVariant.get().id.toSafeDirectoryName()}/" +
+                            (format?.let { "${it.directoryName}/" } ?: "") + "appx-resource-resolution.json",
                     ).get()
                 },
             )
@@ -1327,8 +1349,8 @@ private fun configureWinAppTasks(
             task.includeFrameworkPackageDependencies.set(project.provider {
                 // Match Windows App SDK AppXReference: the package graph must declare
                 // its runtime framework regardless of which tool registers/packages it.
-                options.packageType.get() == WindowsPackageType.Packaged &&
-                    resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent
+                (format?.packageType ?: options.packageType.get()) == WindowsPackageType.Packaged &&
+                    (format?.deployment ?: resolvedWindowsAppSdkDeployment.get()) == WindowsAppSdkDeployment.FrameworkDependent
             })
             task.executableBaseName.set(executableBaseName)
             task.rewriteApplicationExecutable.set(true)
@@ -1345,10 +1367,13 @@ private fun configureWinAppTasks(
             task.reservedPackageDirectories.set(
                 hasMingwReleaseExecutable.map { native -> if (native) emptyList() else listOf("runtime", "lib") },
             )
-            task.dependsOn(stageRuntimeAssetsTask)
+            task.dependsOn(runtimeAssets)
         },
     )
     val stageApplicationPackageTask = registerApplicationPackageStage("stageWinAppPackage")
+    val formatStages = WinAppPackagingFormat.entries.associateWith { format ->
+        registerApplicationPackageStage("stageWinAppPackage" + format.name, format, registerRuntimeAssets(format))
+    }
     val launcherIconTask = project.tasks.register(
         taskName("compileWinAppIcon"),
         CompileWinAppIconTask::class.java,
@@ -1369,7 +1394,7 @@ private fun configureWinAppTasks(
         project,
         mingwApplicationEntryTask,
         stageRuntimeAssetsTask,
-        stageApplicationPackageTask,
+        listOf(stageApplicationPackageTask) + formatStages.values,
         selectedVariant,
         options.console,
         launcherIconTask,
@@ -1400,8 +1425,6 @@ private fun configureWinAppTasks(
                 ),
             )
             task.applicationVariant.set(selectedVariant.map { it.id })
-            task.packageType.set(project.provider { options.packageType.get().name })
-            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.console.set(options.console)
             task.executableBaseName.set(executableBaseName)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
@@ -1420,6 +1443,25 @@ private fun configureWinAppTasks(
         },
     )
     val jvmApplicationClasspath = project.files()
+    formatStages.values.forEach { stage ->
+        stage.configure { task ->
+            task.jvmLauncherExecutable.set(selectedVariant.flatMap { variant ->
+                if (variant.kind == WinAppVariantKind.Jvm) launcherCompileTask.flatMap { launcher ->
+                    launcher.outputDirectory.file(executableBaseName.map { "$it.exe" })
+                } else project.providers.provider { null }
+            })
+            task.jvmRuntimeClasspath.from(selectedVariant.map { variant ->
+                if (variant.kind == WinAppVariantKind.Jvm) jvmApplicationClasspath else emptyList<File>()
+            })
+            task.jvmRuntimeImageDirectory.set(selectedVariant.zip(options.jvmRuntimeMode) { variant, mode ->
+                variant.kind == WinAppVariantKind.Jvm && mode == WinAppJvmRuntimeMode.Bundled
+            }.flatMap { bundled ->
+                if (bundled) sharedJvmRuntimeImageProducer.flatMap { it.outputDirectory }
+                else project.providers.provider { null }
+            })
+            task.jvmRuntimeJavaMajor.set(options.jvmToolchainVersion)
+        }
+    }
     val applicationHostTask = project.tasks.register(
         taskName("buildWinAppHost"),
         BuildWinAppHostTask::class.java,
@@ -1453,7 +1495,10 @@ private fun configureWinAppTasks(
             task.runtimeAssetsDirectory.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
             task.runtimeClasspath.from(jvmApplicationClasspath)
             task.jvmRuntimeMode.set(options.jvmRuntimeMode.map { it.name })
-            task.runtimeImageDirectory.set(prepareJvmRuntimeImageTask.flatMap { it.outputDirectory })
+            task.runtimeImageDirectory.set(task.jvmRuntimeMode.flatMap { mode ->
+                if (mode == WinAppJvmRuntimeMode.Bundled.name) prepareJvmRuntimeImageTask.flatMap { it.outputDirectory }
+                else project.providers.provider { null }
+            })
             task.launcherExecutable.set(
                 launcherCompileTask.flatMap { launcher ->
                     launcher.outputDirectory.file(executableBaseName.map { "$it.exe" })
@@ -1509,6 +1554,7 @@ private fun configureWinAppTasks(
     val designPreview = project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinRTXamlHotReloadProtocol.PREVIEW_ENVIRONMENT)
         .map { it == "1" }.orElse(false)
     developmentPackageTask.configure { task ->
+        task.packageIdentity.set(WinAppPackageIdentity.Packaged)
         task.description = "Stages an isolated development identity and regenerates its application PRI."
         task.runtimeAssetsDirectory.set(selectedVariant.flatMap { variant ->
             if (variant.kind == WinAppVariantKind.Jvm) stageRuntimeAssetsTask.flatMap { it.outputDirectory }
@@ -1593,180 +1639,206 @@ private fun configureWinAppTasks(
             task.dependsOn(developmentPackageTask)
         },
     )
-    val packageApplicationTask = project.tasks.register(
-        taskName("packageWinApp"),
-        PackageWinAppTask::class.java,
-        Action<PackageWinAppTask> { task ->
-            task.group = "windows-package"
-            task.description = "Packages the staged WinApp payload into an AppX/MSIX package."
-            task.applicationVariant.set(selectedVariant.map { it.id })
-            task.packageDirectory.set(applicationPackageDirectory)
-            task.outputFile.set(
-                options.packageOutputFile.orElse(
-                    project.layout.buildDirectory.file(
+    fun registerPackagedTasks(
+        format: WinAppPackagingFormat?,
+        packageStage: TaskProvider<StageWinAppPackageTask>,
+        packageDirectory: Provider<Directory>,
+    ): Map<String, TaskProvider<out Task>> {
+        fun taskName(base: String): String = base + format?.name.orEmpty() + taskSuffix
+        val packageType = project.provider { format?.packageType ?: options.packageType.get() }
+        val deployment = project.provider { format?.deployment ?: resolvedWindowsAppSdkDeployment.get() }
+        val generatePackage = project.provider { format != null || options.generatePackage.get() }
+        val artifactName = selectedVariant.map { variant ->
+            "${project.name}-${variant.id.toSafeDirectoryName()}" + (format?.let { "-${it.directoryName}" } ?: "")
+        }
+        val verificationPath = selectedVariant.map { variant ->
+            "${variant.id.toSafeDirectoryName()}" + (format?.let { "/${it.directoryName}" } ?: "")
+        }
+        val packageApplicationTask = project.tasks.register(
+            taskName("packageWinApp"),
+            PackageWinAppTask::class.java,
+            Action<PackageWinAppTask> { task ->
+                task.group = "windows-package"
+                task.description = "Packages the staged WinApp payload into an AppX/MSIX package."
+                task.applicationVariant.set(selectedVariant.map { it.id })
+                task.packageDirectory.set(packageDirectory)
+                task.outputFile.set(
+                    if (format == null) options.packageOutputFile.orElse(
+                        project.layout.buildDirectory.file(artifactName.map { "kotlin-winrt/packages/$it.msix" }),
+                    ) else project.layout.buildDirectory.file(artifactName.map { "kotlin-winrt/packages/$it.msix" }),
+                )
+                task.generatePackage.set(generatePackage)
+                task.packageType.set(packageType.map { it.name })
+                task.selfContained.set(deployment.map {
+                    it == WindowsAppSdkDeployment.SelfContained
+                })
+                task.makeAppxExecutable.set(options.makeAppxExecutable)
+                task.winAppCliExecutable.set(extension.winAppCliExecutable)
+                task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
+                task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
+                task.winAppCliCacheDirectory.set(
+                    project.layout.dir(
                         project.provider {
-                            "kotlin-winrt/packages/${project.name}-${selectedVariant.get().id.toSafeDirectoryName()}.msix"
+                            project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
                         },
                     ),
-                ),
-            )
-            task.generatePackage.set(options.generatePackage)
-            task.packageType.set(options.packageType.map { it.name })
-            task.selfContained.set(resolvedWindowsAppSdkDeployment.map {
-                it == WindowsAppSdkDeployment.SelfContained
-            })
-            task.makeAppxExecutable.set(options.makeAppxExecutable)
-            task.winAppCliExecutable.set(extension.winAppCliExecutable)
-            task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
-            task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
-            task.winAppCliCacheDirectory.set(
-                project.layout.dir(
-                    project.provider {
-                        project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
-                    },
-                ),
-            )
-            task.winAppWorkspace.set(
-                project.layout.dir(
-                    restoreWinAppDependenciesTask.flatMap { restore -> restore.configurationFile }
-                        .map { configuration -> configuration.asFile.parentFile },
-                ),
-            )
-            task.offline.set(project.provider { project.gradle.startParameter.isOffline })
-            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
-            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
-            task.onlyIf { task.packageType.get() == WindowsPackageType.Packaged.name }
-            task.dependsOn(stageApplicationPackageTask)
-            task.dependsOn(restoreWinAppDependenciesTask)
-        },
-    )
-    val verifyPackageTask = project.tasks.register(
-        taskName("verifyWinAppPackage"),
-        VerifyWinAppPackageTask::class.java,
-        Action<VerifyWinAppPackageTask> { task ->
-            task.group = "windows-package"
-            task.description = "Verifies the WinApp AppX/MSIX package layout with WinApp CLI."
-            task.applicationVariant.set(selectedVariant.map { it.id })
-            task.packageFile.set(packageApplicationTask.flatMap { it.outputFile })
-            task.resourceResolutionReport.set(stageApplicationPackageTask.flatMap { it.resourceResolutionReport })
-            task.markerFile.set(
-                project.layout.buildDirectory.file(
-                    project.provider {
-                        "kotlin-winrt/packages/${project.name}-${selectedVariant.get().id.toSafeDirectoryName()}.verify.marker"
-                    },
-                ),
-            )
-            task.unpackDirectory.set(
-                project.layout.buildDirectory.dir(
-                    project.provider {
-                        "kotlin-winrt/package-verification/${project.name}/${selectedVariant.get().id.toSafeDirectoryName()}"
-                    },
-                ),
-            )
-            task.verifyPackage.set(options.verifyPackage)
-            task.packageType.set(options.packageType.map { it.name })
-            task.generatePackage.set(options.generatePackage)
-            task.makeAppxExecutable.set(options.makeAppxExecutable)
-            task.winAppCliExecutable.set(extension.winAppCliExecutable)
-            task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
-            task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
-            task.winAppCliCacheDirectory.set(
-                project.layout.dir(
-                    project.provider {
-                        project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
-                    },
-                ),
-            )
-            task.winAppWorkspace.set(
-                project.layout.dir(
-                    restoreWinAppDependenciesTask.flatMap { restore -> restore.configurationFile }
-                        .map { configuration -> configuration.asFile.parentFile },
-                ),
-            )
-            task.offline.set(project.provider { project.gradle.startParameter.isOffline })
-            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
-            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
-            task.onlyIf {
-                task.packageType.get() == WindowsPackageType.Packaged.name &&
-                    task.verifyPackage.get() &&
-                    task.generatePackage.get()
-            }
-            task.dependsOn(packageApplicationTask)
-        },
-    )
-    val signPackageTask = project.tasks.register(
-        taskName("signWinAppPackage"),
-        SignWinAppPackageTask::class.java,
-        Action<SignWinAppPackageTask> { task ->
-            task.group = "windows-package"
-            task.description = "Signs the WinApp AppX/MSIX package with signtool."
-            task.inputPackageFile.set(packageApplicationTask.flatMap { it.outputFile })
-            task.outputFile.set(
-                options.signedPackageOutputFile.orElse(
+                )
+                task.winAppWorkspace.set(
+                    project.layout.dir(
+                        restoreWinAppDependenciesTask.flatMap { restore -> restore.configurationFile }
+                            .map { configuration -> configuration.asFile.parentFile },
+                    ),
+                )
+                task.offline.set(project.provider { project.gradle.startParameter.isOffline })
+                task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+                task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
+                task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+                task.onlyIf { task.packageType.get() == WindowsPackageType.Packaged.name }
+                task.dependsOn(packageStage)
+                task.dependsOn(restoreWinAppDependenciesTask)
+            },
+        )
+        val verifyPackageTask = project.tasks.register(
+            taskName("verifyWinAppPackage"),
+            VerifyWinAppPackageTask::class.java,
+            Action<VerifyWinAppPackageTask> { task ->
+                task.group = "windows-package"
+                task.description = "Verifies the WinApp AppX/MSIX package layout with WinApp CLI."
+                task.applicationVariant.set(selectedVariant.map { it.id })
+                task.packageFile.set(packageApplicationTask.flatMap { it.outputFile })
+                task.resourceResolutionReport.set(packageStage.flatMap { it.resourceResolutionReport })
+                task.markerFile.set(
                     project.layout.buildDirectory.file(
+                            artifactName.map { "kotlin-winrt/packages/$it.verify.marker" },
+                    ),
+                )
+                task.unpackDirectory.set(
+                    project.layout.buildDirectory.dir(
+                            verificationPath.map { "kotlin-winrt/package-verification/${project.name}/$it" },
+                    ),
+                )
+                task.verifyPackage.set(options.verifyPackage)
+                task.packageType.set(packageType.map { it.name })
+                task.generatePackage.set(generatePackage)
+                task.makeAppxExecutable.set(options.makeAppxExecutable)
+                task.winAppCliExecutable.set(extension.winAppCliExecutable)
+                task.winAppCliVersion.set(WinAppCliDefaults.VERSION)
+                task.winAppCliPackageSha512.set(WinAppCliDefaults.PACKAGE_SHA512)
+                task.winAppCliCacheDirectory.set(
+                    project.layout.dir(
                         project.provider {
-                            "kotlin-winrt/packages/${project.name}-${selectedVariant.get().id.toSafeDirectoryName()}-signed.msix"
+                            project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/winapp-cli")
                         },
                     ),
-                ),
-            )
-            task.signPackage.set(options.signPackage)
-            task.packageType.set(options.packageType.map { it.name })
-            task.signToolExecutable.set(options.signToolExecutable)
-            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
-            task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
-            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
-            task.signingCertificateThumbprint.set(options.signingCertificateThumbprint)
-            task.signingCertificateFile.set(options.signingCertificateFile)
-            task.signingCertificatePassword.set(options.signingCertificatePassword)
-            task.signingTimestampUrl.set(options.signingTimestampUrl)
-            task.signingHashAlgorithm.set(options.signingHashAlgorithm)
-            task.onlyIf {
-                task.packageType.get() == WindowsPackageType.Packaged.name &&
-                    task.signPackage.get()
-            }
-            task.dependsOn(packageApplicationTask)
-            task.dependsOn(verifyPackageTask)
-        },
-    )
-    val installPackageTask = project.tasks.register(
-        taskName("installWinAppPackage"),
-        InstallWinAppPackageTask::class.java,
-        Action<InstallWinAppPackageTask> { task ->
-            task.group = "windows-package"
-            task.description = "Installs the WinApp AppX/MSIX package for local test runs."
-            val defaultInstallPackageFile = options.signPackage.flatMap { signPackage ->
-                if (signPackage) {
-                    signPackageTask.flatMap { it.outputFile }
-                } else {
-                    packageApplicationTask.flatMap { it.outputFile }
+                )
+                task.winAppWorkspace.set(
+                    project.layout.dir(
+                        restoreWinAppDependenciesTask.flatMap { restore -> restore.configurationFile }
+                            .map { configuration -> configuration.asFile.parentFile },
+                    ),
+                )
+                task.offline.set(project.provider { project.gradle.startParameter.isOffline })
+                task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+                task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
+                task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+                task.onlyIf {
+                    task.packageType.get() == WindowsPackageType.Packaged.name &&
+                        task.verifyPackage.get() &&
+                        task.generatePackage.get()
                 }
+                task.dependsOn(packageApplicationTask)
+            },
+        )
+        val signPackageTask = project.tasks.register(
+            taskName("signWinAppPackage"),
+            SignWinAppPackageTask::class.java,
+            Action<SignWinAppPackageTask> { task ->
+                task.group = "windows-package"
+                task.description = "Signs the WinApp AppX/MSIX package with signtool."
+                task.inputPackageFile.set(packageApplicationTask.flatMap { it.outputFile })
+                task.outputFile.set(
+                    if (format == null) options.signedPackageOutputFile.orElse(
+                        project.layout.buildDirectory.file(artifactName.map { "kotlin-winrt/packages/$it-signed.msix" }),
+                    ) else project.layout.buildDirectory.file(artifactName.map { "kotlin-winrt/packages/$it-signed.msix" }),
+                )
+                task.signPackage.set(options.signPackage)
+                task.packageType.set(packageType.map { it.name })
+                task.signToolExecutable.set(options.signToolExecutable)
+                task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+                task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
+                task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+                task.signingCertificateThumbprint.set(options.signingCertificateThumbprint)
+                task.signingCertificateFile.set(options.signingCertificateFile)
+                task.signingCertificatePassword.set(options.signingCertificatePassword)
+                task.signingTimestampUrl.set(options.signingTimestampUrl)
+                task.signingHashAlgorithm.set(options.signingHashAlgorithm)
+                task.onlyIf {
+                    task.packageType.get() == WindowsPackageType.Packaged.name &&
+                        task.signPackage.get()
+                }
+                task.dependsOn(packageApplicationTask)
+                task.dependsOn(verifyPackageTask)
+            },
+        )
+        val installPackageTask = project.tasks.register(
+            taskName("installWinAppPackage"),
+            InstallWinAppPackageTask::class.java,
+            Action<InstallWinAppPackageTask> { task ->
+                task.group = "windows-package"
+                task.description = "Installs the WinApp AppX/MSIX package for local test runs."
+                val defaultInstallPackageFile = options.signPackage.flatMap { signPackage ->
+                    if (signPackage) {
+                        signPackageTask.flatMap { it.outputFile }
+                    } else {
+                        packageApplicationTask.flatMap { it.outputFile }
+                    }
+                }
+                task.packageFile.set(
+                    if (format == null) options.installPackageFile.orElse(defaultInstallPackageFile) else defaultInstallPackageFile,
+                )
+                task.dependencyPackageFiles.from(options.dependencyPackageFiles)
+                task.dependencyLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
+                task.dependencyPackageSpecs.set(project.provider { allNuGetPackageSpecs(extension.packageReferences) })
+                task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+                task.installPackage.set(options.installPackage)
+                task.packageType.set(packageType.map { it.name })
+                task.includeRestoredFrameworkDependencies.set(project.provider {
+                    deployment.get() == WindowsAppSdkDeployment.FrameworkDependent
+                })
+                task.powerShellExecutable.set(options.installPowerShellExecutable)
+                task.forceApplicationShutdown.set(options.installForceApplicationShutdown)
+                task.onlyIf {
+                    task.packageType.get() == WindowsPackageType.Packaged.name &&
+                        task.installPackage.get()
+                }
+                task.dependsOn(packageApplicationTask)
+                task.dependsOn(verifyPackageTask)
+                task.dependsOn(signPackageTask)
+            },
+        )
+        return mapOf(
+            "packageWinApp" to packageApplicationTask,
+            "verifyWinAppPackage" to verifyPackageTask,
+            "signWinAppPackage" to signPackageTask,
+            "installWinAppPackage" to installPackageTask,
+        )
+    }
+    val defaultPackageTasks = registerPackagedTasks(null, stageApplicationPackageTask, applicationPackageDirectory)
+    val packageApplicationTask = defaultPackageTasks.getValue("packageWinApp")
+    val verifyPackageTask = defaultPackageTasks.getValue("verifyWinAppPackage")
+    val signPackageTask = defaultPackageTasks.getValue("signWinAppPackage")
+    val installPackageTask = defaultPackageTasks.getValue("installWinAppPackage")
+    formatStages.forEach { (format, stage) ->
+        if (format.packageType == WindowsPackageType.Packaged) {
+            registerPackagedTasks(format, stage, stage.flatMap { it.outputDirectory })
+        } else {
+            project.tasks.register(taskName("packageWinApp" + format.name)) { task ->
+                task.group = "windows-package"
+                task.description = "Assembles a loose ${format.deployment.name} application using the shared compiled executable."
+                task.dependsOn(stage)
             }
-            task.packageFile.set(
-                options.installPackageFile.orElse(defaultInstallPackageFile),
-            )
-            task.dependencyPackageFiles.from(options.dependencyPackageFiles)
-            task.dependencyLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
-            task.dependencyPackageSpecs.set(project.provider { allNuGetPackageSpecs(extension.packageReferences) })
-            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
-            task.installPackage.set(options.installPackage)
-            task.packageType.set(options.packageType.map { it.name })
-            task.includeRestoredFrameworkDependencies.set(project.provider {
-                resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.FrameworkDependent
-            })
-            task.powerShellExecutable.set(options.installPowerShellExecutable)
-            task.forceApplicationShutdown.set(options.installForceApplicationShutdown)
-            task.onlyIf {
-                task.packageType.get() == WindowsPackageType.Packaged.name &&
-                    task.installPackage.get()
-            }
-            task.dependsOn(packageApplicationTask)
-            task.dependsOn(verifyPackageTask)
-            task.dependsOn(signPackageTask)
-        },
-    )
+        }
+    }
     project.plugins.withId("java") {
         project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> { sourceSets ->
             jvmApplicationClasspath.from(sourceSets.getByName("main").runtimeClasspath)
@@ -1967,7 +2039,7 @@ private fun configureMingwApplicationEntry(
     project: Project,
     entryTask: TaskProvider<GenerateWinAppMingwEntryTask>,
     stageRuntimeAssetsTask: TaskProvider<StageWindowsPackageRuntimeAssetsTask>,
-    stageApplicationPackageTask: TaskProvider<StageWinAppPackageTask>,
+    stageApplicationPackageTasks: List<TaskProvider<StageWinAppPackageTask>>,
     selectedVariant: Provider<WinAppVariant>,
     console: Provider<Boolean>,
     launcherIconTask: TaskProvider<CompileWinAppIconTask>,
@@ -2008,16 +2080,18 @@ private fun configureMingwApplicationEntry(
         val executableOutputFile = project.provider { executable.outputFile }
         val executableOutputName = executableBaseName.map { "$it.exe" }
         executable.linkTaskProvider.configure { task -> task.dependsOn(entryTask) }
-        stageApplicationPackageTask.configure { task ->
-            task.dependsOn(executable.linkTaskProvider)
-            task.rootPackagePayloadFiles.from(executableOutputFile)
-            task.projectPriTargetPaths.putAll(executableOutputFile.zip(executableOutputName) { file, name ->
-                mapOf(file.toPath().toAbsolutePath().normalize().toString() to name)
-            })
+        stageApplicationPackageTasks.forEach { stage ->
+            stage.configure { task ->
+                task.dependsOn(executable.linkTaskProvider)
+                task.rootPackagePayloadFiles.from(executableOutputFile)
+                task.projectPriTargetPaths.putAll(executableOutputFile.zip(executableOutputName) { file, name ->
+                    mapOf(file.toPath().toAbsolutePath().normalize().toString() to name)
+                })
+            }
         }
         executable.runTaskProvider?.configure { task ->
             task.dependsOn(stageRuntimeAssetsTask)
-            task.dependsOn(stageApplicationPackageTask)
+            task.dependsOn(stageApplicationPackageTasks.first())
             task.workingDir(applicationLayoutDirectory.get())
             task.executable(applicationLayoutDirectory.get().resolve(executableOutputName.get()).absolutePath)
             val launcherPath = applicationLayoutDirectory.zip(executableOutputName) { directory, name ->
@@ -2029,7 +2103,7 @@ private fun configureMingwApplicationEntry(
             task.doFirst { run -> (run as org.gradle.api.tasks.Exec).executable(launcherPath.get()) }
             task.environment(
                 "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
-                stageRuntimeAssetsTask.flatMap { it.outputDirectory }.get().asFile.absolutePath,
+                stageApplicationPackageTasks.first().flatMap { it.outputDirectory }.get().asFile.absolutePath,
             )
         }
     }
