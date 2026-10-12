@@ -553,6 +553,43 @@ class WinRTAsyncInteropTest {
         }
     }
 
+    // CsWinRT TaskToAsyncActionWithProgressAdapter.OnProgress invokes the ordinary typed delegate.
+    @Test
+    fun async_info_progress_uses_delegate_guid_abi() {
+        runBlocking {
+            val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+            var capturedProgress: Guid? = null
+            val expected = Guid("12345678-1234-5678-9abc-123456789abc")
+            val progressSignature = WinRTTypeSignature.guidValue()
+            val progressHandler = WinRTDelegateBridge.createUnitDelegate(
+                iid = WinRTAsyncActionWithProgressReference.progressHandlerInterfaceId(progressSignature),
+                parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, WinRTDelegateValueKind.GUID),
+            ) { args ->
+                capturedProgress = args[1] as Guid
+            }
+
+            progressHandler.use { handler ->
+                AsyncInfo.runActionWithProgress<Guid>(
+                    scope = this,
+                    progressSignature = progressSignature,
+                    progressValueKind = WinRTDelegateValueKind.GUID,
+                ) { _, progress ->
+                    gate.await()
+                    progress.report(expected)
+                }.use { action ->
+                    action.queryInterface(WinRTAsyncInterfaceIds.IAsyncInfo).getOrThrow().use { asyncInfo ->
+                        assertEquals(WinRTAsyncInterfaceIds.IAsyncInfo, asyncInfo.interfaceId)
+                    }
+                    handler.createReference().use(action::setProgressHandler)
+                    gate.complete(Unit)
+                    action.await()
+                    assertEquals(expected, capturedProgress)
+                    assertEquals(WinRTAsyncStatus.Completed, action.status())
+                }
+            }
+        }
+    }
+
     @Test
     fun async_info_factory_exposes_operation_with_progress_result_through_abi() {
         val resultSignature = WinRTTypeSignature.int32()

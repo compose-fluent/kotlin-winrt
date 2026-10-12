@@ -461,20 +461,16 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
             return
         }
         val self = selfReference?.invoke()
-        val lease = WinRTDelegateAbiMarshaller.encodeArgumentsLease(
-            parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, progressValueKind),
-            abiArguments = listOf(self?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer, value),
-        )
         try {
-            val hResult = ComVtableInvoker.invokeGeneric(
-                instance = handler.pointer,
-                slot = WinRTDelegateVftblSlots.Invoke,
-                signature = ComMethodSignature.of(ComAbiValueKind.Pointer, abiKindForDelegateValue(progressValueKind)),
-                args = lease.values.map(::delegateAbiWord).toLongArray(),
+            val descriptor = WinRTDelegateDescriptor(
+                interfaceId = handler.interfaceId,
+                parameterKinds = listOf(WinRTDelegateValueKind.OBJECT, progressValueKind),
             )
-            WinRTPlatformApi.checkSucceededRaw(hResult)
+            // Share the handler's owned ComPtr for this call, as for any ordinary delegate invocation.
+            WinRTDelegateReference(handler.comPtr, descriptor).invoke(
+                listOf(self?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer, value),
+            )
         } finally {
-            lease.close()
             self?.close()
         }
     }
@@ -747,51 +743,3 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
         }
     }
 }
-
-private fun abiKindForDelegateValue(kind: WinRTDelegateValueKind): ComAbiValueKind =
-    when (kind) {
-        WinRTDelegateValueKind.UNIT -> error("UNIT is not a valid progress ABI value kind.")
-        WinRTDelegateValueKind.BOOLEAN -> ComAbiValueKind.Int8
-        WinRTDelegateValueKind.OBJECT,
-        WinRTDelegateValueKind.HSTRING,
-        WinRTDelegateValueKind.IUNKNOWN,
-        WinRTDelegateValueKind.IINSPECTABLE,
-        WinRTDelegateValueKind.UINT8_ARRAY,
-        -> ComAbiValueKind.Pointer
-        WinRTDelegateValueKind.INT8,
-        WinRTDelegateValueKind.UINT8,
-        -> ComAbiValueKind.Int8
-        WinRTDelegateValueKind.INT16,
-        WinRTDelegateValueKind.UINT16,
-        WinRTDelegateValueKind.CHAR16,
-        -> ComAbiValueKind.Int16
-        WinRTDelegateValueKind.INT32,
-        WinRTDelegateValueKind.UINT32,
-        -> ComAbiValueKind.Int32
-        WinRTDelegateValueKind.INT64,
-        WinRTDelegateValueKind.UINT64,
-        -> ComAbiValueKind.Int64
-        WinRTDelegateValueKind.FLOAT -> ComAbiValueKind.Float
-        WinRTDelegateValueKind.DOUBLE -> ComAbiValueKind.Double
-        WinRTDelegateValueKind.GUID -> ComAbiValueKind.Struct(NativeAbiLayout.GUID)
-        WinRTDelegateValueKind.STRUCT -> error("STRUCT progress ABI value kind requires a typed adapter.")
-    }
-
-private fun delegateAbiWord(value: Any?): Long =
-    when (value) {
-        null -> 0L
-        is RawAddress -> value.value
-        is RawComPtr -> value.value
-        is Byte -> value.toLong()
-        is UByte -> value.toLong()
-        is Short -> value.toLong()
-        is UShort -> value.toLong()
-        is Int -> value.toLong()
-        is UInt -> value.toLong()
-        is Char -> value.code.toLong()
-        is Long -> value
-        is ULong -> value.toLong()
-        is Float -> value.toRawBits().toLong()
-        is Double -> value.toRawBits()
-        else -> error("Unsupported encoded delegate ABI word: ${value::class.qualifiedName}")
-    }
