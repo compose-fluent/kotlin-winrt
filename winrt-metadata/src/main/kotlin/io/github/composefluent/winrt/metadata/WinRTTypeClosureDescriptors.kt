@@ -62,6 +62,28 @@ data class WinRTRuntimeClassClosureDescriptor(
 class WinRTMetadataClosureResolver private constructor(
     private val typesByQualifiedName: Map<String, WinRTTypeDefinition>,
 ) {
+    // Like CsWinRT's metadata inheritance walkers, follow TypeRefs rather than type names or namespaces.
+    fun derivesFrom(type: WinRTTypeDefinition, baseTypeName: String): Boolean =
+        baseTypes(type).any { it.displayName == baseTypeName }
+
+    fun implementsInterface(type: WinRTTypeDefinition, interfaceName: String): Boolean =
+        (sequenceOf(type) + baseTypes(type).mapNotNull { it.definitionType }).any { candidate ->
+            candidate.kind == WinRTTypeKind.RuntimeClass &&
+                resolveRuntimeClass(candidate).instanceInterfaceClosure.any { it.interfaceName == interfaceName }
+        }
+
+    private fun baseTypes(type: WinRTTypeDefinition) = sequence {
+        val seen = mutableSetOf(type.qualifiedName)
+        var current = type
+        while (true) {
+            val base = current.baseType ?: break
+            val resolved = resolveTypeReference(base, current.namespace, typesByQualifiedName)
+            if (!seen.add(resolved.displayName)) break
+            yield(resolved)
+            current = resolved.definitionType ?: break
+        }
+    }
+
     fun resolveInterface(type: WinRTTypeDefinition): WinRTInterfaceClosureDescriptor =
         resolveInterface(WinRTTypeRef.named(type.qualifiedName), type.namespace)
 

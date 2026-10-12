@@ -9,6 +9,7 @@ import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegi
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
 import io.github.composefluent.winrt.compiler.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.winUiXamlResourceDictionaryTypes
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
@@ -882,24 +883,11 @@ internal fun automaticXamlComponentResourceDictionaryTypes(
     model: WinRTMetadataModel,
     includeTypes: Set<String>,
 ): List<String> {
-    val xamlResourceDictionaryProjected = "Microsoft.UI.Xaml.ResourceDictionary" in includeTypes ||
-        "Windows.UI.Xaml.ResourceDictionary" in includeTypes
-    if (!xamlResourceDictionaryProjected) {
-        return emptyList()
+    return if ("Microsoft.UI.Xaml.ResourceDictionary" in includeTypes) {
+        model.winUiXamlResourceDictionaryTypes()
+    } else {
+        emptyList()
     }
-    return model.namespaces
-        .asSequence()
-        .flatMap { namespace -> namespace.types.asSequence() }
-        .filter { type -> type.kind == WinRTTypeKind.RuntimeClass }
-        .filter { type ->
-            type.baseTypeName == "Microsoft.UI.Xaml.ResourceDictionary" ||
-                type.baseTypeName == "Windows.UI.Xaml.ResourceDictionary"
-        }
-        .map(WinRTTypeDefinition::qualifiedName)
-        .filterNot { typeName -> typeName.startsWith("Microsoft.") || typeName.startsWith("Windows.") }
-        .distinct()
-        .sorted()
-        .toList()
 }
 
 internal fun authoringCandidateMetadataRootNames(candidates: List<KotlinWinRTAuthoredTypeCandidate>): List<String> =

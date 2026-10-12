@@ -1,7 +1,9 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageIdentity
+import io.github.composefluent.winrt.metadata.winUiXamlMetadataProviderTypes
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
@@ -609,15 +611,19 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
     }
 
     private fun stageXamlMetadataProviderManifest(outputRoot: Path) {
-        val providers = Files.walk(outputRoot).use { stream ->
+        val namespaces = Files.walk(outputRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() && it.name.endsWith(".winmd", ignoreCase = true) }
-                .flatMap { winmd -> discoverXamlMetadataProviders(winmd).asSequence() }
-                .filterNot { it == "Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider" }
-                .distinct()
-                .sorted()
+                .flatMap { winmd ->
+                    runCatching { WinRTMetadataLoader.load(winmd).namespaces }.getOrElse { error ->
+                        logger.warn("Skipping XAML metadata provider discovery for ${winmd.fileName}: ${error.message}")
+                        emptyList()
+                    }.asSequence()
+                }
                 .toList()
         }
+        val providers = WinRTMetadataModel(namespaces).winUiXamlMetadataProviderTypes()
+            .filterNot { it == "Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider" }
         if (providers.isEmpty()) {
             return
         }
@@ -625,31 +631,6 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
             outputRoot.resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
             providers.joinToString(separator = System.lineSeparator(), postfix = System.lineSeparator()),
         )
-    }
-
-    private fun discoverXamlMetadataProviders(winmd: Path): List<String> =
-        runCatching {
-            WinRTMetadataLoader.load(winmd)
-                .namespaces
-                .flatMap { namespace -> namespace.types }
-                .filter(::isXamlMetadataProviderType)
-                .map(WinRTTypeDefinition::qualifiedName)
-        }.getOrElse { error ->
-            logger.warn("Skipping XAML metadata provider discovery for ${winmd.fileName}: ${error.message}")
-            emptyList()
-        }
-
-    private fun isXamlMetadataProviderType(type: WinRTTypeDefinition): Boolean {
-        if (type.kind != WinRTTypeKind.RuntimeClass) {
-            return false
-        }
-        return type.implementedInterfaces.any { implementation ->
-            implementation.interfaceName == "Microsoft.UI.Xaml.Markup.IXamlMetadataProvider" ||
-                implementation.interfaceName == "Windows.UI.Xaml.Markup.IXamlMetadataProvider"
-        } || type.name == "XamlMetaDataProvider" ||
-            type.name == "XamlMetadataProvider" ||
-            type.qualifiedName.endsWith(".XamlTypeInfo.XamlMetaDataProvider") ||
-            type.qualifiedName.endsWith("_XamlTypeInfo.XamlMetaDataProvider")
     }
 
     private fun stageGeneratedComponentRegistrations(outputRoot: Path) {
@@ -680,7 +661,6 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
                 .flatMap { namespace -> namespace.types }
                 .filter { type -> type.kind == WinRTTypeKind.RuntimeClass }
                 .map(WinRTTypeDefinition::qualifiedName)
-                .filterNot { className -> className.startsWith("Microsoft.") || className.startsWith("Windows.") }
                 .distinct()
                 .sorted()
         }.getOrElse { error ->

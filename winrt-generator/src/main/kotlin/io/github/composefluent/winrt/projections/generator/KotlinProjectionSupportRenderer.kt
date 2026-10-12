@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.projections.generator
 
 import io.github.composefluent.winrt.compiler.callsites.WinRTProjectionSupportLayout
+import io.github.composefluent.winrt.metadata.winUiXamlResourceDictionaryTypes
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRTAbiMarshalerSlotDescriptor
@@ -526,18 +527,7 @@ class KotlinProjectionSupportRenderer private constructor(
         if (plans.none { plan -> plan.type.qualifiedName == "Microsoft.UI.Xaml.ResourceDictionary" }) {
             return emptyList()
         }
-        return model.namespaces
-            .asSequence()
-            .flatMap { namespace -> namespace.types.asSequence() }
-            .filter { type -> type.kind == WinRTTypeKind.RuntimeClass }
-            .filter { type -> type.baseTypeName == "Microsoft.UI.Xaml.ResourceDictionary" }
-            .map(WinRTTypeDefinition::qualifiedName)
-            .filterNot { runtimeClassName ->
-                runtimeClassName.startsWith("Microsoft.") || runtimeClassName.startsWith("Windows.")
-            }
-            .distinct()
-            .sorted()
-            .toList()
+        return model.winUiXamlResourceDictionaryTypes()
     }
 
     private fun validateAuthoringMetadataProjectionPlans(

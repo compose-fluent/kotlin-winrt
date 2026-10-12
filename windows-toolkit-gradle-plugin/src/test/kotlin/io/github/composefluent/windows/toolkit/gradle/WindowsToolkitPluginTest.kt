@@ -6327,6 +6327,15 @@ class WindowsToolkitPluginTest {
                     interfaceNames = listOf("Microsoft.UI.Xaml.Markup.IXamlMetadataProvider"),
                 ),
                 WinRTAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Microsoft.Custom.Provider",
+                    baseRuntimeClassName = "WinUI3Package.XamlMetaDataProvider",
+                    interfaceNames = listOf("WinUI3Package.IProvider"),
+                ),
+                WinRTAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Example.XamlMetadataProvider",
+                    interfaceNames = listOf("WinUI3Package.IUnrelated"),
+                ),
+                WinRTAuthoredRuntimeClassDescriptor(
                     runtimeClassName = "WinUI3Package.Shimmer",
                     interfaceNames = listOf("WinUI3Package.IShimmer"),
                 ),
@@ -6337,6 +6346,18 @@ class WindowsToolkitPluginTest {
                 ),
             ),
             outputFile = nativeRoot.resolve("WinUI3Package.winmd"),
+        )
+
+        WinRTPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = "ExternalResources",
+            runtimeClasses = listOf(
+                WinRTAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Windows.Custom.Provider",
+                    baseRuntimeClassName = "Microsoft.Custom.Provider",
+                    interfaceNames = listOf("WinUI3Package.IExternalProvider"),
+                ),
+            ),
+            outputFile = nativeRoot.resolve("ExternalResources.winmd"),
         )
 
         val task = project.tasks.register(
@@ -6357,12 +6378,13 @@ class WindowsToolkitPluginTest {
         val providers = Files.readAllLines(
             task.outputDirectory.get().asFile.toPath().resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
         )
-        assertEquals(listOf("WinUI3Package.XamlMetaDataProvider"), providers)
+        assertEquals(listOf("Microsoft.Custom.Provider", "WinUI3Package.XamlMetaDataProvider", "Windows.Custom.Provider"), providers)
         val registration = Files.readString(
             task.outputDirectory.get().asFile.toPath()
                 .resolve("registrations/generated/WinUI3Package/LiftedWinRTClassRegistrations.xml"),
         )
         assertTrue(registration.contains("<Path>WinUI3Package.dll</Path>"))
+        assertTrue(registration.contains("Microsoft.Custom.Provider"))
         assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.XamlMetaDataProvider""""))
         assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.Shimmer""""))
         assertTrue(registration.contains("""ActivatableClassId="WinUI3Package.Shimmer_Resource""""))
