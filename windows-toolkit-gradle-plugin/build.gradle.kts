@@ -8,6 +8,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 import java.util.Properties
+import org.gradle.api.file.ArchiveOperations
+import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.kotlinJvm) apply false
@@ -80,8 +82,12 @@ dependencies {
     testRuntimeOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
 }
 
+abstract class EmbeddedArchiveOperations @Inject constructor(val archives: ArchiveOperations)
+
 tasks.named<Jar>("jar") {
-    from(embeddedTools.elements.map { files -> files.map { zipTree(it.asFile) } }) {
+    // Capture the supported service, not this build script/Project, in the lazy input.
+    val archives = objects.newInstance<EmbeddedArchiveOperations>().archives
+    from(embeddedTools.elements.map { files -> files.map { archives.zipTree(it.asFile) } }) {
         exclude("META-INF/MANIFEST.MF", "META-INF/services/org.jetbrains.kotlin.compiler.plugin.*")
     }
     duplicatesStrategy = DuplicatesStrategy.FAIL
