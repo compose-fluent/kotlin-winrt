@@ -32,7 +32,7 @@ import kotlin.io.path.writeText
  */
 @OptIn(ExperimentalCompilerApi::class)
 internal object XamlLibraryOptions {
-    private val keys = listOf("xamlLibraryOutput", "xamlLibraryAssembly", "xamlLibraryReferences")
+    private val keys = listOf("xamlLibraryOutput", "xamlLibraryAssembly", "xamlLibraryReferences", "xamlLibraryCompile")
         .associateWith { CompilerConfigurationKey<String>(it) }
     val options = keys.keys.map { CliOption(it, "<value>", "Kotlin XAML library schema $it", false) }
 
@@ -53,13 +53,16 @@ internal object XamlLibraryOptions {
             Path.of(requireNotNull(configuration.get(KotlinWinRTCommandLineProcessor.METADATA_INDEX_KEY))),
             configuration.get(keys.getValue("xamlLibraryReferences"))?.let { file ->
                 Files.readAllLines(Path.of(file)).filter(String::isNotBlank).map(Path::of)
-            }.orEmpty())
+            }.orEmpty(), compileLibrary(configuration))
     }
+
+    fun compileLibrary(configuration: CompilerConfiguration): Boolean =
+        configuration.get(keys.getValue("xamlLibraryCompile"))?.toBooleanStrict() ?: false
 }
 
 @OptIn(UnsafeDuringIrConstructionAPI::class)
 private class XamlLibrarySchema(private val root: Path, private val assembly: String,
-    private val metadataIndex: Path, private val references: List<Path>) : IrGenerationExtension {
+    private val metadataIndex: Path, private val references: List<Path>, private val compileLibrary: Boolean) : IrGenerationExtension {
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         val types = readAuthoringMetadataIndex(metadataIndex)
         fun publicClasses(declarations: List<IrDeclaration>): List<IrClass> = declarations.filterIsInstance<IrClass>()
@@ -78,7 +81,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
             val name = type.classFqName?.asString().orEmpty()
             if (resolveIndexedWinRTTypeByProjectedName(name, types)?.kind != WinRTTypeKind.Interface.name &&
                 winRTCollectionAbiNameForKotlinType(name) == null) null else
-                xamlApplicationTypeReference(type, types, names) to type.sourceType()
+                xamlApplicationTypeReference(type, types, names) to type.xamlSourceType()
         } }
         val members = classes.associate { klass ->
             klass.fqNameWhenAvailable!!.asString() to xamlApplicationProperties(klass, types, names,
@@ -111,7 +114,12 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
         val registrar = "KotlinXamlLibraryDefinitions_" + assembly.replace(Regex("[^A-Za-z0-9_]"), "_")
         val source = root.resolve("src/io/github/composefluent/winrt/generated/xaml/$registrar.kt")
         Files.createDirectories(source.parent)
-        source.writeText(buildString {
+        if (compileLibrary) {
+            val declaration = moduleFragment.files.flatMap { it.declarations }.filterIsInstance<IrClass>().single {
+                it.fqNameWhenAvailable?.asString() == "io.github.composefluent.winrt.generated.xaml.$registrar"
+            }
+            XamlLibraryRegistrationsIr(pluginContext, classes, types, names, members).generate(declaration, descriptors, interfaces)
+        } else source.writeText(buildString {
             appendLine("@file:Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\")")
             appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
             appendLine("package io.github.composefluent.winrt.generated.xaml")
@@ -128,7 +136,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
                 appendLine("      type = $name::class, name = ${literal(name)},")
                 val baseType = klass.superTypes.firstOrNull { type -> type.classFqName?.asString() == descriptor.baseRuntimeClassName ||
                     resolveIndexedWinRTTypeByProjectedName(type.classFqName?.asString().orEmpty(), types)?.qualifiedName == descriptor.baseRuntimeClassName }
-                appendLine("      baseName = ${literal(descriptor.baseRuntimeClassName ?: "System.Object")}, baseType = ${baseType?.sourceType()?.substringBefore('<') ?: "kotlin.Any"}::class,")
+                appendLine("      baseName = ${literal(descriptor.baseRuntimeClassName ?: "System.Object")}, baseType = ${baseType?.xamlSourceType()?.substringBefore('<') ?: "kotlin.Any"}::class,")
                 fun componentTypes(klass: IrClass, seen: MutableSet<IrClass> = mutableSetOf()): List<io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType> =
                     if (!seen.add(klass)) emptyList() else klass.superTypes.flatMap { superType ->
                         listOfNotNull(resolveIndexedWinRTTypeByProjectedName(superType.classFqName?.asString().orEmpty(), types)) +
@@ -153,7 +161,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
                 for (member in members.getValue(name).properties.filterNot { it.isStatic }) {
                     val property = klass.declarations.filterIsInstance<IrProperty>().single { it.name.asString() == member.name }
                     val propertyType = property.getter!!.returnType
-                    val kotlinType = propertyType.sourceType()
+                    val kotlinType = propertyType.xamlSourceType()
                     appendLine(xamlPropertyRegistrationSource(name, member, kotlinType, convert).prependIndent("        ") + ",")
                 }
                 val functions = (klass.declarations + klass.companionObject()?.takeIf(::xamlLibraryDeclarationAccessible)?.declarations.orEmpty())
@@ -164,7 +172,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
                         runCatching { xamlApplicationTypeReference(function.returnType, types, names) == method.returnType &&
                             function.parameters.filter { it.kind == IrParameterKind.Regular }.map { xamlApplicationTypeReference(it.type, types, names) } == method.parameterTypes
                         }.getOrDefault(false) }
-                    XamlStaticAccessor(method, function.returnType.sourceType(), function.parameters.filter { it.kind == IrParameterKind.Regular }.map { it.type.sourceType() })
+                    XamlStaticAccessor(method, function.returnType.xamlSourceType(), function.parameters.filter { it.kind == IrParameterKind.Regular }.map { it.type.xamlSourceType() })
                 }
                 xamlAttachedRegistrationSources(name, members.getValue(name), accessors, convert).forEach {
                     appendLine(it.prependIndent("        ") + ",")
@@ -185,18 +193,13 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
         // accessor sources. Preserve full type inference above, then consume the IR so
         // the JVM/Native backend does not compile a second, unused copy of the library.
         // The ordinary compilation compiles the original sources with these accessors.
-        moduleFragment.consumeXamlSemanticDeclarations()
+        if (!compileLibrary) moduleFragment.consumeXamlSemanticDeclarations()
     }
 
     private fun defaultConstructor(klass: IrClass): IrConstructor? = if (klass.kind != ClassKind.CLASS || klass.modality == Modality.ABSTRACT) null
         else klass.constructors.firstOrNull { it.visibility == DescriptorVisibilities.PUBLIC && xamlLibraryDeclarationAccessible(it) &&
             it.parameters.filter { it.kind == IrParameterKind.Regular }.all { it.defaultValue != null } }
 
-    private fun IrType.sourceType(): String {
-        val name = requireNotNull(classFqName?.asString())
-        val args = (this as? IrSimpleType)?.arguments.orEmpty().map { requireNotNull(it.typeOrNull).sourceType() }
-        return name + (if (args.isEmpty()) "" else args.joinToString(", ", "<", ">")) + if (isNullable()) "?" else ""
-    }
     private fun literal(value: String): String = kotlinx.serialization.json.JsonPrimitive(value).toString()
 }
 
@@ -205,7 +208,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
  * remains the owner of the projected shape in xamlApplicationProperties.
  */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
-private fun xamlLibraryDeclarationAccessible(declaration: IrDeclaration): Boolean {
+internal fun xamlLibraryDeclarationAccessible(declaration: IrDeclaration): Boolean {
     val annotation = (declaration as? IrAnnotationContainer)?.getAnnotation(FqName("kotlin.Deprecated")) ?: return true
     val levelIndex = annotation.symbol.owner.parameters.indexOfFirst { it.name.asString() == "level" }
     val level = (annotation.arguments.getOrNull(levelIndex) as? IrGetEnumValue)?.symbol?.owner?.name?.asString()

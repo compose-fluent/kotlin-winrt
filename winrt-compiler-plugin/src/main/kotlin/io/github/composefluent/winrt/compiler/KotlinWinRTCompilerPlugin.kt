@@ -268,7 +268,7 @@ class KotlinWinRTCompilerPluginRegistrar : CompilerPluginRegistrar() {
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
         XamlLibraryOptions.export(configuration)?.let {
             IrGenerationExtension.registerExtension(it)
-            return
+            if (!XamlLibraryOptions.compileLibrary(configuration)) return
         }
         XamlSemanticOptions.compilation(configuration)?.let { xaml ->
             FirExtensionRegistrarAdapter.registerExtension(XamlFirRegistrar(xaml.declarations))

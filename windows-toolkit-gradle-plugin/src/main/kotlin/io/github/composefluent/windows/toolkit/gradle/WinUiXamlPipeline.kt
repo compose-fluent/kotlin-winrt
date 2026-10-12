@@ -197,8 +197,7 @@ internal fun configureWinUiXamlPipeline(
     // This callback is registered after standalone projection compilation. Its libraries are
     // already attached to each business compilation, so no final application output is needed.
     project.afterEvaluate {
-        if (exportsLibrarySchema.get()) configureWinUiXamlLibraryPipeline(project, metadataIndex, metadataManifest,
-            applicationHeader, compilerPluginClasspath)
+        if (exportsLibrarySchema.get()) configureWinUiXamlLibraryPipeline(project, metadataManifest, applicationHeader)
         if (!hasXaml.get()) return@afterEvaluate
         val kmp = project.extensions.findByType(KotlinMultiplatformExtension::class.java)
         if (kmp != null) {

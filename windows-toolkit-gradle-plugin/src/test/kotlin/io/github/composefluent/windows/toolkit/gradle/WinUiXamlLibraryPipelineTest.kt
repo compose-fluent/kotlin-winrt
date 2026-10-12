@@ -88,7 +88,7 @@ class WinUiXamlLibraryPipelineTest {
     fun library_schema_export_is_on_by_default_and_can_be_switched_off() {
         val exported = run(writeLibrary("kotlin-winrt-xaml-library-export-"), "inspectSchemaExport")
         assertTrue(exported.output, exported.output.contains(
-            "schemaExport=compileKotlinWinRTXamlLibrarySemanticLibraryDesktop;"))
+            "schemaExport=generateWinRTXamlLibraryRegistrarLibraryDesktop;"))
 
         val byExtension = run(
             writeLibrary("kotlin-winrt-xaml-library-no-export-", "windows { xaml { exportLibrarySchema = false } }"),
@@ -103,10 +103,10 @@ class WinUiXamlLibraryPipelineTest {
         assertTrue(byProperty.output, byProperty.output.contains("schemaExport=;"))
     }
 
-    // The semantic compilation gets no authoring options and writes no candidates, so only the
+    // Schema export runs inside the business compilation, so only the
     // compilation of the library itself is validated against the source scan.
     @Test
-    fun semantic_compilation_gets_no_authored_candidate_validation() {
+    fun combined_library_compilation_has_one_authored_candidate_validation() {
         val result = run(writeLibrary("kotlin-winrt-xaml-library-validation-"), "inspectSchemaExport")
 
         assertTrue(result.output, result.output.contains(
@@ -158,7 +158,7 @@ class WinUiXamlLibraryPipelineTest {
             tasks.register('inspectSchemaExport') {
                 doLast {
                     println 'schemaExport=' +
-                        tasks.names.findAll { it.startsWith('compileKotlinWinRTXamlLibrarySemantic') }.sort().join(',') + ';'
+                        tasks.names.findAll { it.startsWith('generateWinRTXamlLibraryRegistrar') }.sort().join(',') + ';'
                     println 'candidateValidation=' +
                         tasks.names.findAll { it.endsWith('WinRTAuthoredCandidates') }.sort().join(',') + ';'
                 }

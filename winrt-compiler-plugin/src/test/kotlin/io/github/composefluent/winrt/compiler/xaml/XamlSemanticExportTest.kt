@@ -182,8 +182,13 @@ class XamlSemanticExportTest {
                 @Deprecated("legacy") class Legacy { var text = "legacy" }
                 class NoActivation @Deprecated("removed", level = DeprecationLevel.ERROR) constructor()
                 enum class Choice { Current, @Deprecated("removed", level = DeprecationLevel.HIDDEN) Removed }
+                @io.github.composefluent.winrt.runtime.WinUiXamlCreateFromString("parse")
                 class Model {
                     var current = "current"
+                    var optional: Int? = null
+                    val values: MutableList<Int?> = mutableListOf()
+                    val mapping: MutableMap<String, Int?> = mutableMapOf()
+                    var numbers = intArrayOf(1, 2)
                     @Deprecated("removed", level = DeprecationLevel.ERROR) var removed = "removed"
                     @get:Deprecated("removed", level = DeprecationLevel.HIDDEN) val hiddenGetter = "hidden"
                     @set:Deprecated("removed", level = DeprecationLevel.ERROR) var readOnly = "readable"
@@ -191,21 +196,31 @@ class XamlSemanticExportTest {
                     @Deprecated("removed", level = DeprecationLevel.HIDDEN) fun hiddenMethod() = "hidden"
                     fun currentMethod() = "current"
                     companion object {
+                        fun parse(value: String) = Model().apply { current = value }
+                        fun GetTag(target: Model) = target.current
+                        fun SetTag(target: Model, value: String) { target.current = value }
                         @Deprecated("removed", level = DeprecationLevel.ERROR) fun overload(value: String) = value
                         fun overload(value: Int) = value
                     }
                 }
             """.trimIndent()) }
             val metadata = File(root, "metadata.tsv").apply { writeText("") }
-            val references = File(root, "references.txt").apply { writeText("") }
+            val attributes = File(root, "Attributes.winmd").toPath()
+            // Only declaring-assembly identity is needed from this metadata fixture.
+            WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Attributes", listOf(
+                "Windows.Foundation.Metadata.CreateFromStringAttribute", "Windows.Foundation.IReference`1",
+                "Windows.Foundation.Collections.IVector`1", "Windows.Foundation.Collections.IMap`2"
+            ).map { WinUiXamlApplicationTypeDescriptor(it, isActivatable = false) }, emptyMap(), attributes, emptyMap())
+            val references = File(root, "references.txt").apply { writeText(attributes.toString()) }
             val schema = File(root, "schema")
             val classpath = listOf(Unit::class.java, WinUiXamlLoadState::class.java).joinToString(File.pathSeparator) {
                 File(it.protectionDomain.codeSource.location.toURI()).absolutePath
             }
-            fun compile(sources: List<File>, destination: String, export: Boolean) {
+            fun compile(sources: List<File>, destination: String, export: Boolean, combined: Boolean = false) {
                 val options = if (export) mapOf("metadataIndex" to metadata.absolutePath,
                     "xamlLibraryOutput" to schema.absolutePath, "xamlLibraryAssembly" to "Probe",
-                    "xamlLibraryReferences" to references.absolutePath) else emptyMap()
+                    "xamlLibraryReferences" to references.absolutePath,
+                    "xamlLibraryCompile" to combined.toString()) else emptyMap()
                 val arguments = listOf("-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", classpath,
                     "-d", File(root, destination).absolutePath) + sources.map { it.absolutePath } +
                     (if (export) listOf("-Xplugin=${System.getProperty("winrt.test.fullPluginJar")}") else emptyList()) +
@@ -221,7 +236,7 @@ class XamlSemanticExportTest {
             assertEquals(setOf("probe.Legacy", "probe.Model", "probe.NoActivation", "probe.Choice"),
                 types.map { it.qualifiedName }.toSet())
             val model = types.single { it.name == "Model" }
-            assertEquals(setOf("current", "readOnly"), model.properties.map { it.name }.toSet())
+            assertEquals(setOf("current", "readOnly", "optional", "values", "mapping", "numbers"), model.properties.map { it.name }.toSet())
             assertTrue(model.properties.single { it.name == "readOnly" }.isReadOnly)
             assertTrue(model.methods.none { it.name in setOf("hiddenMethod", "get_hiddenGetter", "get_removed") })
             assertEquals(1, model.methods.count { it.name == "overload" })
@@ -230,6 +245,59 @@ class XamlSemanticExportTest {
             assertFalse(accessors.single().readText().contains("activate = { probe.NoActivation() }"))
             compile(listOf(source) + accessors, "with-accessors", false)
             assertTrue(File(root, "with-accessors/probe/Model.class").isFile)
+            val registrar = File(root, "Registrar.kt").apply { writeText("""
+                package io.github.composefluent.winrt.generated.xaml
+                object KotlinXamlLibraryDefinitions_Probe {
+                    private val registration: Unit = registerTypes()
+                    private fun registerTypes() { error("missing compiler body") }
+                    fun registerAll() { registration }
+                }
+            """.trimIndent()) }
+            val expectedSchema = File(schema, "KotlinXaml.winmd").readBytes()
+            compile(listOf(source, registrar), "combined", true, combined = true)
+            assertArrayEquals(expectedSchema, File(schema, "KotlinXaml.winmd").readBytes())
+            URLClassLoader(arrayOf(File(root, "combined").toURI().toURL()), javaClass.classLoader).use { loader ->
+                val registration = loader.loadClass("io.github.composefluent.winrt.generated.xaml.KotlinXamlLibraryDefinitions_Probe")
+                registration.getMethod("registerAll").invoke(registration.getField("INSTANCE").get(null))
+                // Inspect the actual runtime registry, then execute the generated typed callbacks.
+                val registry = Class.forName("io.github.composefluent.winrt.runtime.WinUiAuthoredTypeMetadata")
+                val definitions = registry.getDeclaredField("definitions").apply { isAccessible = true }.get(null)
+                val get = definitions.javaClass.getMethod("get", Any::class.java)
+                val definition = get.invoke(definitions, "probe.Model") as io.github.composefluent.winrt.runtime.WinUiXamlTypeDefinition
+                val instance = requireNotNull(definition.activate).invoke()
+                val current = definition.members.getValue("current")
+                assertEquals("current", current.get(instance))
+                requireNotNull(current.set).invoke(instance, "updated")
+                assertEquals("updated", current.get(instance))
+                assertNull(definition.members.getValue("readOnly").set)
+                val parsed = requireNotNull(definition.createFromString).invoke("parsed")
+                assertEquals("parsed", current.get(parsed))
+                val attached = definition.members.getValue("Tag")
+                assertTrue(attached.isAttachable)
+                requireNotNull(attached.set).invoke(instance, "attached")
+                assertEquals("attached", attached.get(instance))
+                val optional = definition.members.getValue("optional")
+                requireNotNull(optional.set).invoke(instance, 42)
+                assertEquals(42, optional.get(instance))
+                optional.set!!.invoke(instance, null)
+                assertNull(optional.get(instance))
+                val vector = definition.members.getValue("values")
+                val vectorValue = vector.get(instance)!!
+                val add = vector.valueTypes.last().addToVector!!
+                add(vectorValue, 7); add(vectorValue, null)
+                assertEquals(listOf(7, null), vectorValue)
+                val map = definition.members.getValue("mapping")
+                val mapValue = map.get(instance)!!
+                val put = map.valueTypes.last().addToMap!!
+                put(mapValue, "number", 9); put(mapValue, "empty", null)
+                assertEquals(mapOf("number" to 9, "empty" to null), mapValue)
+                val array = definition.members.getValue("numbers")
+                assertTrue(array.valueTypes.single().isArray)
+                assertArrayEquals(intArrayOf(1, 2), array.get(instance) as IntArray)
+                val unavailable = get.invoke(definitions, "probe.NoActivation") as io.github.composefluent.winrt.runtime.WinUiXamlTypeDefinition
+                assertNull(unavailable.activate)
+                registry.getMethod("clearForTests").invoke(registry.getField("INSTANCE").get(null))
+            }
         } finally {
             root.deleteRecursively()
         }

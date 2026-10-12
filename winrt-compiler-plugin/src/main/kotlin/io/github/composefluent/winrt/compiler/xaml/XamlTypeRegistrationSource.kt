@@ -53,7 +53,12 @@ internal fun xamlCreateFromStringMethodSource(
 internal fun xamlCollectionRegistrationSources(
     interfaces: List<Pair<WinRTTypeRef, String>>,
     convert: (String, String) -> String,
-): List<String> = interfaces.mapNotNull { (type, source) ->
+): List<String> = xamlCollectionRegistrationType(interfaces)?.let { (type, source) ->
+    xamlValueTypeRegistrationSources(type, source, convert)
+}.orEmpty()
+
+internal fun xamlCollectionRegistrationType(interfaces: List<Pair<WinRTTypeRef, String>>): Pair<WinRTTypeRef, String>? =
+    interfaces.mapNotNull { (type, source) ->
     val descriptor = xamlSpecialTypes.resolveType(WinRTTypeRef.fromDisplayName(type.typeName), "") as? WinRTCollectionTypeDescriptor
         ?: return@mapNotNull null
     val priority = when (descriptor.kind) {
@@ -63,7 +68,7 @@ internal fun xamlCollectionRegistrationSources(
         else -> return@mapNotNull null
     }
     Triple(priority, type, source)
-}.minByOrNull { it.first }?.let { (_, type, source) -> xamlValueTypeRegistrationSources(type, source, convert) }.orEmpty()
+}.minByOrNull { it.first }?.let { (_, type, source) -> type to source }
 
 internal fun xamlAttachedRegistrationSources(
     owner: String,
@@ -98,22 +103,12 @@ internal fun xamlValueTypeRegistrationSources(
     kotlinType: String,
     convert: (String, String) -> String,
 ): List<String> {
-    val arguments = xamlKotlinTypeArguments(kotlinType)
-    val descriptor = xamlSpecialTypes.resolveType(WinRTTypeRef.fromDisplayName(type.typeName), "")
-    val children = when {
-        type.kind == WinRTTypeRefKind.Array -> listOf(requireNotNull(type.elementType) to
-            (arguments.singleOrNull() ?: requireNotNull(winRTArrayElementForKotlinType(kotlinType.removeSuffix("?"))).toKotlinProjectionTypeName()))
-        descriptor is WinRTReferenceTypeDescriptor && descriptor.kind == WinRTReferenceInterfaceKind.Reference ->
-            listOf(type.typeArguments.single() to (arguments.singleOrNull() ?: kotlinType.removeSuffix("?")))
-        else -> type.typeArguments.zip(arguments)
-    }
+    val plan = xamlValueTypeRegistrationPlan(type, kotlinType)
+    val children = plan.children
+    val collection = plan.descriptor as? WinRTCollectionTypeDescriptor
+    val boxed = plan.descriptor as? WinRTReferenceTypeDescriptor
     val own = buildString {
-        val collection = descriptor as? WinRTCollectionTypeDescriptor
-        val boxed = descriptor as? WinRTReferenceTypeDescriptor
-        if (type.kind != WinRTTypeRefKind.Array &&
-            collection?.kind !in setOf(WinRTCollectionInterfaceKind.Iterable, WinRTCollectionInterfaceKind.VectorView,
-                WinRTCollectionInterfaceKind.Vector, WinRTCollectionInterfaceKind.MapView, WinRTCollectionInterfaceKind.Map) &&
-            boxed?.kind != WinRTReferenceInterfaceKind.Reference) return@buildString
+        if (!plan.hasDefinition) return@buildString
         appendLine("${runtimePackage}WinUiXamlValueTypeDefinition(")
         appendLine("  name = ${literal(type.xamlStandardTypeName())}, type = ${classLiteral(kotlinType)},")
         fun element(prefix: String, index: Int) {
@@ -133,6 +128,31 @@ internal fun xamlValueTypeRegistrationSources(
         append(")")
     }
     return children.flatMap { (metadata, source) -> xamlValueTypeRegistrationSources(metadata, source, convert) } + listOfNotNull(own.takeIf(String::isNotEmpty))
+}
+
+/** Both source and IR emitters consume the same closed-type classification. */
+internal data class XamlValueTypeRegistrationPlan(
+    val descriptor: WinRTSpecialTypeDescriptor?,
+    val children: List<Pair<WinRTTypeRef, String>>,
+    val hasDefinition: Boolean,
+)
+
+internal fun xamlValueTypeRegistrationPlan(type: WinRTTypeRef, kotlinType: String): XamlValueTypeRegistrationPlan {
+    val arguments = xamlKotlinTypeArguments(kotlinType)
+    val descriptor = xamlSpecialTypes.resolveType(WinRTTypeRef.fromDisplayName(type.typeName), "")
+    val children = when {
+        type.kind == WinRTTypeRefKind.Array -> listOf(requireNotNull(type.elementType) to
+            (arguments.singleOrNull() ?: "kotlin." + requireNotNull(winRTArrayElementForKotlinType(kotlinType.removeSuffix("?"))).toKotlinProjectionTypeName()))
+        descriptor is WinRTReferenceTypeDescriptor && descriptor.kind == WinRTReferenceInterfaceKind.Reference ->
+            listOf(type.typeArguments.single() to (arguments.singleOrNull() ?: kotlinType.removeSuffix("?")))
+        else -> type.typeArguments.zip(arguments)
+    }
+    val collection = descriptor as? WinRTCollectionTypeDescriptor
+    val boxed = descriptor as? WinRTReferenceTypeDescriptor
+    return XamlValueTypeRegistrationPlan(descriptor, children, type.kind == WinRTTypeRefKind.Array ||
+        collection?.kind in setOf(WinRTCollectionInterfaceKind.Iterable, WinRTCollectionInterfaceKind.VectorView,
+            WinRTCollectionInterfaceKind.Vector, WinRTCollectionInterfaceKind.MapView, WinRTCollectionInterfaceKind.Map) ||
+        boxed?.kind == WinRTReferenceInterfaceKind.Reference)
 }
 
 /** Keeps nested nullable arguments which WinRTTypeRef.fromDisplayName intentionally erases. */
