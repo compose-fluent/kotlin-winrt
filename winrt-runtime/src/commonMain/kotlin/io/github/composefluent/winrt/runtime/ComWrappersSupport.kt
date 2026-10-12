@@ -720,9 +720,14 @@ object ComWrappersSupport {
     ): Any {
         if (!canCacheRcwIdentity(candidate)) return candidate
         return rcwPublicationLock.withLock {
-            val winner = findCachedRcw(pointerKey, staticallyDeterminedType) ?: candidate
-            rcwCache[pointerKey] = winner
-            if (directPointerKey != pointerKey) rcwCache[directPointerKey] = winner
+            // Generated constructors may already have registered this wrapper. Like
+            // CsWinRT's AddOrUpdate, retain a live cache entry instead of allocating
+            // another weak reference (and another hot entry) during publication.
+            val winner = findCachedRcw(pointerKey, staticallyDeterminedType)
+                ?: candidate.also { rcwCache[pointerKey] = it }
+            if (directPointerKey != pointerKey && rcwCache[directPointerKey] !== winner) {
+                rcwCache[directPointerKey] = winner
+            }
             winner
         }
     }
@@ -734,9 +739,11 @@ object ComWrappersSupport {
         directPointerKey: Long,
         interfaceId: Guid,
     ): IWinRTObject = rcwPublicationLock.withLock {
-        val winner = findClosedInterfaceRcw(pointerKey, interfaceId) ?: candidate
-        cacheClosedInterfaceRcw(pointerKey, interfaceId, winner)
-        if (directPointerKey != pointerKey) cacheClosedInterfaceRcw(directPointerKey, interfaceId, winner)
+        val winner = findClosedInterfaceRcw(pointerKey, interfaceId)
+            ?: candidate.also { cacheClosedInterfaceRcw(pointerKey, interfaceId, it) }
+        if (directPointerKey != pointerKey && closedInterfaceRcwCache[directPointerKey, interfaceId] !== winner) {
+            cacheClosedInterfaceRcw(directPointerKey, interfaceId, winner)
+        }
         winner
     }
 
