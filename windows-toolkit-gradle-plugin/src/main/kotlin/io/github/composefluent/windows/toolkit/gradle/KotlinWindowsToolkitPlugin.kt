@@ -2446,6 +2446,7 @@ private fun configureWinRTGeneration(
         task.sourceRoots.from(authoringSourceRoots)
         task.prepareMetadataOnly.set(prepareMetadataOnly)
         task.metadataModelCacheDirectory.set(sharedWinRTCacheDirectory(project, "metadata-models").toFile())
+        task.projectionSourceCacheDirectory.set(sharedWinRTCacheDirectory(project, "prepared-imports").toFile())
     }
 
     val prepareMetadataTask = project.tasks.register(
@@ -2750,57 +2751,6 @@ private fun configureWinRTGeneration(
     project.tasks.matching { it.name == "prepareKotlinIdeaImport" || it.name == "ideaModule" }
         .configureEach { it.dependsOn(generateTask) }
 
-    // Published identity artifacts are fixed inputs; project-produced identities stay on the
-    // IDE preparation task path so a clean import does not consume stale build outputs.
-    // The preparation resolves the identities and the generator classpath, so it waits until
-    // the projects are configured (see isBeingConfigured). It still runs in every invocation,
-    // an IDE import included, and before any task does.
-    project.gradle.projectsEvaluated {
-        project.withMutableState {
-            val prepared = try {
-                prepareWinRTStaticProjectionSources(
-                    project = project,
-                    extension = extension.packageReferences,
-                    dependencyIdentityFiles = configurationTimeDependencyIdentityFiles(
-                        generateTask.get().dependencyIdentityFiles,
-                    ),
-                    generatedOutputDirectory = generateTask.flatMap { it.outputDirectory },
-                    supportOwnerIdentity = if (project.extensions.findByType(KotlinMultiplatformExtension::class.java) == null) {
-                        authoringTargetArtifactName.get()
-                    } else {
-                        kotlinWinRTNativeAuthoringTargetArtifactName(project).get()
-                    },
-                    windowsSdkRegistryRoots = windowsSdkRegistryRoots.get(),
-                )
-            } catch (unavailable: StaticPreparationUnavailable) {
-                project.logger.info("Skipping configuration-time WinRT static preparation: ${unavailable.message}")
-                // Deferred generation is not removal of the projection selection. A later
-                // IDE model pass must not delete sources produced by its preparation tasks.
-                return@withMutableState
-            }
-            if (prepared != null) {
-                generateTask.configure { task ->
-                    task.preparedStaticSourceDirectory.set(prepared.toFile())
-                }
-            } else {
-                clearPreparedStaticSources(generateTask.flatMap { it.outputDirectory }.get().asFile.toPath())
-            }
-        }
-    }
-}
-
-/**
- * Runs [action] with the lock that resolving a configuration of this project takes.
- *
- * Build-wide callbacks such as `projectsEvaluated` run without the lock of any one project.
- */
-private fun Project.withMutableState(action: () -> Unit) {
-    val owner = (this as? org.gradle.api.internal.project.ProjectInternal)?.owner
-    if (owner == null || owner.hasMutableState()) {
-        action()
-    } else {
-        owner.applyToMutableState { action() }
-    }
 }
 
 /**
@@ -3636,18 +3586,6 @@ private fun addKotlinWinRTCompilerPluginDependencies(project: Project, configura
         (listOf(kotlinWinRTCompilerPluginDependency(project)) + kotlinWinRTCompilerPluginRuntimeDependencies(project))
             .map(project.dependencies::create)
     })
-}
-
-/** Fixed plugin dependencies can prepare an import without resolving task-produced artifacts. */
-internal fun kotlinWinRTPreparedGeneratorClasspath(project: Project): org.gradle.api.file.FileCollection {
-    val localGenerator = kotlinWinRTLocalGeneratorWorkerClasspath(project)
-        ?: return kotlinWinRTGeneratorWorkerClasspath(project)
-    val bundledKotlinPoet = kotlinWinRTPluginMetadataArtifact(project, "kotlinpoet-jvm-1.18.1")
-        ?: kotlinWinRTCodeSourceFile("com.squareup.kotlinpoet.ClassName")
-            ?.takeIf { it.name == "kotlinpoet-jvm-1.18.1.jar" }
-            ?.let(project::files)
-        ?: return kotlinWinRTGeneratorWorkerClasspath(project)
-    return project.files(kotlinWinRTPluginClasspathLocation(project), localGenerator, bundledKotlinPoet)
 }
 
 private fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =

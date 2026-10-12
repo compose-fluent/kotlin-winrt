@@ -43,7 +43,7 @@ class ConfigurationTimeResolutionTest {
     // its variants: the C interop elements of two Native targets are still identical, which Gradle
     // rejects, and then rejects for every consumer of the project. So the toolkit resolves nothing
     // of a project in its afterEvaluate callbacks, and still prepares the imported projection of a
-    // project that is not the root one before any task runs.
+    // project that is not the root one through the generation task.
     @Test
     fun a_library_is_resolved_and_prepared_only_once_it_is_configured() {
         assumeTrue(System.getProperty("os.name").startsWith("Windows"))
@@ -114,12 +114,8 @@ class ConfigurationTimeResolutionTest {
 
         assertTrue(result.output, ":consumer:compileKotlinDesktop SKIPPED" in result.output)
         val generated = root.resolve("library/build/generated/kotlin-winrt")
-        assertTrue(
-            "The projection of the library must be prepared while the build is configured",
-            Files.isDirectory(generated) && Files.walk(generated).use { paths ->
-                paths.anyMatch { path -> path.fileName.toString() == ".kotlin-winrt-prepared-static-files.tsv" }
-            },
-        )
+        org.junit.Assert.assertFalse("Dry-run must not generate library projections", Files.exists(generated))
+
     }
 
     private fun generateProjections(configuration: String): BuildResult {

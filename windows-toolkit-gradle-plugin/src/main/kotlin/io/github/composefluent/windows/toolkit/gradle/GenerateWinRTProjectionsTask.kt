@@ -141,9 +141,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:Internal
     abstract val metadataModelCacheDirectory: DirectoryProperty
 
-    /** Immutable imported source entry prepared during configuration completion when possible. */
+    /** Shared source cache, populated only by the generation task. */
     @get:Internal
-    abstract val preparedStaticSourceDirectory: DirectoryProperty
+    abstract val projectionSourceCacheDirectory: DirectoryProperty
 
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
@@ -246,7 +246,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.prepareMetadataOnly.set(prepareMetadataOnly)
             parameters.generateSdkPreviewSources.set(generateSdkPreviewSources)
             parameters.metadataModelCacheDirectory.set(metadataModelCacheDirectory)
-            parameters.preparedStaticSourceDirectory.set(preparedStaticSourceDirectory)
+            parameters.projectionSourceCacheDirectory.set(projectionSourceCacheDirectory)
             parameters.includeNamespaces.set(includeNamespaces)
             parameters.includeTypes.set(includeTypes)
             parameters.excludeNamespaces.set(excludeNamespaces)
@@ -288,7 +288,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val prepareMetadataOnly: Property<Boolean>
     val generateSdkPreviewSources: Property<Boolean>
     val metadataModelCacheDirectory: DirectoryProperty
-    val preparedStaticSourceDirectory: DirectoryProperty
+    val projectionSourceCacheDirectory: DirectoryProperty
     val includeNamespaces: ListProperty<String>
     val includeTypes: ListProperty<String>
     val excludeNamespaces: ListProperty<String>
@@ -331,13 +331,12 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         // removes only stale files that it owns. Clearing this directory here would
         // defeat Gradle's incremental source snapshots and the generator's write-if-changed path.
         if (!parameters.emitProjectionSources.get()) {
-            cleanDirectory(generatedRoot)
+            clearPreparedStaticSources(generatedRoot)
         }
         val metadataCache = metadataCache()
         // The resolved files carry the metadata; the declared SDK source carries the fact that
         // this projection has a Windows SDK and its UniversalApiContract, which select the
-        // SDK source additions (WinRT.Interop and the COM interop helpers), as in the prepared
-        // path of PreparedProjectionGeneratorMain. The resolver de-duplicates the files.
+        // SDK source additions (WinRT.Interop and the COM interop helpers), as in CsWinRT input preparation. The resolver de-duplicates the files.
         val sources = metadataCache.files.map(WinRTMetadataSource::path) + declaredWindowsSdkSources()
         val effectiveExcludeTypes = parameters.excludeTypes.get()
         val unfilteredModel = metadataCache.load(parameters.metadataModelCacheDirectory.get().asFile.toPath())
@@ -402,13 +401,6 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                 )
                 KotlinWinRTAuthoringCandidateFile.read(candidatesFile)
             }
-        // Prepared metadata can cache SDK source blueprints even when this module
-        // imports metadata solely for XAML schemas. Only materialize declarations
-        // that this module will compile; otherwise its identity falsely owns them.
-        val hasPreparedStaticSources = parameters.emitProjectionSources.get() && parameters.preparedStaticSourceDirectory.orNull
-            ?.asFile
-            ?.toPath()
-            ?.let { preparedRoot -> materializeCachedPreparedSources(preparedRoot, generatedRoot) } == true
         KotlinWinRTAuthoringCandidateFile.write(
             generatedRoot.resolve("kotlin-winrt-authoring/authored-candidates.tsv"),
             authoringCandidates,
@@ -480,8 +472,8 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             component = parameters.projectModel.get() != "application" && exportedAuthoringCandidates.isNotEmpty(),
             inaccessibleDependencyTypes = dependencyInternalProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files),
         )
-        if (parameters.emitProjectionSources.get() && !(hasPreparedStaticSources && authoringCandidates.isEmpty())) {
-            KotlinProjectionGenerator(
+        if (parameters.emitProjectionSources.get()) {
+            val generator = KotlinProjectionGenerator(
                 emitSupportFiles = true,
                 groupProjectionFilesByPackageOnWrite = true,
                 projectionContext = projectionContext,
@@ -490,7 +482,20 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                 authoredRuntimeClassNames = authoredRuntimeClassNames,
                 supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
                 emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
-            ).generateTo(projectionModel, parameters.outputDirectory.get().asFile.toPath())
+            )
+            val store = parameters.projectionSourceCacheDirectory.orNull?.asFile?.toPath()
+            if (store != null && authoringCandidates.isEmpty()) {
+                val key = preparedProjectionKey(
+                    projectionModel, unfilteredModel, projectionContext,
+                    dependencyProjectionTypeNames, dependencySourceAdditionTypeNames,
+                    parameters.authoringTargetArtifactName.get(), parameters.emitJvmAuthoringHostExports.get(),
+                )
+                prepareProjectionSources(store, key, generatedRoot, projectionModel) { destination ->
+                    generator.generateTo(projectionModel, destination)
+                }
+            } else {
+                generator.generateTo(projectionModel, generatedRoot)
+            }
         }
         writeAuthoringMetadataIndex(
             mergedAuthoringMetadataIndexTypes(authoringModel, parameters.dependencyIdentityFiles.files),
@@ -550,15 +555,6 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             (listOf(existing.firstOrNull() ?: "kind\tclassName\tsourceFile\tentries\towner") + rows.filterNot { it.startsWith("xaml-type-registrar\t") } + xamlRows)
                 .joinToString(separator = "\n", postfix = "\n"),
         )
-    }
-
-    private fun cleanDirectory(path: Path) {
-        if (!Files.exists(path)) {
-            return
-        }
-        Files.walk(path).use { stream ->
-            stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
-        }
     }
 
     private fun String.toKotlinSupportIdentifierSuffix(): String =

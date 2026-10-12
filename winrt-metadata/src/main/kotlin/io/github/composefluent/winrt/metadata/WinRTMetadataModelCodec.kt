@@ -83,6 +83,15 @@ object WinRTMetadataModelCodec {
         }
     }
 
+    /** Content identity of the normalized model, independent of its input file locations. */
+    fun fingerprint(model: WinRTMetadataModel): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(), digest).use { output ->
+            json.encodeToStream(ModelCacheDocument(MODEL_CACHE_HEADER, MODEL_CACHE_SCHEMA, model.normalized()), output)
+        }
+        return java.util.HexFormat.of().formatHex(digest.digest())
+    }
+
     fun cacheKey(files: List<Path>): String {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update("kotlin-winrt-normalized-model-v1|cli-reader-v1".toByteArray(Charsets.UTF_8))
