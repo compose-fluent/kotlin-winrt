@@ -21,13 +21,14 @@ class XamlSemanticExportTest {
     fun development_accessors_use_the_system_type_projection_for_style_target_type() {
         // CsWinRT helpers.h maps Windows.UI.Xaml.Interop.TypeName to System.Type;
         // KotlinProjectionTypeResolver emits KClass<*>?, not a TypeName struct.
-        val resolver = WinRTMetadataModel(emptyList()).specialTypeResolver()
+        val model = WinRTMetadataModel(emptyList())
+        val resolver = model.specialTypeResolver()
         listOf("Windows.UI.Xaml.Interop.TypeName", "System.Type").forEach { name ->
             assertEquals("kotlin.reflect.KClass", xamlTypeClassId(name).asSingleFqName().asString())
-            assertEquals("kotlin.reflect.KClass<*>?", xamlProjectedPropertySourceType(WinRTTypeRef.named(name), resolver))
+            assertEquals("kotlin.reflect.KClass<*>?", xamlProjectedPropertySourceType(WinRTTypeRef.named(name), resolver, model.semanticHelpers()))
         }
-        assertEquals("kotlin.collections.MutableList<kotlin.reflect.KClass<*>?>", xamlProjectedPropertySourceType(
-            WinRTTypeRef.fromDisplayName("Windows.Foundation.Collections.IVector<Windows.UI.Xaml.Interop.TypeName>"), resolver))
+        assertEquals("kotlin.collections.MutableList<kotlin.reflect.KClass<*>?>?", xamlProjectedPropertySourceType(
+            WinRTTypeRef.fromDisplayName("Windows.Foundation.Collections.IVector<Windows.UI.Xaml.Interop.TypeName>"), resolver, model.semanticHelpers()))
     }
 
     @Test

@@ -62,8 +62,8 @@ internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = n
                 // Template instances are initialized and recycled by the SDK.
             }
 
-            private fun dataContextChanged(sender: FrameworkElement, args: DataContextChangedEventArgs) {
-                scope.initialize(args.newValue)
+            private fun dataContextChanged(sender: FrameworkElement?, args: DataContextChangedEventArgs?) {
+                scope.initialize(requireNotNull(args).newValue)
             }
 
             override fun connect(connectionId: Int, target: Any?) {
@@ -87,7 +87,8 @@ internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = n
                 nextPhase.value = scope.processBindings(item, phase)
             }
 
-            override fun processBindings(arg: ContainerContentChangingEventArgs): Int {
+            override fun processBindings(arg: ContainerContentChangingEventArgs?): Int {
+                requireNotNull(arg)
                 val next = WinRTOut<Int>()
                 processBindings(arg.item, arg.itemIndex, arg.phase.toInt(), next)
                 return next.value

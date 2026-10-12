@@ -94,7 +94,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                 // Match the projection's shared property nullability and collection mappings.
                 val nullable = WinRTPropertyDefinition(member.propertyName, member.propertyTypeName)
                     .isNullablePropertyProjection(name, definitions)
-                val kotlinType = xamlProjectedPropertySourceType(ref, specialTypes).let { if (nullable && !it.endsWith('?')) "$it?" else it }
+                val kotlinType = xamlProjectedPropertySourceType(ref, specialTypes, semantics).let { if (nullable && !it.endsWith('?')) "$it?" else it }
                 appendLine(xamlPropertyRegistrationSource(owner, property, kotlinType, convert,
                     accessorName = member.propertyName.replaceFirstChar(Char::lowercase)).prependIndent("      ") + ",")
             }
@@ -121,11 +121,11 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
 }
 
 /** Render the same mapped property shape as KotlinProjectionTypeResolver. */
-internal fun xamlProjectedPropertySourceType(ref: WinRTTypeRef, specialTypes: WinRTMetadataSpecialTypeResolver): String {
+internal fun xamlProjectedPropertySourceType(ref: WinRTTypeRef, specialTypes: WinRTMetadataSpecialTypeResolver, semantics: WinRTMetadataSemanticHelpers): String {
     val descriptor = specialTypes.resolveType(ref, "")
     val reference = descriptor as? WinRTReferenceTypeDescriptor
     if (reference?.kind == WinRTReferenceInterfaceKind.Reference)
-        return xamlProjectedPropertySourceType(ref.typeArguments.single(), specialTypes).removeSuffix("?") + "?"
+        return xamlProjectedPropertySourceType(ref.typeArguments.single(), specialTypes, semantics).removeSuffix("?") + "?"
     val name = ref.qualifiedName ?: ref.typeName
     val source = (descriptor as? WinRTCollectionTypeDescriptor)?.kind?.kotlinProjectedName
         ?: xamlTypeClassId(name).asSingleFqName().asString()
@@ -133,6 +133,6 @@ internal fun xamlProjectedPropertySourceType(ref: WinRTTypeRef, specialTypes: Wi
     // KClass<*>?, including nullable native TypeName values (Style.TargetType).
     val projectedType = isWinRTTypeTypeName(name)
     val args = if (projectedType) "<*>" else
-        ref.typeArguments.takeIf { it.isNotEmpty() }?.joinToString(", ", "<", ">") { xamlProjectedPropertySourceType(it, specialTypes) }.orEmpty()
-    return source + args + if (isWinRTObjectTypeName(name) || projectedType) "?" else ""
+        ref.typeArguments.takeIf { it.isNotEmpty() }?.joinToString(", ", "<", ">") { xamlProjectedPropertySourceType(it, specialTypes, semantics) }.orEmpty()
+    return source + args + if (semantics.isNullableReferenceProjection(ref.typeName) || projectedType) "?" else ""
 }

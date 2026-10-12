@@ -13,7 +13,7 @@ import kotlin.io.path.writeText
 internal fun xamlDevelopmentConfigurationSource(inspector: String): String = """
     io.github.composefluent.winrt.runtime.configureWinUiXamlHotReload(
       dispatcherFactory = {
-        val queue = microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()
+        val queue = requireNotNull(microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread())
         val enqueue: (() -> Unit) -> Boolean = { action ->
           queue.tryEnqueue(microsoft.ui.dispatching.DispatcherQueueHandler { action() })
         }
@@ -83,7 +83,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
         import microsoft.ui.xaml.*
         import io.github.composefluent.winrt.runtime.*
         internal class KotlinWinUiXamlPreviewApplication : Application() {
-          override fun onLaunched(args: LaunchActivatedEventArgs) {
+          override fun onLaunched(args: LaunchActivatedEventArgs?) {
             try { KotlinWinUiXamlPreviewHost.showWindow() }
             catch (error: Throwable) { error.printStackTrace(); throw error }
           }
@@ -102,7 +102,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
             window = null; application = null
           }
           internal fun showWindow() {
-            requireNotNull(requireNotNull(application).resources).mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
+            requireNotNull(requireNotNull(requireNotNull(application).resources).mergedDictionaries).add(microsoft.ui.xaml.controls.XamlControlsResources())
             window = ${xamlPreviewWindowSource().prependIndent("            ").trimStart()}
           }
         }
@@ -132,12 +132,12 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val element = value.asWinRT<DependencyObject>()
             val count = VisualTreeHelper.getChildrenCount(element)
             require(count in 0..2048) { "Too many visual children" }
-            List(count) { VisualTreeHelper.getChild(element, it) }
+            List(count) { requireNotNull(VisualTreeHelper.getChild(element, it)) }
           },
           describe = { value, root ->
             val element = runCatching { value.asWinRT<FrameworkElement>() }.getOrNull()
             val bounds = element?.let { item -> runCatching {
-              val rect = item.transformToVisual(root.asWinRT<UIElement>()).transformBounds(
+              val rect = requireNotNull(item.transformToVisual(root.asWinRT<UIElement>())).transformBounds(
                 windows.foundation.Rect(0f, 0f, item.actualWidth.toFloat(), item.actualHeight.toFloat()))
               WinUiXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
             }.getOrNull() } ?: WinUiXamlVisualBounds(0.0, 0.0, 0.0, 0.0)
@@ -173,9 +173,9 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 val scale = minOf(1.0, 768.0 / (maxOf(element.actualWidth, element.actualHeight, 1.0) * dpi))
                 val width = (element.actualWidth * scale).toInt().coerceIn(1, 768)
                 val height = (element.actualHeight * scale).toInt().coerceIn(1, 768)
-                bitmap.renderAsync(element, width, height).await()
+                requireNotNull(bitmap.renderAsync(element, width, height)).await()
                 stage = "read the rendered pixels"
-                val buffer = bitmap.getPixelsAsync().await()
+                val buffer = requireNotNull(requireNotNull(bitmap.getPixelsAsync()).await())
                 require(bitmap.pixelWidth in 1..768 && bitmap.pixelHeight in 1..768 && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
                   "WinUI returned an unsupported bitmap size or pixel buffer."
                 }
@@ -215,7 +215,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             // The authoring scanner emits ApplicationOverrides for internal classes.
             // A private subclass would never receive WinUI's OnLaunched callback.
             internal class KotlinWinUiXamlPreviewApplication : Application() {
-              override fun onLaunched(args: LaunchActivatedEventArgs) { KotlinWinUiXamlPreviewHost.showWindow() }
+              override fun onLaunched(args: LaunchActivatedEventArgs?) { KotlinWinUiXamlPreviewHost.showWindow() }
             }
             /** Isolated design host: the user's application main/constructor is not invoked. */
             object KotlinWinUiXamlPreviewHost {
@@ -231,7 +231,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               internal fun showWindow() {
                 // The native Application resource dictionary is ready after Start's
                 // initialization callback returns, when OnLaunched is dispatched.
-                requireNotNull(requireNotNull(application).resources).mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
+                requireNotNull(requireNotNull(requireNotNull(application).resources).mergedDictionaries).add(microsoft.ui.xaml.controls.XamlControlsResources())
                 window = ${xamlPreviewWindowSource().prependIndent("                ").trimStart()}
               }
             }

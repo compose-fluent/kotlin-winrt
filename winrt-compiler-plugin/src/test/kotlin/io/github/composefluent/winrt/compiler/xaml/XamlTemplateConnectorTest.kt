@@ -103,7 +103,7 @@ class XamlTemplateConnectorTest {
                 fun recycle()
             }
             interface IDataTemplateExtension {
-                fun processBindings(arg: ContainerContentChangingEventArgs): Int
+                fun processBindings(arg: ContainerContentChangingEventArgs?): Int
                 fun processBinding(phase: UInt): Boolean
                 fun resetTemplate()
             }
