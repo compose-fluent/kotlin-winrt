@@ -39,7 +39,7 @@ class KotlinWinRTNullableLayoutReturnTest {
         val source = output.resolve("sample/WinRT_LocalLayout_TypeDetails.kt").readText()
             .replace(Regex("\\s+"), " ")
         assertTrue(source, source.contains("ItemCollectionTransitionProvider? ="))
-        assertTrue(source, source.contains("returnAbiType = \"$namespace.ItemCollectionTransitionProvider?\""))
+        assertTrue(source, source.contains("returnAbiType = \"$namespace.ItemCollectionTransitionProvider\""))
         assertTrue(source, source.contains("__winrtAuthoringInvokeCreateDefaultItemTransitionProvider()"))
     }
 }

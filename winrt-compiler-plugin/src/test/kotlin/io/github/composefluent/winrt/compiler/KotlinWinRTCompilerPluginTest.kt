@@ -526,7 +526,7 @@ class KotlinWinRTCompilerPluginTest {
             ),
         )
         assertFalse(contents, contents.contains("returnAbiType = \"Sample.CallSites.WidgetOperation\""))
-        assertTrue(contents, contents.contains("WinRTAsyncOperationReference<UInt> ="))
+        assertTrue(contents, contents.contains("WinRTAsyncOperationReference<UInt>? ="))
         assertTrue(contents, contents.contains("(value as Owner).loadAsync(__arg0)"))
         assertTrue(contents, contents.contains("GenericHandler.Metadata.fromAbi<String>("))
         assertTrue(contents, contents.contains("ParameterizedInterfaceId.createFromSignature("))

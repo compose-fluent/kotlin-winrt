@@ -765,8 +765,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                 AnnotationSpec.builder(winRTProjectionInboundCallSiteType)
                     .addMember(
                         "returnAbiType = %S",
-                        directInboundCallSiteAbiType(plan.returnShape, typesByName, semanticHelpers)
-                            .let { if (plan.returnIsNullable) "$it?" else it },
+                        directInboundCallSiteAbiType(plan.returnShape, typesByName, semanticHelpers),
                     )
                     .build(),
             )
@@ -845,7 +844,9 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
             )?.takeUnless { shape -> shape.referencesAuthoredRuntimeClass(authoredRuntimeClassNames) }
                 ?: return null
         }
-        return DirectInboundCallSitePlan(returnShape, parameterShapes, method.returnTypeName.endsWith("?"))
+        return DirectInboundCallSitePlan(returnShape, parameterShapes,
+            method.returnTypeName.endsWith("?") ||
+                semanticHelpers.isNullableReferenceProjection(method.returnTypeName, currentNamespace))
     }
 
     private fun WinRTDirectInboundShapeDescriptor.referencesAuthoredRuntimeClass(
@@ -865,6 +866,14 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
     )
 
     private fun directInboundProjectedTypeName(
+        shape: WinRTDirectInboundShapeDescriptor,
+        typesByName: Map<String, WinRTTypeDefinition>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): TypeName = directInboundNonNullProjectedTypeName(shape, typesByName, semanticHelpers).let {
+        if (semanticHelpers.isNullableReferenceProjection(shape.abiTypeName)) it.copy(nullable = true) else it
+    }
+
+    private fun directInboundNonNullProjectedTypeName(
         shape: WinRTDirectInboundShapeDescriptor,
         typesByName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
@@ -2225,6 +2234,19 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         typesByName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
     ): CodeBlock {
+        val adapter = renderNonNullCollectionElementAdapter(method, elementType, typesByName, semanticHelpers)
+        return if (semanticHelpers.isNullableReferenceProjection(elementType.typeName) &&
+            !isWinRTObjectTypeName(elementType.qualifiedName.orEmpty())) {
+            CodeBlock.of("%T.nullableReference(%L)", winRTReferenceValueAdaptersType, adapter)
+        } else adapter
+    }
+
+    private fun renderNonNullCollectionElementAdapter(
+        method: WinRTMethodDefinition,
+        elementType: WinRTTypeRef,
+        typesByName: Map<String, WinRTTypeDefinition>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): CodeBlock {
         val elementTypeName = elementType.qualifiedName
             ?: throw IllegalArgumentException(
                 "Authored WinRT override ${method.name} returns collection element '${elementType.displayName()}' without a qualified type name.",
@@ -2374,6 +2396,14 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         }
 
     private fun authoringProjectedTypeName(
+        type: WinRTTypeRef,
+        typesByName: Map<String, WinRTTypeDefinition>,
+        semanticHelpers: WinRTMetadataSemanticHelpers,
+    ): TypeName = authoringNonNullProjectedTypeName(type, typesByName, semanticHelpers).let {
+        if (semanticHelpers.isNullableReferenceProjection(type.typeName)) it.copy(nullable = true) else it
+    }
+
+    private fun authoringNonNullProjectedTypeName(
         type: WinRTTypeRef,
         typesByName: Map<String, WinRTTypeDefinition>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
