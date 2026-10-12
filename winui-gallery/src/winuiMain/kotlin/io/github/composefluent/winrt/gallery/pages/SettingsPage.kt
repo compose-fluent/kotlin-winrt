@@ -29,37 +29,37 @@ internal class SettingsPage(private val root: FrameworkElement,private val theme
         ClearRecentBtn.isEnabled = GalleryPreferences.routes("Recent").isNotEmpty()
         UnfavoriteBtn.isEnabled = GalleryPreferences.routes("Favorites").isNotEmpty()
     }
-    private fun themeMode_SelectionChanged(sender: Any?,args: SelectionChangedEventArgs) {
+    private fun themeMode_SelectionChanged(sender: Any?,args: SelectionChangedEventArgs?) {
         if (!ready) return
         val value = listOf(ElementTheme.Light,ElementTheme.Dark,ElementTheme.Default).getOrNull(themeMode.selectedIndex) ?: return
         setTheme(value); announce(themeMode,"Theme changed to $value","ThemeChangedNotificationActivityId")
     }
-    private fun navigationLocation_SelectionChanged(sender: Any?,args: SelectionChangedEventArgs) { if (ready) setTopNavigation(navigationLocation.selectedIndex == 1) }
-    private fun soundToggle_Toggled(sender: Any?,args: RoutedEventArgs) {
+    private fun navigationLocation_SelectionChanged(sender: Any?,args: SelectionChangedEventArgs?) { if (ready) setTopNavigation(navigationLocation.selectedIndex == 1) }
+    private fun soundToggle_Toggled(sender: Any?,args: RoutedEventArgs?) {
         if (!ready) return
         SpatialAudioCard.isEnabled = soundToggle.isOn
         ElementSoundPlayer.state = if (soundToggle.isOn) ElementSoundPlayerState.On else ElementSoundPlayerState.Off
         GalleryPreferences.putFlag("Sound",soundToggle.isOn)
         if (!soundToggle.isOn) spatialSoundBox.isOn = false
     }
-    private fun spatialSoundBox_Toggled(sender: Any?,args: RoutedEventArgs) {
+    private fun spatialSoundBox_Toggled(sender: Any?,args: RoutedEventArgs?) {
         if (!ready) return
         val enabled = soundToggle.isOn && spatialSoundBox.isOn
         ElementSoundPlayer.spatialAudioMode = if (enabled) ElementSpatialAudioMode.On else ElementSpatialAudioMode.Off
         GalleryPreferences.putFlag("SpatialAudio",enabled)
     }
-    private fun soundPageHyperlink_Click(sender: Any?,args: RoutedEventArgs) { GalleryNavigationHost.navigate("Sound") }
-    private fun toCloneRepoCard_Click(sender: Any?,args: RoutedEventArgs) {
+    private fun soundPageHyperlink_Click(sender: Any?,args: RoutedEventArgs?) { GalleryNavigationHost.navigate("Sound") }
+    private fun toCloneRepoCard_Click(sender: Any?,args: RoutedEventArgs?) {
         Clipboard.setContent(DataPackage().apply { setText(gitCloneTextBlock.text) })
         announce(this,"Repository clone command copied","RepositoryCopied")
     }
-    private fun bugRequestCard_Click(sender: Any?,args: RoutedEventArgs) { tasks.launch { windows.system.Launcher.launchUriAsync(Uri("https://github.com/compose-fluent/kotlin-winrt/issues/new")).await() } }
+    private fun bugRequestCard_Click(sender: Any?,args: RoutedEventArgs?) { tasks.launch { windows.system.Launcher.launchUriAsync(Uri("https://github.com/compose-fluent/kotlin-winrt/issues/new"))!!.await() } }
     private fun confirm(title: String,description: String,actionText: String,action: () -> Unit) {
         tasks.launch {
             val dialog = ContentDialog().apply { xamlRoot = root.xamlRoot; requestedTheme = root.actualTheme; this.title = title; content = description; primaryButtonText = actionText; closeButtonText = "Cancel"; defaultButton = ContentDialogButton.Primary }
-            try { if (dialog.showAsync().await() == ContentDialogResult.Primary) { action(); CheckRecentAndFavoriteButtonStates() } } finally { dialog.hide() }
+            try { if (dialog.showAsync()!!.await() == ContentDialogResult.Primary) { action(); CheckRecentAndFavoriteButtonStates() } } finally { dialog.hide() }
         }
     }
-    private fun ClearRecentBtn_Click(sender: Any?,args: RoutedEventArgs) { confirm("Clear recently visited samples?","This will remove all samples from your recent history.","Clear",clearRecents) }
-    private fun UnfavoriteBtn_Click(sender: Any?,args: RoutedEventArgs) { confirm("Remove all favorites?","This will unfavorite all your samples.","Remove",clearFavorites) }
+    private fun ClearRecentBtn_Click(sender: Any?,args: RoutedEventArgs?) { confirm("Clear recently visited samples?","This will remove all samples from your recent history.","Clear",clearRecents) }
+    private fun UnfavoriteBtn_Click(sender: Any?,args: RoutedEventArgs?) { confirm("Remove all favorites?","This will unfavorite all your samples.","Remove",clearFavorites) }
 }

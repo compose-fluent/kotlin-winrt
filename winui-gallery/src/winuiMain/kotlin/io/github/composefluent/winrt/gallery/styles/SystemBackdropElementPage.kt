@@ -13,7 +13,7 @@ import microsoft.ui.xaml.media.animation.*
 internal class SystemBackdropElementPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true; updateBackdrop() }
-    private fun BackdropTypeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) updateBackdrop() }
+    private fun BackdropTypeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) updateBackdrop() }
     private fun updateBackdrop() {
         val type = BackdropTypeComboBox.selectedItem?.asWinRT<ComboBoxItem>()?.tag?.toString() ?: "Acrylic"
         DynamicBackdropHost.systemBackdrop = when (type) {
@@ -23,5 +23,5 @@ internal class SystemBackdropElementPage : Page() {
         }
         Example1.XamlSource = "SystemBackdropElement/SystemBackdropElement${type}_xaml.txt"
     }
-    private fun CornerRadiusSlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs) { if (ready) DynamicBackdropHost.cornerRadius = CornerRadius(args.newValue, args.newValue, args.newValue, args.newValue) }
+    private fun CornerRadiusSlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs?) { requireNotNull(args);  if (ready) DynamicBackdropHost.cornerRadius = CornerRadius(args.newValue, args.newValue, args.newValue, args.newValue) }
 }

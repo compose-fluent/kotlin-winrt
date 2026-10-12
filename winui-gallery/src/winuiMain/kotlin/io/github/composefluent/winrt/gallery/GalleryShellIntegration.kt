@@ -19,18 +19,18 @@ internal suspend fun updateGalleryJumpList() {
     // Loading the shell and navigating to the initial route can request updates
     // together. Keep the whole load/save transaction exclusive across windows.
     jumpListUpdates.withLock {
-        val list = JumpList.loadCurrentAsync().await()
-        list.items.clear(); list.systemGroupKind = JumpListSystemGroupKind.None
+        val list = checkNotNull(checkNotNull(JumpList.loadCurrentAsync()).await())
+        list.items!!.clear(); list.systemGroupKind = JumpListSystemGroupKind.None
         for (group in listOf("Recent", "Favorites")) {
             GalleryPreferences.routes(group).forEach { id ->
                 val page = GalleryCatalog.pages.firstOrNull { it.id == id } ?: return@forEach
-                list.items.add(JumpListItem.createWithArguments(id, page.title).apply {
+                list.items!!.add(JumpListItem.createWithArguments(id, page.title)!!.apply {
                     groupName = group; description = "Go to ${page.title}"
                     logo = Uri(page.image.ifBlank { "ms-appx:///Assets/AppList.png" })
                 })
             }
         }
-        list.saveAsync().await()
+        list.saveAsync()!!.await()
     }
 }
 
@@ -40,11 +40,11 @@ internal class GalleryNotifications(private val window: Window, private val shel
     private val tasks = GalleryPageTasks(shell.root)
     private val dialogs = Mutex()
     private val pending = mutableListOf<String>()
-    private val token = manager.notificationInvoked.add { _, args -> handle(args) }
+    private val token = manager.notificationInvoked.add { _, args -> handle(checkNotNull(args)) }
     private val loadedToken = shell.root.loaded.add { _, _ -> showPending() }
     fun handle(args: AppNotificationActivatedEventArgs) {
         val arguments = args.argument
-        val input = args.userInput.entries.joinToString("\n") { "${it.key}: ${it.value}" }
+        val input = args.userInput!!.entries.joinToString("\n") { "${it.key}: ${it.value}" }
         shell.root.dispatcherQueue?.tryEnqueue {
             window.activate()
             GalleryNavigationHost.navigate("AppNotification")
@@ -60,7 +60,7 @@ internal class GalleryNotifications(private val window: Window, private val shel
                     xamlRoot = shell.root.xamlRoot; title = "Notification activated"
                     content = message; closeButtonText = "Close"
                 }
-                try { dialog.showAsync().await() } finally { dialog.hide() }
+                try { dialog.showAsync()!!.await() } finally { dialog.hide() }
             }
         } }
     }

@@ -17,5 +17,5 @@ internal class MenuItemTemplateSelector : DataTemplateSelector() {
     private val HeaderTemplate: DataTemplate get() = checkNotNull(templates["HeaderTemplate"]).asWinRT<DataTemplate>()
     private val SeparatorTemplate: DataTemplate get() = checkNotNull(templates["SeparatorTemplate"]).asWinRT<DataTemplate>()
     override fun selectTemplateCore(item: Any?): DataTemplate? = when (item) { is Separator -> SeparatorTemplate; is Header -> HeaderTemplate; else -> ItemTemplate }
-    override fun selectTemplateCore(item: Any?, container: DependencyObject): DataTemplate? = selectTemplateCore(item)
+    override fun selectTemplateCore(item: Any?, container: DependencyObject?): DataTemplate? = selectTemplateCore(item)
 }

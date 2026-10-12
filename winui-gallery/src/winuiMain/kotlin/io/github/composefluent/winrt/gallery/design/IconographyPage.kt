@@ -24,7 +24,7 @@ internal class IconographyPage : Page() {
         super.initializeComponent()
         IconsItemsView.loaded.add(::IconsItemsView_Loaded)
     }
-    private fun IconsItemsView_Loaded(sender: Any?, args: RoutedEventArgs) {
+    private fun IconsItemsView_Loaded(sender: Any?, args: RoutedEventArgs?) {
         if (loadedIcons) return
         loadedIcons = true
         tasks.launch {
@@ -41,7 +41,7 @@ internal class IconographyPage : Page() {
         XAMLCodePresenterSymbol.Code = value.SymbolName?.let { "<SymbolIcon Symbol=\"$it\" />" }.orEmpty()
         CSharpCodePresenterSymbol.Code = value.SymbolName?.let { "val icon = SymbolIcon(Symbol.$it)" }.orEmpty()
     }
-    private fun SearchTextBox_TextChanged(sender: AutoSuggestBox, args: AutoSuggestBoxTextChangedEventArgs) = Filter(sender.text)
+    private fun SearchTextBox_TextChanged(sender: AutoSuggestBox?, args: AutoSuggestBoxTextChangedEventArgs?) = run { requireNotNull(sender); Filter(sender.text) }
     fun Filter(search: String) {
         IconsItemsView.itemsSource = null
         val generation = ++searchGeneration
@@ -61,13 +61,13 @@ internal class IconographyPage : Page() {
             announce(IconsAutoSuggestBox, when (result.size) { 0 -> "No icons found."; 1 -> "1 icon found."; else -> "${result.size} icons found." }, "AutoSuggestBoxNumberIconsFoundId")
         }
     }
-    private fun IconsItemsView_SelectionChanged(sender: ItemsView, args: ItemsViewSelectionChangedEventArgs) {
+    private fun IconsItemsView_SelectionChanged(sender: ItemsView?, args: ItemsViewSelectionChangedEventArgs?) { requireNotNull(sender);
         filtered.getOrNull(sender.currentItemIndex)?.let { SelectedItem = it }
     }
-    private fun TagsItemsView_ItemInvoked(sender: ItemsView, args: ItemsViewItemInvokedEventArgs) {
+    private fun TagsItemsView_ItemInvoked(sender: ItemsView?, args: ItemsViewItemInvokedEventArgs?) { requireNotNull(args);
         (args.invokedItem as? String)?.let { IconsAutoSuggestBox.text = it }
     }
     companion object {
-        val SelectedItemProperty: DependencyProperty = DependencyProperty.register("SelectedItem", IconData::class, IconographyPage::class, PropertyMetadata(null))
+        val SelectedItemProperty: DependencyProperty = DependencyProperty.register("SelectedItem", IconData::class, IconographyPage::class, PropertyMetadata(null))!!
     }
 }

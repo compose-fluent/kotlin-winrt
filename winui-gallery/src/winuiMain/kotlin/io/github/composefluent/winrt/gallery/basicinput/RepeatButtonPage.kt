@@ -12,11 +12,11 @@ internal class RepeatButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun onRepeatClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onRepeatClick(sender: Any?, args: RoutedEventArgs?) {
         output.text = "Number of clicks: ${++clicks}"
     }
 
-    private fun onDisableClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onDisableClick(sender: Any?, args: RoutedEventArgs?) {
         repeatButton.isEnabled = disableRepeat.isChecked != true
     }
 }

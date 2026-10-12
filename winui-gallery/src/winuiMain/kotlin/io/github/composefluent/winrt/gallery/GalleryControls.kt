@@ -54,7 +54,7 @@ internal fun option(title: String, initial: Boolean = false, changed: (Boolean) 
 }
 internal fun choices(title: String, values: List<String>, initial: Int = 0, changed: (Int) -> Unit) = RadioButtons().apply {
     header = title
-    values.forEach { items.add(it) }
+    values.forEach { items!!.add(it) }
     selectedIndex = initial
     selectionChanged.add { _, _ ->
         val index = selectedIndex

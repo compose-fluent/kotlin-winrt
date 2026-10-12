@@ -46,13 +46,13 @@ internal fun galleryHero() = Grid().apply {
             stops.clear()
             listOf(0f to 255u, (if (accessibility.highContrast) 0.55f else 0.75f) to 255u,
                 (if (accessibility.highContrast) 0.95f else 0.85f) to 0u, 1f to 0u).forEach { (offset, alpha) ->
-                stops.add(compositor.createColorGradientStop(offset, Color(alpha.toUByte(), 255u, 255u, 255u)))
+                stops.add(compositor.createColorGradientStop(offset, Color(alpha.toUByte(), 255u, 255u, 255u))!!)
             }
         }
     }
     fun release() {
         host?.children?.removeAll()
-        ElementCompositionPreview.getElementVisual(source).opacity = 1f
+        ElementCompositionPreview.getElementVisual(source)!!.opacity = 1f
         sprite?.close(); sprite = null
         maskedBrush?.close(); maskedBrush = null
         opacityMask?.close(); opacityMask = null
@@ -62,18 +62,18 @@ internal fun galleryHero() = Grid().apply {
     loaded.add { _, _ ->
         release()
         val visual = ElementCompositionPreview.getElementVisual(source)
-        val compositor = checkNotNull(visual.compositor)
-        val visualHost = host ?: compositor.createContainerVisual().also {
+        val compositor = checkNotNull(visual!!.compositor)
+        val visualHost = host ?: compositor.createContainerVisual()!!.also {
             it.relativeSizeAdjustment = Vector2(1f, 1f)
             ElementCompositionPreview.setElementChildVisual(this, it)
             host = it
         }
-        val createdSurface = compositor.createVisualSurface().apply { sourceVisual = visual; sourceSize = source.actualSize }
+        val createdSurface = compositor.createVisualSurface()!!.apply { sourceVisual = visual; sourceSize = source.actualSize }
         surface = createdSurface
-        surfaceBrush = compositor.createSurfaceBrush(createdSurface)
-        opacityMask = compositor.createLinearGradientBrush().apply { startPoint = Vector2(0.5f, 0f); endPoint = Vector2(0.5f, 1f) }
-        maskedBrush = compositor.createMaskBrush().apply { this.source = surfaceBrush; mask = opacityMask }
-        val createdSprite = compositor.createSpriteVisual().apply { relativeSizeAdjustment = Vector2(1f, 1f); brush = maskedBrush }
+        surfaceBrush = compositor.createSurfaceBrush(createdSurface)!!
+        opacityMask = compositor.createLinearGradientBrush()!!.apply { startPoint = Vector2(0.5f, 0f); endPoint = Vector2(0.5f, 1f) }
+        maskedBrush = compositor.createMaskBrush()!!.apply { this.source = surfaceBrush; mask = opacityMask }
+        val createdSprite = compositor.createSpriteVisual()!!.apply { relativeSizeAdjustment = Vector2(1f, 1f); brush = maskedBrush }
         sprite = createdSprite
         visual.opacity = 0f
         checkNotNull(visualHost.children).insertAtTop(createdSprite)

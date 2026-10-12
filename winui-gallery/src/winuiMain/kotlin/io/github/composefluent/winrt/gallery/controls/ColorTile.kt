@@ -47,15 +47,15 @@ internal class ColorTile : UserControl() {
         }
         BackdropHost.visibility = if (Backdrop == ColorTileBackdropKind.None) Visibility.Collapsed else Visibility.Visible
     }
-    private fun CopyBrushNameButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun CopyBrushNameButton_Click(sender: Any?, args: RoutedEventArgs?) {
         Clipboard.setContent(DataPackage().apply { setText(ColorBrushName) })
     }
     companion object {
-        val ColorNameProperty: DependencyProperty = DependencyProperty.register("ColorName", String::class, ColorTile::class, PropertyMetadata(""))
-        val ColorExplanationProperty: DependencyProperty = DependencyProperty.register("ColorExplanation", String::class, ColorTile::class, PropertyMetadata(""))
-        val ColorBrushNameProperty: DependencyProperty = DependencyProperty.register("ColorBrushName", String::class, ColorTile::class, PropertyMetadata(""))
-        val ShowSeparatorProperty: DependencyProperty = DependencyProperty.register("ShowSeparator", Boolean::class, ColorTile::class, PropertyMetadata(true))
-        val CommentProperty: DependencyProperty = DependencyProperty.register("Comment", Any::class, ColorTile::class, PropertyMetadata(null, { owner, _ -> owner.asWinRT<ColorTile>().UpdateComment() }))
-        val BackdropProperty: DependencyProperty = DependencyProperty.register("Backdrop", ColorTileBackdropKind::class, ColorTile::class, PropertyMetadata(ColorTileBackdropKind.None, { owner, _ -> owner.asWinRT<ColorTile>().ApplyBackdrop() }))
+        val ColorNameProperty: DependencyProperty = DependencyProperty.register("ColorName", String::class, ColorTile::class, PropertyMetadata(""))!!
+        val ColorExplanationProperty: DependencyProperty = DependencyProperty.register("ColorExplanation", String::class, ColorTile::class, PropertyMetadata(""))!!
+        val ColorBrushNameProperty: DependencyProperty = DependencyProperty.register("ColorBrushName", String::class, ColorTile::class, PropertyMetadata(""))!!
+        val ShowSeparatorProperty: DependencyProperty = DependencyProperty.register("ShowSeparator", Boolean::class, ColorTile::class, PropertyMetadata(true))!!
+        val CommentProperty: DependencyProperty = DependencyProperty.register("Comment", Any::class, ColorTile::class, PropertyMetadata(null, { owner, _ -> owner!!.asWinRT<ColorTile>().UpdateComment() }))!!
+        val BackdropProperty: DependencyProperty = DependencyProperty.register("Backdrop", ColorTileBackdropKind::class, ColorTile::class, PropertyMetadata(ColorTileBackdropKind.None, { owner, _ -> owner!!.asWinRT<ColorTile>().ApplyBackdrop() }))!!
     }
 }

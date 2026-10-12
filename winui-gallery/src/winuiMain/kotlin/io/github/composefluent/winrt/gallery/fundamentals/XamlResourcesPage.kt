@@ -12,7 +12,7 @@ internal class XamlResourcesPage : Page() {
         super.initializeComponent()
     }
 
-    private fun Hyperlink_Click(sender: Hyperlink, args: HyperlinkClickEventArgs) {
+    private fun Hyperlink_Click(sender: Hyperlink?, args: HyperlinkClickEventArgs?) {
         GalleryNavigationHost.navigate("Color")
     }
 }

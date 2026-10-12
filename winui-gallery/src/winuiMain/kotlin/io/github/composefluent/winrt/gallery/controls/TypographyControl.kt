@@ -25,13 +25,13 @@ internal class TypographyControl : UserControl() {
     var ExampleStyle: Style?
         get() = getValue(ExampleStyleProperty)?.asWinRT<Style>()
         set(value) { setValue(ExampleStyleProperty, value) }
-    private fun CopyToClipboardButton_Click(sender: Any?, args: RoutedEventArgs) { Clipboard.setContent(DataPackage().apply { setText(ResourceName) }) }
+    private fun CopyToClipboardButton_Click(sender: Any?, args: RoutedEventArgs?) { Clipboard.setContent(DataPackage().apply { setText(ResourceName) }) }
     companion object {
-        val ExampleProperty = DependencyProperty.register("Example", String::class, TypographyControl::class, PropertyMetadata(""))
-        val WeightProperty = DependencyProperty.register("Weight", String::class, TypographyControl::class, PropertyMetadata(""))
-        val VariableFontProperty = DependencyProperty.register("VariableFont", String::class, TypographyControl::class, PropertyMetadata(""))
-        val SizeLineHeightProperty = DependencyProperty.register("SizeLineHeight", String::class, TypographyControl::class, PropertyMetadata(""))
-        val ResourceNameProperty = DependencyProperty.register("ResourceName", String::class, TypographyControl::class, PropertyMetadata(""))
-        val ExampleStyleProperty = DependencyProperty.register("ExampleStyle", Style::class, TypographyControl::class, PropertyMetadata(null))
+        val ExampleProperty = DependencyProperty.register("Example", String::class, TypographyControl::class, PropertyMetadata(""))!!
+        val WeightProperty = DependencyProperty.register("Weight", String::class, TypographyControl::class, PropertyMetadata(""))!!
+        val VariableFontProperty = DependencyProperty.register("VariableFont", String::class, TypographyControl::class, PropertyMetadata(""))!!
+        val SizeLineHeightProperty = DependencyProperty.register("SizeLineHeight", String::class, TypographyControl::class, PropertyMetadata(""))!!
+        val ResourceNameProperty = DependencyProperty.register("ResourceName", String::class, TypographyControl::class, PropertyMetadata(""))!!
+        val ExampleStyleProperty = DependencyProperty.register("ExampleStyle", Style::class, TypographyControl::class, PropertyMetadata(null))!!
     }
 }

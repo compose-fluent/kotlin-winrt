@@ -7,15 +7,15 @@ import microsoft.ui.composition.*
 import windows.foundation.numerics.*
 
 internal fun proceduralHelmet(compositor: Compositor): ContainerVisual {
-    val root = compositor.createContainerVisual().apply { size = Vector2(400f, 400f) }
-    val helmet = compositor.createContainerVisual().apply {
+    val root = compositor.createContainerVisual()!!.apply { size = Vector2(400f, 400f) }
+    val helmet = compositor.createContainerVisual()!!.apply {
         size = Vector2(280f, 300f); offset = Vector3(60f, 50f, 0f); centerPoint = Vector3(140f, 150f, 0f); rotationAxis = Vector3(0f, 1f, 0f)
     }
     fun plate(x: Float, y: Float, width: Float, height: Float, radius: Float, color: UInt, z: Float) {
-        val shape = compositor.createRoundedRectangleGeometry().apply { size = Vector2(width, height); cornerRadius = Vector2(radius, radius) }
-        checkNotNull(helmet.children).insertAtTop(compositor.createShapeVisual().apply {
+        val shape = compositor.createRoundedRectangleGeometry()!!.apply { size = Vector2(width, height); cornerRadius = Vector2(radius, radius) }
+        checkNotNull(helmet.children).insertAtTop(compositor.createShapeVisual()!!.apply {
             size = Vector2(width, height); offset = Vector3(x, y, z)
-            checkNotNull(shapes).add(compositor.createSpriteShape(shape).apply { fillBrush = compositor.createColorBrush(rgb(color)) })
+            checkNotNull(shapes).add(compositor.createSpriteShape(shape)!!.apply { fillBrush = compositor.createColorBrush(rgb(color))!! })
         })
     }
     // Layered shell gives the original procedural model depth under rotation.
@@ -33,7 +33,7 @@ internal fun proceduralHelmet(compositor: Compositor): ContainerVisual {
     plate(18f, 110f, 35f, 74f, 15f, 0x323C44u, 3f)
     plate(227f, 110f, 35f, 74f, 15f, 0x323C44u, 3f)
     checkNotNull(root.children).insertAtTop(helmet)
-    helmet.startAnimation("RotationAngleInDegrees", compositor.createScalarKeyFrameAnimation().apply {
+    helmet.startAnimation("RotationAngleInDegrees", compositor.createScalarKeyFrameAnimation()!!.apply {
         insertKeyFrame(0f, 0f); insertKeyFrame(0.5f, 360f); insertKeyFrame(1f, 0f); duration = 15.seconds; iterationBehavior = AnimationIterationBehavior.Forever
     })
     return root

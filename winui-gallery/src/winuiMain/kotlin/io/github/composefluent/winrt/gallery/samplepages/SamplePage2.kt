@@ -12,10 +12,10 @@ import microsoft.ui.xaml.media.animation.*
 import microsoft.ui.xaml.navigation.*
 
 internal class SamplePage2 : Page() {
-    fun PrepareConnectedAnimation(config: ConnectedAnimationConfiguration?) { ConnectedAnimationService.getForCurrentView().prepareToAnimate("BackwardConnectedAnimation", DestinationElement).let { if (config != null) it.configuration = config } }
-    override fun onNavigatedTo(args: NavigationEventArgs) {
+    fun PrepareConnectedAnimation(config: ConnectedAnimationConfiguration?) { ConnectedAnimationService.getForCurrentView()!!.prepareToAnimate("BackwardConnectedAnimation", DestinationElement).let { if (config != null) it!!.configuration = config } }
+    override fun onNavigatedTo(args: NavigationEventArgs?) { requireNotNull(args);
         super.onNavigatedTo(args)
-        ConnectedAnimationService.getForCurrentView().getAnimation("ForwardConnectedAnimation")?.let { animation ->
+        ConnectedAnimationService.getForCurrentView()!!.getAnimation("ForwardConnectedAnimation")?.let { animation ->
             ContentPanel.transitions = TransitionCollection().apply { add(EntranceThemeTransition()) }; animation.tryStart(DestinationElement)
         }
     }

@@ -43,6 +43,18 @@ body = body.replace('val controller =', 'var controller =')
 body = re.sub(r'\bCanvasGeometry result;', 'lateinit var result: CanvasGeometry', body)
 body = re.sub(r'using \(val builder = CanvasPathBuilder\(null\)\)\s*\{', 'CanvasPathBuilder(_device).use { builder ->', body)
 body = re.sub(r'\.([A-Z]\w*)', lower_member, body)
+# The asset requires every composition/geometry factory to produce an object.
+# Keep that asset invariant at creation, while WinRT projection results stay nullable.
+factory_ends = []
+for match in re.finditer(r'(?:_c|CanvasGeometry)\.create\w*\(', body):
+    depth = 1
+    index = match.end()
+    while depth:
+        depth += (body[index] == '(') - (body[index] == ')')
+        index += 1
+    factory_ends.append(index)
+for index in reversed(factory_ends):
+    body = body[:index] + '!!' + body[index:]
 # These collections/property sets are created with their owning composition
 # object. The projection keeps reference properties nullable at the ABI boundary.
 body = re.sub(r'\.(shapes|children|properties)\.', r'.\1!!.', body)
@@ -75,15 +87,15 @@ import windows.foundation.numerics.*
 import windows.ui.Color
 
 class GalleryLottieSource : IAnimatedVisualSource {
-    override fun tryCreateAnimatedVisual(compositor: Compositor, diagnostics: WinRTOut<Any?>): IAnimatedVisual {
+    override fun tryCreateAnimatedVisual(compositor: Compositor?, diagnostics: WinRTOut<Any?>): IAnimatedVisual {
         diagnostics.value = null
-        return GalleryLottieVisual(compositor)
+        return GalleryLottieVisual(requireNotNull(compositor))
     }
 }
 
 internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual {
-    private val _device = CanvasDevice.getSharedDevice().asWinRT<ICanvasResourceCreator>()
-    private val _reusableExpressionAnimation = _c.createExpressionAnimation()
+    private val _device = requireNotNull(CanvasDevice.getSharedDevice()).asWinRT<ICanvasResourceCreator>()
+    private val _reusableExpressionAnimation = requireNotNull(_c.createExpressionAnimation())
 '''
 declarations = '\n'.join(f'    private lateinit var {name}: {kind}' for kind, name in fields)
 footer = '''

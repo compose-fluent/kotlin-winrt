@@ -22,11 +22,11 @@ internal class ContentDialogPage : Page() {
         super.initializeComponent()
     }
 
-    private fun ShowDialog_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ShowDialog_Click(sender: Any?, args: RoutedEventArgs?) {
         showDialog(checkNotNull(sender).asWinRT<Button>(), false, DialogResult)
     }
 
-    private fun ShowDialogNoDefault_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ShowDialogNoDefault_Click(sender: Any?, args: RoutedEventArgs?) {
         showDialog(checkNotNull(sender).asWinRT<Button>(), true, DialogResultNoDefault)
     }
 
@@ -43,7 +43,7 @@ internal class ContentDialogPage : Page() {
             content = ContentDialogContent()
         }
         try {
-            val result = dialog.showAsync().await()
+            val result = dialog.showAsync()!!.await()
             output.text = when (result) {
                 ContentDialogResult.Primary -> if (noDefault) "User replaced the file" else "User saved their work"
                 ContentDialogResult.Secondary -> if (noDefault) "User kept the file" else "User did not save their work"

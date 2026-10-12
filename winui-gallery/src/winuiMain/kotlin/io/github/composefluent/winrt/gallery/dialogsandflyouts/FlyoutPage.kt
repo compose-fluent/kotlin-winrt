@@ -11,7 +11,7 @@ internal class FlyoutPage : Page() {
         super.initializeComponent()
     }
 
-    private fun DeleteConfirmation_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun DeleteConfirmation_Click(sender: Any?, args: RoutedEventArgs?) {
         (Control1.flyout as? Flyout)?.hide()
     }
 }

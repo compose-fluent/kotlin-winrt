@@ -13,18 +13,18 @@ internal class RadioButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun RadioButton_Checked(sender: Any?, args: RoutedEventArgs) {
+    private fun RadioButton_Checked(sender: Any?, args: RoutedEventArgs?) {
         val selected = checkNotNull(sender).asWinRT<RadioButton>().content
         Control1Output.text = "You selected $selected"
     }
 
-    private fun BackgroundColor_SelectionChanged(sender: Any?, args: microsoft.ui.xaml.controls.SelectionChangedEventArgs) {
+    private fun BackgroundColor_SelectionChanged(sender: Any?, args: microsoft.ui.xaml.controls.SelectionChangedEventArgs?) {
         val colors = listOf(0x008000u, 0xFFFF00u, 0xFFFFFFu)
         val index = BackgroundRadioButtons.selectedIndex
         if (index in colors.indices) ControlOutput.background = brush(colors[index])
     }
 
-    private fun BorderBrush_SelectionChanged(sender: Any?, args: microsoft.ui.xaml.controls.SelectionChangedEventArgs) {
+    private fun BorderBrush_SelectionChanged(sender: Any?, args: microsoft.ui.xaml.controls.SelectionChangedEventArgs?) {
         val colors = listOf(0x006400u, 0xFFD700u, 0xFFFFFFu)
         val index = BorderRadioButtons.selectedIndex
         if (index in colors.indices) ControlOutput.borderBrush = brush(colors[index])

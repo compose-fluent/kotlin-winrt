@@ -37,7 +37,7 @@ internal class GalleryPageTasks(private val owner: FrameworkElement) {
                     content = error.message.orEmpty(); closeButtonText = "Close"
                 }
                 dialog = message
-                try { message.showAsync().await() }
+                try { message.showAsync()!!.await() }
                 finally { message.hide(); dialog = null }
             }
         }

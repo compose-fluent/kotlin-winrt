@@ -46,7 +46,7 @@ internal fun galleryHorizontalScroll(content: UIElement): Grid = Grid().apply {
         scroller.changeView(scroller.horizontalOffset + scroller.viewportWidth, null, null)
         back.focus(FocusState.Programmatic)
     }
-    scroller.viewChanging.add { _, args -> update(checkNotNull(args.finalView).horizontalOffset) }
+    scroller.viewChanging.add { _, args -> update(checkNotNull(args!!.finalView).horizontalOffset) }
     scroller.sizeChanged.add { _, _ -> update() }
     scroller.loaded.add { _, _ -> update() }
     children!!.add(scroller); children!!.add(back); children!!.add(forward)

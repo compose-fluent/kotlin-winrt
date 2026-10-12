@@ -11,7 +11,7 @@ import microsoft.ui.xaml.automation.peers.*
 
 internal class TemperatureConverterControl : UserControl() {
     private fun HasText(text: String): Boolean = text.isNotBlank()
-    private fun Button_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun Button_Click(sender: Any?, args: RoutedEventArgs?) {
         val formatter = windows.globalization.numberformatting.DecimalFormatter().apply { fractionDigits = 2; integerDigits = 1 }
         ResultTextBlock.text = formatter.parseDouble(InputTextBox.text)?.let { "Fahrenheit: ${formatter.formatDouble(it * 9 / 5 + 32)}°F" } ?: "Invalid input!"
     }

@@ -15,9 +15,9 @@ internal class Tile : UserControl() {
         get() = getValue(SourceProperty) as Any?
         set(value) { setValue(SourceProperty, value) }
     companion object {
-        val TitleProperty: DependencyProperty = DependencyProperty.register("Title", String::class, Tile::class, PropertyMetadata(""))
-        val DescriptionProperty: DependencyProperty = DependencyProperty.register("Description", String::class, Tile::class, PropertyMetadata(""))
-        val LinkProperty: DependencyProperty = DependencyProperty.register("Link", String::class, Tile::class, PropertyMetadata(""))
-        val SourceProperty: DependencyProperty = DependencyProperty.register("Source", Any::class, Tile::class, PropertyMetadata(null))
+        val TitleProperty: DependencyProperty = DependencyProperty.register("Title", String::class, Tile::class, PropertyMetadata(""))!!
+        val DescriptionProperty: DependencyProperty = DependencyProperty.register("Description", String::class, Tile::class, PropertyMetadata(""))!!
+        val LinkProperty: DependencyProperty = DependencyProperty.register("Link", String::class, Tile::class, PropertyMetadata(""))!!
+        val SourceProperty: DependencyProperty = DependencyProperty.register("Source", Any::class, Tile::class, PropertyMetadata(null))!!
     }
 }

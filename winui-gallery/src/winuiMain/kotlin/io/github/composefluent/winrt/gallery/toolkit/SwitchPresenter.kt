@@ -20,6 +20,6 @@ internal class SwitchPresenter : ContentPresenter() {
     }
     companion object {
         val ValueProperty: DependencyProperty = DependencyProperty.register("Value",Any::class,SwitchPresenter::class,
-            PropertyMetadata(null,PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<SwitchPresenter>().EvaluateCases() }))
+            PropertyMetadata(null,PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<SwitchPresenter>().EvaluateCases() }))!!
     }
 }

@@ -58,14 +58,14 @@ internal class ValidatedPasswordBox : Control() {
             }
         })
         if (AutomationPeer.listenerExists(AutomationEvents.LiveRegionChanged))
-            FrameworkElementAutomationPeer.createPeerForElement(text).raiseAutomationEvent(AutomationEvents.LiveRegionChanged)
+            FrameworkElementAutomationPeer.createPeerForElement(text)!!.raiseAutomationEvent(AutomationEvents.LiveRegionChanged)
     }
     companion object {
-        private fun OnPasswordChanged(owner: DependencyObject, args: DependencyPropertyChangedEventArgs) { owner.asWinRT<ValidatedPasswordBox>().UpdateValidationMessages() }
-        val PasswordProperty: DependencyProperty = DependencyProperty.register("Password", String::class, ValidatedPasswordBox::class, PropertyMetadata("", ::OnPasswordChanged))
-        val IsValidProperty: DependencyProperty = DependencyProperty.register("IsValid", Boolean::class, ValidatedPasswordBox::class, PropertyMetadata(false))
-        val MinLengthProperty: DependencyProperty = DependencyProperty.register("MinLength", Int::class, ValidatedPasswordBox::class, PropertyMetadata(8, ::OnPasswordChanged))
-        val HeaderProperty: DependencyProperty = DependencyProperty.register("Header", String::class, ValidatedPasswordBox::class, PropertyMetadata("", ::OnPasswordChanged))
-        val PlaceholderTextProperty: DependencyProperty = DependencyProperty.register("PlaceholderText", String::class, ValidatedPasswordBox::class, PropertyMetadata("", ::OnPasswordChanged))
+        private fun OnPasswordChanged(owner: DependencyObject?, args: DependencyPropertyChangedEventArgs?) { requireNotNull(owner); owner.asWinRT<ValidatedPasswordBox>().UpdateValidationMessages() }
+        val PasswordProperty: DependencyProperty = DependencyProperty.register("Password", String::class, ValidatedPasswordBox::class, PropertyMetadata("", ::OnPasswordChanged))!!
+        val IsValidProperty: DependencyProperty = DependencyProperty.register("IsValid", Boolean::class, ValidatedPasswordBox::class, PropertyMetadata(false))!!
+        val MinLengthProperty: DependencyProperty = DependencyProperty.register("MinLength", Int::class, ValidatedPasswordBox::class, PropertyMetadata(8, ::OnPasswordChanged))!!
+        val HeaderProperty: DependencyProperty = DependencyProperty.register("Header", String::class, ValidatedPasswordBox::class, PropertyMetadata("", ::OnPasswordChanged))!!
+        val PlaceholderTextProperty: DependencyProperty = DependencyProperty.register("PlaceholderText", String::class, ValidatedPasswordBox::class, PropertyMetadata("", ::OnPasswordChanged))!!
     }
 }

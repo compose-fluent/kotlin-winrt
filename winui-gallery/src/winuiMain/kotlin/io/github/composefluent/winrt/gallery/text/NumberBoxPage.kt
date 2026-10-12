@@ -22,5 +22,5 @@ internal class NumberBoxPage : Page() {
     }
     private fun applyPlacement() { NumberBoxSpinButtonPlacementExample.spinButtonPlacementMode =
         if (SpinButtonPlacementGroup.selectedIndex == 0) NumberBoxSpinButtonPlacementMode.Inline else NumberBoxSpinButtonPlacementMode.Compact }
-    private fun SpinButtonPlacementGroup_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) applyPlacement() }
+    private fun SpinButtonPlacementGroup_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) applyPlacement() }
 }

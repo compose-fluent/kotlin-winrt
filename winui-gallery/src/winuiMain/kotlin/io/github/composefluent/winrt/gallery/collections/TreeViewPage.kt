@@ -16,8 +16,8 @@ internal class TreeViewPage : Page() {
         ExplorerItem("Projects", true, listOf(ExplorerItem("Project Plan")))))
     override fun initializeComponent() { super.initializeComponent(); dataContext = this; InitializeSampleTreeView(sampleTreeView); InitializeSampleTreeView(sampleTreeView2) }
     private fun InitializeSampleTreeView(tree: TreeView) {
-        fun node(title: String, children: List<TreeViewNode> = emptyList()) = TreeViewNode().apply { content = title; isExpanded = children.isNotEmpty(); children.forEach { this.children.add(it) } }
-        tree.rootNodes.add(node("Work Documents", listOf(node("XYZ Functional Spec"), node("Feature Schedule"))))
-        tree.rootNodes.add(node("Personal Documents", listOf(node("Home Remodel", listOf(node("Contractor Contact Info"), node("Paint Color Scheme"))))))
+        fun node(title: String, children: List<TreeViewNode> = emptyList()) = TreeViewNode().apply { content = title; isExpanded = children.isNotEmpty(); children.forEach { this.children!!.add(it) } }
+        tree.rootNodes!!.add(node("Work Documents", listOf(node("XYZ Functional Spec"), node("Feature Schedule"))))
+        tree.rootNodes!!.add(node("Personal Documents", listOf(node("Home Remodel", listOf(node("Contractor Contact Info"), node("Paint Color Scheme"))))))
     }
 }

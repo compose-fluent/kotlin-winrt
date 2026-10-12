@@ -86,35 +86,35 @@ internal class ControlExample : UserControl() {
             kotlin?.let { KotlinPresenter.SetDocument(it) }
         }
         fun showLanguage(item: SelectorBarItem, present: Boolean) {
-            if (!present) SelectorBarControl.items.remove(item)
-            else if (!SelectorBarControl.items.contains(item)) {
-                if (item == SelectorBarXamlItem) SelectorBarControl.items.add(0,item) else SelectorBarControl.items.add(item)
+            if (!present) SelectorBarControl.items!!.remove(item)
+            else if (!SelectorBarControl.items!!.contains(item)) {
+                if (item == SelectorBarXamlItem) SelectorBarControl.items!!.add(0,item) else SelectorBarControl.items!!.add(item)
             }
         }
         showLanguage(SelectorBarXamlItem,!xaml?.source.isNullOrBlank())
         showLanguage(SelectorBarKotlinItem,!kotlin?.source.isNullOrBlank())
-        if (!SelectorBarControl.items.contains(SelectorBarControl.selectedItem))
-            SelectorBarControl.selectedItem = SelectorBarControl.items.firstOrNull()
+        if (!SelectorBarControl.items!!.contains(SelectorBarControl.selectedItem))
+            SelectorBarControl.selectedItem = SelectorBarControl.items!!.firstOrNull()
         UpdateLanguage()
     }
     private fun UpdateLanguage() {
         XamlContentPresenter.visibility = if (SelectorBarControl.selectedItem == SelectorBarXamlItem) Visibility.Visible else Visibility.Collapsed
         KotlinContentPresenter.visibility = if (SelectorBarControl.selectedItem == SelectorBarKotlinItem) Visibility.Visible else Visibility.Collapsed
     }
-    private fun SelectorBarControl_SelectionChanged(sender: SelectorBar,args: SelectorBarSelectionChangedEventArgs) { if (ready) UpdateLanguage() }
-    private fun SelectorBarItem_Loaded(sender: Any?,args: RoutedEventArgs) { if (ready) RefreshSource() }
+    private fun SelectorBarControl_SelectionChanged(sender: SelectorBar?,args: SelectorBarSelectionChangedEventArgs?) { if (ready) UpdateLanguage() }
+    private fun SelectorBarItem_Loaded(sender: Any?,args: RoutedEventArgs?) { if (ready) RefreshSource() }
     companion object {
-        val HeaderTextProperty: DependencyProperty = DependencyProperty.register("HeaderText",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().UpdateHeader() }))
-        val ExampleProperty: DependencyProperty = DependencyProperty.register("Example",UIElement::class,ControlExample::class,PropertyMetadata(null))
-        val OutputProperty: DependencyProperty = DependencyProperty.register("Output",UIElement::class,ControlExample::class,PropertyMetadata(null))
-        val OptionsProperty: DependencyProperty = DependencyProperty.register("Options",UIElement::class,ControlExample::class,PropertyMetadata(null))
-        val XamlProperty: DependencyProperty = DependencyProperty.register("Xaml",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))
-        val XamlSourceProperty: DependencyProperty = DependencyProperty.register("XamlSource",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))
-        val KotlinProperty: DependencyProperty = DependencyProperty.register("Kotlin",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))
-        val KotlinSourceProperty: DependencyProperty = DependencyProperty.register("KotlinSource",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))
-        val SampleDefinitionProperty: DependencyProperty = DependencyProperty.register("SampleDefinition",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().RefreshSampleDefinition() }))
-        val SourceCodeVisibilityProperty: DependencyProperty = DependencyProperty.register("SourceCodeVisibility",Visibility::class,ControlExample::class,PropertyMetadata(Visibility.Visible))
-        val ExampleHeightProperty: DependencyProperty = DependencyProperty.register("ExampleHeight",GridLength::class,ControlExample::class,PropertyMetadata(GridLength(1.0,GridUnitType.Star)))
-        val IsExperimentalProperty: DependencyProperty = DependencyProperty.register("IsExperimental",Boolean::class,ControlExample::class,PropertyMetadata(false))
+        val HeaderTextProperty: DependencyProperty = DependencyProperty.register("HeaderText",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().UpdateHeader() }))!!
+        val ExampleProperty: DependencyProperty = DependencyProperty.register("Example",UIElement::class,ControlExample::class,PropertyMetadata(null))!!
+        val OutputProperty: DependencyProperty = DependencyProperty.register("Output",UIElement::class,ControlExample::class,PropertyMetadata(null))!!
+        val OptionsProperty: DependencyProperty = DependencyProperty.register("Options",UIElement::class,ControlExample::class,PropertyMetadata(null))!!
+        val XamlProperty: DependencyProperty = DependencyProperty.register("Xaml",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))!!
+        val XamlSourceProperty: DependencyProperty = DependencyProperty.register("XamlSource",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))!!
+        val KotlinProperty: DependencyProperty = DependencyProperty.register("Kotlin",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))!!
+        val KotlinSourceProperty: DependencyProperty = DependencyProperty.register("KotlinSource",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().apply { if (sourceReady) RefreshSource() } }))!!
+        val SampleDefinitionProperty: DependencyProperty = DependencyProperty.register("SampleDefinition",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().RefreshSampleDefinition() }))!!
+        val SourceCodeVisibilityProperty: DependencyProperty = DependencyProperty.register("SourceCodeVisibility",Visibility::class,ControlExample::class,PropertyMetadata(Visibility.Visible))!!
+        val ExampleHeightProperty: DependencyProperty = DependencyProperty.register("ExampleHeight",GridLength::class,ControlExample::class,PropertyMetadata(GridLength(1.0,GridUnitType.Star)))!!
+        val IsExperimentalProperty: DependencyProperty = DependencyProperty.register("IsExperimental",Boolean::class,ControlExample::class,PropertyMetadata(false))!!
     }
 }

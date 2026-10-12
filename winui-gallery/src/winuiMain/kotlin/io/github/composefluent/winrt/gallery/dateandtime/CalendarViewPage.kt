@@ -21,12 +21,12 @@ internal class CalendarViewPage : Page() {
             windows.globalization.CalendarIdentifiers.thai, windows.globalization.CalendarIdentifiers.umAlQura)
         calendarIdentifier.selectedItem = windows.globalization.CalendarIdentifiers.gregorian
     }
-    private fun SelectionMode_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+    private fun SelectionMode_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) {
         if (ready) Control1.selectionMode = when (checkNotNull(sender).asWinRT<ComboBox>().selectedItem?.toString()) {
             "Multiple" -> CalendarViewSelectionMode.Multiple; "None" -> CalendarViewSelectionMode.None; else -> CalendarViewSelectionMode.Single
         }
     }
-    private fun calendarLanguages_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+    private fun calendarLanguages_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) {
         if (!ready) return
         val selected = calendarLanguages.selectedItem as? io.github.composefluent.winrt.gallery.helpers.Language ?: return
         if (windows.globalization.Language.isWellFormed(selected.Code)) Control1.language = selected.Code

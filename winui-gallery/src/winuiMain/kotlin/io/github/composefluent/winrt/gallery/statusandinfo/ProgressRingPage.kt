@@ -11,7 +11,7 @@ import microsoft.ui.xaml.media.*
 internal class ProgressRingPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true; applyBackground(BackgroundComboBox1); applyBackground(BackgroundComboBox2) }
-    private fun ProgressValue_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) {
+    private fun ProgressValue_ValueChanged(sender: NumberBox?, args: NumberBoxValueChangedEventArgs?) { requireNotNull(sender);
         if (!ready) return
         if (sender.value.isNaN()) sender.value = 0.0 else ProgressRing2.value = sender.value
     }
@@ -21,5 +21,5 @@ internal class ProgressRingPage : Page() {
         (if (first) ProgressRing1 else ProgressRing2).background = SolidColorBrush(if (gray) rgb(0xD3D3D3u) else windows.ui.Color(0u, 0u, 0u, 0u))
         (if (first) RevealBackgroundProperty1 else RevealBackgroundProperty2).IsEnabled = gray
     }
-    private fun Background_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) applyBackground(checkNotNull(sender).asWinRT<ComboBox>()) }
+    private fun Background_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) applyBackground(checkNotNull(sender).asWinRT<ComboBox>()) }
 }

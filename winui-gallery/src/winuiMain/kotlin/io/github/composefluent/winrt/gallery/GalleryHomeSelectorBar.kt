@@ -87,7 +87,7 @@ private class GalleryHomeSelectorPill(
         view.pointerReleased.add { _, _ -> pressed = false; updateVisuals() }
         view.tapped.add { _, args ->
             onSelected?.invoke()
-            args.handled = true
+            args!!.handled = true
         }
         view.actualThemeChanged.add { _, _ -> updateVisuals() }
         view.loaded.add { _, _ -> updateVisuals() }

@@ -21,9 +21,9 @@ internal class BadgeNotificationManagerPage : Page() {
         microsoft.windows.badgenotifications.BadgeNotificationGlyph.Alarm)
     private var selectedGlyph: microsoft.windows.badgenotifications.BadgeNotificationGlyph = microsoft.windows.badgenotifications.BadgeNotificationGlyph.Activity
     private var isBadgeSetted = false
-    private fun SetBadgeCountButton_Click(sender: Any?, args: RoutedEventArgs) { if (GalleryPreferences.packaged) { checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsCount(BadgeCountBox.value.toUInt()); isBadgeSetted = true } }
-    private fun ClearBadgeButton_Click(sender: Any?, args: RoutedEventArgs) { if (GalleryPreferences.packaged) checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).clearBadge() }
-    private fun SetBadgeGlyphButton_Click(sender: Any?, args: RoutedEventArgs) { if (GalleryPreferences.packaged) { checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsGlyph(selectedGlyph); isBadgeSetted = true } }
-    private fun BadgeCountBox_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) { if (GalleryPreferences.packaged && isBadgeSetted) checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsCount(sender.value.toUInt()) }
-    private fun BadgeNotificationGlyphsCombo_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (GalleryPreferences.packaged && isBadgeSetted) checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsGlyph(selectedGlyph) }
+    private fun SetBadgeCountButton_Click(sender: Any?, args: RoutedEventArgs?) { if (GalleryPreferences.packaged) { checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsCount(BadgeCountBox.value.toUInt()); isBadgeSetted = true } }
+    private fun ClearBadgeButton_Click(sender: Any?, args: RoutedEventArgs?) { if (GalleryPreferences.packaged) checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).clearBadge() }
+    private fun SetBadgeGlyphButton_Click(sender: Any?, args: RoutedEventArgs?) { if (GalleryPreferences.packaged) { checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsGlyph(selectedGlyph); isBadgeSetted = true } }
+    private fun BadgeCountBox_ValueChanged(sender: NumberBox?, args: NumberBoxValueChangedEventArgs?) { requireNotNull(sender);  if (GalleryPreferences.packaged && isBadgeSetted) checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsCount(sender.value.toUInt()) }
+    private fun BadgeNotificationGlyphsCombo_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (GalleryPreferences.packaged && isBadgeSetted) checkNotNull(microsoft.windows.badgenotifications.BadgeNotificationManager.current).setBadgeAsGlyph(selectedGlyph) }
 }

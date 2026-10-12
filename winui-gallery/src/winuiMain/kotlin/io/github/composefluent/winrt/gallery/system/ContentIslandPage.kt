@@ -22,16 +22,16 @@ internal class ContentIslandPage : Page() {
         var model: microsoft.ui.composition.ContainerVisual? = null
     }
     override fun initializeComponent() { super.initializeComponent(); unloaded.add(::OnUnloaded) }
-    private fun LoadModel_Click(sender: Any?, args: RoutedEventArgs) { _rectanglePanel.visibility = Visibility.Visible; tasks.launch { LoadModel() } }
+    private fun LoadModel_Click(sender: Any?, args: RoutedEventArgs?) { _rectanglePanel.visibility = Visibility.Visible; tasks.launch { LoadModel() } }
     suspend fun LoadModel() {
         val rect = _rectanglePanel.children!!.getOrNull(nextHostElementIndex++)?.asWinRT<microsoft.ui.xaml.shapes.Rectangle>() ?: return
         val root = checkNotNull(xamlRoot)
-        val compositor = checkNotNull(microsoft.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(rect).compositor)
-        val placement = compositor.createContainerVisual()
+        val compositor = checkNotNull(microsoft.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(rect)!!.compositor)
+        val placement = compositor.createContainerVisual()!!
         microsoft.ui.xaml.hosting.ElementCompositionPreview.setElementChildVisual(rect,placement)
-        val link = microsoft.ui.content.ChildSiteLink.create(checkNotNull(root.contentIsland),placement)
+        val link = checkNotNull(microsoft.ui.content.ChildSiteLink.create(checkNotNull(root.contentIsland),placement))
         val handler = windows.foundation.EventHandler<Any?> { _, _ ->
-            val point = rect.transformToVisual(null).transformPoint(windows.foundation.Point(0f,0f))
+            val point = rect.transformToVisual(null)!!.transformPoint(windows.foundation.Point(0f,0f))
             link.localToParentTransformMatrix = windows.foundation.numerics.Matrix4x4(1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,point.x,point.y,0f,1f)
             placement.size = rect.actualSize; link.actualSize = rect.actualSize
         }
@@ -40,7 +40,7 @@ internal class ContentIslandPage : Page() {
         try {
             val model = proceduralHelmet(compositor); entry.model = model
             val island = microsoft.ui.content.ContentIsland.create(model)
-            if (!link.isClosed) { entry.island = island; link.connect(island) } else { island.close(); model.close() }
+            if (!link.isClosed) { entry.island = island; link.connect(island) } else { island!!.close(); model.close() }
         } catch (failure: Throwable) { DisposeEntry(entry); entries.remove(entry); throw failure }
     }
     private fun DisposeEntry(entry: IslandEntry) {
@@ -48,6 +48,6 @@ internal class ContentIslandPage : Page() {
         microsoft.ui.xaml.hosting.ElementCompositionPreview.setElementChildVisual(entry.rect,null)
         try { entry.link.close() } finally { try { entry.island?.close() } finally { entry.model?.close(); entry.placement.close() } }
     }
-    private fun OnUnloaded(sender: Any?, args: RoutedEventArgs) { entries.toList().forEach(::DisposeEntry); entries.clear(); nextHostElementIndex = 0 }
+    private fun OnUnloaded(sender: Any?, args: RoutedEventArgs?) { entries.toList().forEach(::DisposeEntry); entries.clear(); nextHostElementIndex = 0 }
 
 }

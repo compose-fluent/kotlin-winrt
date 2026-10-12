@@ -20,32 +20,32 @@ internal class AppWindowTitleBarPage : Page() {
     val titleBarHeightOptions: List<TitleBarHeightOption> = listOf(TitleBarHeightOption.Standard,TitleBarHeightOption.Tall,TitleBarHeightOption.Collapsed)
     fun ColorToArgbString(color: Color): String = "${color.a}, ${color.r}, ${color.g}, ${color.b}"
     fun BoolToLowerString(value: Boolean?): String = (value ?: false).toString()
-    private fun Hyperlink_Click(sender: microsoft.ui.xaml.documents.Hyperlink, args: microsoft.ui.xaml.documents.HyperlinkClickEventArgs) { GalleryNavigationHost.navigate("TitleBar") }
-    private fun ShowWindowButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun Hyperlink_Click(sender: microsoft.ui.xaml.documents.Hyperlink?, args: microsoft.ui.xaml.documents.HyperlinkClickEventArgs?) { GalleryNavigationHost.navigate("TitleBar") }
+    private fun ShowWindowButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ShowWindowButton.isEnabled = false
         sampleWindow = AppWindowTitleBarWindow().apply {
             Configure(listOf(Background.Color,Foreground.Color,ButtonBackground.Color,ButtonForeground.Color,ButtonHoverBackground.Color,ButtonHoverForeground.Color,ButtonInactiveBackground.Color,ButtonInactiveForeground.Color,InactiveBackground.Color,InactiveForeground.Color,ButtonPressedBackground.Color,ButtonPressedForeground.Color))
             closed.add { _, _ -> ShowWindowButton.isEnabled = true; sampleWindow = null }; activate()
         }
     }
-    private fun ShowExtendButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ShowExtendButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ShowExtendButton.isEnabled = false
         extendWindow = AppWindowTitleBarExtendWindow().apply {
             Configure(ExtendContentCheckBox.isChecked == true,HeightComboBox.selectedItem as? TitleBarHeightOption ?: TitleBarHeightOption.Standard)
             closed.add { _, _ -> ShowExtendButton.isEnabled = true; extendWindow = null }; activate()
         }
     }
-    private fun ExtendContentCheckBox_Checked(sender: Any?, args: RoutedEventArgs) { extendWindow?.appWindow?.titleBar?.extendsContentIntoTitleBar = true }
-    private fun ExtendContentCheckBox_Unchecked(sender: Any?, args: RoutedEventArgs) { extendWindow?.appWindow?.titleBar?.extendsContentIntoTitleBar = false }
-    private fun HeightComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { extendWindow?.appWindow?.titleBar?.let { if (it.extendsContentIntoTitleBar) it.preferredHeightOption = HeightComboBox.selectedItem as? TitleBarHeightOption ?: TitleBarHeightOption.Standard } }
-    private fun ShowThemeButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ExtendContentCheckBox_Checked(sender: Any?, args: RoutedEventArgs?) { extendWindow?.appWindow?.titleBar?.extendsContentIntoTitleBar = true }
+    private fun ExtendContentCheckBox_Unchecked(sender: Any?, args: RoutedEventArgs?) { extendWindow?.appWindow?.titleBar?.extendsContentIntoTitleBar = false }
+    private fun HeightComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { extendWindow?.appWindow?.titleBar?.let { if (it.extendsContentIntoTitleBar) it.preferredHeightOption = HeightComboBox.selectedItem as? TitleBarHeightOption ?: TitleBarHeightOption.Standard } }
+    private fun ShowThemeButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ShowThemeHeightButton.isEnabled = false
         themeHeightWindow = AppWindowTitleBarThemeWindow().apply {
             Configure(ThemeComboBox.selectedItem as? TitleBarTheme ?: TitleBarTheme.UseDefaultAppMode)
             closed.add { _, _ -> ShowThemeHeightButton.isEnabled = true; themeHeightWindow = null }; activate()
         }
     }
-    private fun ThemeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { themeHeightWindow?.appWindow?.titleBar?.preferredTheme = ThemeComboBox.selectedItem as? TitleBarTheme ?: TitleBarTheme.UseDefaultAppMode }
+    private fun ThemeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { themeHeightWindow?.appWindow?.titleBar?.preferredTheme = ThemeComboBox.selectedItem as? TitleBarTheme ?: TitleBarTheme.UseDefaultAppMode }
     private fun Background_ColorChanged(sender: Any?, color: Color) { sampleWindow?.appWindow?.titleBar?.backgroundColor = color }
     private fun Foreground_ColorChanged(sender: Any?, color: Color) { sampleWindow?.appWindow?.titleBar?.foregroundColor = color }
     private fun ButtonBackground_ColorChanged(sender: Any?, color: Color) { sampleWindow?.appWindow?.titleBar?.buttonBackgroundColor = color }

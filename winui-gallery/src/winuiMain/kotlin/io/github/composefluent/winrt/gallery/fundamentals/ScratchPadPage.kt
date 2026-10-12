@@ -35,7 +35,7 @@ internal class ScratchPadPage : Page() {
         }
         loadStatus.text = ""
     }
-    private fun ResetToDefaultClick(sender: Any?, args: RoutedEventArgs) { tasks.launch {
+    private fun ResetToDefaultClick(sender: Any?, args: RoutedEventArgs?) { tasks.launch {
         val dialog = ContentDialog().apply {
             xamlRoot = this@ScratchPadPage.xamlRoot
             title = "Are you sure you want to reset?"
@@ -43,9 +43,9 @@ internal class ScratchPadPage : Page() {
             primaryButtonText = "Reset"; closeButtonText = "Cancel"
             defaultButton = ContentDialogButton.Primary; requestedTheme = this@ScratchPadPage.actualTheme
         }
-        if (dialog.showAsync().await() == ContentDialogResult.Primary) resetContent()
+        if (dialog.showAsync()!!.await() == ContentDialogResult.Primary) resetContent()
     } }
-    private fun LoadClick(sender: Any?, args: RoutedEventArgs) = loadContent()
+    private fun LoadClick(sender: Any?, args: RoutedEventArgs?) = loadContent()
     private fun loadContent() {
         loadStatus.text = ""
         try {
@@ -63,11 +63,11 @@ internal class ScratchPadPage : Page() {
     private fun insertText(text: String, moveCursor: Boolean) {
         val cursor = checkNotNull(document.selection).startPosition
         lastChangeFromTyping = false
-        document.getRange(cursor, cursor).text = text
+        document.getRange(cursor, cursor)!!.text = text
         checkNotNull(document.selection).startPosition = cursor + if (moveCursor) text.length else 0
     }
-    private fun textbox_PreviewKeyDown(sender: Any?, args: KeyRoutedEventArgs) {}
-    private fun textbox_KeyDown(sender: Any?, args: KeyRoutedEventArgs) {
+    private fun textbox_PreviewKeyDown(sender: Any?, args: KeyRoutedEventArgs?) {}
+    private fun textbox_KeyDown(sender: Any?, args: KeyRoutedEventArgs?) { requireNotNull(args);
         lastChangeFromTyping = true
         if (args.key != VirtualKey.Tab || checkNotNull(document.selection).length <= 1) return
         val text = readText()
@@ -80,12 +80,12 @@ internal class ScratchPadPage : Page() {
         try {
             var range = document.getRange(lineStart, lineStart)
             var first = true
-            while (range.startPosition < end) {
+            while (range!!.startPosition < end) {
                 val delta = if (shift) {
                     range.moveEnd(TextRangeUnit.Character, 4)
                     val count = range.text.takeWhile { it == ' ' || it == '\t' }.length
                     range = document.getRange(range.startPosition, range.startPosition + count)
-                    range.text = ""
+                    range!!.text = ""
                     -count
                 } else { range.text = "    "; 4 }
                 if (first) { start += delta; first = false }
@@ -99,7 +99,7 @@ internal class ScratchPadPage : Page() {
             args.handled = true
         } finally { document.endUndoGroup() }
     }
-    private fun textbox_PreviewKeyUp(sender: Any?, args: KeyRoutedEventArgs) {
+    private fun textbox_PreviewKeyUp(sender: Any?, args: KeyRoutedEventArgs?) { requireNotNull(args);
         lastChangeFromTyping = true
         when (args.key) {
             VirtualKey.F5 -> loadContent()
@@ -120,7 +120,7 @@ internal class ScratchPadPage : Page() {
             }
         }
     }
-    private fun textbox_TextChanged(sender: Any?, args: RoutedEventArgs) {
+    private fun textbox_TextChanged(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         val text = readText()
         val cursor = checkNotNull(document.selection).startPosition
@@ -142,7 +142,7 @@ internal class ScratchPadPage : Page() {
         }
         oldText = readText()
     }
-    private fun textbox_ActualThemeChanged(sender: FrameworkElement, args: Any?) { if (ready) applyColors() }
+    private fun textbox_ActualThemeChanged(sender: FrameworkElement?, args: Any?) { if (ready) applyColors() }
     private fun applyColors() {
         lastChangeFromTyping = false
         ScratchPadXamlTextFormatter.applyColors(textbox, readText())

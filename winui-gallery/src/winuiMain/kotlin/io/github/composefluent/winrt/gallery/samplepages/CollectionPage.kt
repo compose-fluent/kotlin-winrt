@@ -18,19 +18,19 @@ internal class CollectionPage : Page() {
         super.initializeComponent(); navigationCacheMode = NavigationCacheMode.Enabled
         collection.itemsSource = CustomDataObject.GetDataObjects()
     }
-    private fun collection_Loaded(sender: Any?, args: RoutedEventArgs) {
+    private fun collection_Loaded(sender: Any?, args: RoutedEventArgs?) {
         val item = storedItem ?: return
         collection.scrollIntoView(item, ScrollIntoViewAlignment.Default); collection.updateLayout()
-        ConnectedAnimationService.getForCurrentView().getAnimation("BackConnectedAnimation")?.let { animation ->
+        ConnectedAnimationService.getForCurrentView()!!.getAnimation("BackConnectedAnimation")?.let { animation ->
             animation.configuration = DirectConnectedAnimationConfiguration()
-            tasks.launch { collection.tryStartConnectedAnimationAsync(animation, item, "connectedElement").await() }
+            tasks.launch { collection.tryStartConnectedAnimationAsync(animation, item, "connectedElement")!!.await() }
         }
         collection.focus(FocusState.Programmatic)
     }
-    private fun collection_ItemClick(sender: Any?, args: ItemClickEventArgs) {
+    private fun collection_ItemClick(sender: Any?, args: ItemClickEventArgs?) { requireNotNull(args);
         storedItem = args.clickedItem as? CustomDataObject
         storedItem?.let { collection.prepareConnectedAnimation("ForwardConnectedAnimation", it, "connectedElement") }
         checkNotNull(frame).navigate(DetailedInfoPage::class, storedItem, SuppressNavigationTransitionInfo())
     }
-    private fun TextBlock_IsTextTrimmedChanged(sender: TextBlock, args: IsTextTrimmedChangedEventArgs) { ToolTipService.setToolTip(sender, if (sender.isTextTrimmed) sender.text else "") }
+    private fun TextBlock_IsTextTrimmedChanged(sender: TextBlock?, args: IsTextTrimmedChangedEventArgs?) { requireNotNull(sender);  ToolTipService.setToolTip(sender, if (sender.isTextTrimmed) sender.text else "") }
 }

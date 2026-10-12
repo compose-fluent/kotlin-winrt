@@ -11,11 +11,11 @@ internal class HyperlinkButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun DisableControl1_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun DisableControl1_Click(sender: Any?, args: RoutedEventArgs?) {
         Control1.isEnabled = DisableControl1.isChecked != true
     }
 
-    private fun GoToHyperlinkButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun GoToHyperlinkButton_Click(sender: Any?, args: RoutedEventArgs?) {
         GalleryNavigationHost.navigate("ToggleButton")
     }
 }

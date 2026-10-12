@@ -10,11 +10,11 @@ internal class CheckBoxPage : Page() {
         super.initializeComponent()
     }
 
-    private fun onTwoStateClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onTwoStateClick(sender: Any?, args: RoutedEventArgs?) {
         twoStateOutput.text = if (twoStateCheckBox.isChecked == true) "Checked" else "Unchecked"
     }
 
-    private fun onThreeStateClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onThreeStateClick(sender: Any?, args: RoutedEventArgs?) {
         threeStateOutput.text = when (threeStateCheckBox.isChecked) {
             true -> "Checked"
             false -> "Unchecked"
@@ -22,11 +22,11 @@ internal class CheckBoxPage : Page() {
         }
     }
 
-    private fun onSelectAllClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onSelectAllClick(sender: Any?, args: RoutedEventArgs?) {
         listOf(option1, option2, option3).forEach { it.isChecked = allOptions.isChecked != false }
     }
 
-    private fun onOptionClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onOptionClick(sender: Any?, args: RoutedEventArgs?) {
         val options = listOf(option1, option2, option3)
         allOptions.isChecked = when {
             options.all { it.isChecked == true } -> true

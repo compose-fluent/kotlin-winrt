@@ -24,20 +24,20 @@ internal class CommandBarPage : Page(), microsoft.ui.xaml.data.INotifyPropertyCh
         unloaded.add { _, _ -> RemoveSecondaryCommands() }
     }
     private fun accelerator(button: AppBarButton, key: windows.system.VirtualKey, modifiers: windows.system.VirtualKeyModifiers = windows.system.VirtualKeyModifiers.None) {
-        button.keyboardAccelerators.add(microsoft.ui.xaml.input.KeyboardAccelerator().apply { this.key = key; this.modifiers = modifiers })
+        button.keyboardAccelerators!!.add(microsoft.ui.xaml.input.KeyboardAccelerator().apply { this.key = key; this.modifiers = modifiers })
     }
-    private fun OpenButton_Click(sender: Any?, args: RoutedEventArgs) { PrimaryCommandBar.isOpen = true; PrimaryCommandBar.isSticky = true }
-    private fun CloseButton_Click(sender: Any?, args: RoutedEventArgs) { PrimaryCommandBar.isOpen = false; PrimaryCommandBar.isSticky = false }
-    private fun OnElementClicked(sender: Any?, args: RoutedEventArgs) { SelectedOptionText.text = "${checkNotNull(sender).asWinRT<AppBarButton>().label} option selected" }
-    private fun AddSecondaryCommands_Click(sender: Any?, args: RoutedEventArgs) {
-        if (PrimaryCommandBar.secondaryCommands.size != 1) return
+    private fun OpenButton_Click(sender: Any?, args: RoutedEventArgs?) { PrimaryCommandBar.isOpen = true; PrimaryCommandBar.isSticky = true }
+    private fun CloseButton_Click(sender: Any?, args: RoutedEventArgs?) { PrimaryCommandBar.isOpen = false; PrimaryCommandBar.isSticky = false }
+    private fun OnElementClicked(sender: Any?, args: RoutedEventArgs?) { SelectedOptionText.text = "${checkNotNull(sender).asWinRT<AppBarButton>().label} option selected" }
+    private fun AddSecondaryCommands_Click(sender: Any?, args: RoutedEventArgs?) {
+        if (PrimaryCommandBar.secondaryCommands!!.size != 1) return
         listOf(Triple(Symbol.Add, "Button 1", windows.system.VirtualKey.N), Triple(Symbol.Delete, "Button 2", windows.system.VirtualKey.Delete),
             Triple(Symbol.FontDecrease, "Button 3", windows.system.VirtualKey.Subtract), Triple(Symbol.FontIncrease, "Button 4", windows.system.VirtualKey.Add)).forEachIndexed { index, item ->
-            if (index == 2) PrimaryCommandBar.secondaryCommands.add(AppBarSeparator())
-            PrimaryCommandBar.secondaryCommands.add(AppBarButton().apply { icon = SymbolIcon(item.first); label = item.second; click.add(::OnElementClicked); accelerator(this, item.third, if (index == 1) windows.system.VirtualKeyModifiers.None else windows.system.VirtualKeyModifiers.Control) })
+            if (index == 2) PrimaryCommandBar.secondaryCommands!!.add(AppBarSeparator())
+            PrimaryCommandBar.secondaryCommands!!.add(AppBarButton().apply { icon = SymbolIcon(item.first); label = item.second; click.add(::OnElementClicked); accelerator(this, item.third, if (index == 1) windows.system.VirtualKeyModifiers.None else windows.system.VirtualKeyModifiers.Control) })
         }
         MultipleButtons = true
     }
-    private fun RemoveSecondaryCommands_Click(sender: Any?, args: RoutedEventArgs) { RemoveSecondaryCommands() }
-    private fun RemoveSecondaryCommands() { while (PrimaryCommandBar.secondaryCommands.size > 1) PrimaryCommandBar.secondaryCommands.removeAt(PrimaryCommandBar.secondaryCommands.lastIndex); MultipleButtons = false }
+    private fun RemoveSecondaryCommands_Click(sender: Any?, args: RoutedEventArgs?) { RemoveSecondaryCommands() }
+    private fun RemoveSecondaryCommands() { while (PrimaryCommandBar.secondaryCommands!!.size > 1) PrimaryCommandBar.secondaryCommands!!.removeAt(PrimaryCommandBar.secondaryCommands!!.lastIndex); MultipleButtons = false }
 }

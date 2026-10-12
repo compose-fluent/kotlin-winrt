@@ -12,5 +12,5 @@ internal class ColorPickerPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true; applySpectrumShape() }
     private fun applySpectrumShape() { colorPicker.colorSpectrumShape = if (ColorSpectrumShapeRadioButtons.selectedItem == "Box") ColorSpectrumShape.Box else ColorSpectrumShape.Ring }
-    private fun ColorSpectrumShapeRadioButtons_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) applySpectrumShape() }
+    private fun ColorSpectrumShapeRadioButtons_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) applySpectrumShape() }
 }

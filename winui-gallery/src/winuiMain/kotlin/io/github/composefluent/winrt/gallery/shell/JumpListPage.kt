@@ -22,46 +22,46 @@ internal class JumpListPage : Page() {
         AddCustomGroupButton.isEnabled = supported
     }
 
-    private fun AddTasksButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun AddTasksButton_Click(sender: Any?, args: RoutedEventArgs?) {
         if (!JumpList.isSupported()) return
         tasks.launch {
-            val list = JumpList.loadCurrentAsync().await()
-            list.items.add(JumpListItem.createWithArguments("/compose", "New Message").apply {
+            val list = JumpList.loadCurrentAsync()!!.await()
+            list!!.items!!.add(JumpListItem.createWithArguments("/compose", "New Message")!!.apply {
                 description = "Compose a new message"
                 logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
             })
-            list.items.add(JumpListItem.createWithArguments("/search", "Search").apply {
+            list.items!!.add(JumpListItem.createWithArguments("/search", "Search")!!.apply {
                 description = "Search for items"
                 logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
             })
-            list.saveAsync().await()
+            list.saveAsync()!!.await()
         }
     }
 
-    private fun ClearTasksButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ClearTasksButton_Click(sender: Any?, args: RoutedEventArgs?) {
         if (!JumpList.isSupported()) return
         tasks.launch {
-            val list = JumpList.loadCurrentAsync().await()
-            list.items.clear()
-            list.saveAsync().await()
+            val list = JumpList.loadCurrentAsync()!!.await()
+            list!!.items!!.clear()
+            list.saveAsync()!!.await()
         }
     }
 
-    private fun AddCustomGroupButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun AddCustomGroupButton_Click(sender: Any?, args: RoutedEventArgs?) {
         if (!JumpList.isSupported()) return
         tasks.launch {
-            val list = JumpList.loadCurrentAsync().await()
-            list.items.add(JumpListItem.createWithArguments("/project-alpha", "Project Alpha").apply {
+            val list = JumpList.loadCurrentAsync()!!.await()
+            list!!.items!!.add(JumpListItem.createWithArguments("/project-alpha", "Project Alpha")!!.apply {
                 groupName = "Projects"
                 description = "Open Project Alpha"
                 logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
             })
-            list.items.add(JumpListItem.createWithArguments("/project-beta", "Project Beta").apply {
+            list.items!!.add(JumpListItem.createWithArguments("/project-beta", "Project Beta")!!.apply {
                 groupName = "Projects"
                 description = "Open Project Beta"
                 logo = Uri("ms-appx:///Assets/AppList.targetsize-48.png")
             })
-            list.saveAsync().await()
+            list.saveAsync()!!.await()
         }
     }
 }

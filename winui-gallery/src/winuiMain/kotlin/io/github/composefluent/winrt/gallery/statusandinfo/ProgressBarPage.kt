@@ -11,7 +11,7 @@ import microsoft.ui.xaml.media.*
 internal class ProgressBarPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true }
-    private fun ProgressValue_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) {
+    private fun ProgressValue_ValueChanged(sender: NumberBox?, args: NumberBoxValueChangedEventArgs?) { requireNotNull(sender);
         if (!ready) return
         if (sender.value.isNaN()) sender.value = 0.0 else ProgressBar2.value = sender.value
     }

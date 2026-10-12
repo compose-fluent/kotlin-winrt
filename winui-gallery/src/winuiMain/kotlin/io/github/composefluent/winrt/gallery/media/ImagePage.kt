@@ -11,13 +11,13 @@ import microsoft.ui.xaml.media.*
 internal class ImagePage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true }
-    private fun ImageStretch_Checked(sender: Any?, args: RoutedEventArgs) {
+    private fun ImageStretch_Checked(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         StretchImage.stretch = when (checkNotNull(sender).asWinRT<RadioButton>().content?.toString()) {
             "None" -> Stretch.None; "Fill" -> Stretch.Fill; "UniformToFill" -> Stretch.UniformToFill; else -> Stretch.Uniform
         }
     }
-    private fun ClickToPlaySource_ImageOpened(sender: Any?, args: RoutedEventArgs) {
+    private fun ClickToPlaySource_ImageOpened(sender: Any?, args: RoutedEventArgs?) {
         if (ClickToPlaySource.isAnimatedBitmap) PlaybackButtons.visibility = Visibility.Visible
     }
 }

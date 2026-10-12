@@ -14,7 +14,7 @@ internal class PasswordBoxPage : Page() {
         super.initializeComponent()
     }
 
-    private fun PasswordBox_PasswordChanged(sender: Any?, args: RoutedEventArgs) {
+    private fun PasswordBox_PasswordChanged(sender: Any?, args: RoutedEventArgs?) {
         val passwordBox = checkNotNull(sender).asWinRT<PasswordBox>()
         val invalid = passwordBox.password.isEmpty() || passwordBox.password == "Password"
         Control1Output.text = if (invalid) "'Password' is not allowed." else ""
@@ -22,7 +22,7 @@ internal class PasswordBoxPage : Page() {
         if (passwordBox.password == "Password") passwordBox.password = ""
     }
 
-    private fun RevealModeCheckbox_Changed(sender: Any?, args: RoutedEventArgs) {
+    private fun RevealModeCheckbox_Changed(sender: Any?, args: RoutedEventArgs?) {
         passworBoxWithRevealmode.passwordRevealMode =
             if (revealModeCheckBox.isChecked == true) PasswordRevealMode.Visible else PasswordRevealMode.Hidden
     }

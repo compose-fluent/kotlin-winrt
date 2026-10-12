@@ -17,7 +17,7 @@ internal class CommandBarFlyoutPage : Page() {
         super.initializeComponent()
     }
 
-    private fun OnElementClicked(sender: Any?, args: RoutedEventArgs) {
+    private fun OnElementClicked(sender: Any?, args: RoutedEventArgs?) {
         SelectedOptionText.text = "You clicked: " + checkNotNull(sender).asWinRT<AppBarButton>().label
     }
 
@@ -28,11 +28,11 @@ internal class CommandBarFlyoutPage : Page() {
         })
     }
 
-    private fun MyImageButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun MyImageButton_Click(sender: Any?, args: RoutedEventArgs?) {
         showMenu(true)
     }
 
-    private fun MyImageButton_ContextRequested(sender: UIElement, args: ContextRequestedEventArgs) {
+    private fun MyImageButton_ContextRequested(sender: UIElement?, args: ContextRequestedEventArgs?) { requireNotNull(args);
         showMenu(false)
         args.handled = true
     }

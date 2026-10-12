@@ -18,8 +18,8 @@ internal class SampleWindow1 : Window() {
     fun Configure(windowTitle: String, width: Int, height: Int, x: Int, y: Int) { checkNotNull(appWindow).apply {
         title = windowTitle; resize(SizeInt32(width,height)); move(PointInt32(x,y)); setTaskbarIcon("Assets/Tiles/GalleryIcon.ico"); setTitleBarIcon("Assets/Tiles/GalleryIcon.ico"); titleBar?.preferredTheme = TitleBarTheme.UseDefaultAppMode
     } }
-    private fun Show_Click(sender: Any?, args: RoutedEventArgs) { tasks.launch { checkNotNull(appWindow).hide(); delay(3000); checkNotNull(appWindow).show() } }
-    private fun Hide_Click(sender: Any?, args: RoutedEventArgs) { appWindow?.hide() }
-    private fun Close_Click(sender: Any?, args: RoutedEventArgs) { close() }
+    private fun Show_Click(sender: Any?, args: RoutedEventArgs?) { tasks.launch { checkNotNull(appWindow).hide(); delay(3000); checkNotNull(appWindow).show() } }
+    private fun Hide_Click(sender: Any?, args: RoutedEventArgs?) { appWindow?.hide() }
+    private fun Close_Click(sender: Any?, args: RoutedEventArgs?) { close() }
 
 }

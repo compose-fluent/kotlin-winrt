@@ -12,5 +12,5 @@ import microsoft.ui.xaml.media.animation.*
 @GalleryPage(route = "SemanticZoom", title = "SemanticZoom", group = "Scrolling", order = 4)
 internal class SemanticZoomPage : Page() {
     val Groups: List<ControlInfoDataGroup> = ControlInfoDataSource.Groups
-    private fun List_GotFocus(sender: Any?, args: RoutedEventArgs) { Control1.startBringIntoView() }
+    private fun List_GotFocus(sender: Any?, args: RoutedEventArgs?) { Control1.startBringIntoView() }
 }

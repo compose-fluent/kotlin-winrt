@@ -9,5 +9,5 @@ import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "CustomXamlConditionals", title = "XAML Conditions", group = "FundamentalsItem", order = 5)
 internal class CustomXamlConditionalsPage : Page() {
-    
+
 }

@@ -13,5 +13,5 @@ internal class CanvasPage : Page() {
     override fun initializeComponent() { super.initializeComponent(); ready = true; updateAutomationName() }
     private fun updateAutomationName() { microsoft.ui.xaml.automation.AutomationProperties.setName(ZSlider,
         "Canvas.ZIndex value ${ZSlider.value.toInt()} of range ${ZSlider.minimum.toInt()} to ${ZSlider.maximum.toInt()}") }
-    private fun ZSlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs) { if (ready) updateAutomationName() }
+    private fun ZSlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs?) { if (ready) updateAutomationName() }
 }

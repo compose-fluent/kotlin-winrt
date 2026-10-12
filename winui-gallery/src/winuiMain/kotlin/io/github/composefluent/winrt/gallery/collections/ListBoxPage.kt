@@ -17,11 +17,11 @@ internal class ListBoxPage : Page() {
         ready = true
         UpdateFont()
     }
-    private fun ColorChanged(sender: Any?, args: SelectionChangedEventArgs) {
+    private fun ColorChanged(sender: Any?, args: SelectionChangedEventArgs?) {
         if (!ready) return
         val selected = ColorsList.selectedItem?.toString() ?: return
         colorOutput.fill = brush(when (selected) { "Blue" -> 0x0000FFu; "Green" -> 0x008000u; "Red" -> 0xFF0000u; else -> 0xFFFF00u })
     }
-    private fun FontChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) UpdateFont() }
+    private fun FontChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) UpdateFont() }
     private fun UpdateFont() { FontsList.selectedItem?.toString()?.let { fontOutput.fontFamily = FontFamily(it) } }
 }

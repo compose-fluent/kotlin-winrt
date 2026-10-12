@@ -11,7 +11,7 @@ import microsoft.ui.xaml.media.*
 internal class PopupPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true }
-    private fun ShowPopupOffsetClicked(sender: Any?, args: RoutedEventArgs) { StandardPopup.isOpen = true; IsLightDismissEnabledToggleSwitch.isEnabled = false }
-    private fun ClosePopupClicked(sender: Any?, args: RoutedEventArgs) { StandardPopup.isOpen = false; IsLightDismissEnabledToggleSwitch.isEnabled = true }
+    private fun ShowPopupOffsetClicked(sender: Any?, args: RoutedEventArgs?) { StandardPopup.isOpen = true; IsLightDismissEnabledToggleSwitch.isEnabled = false }
+    private fun ClosePopupClicked(sender: Any?, args: RoutedEventArgs?) { StandardPopup.isOpen = false; IsLightDismissEnabledToggleSwitch.isEnabled = true }
     private fun PopupClosed(sender: Any?, args: Any?) { if (ready) IsLightDismissEnabledToggleSwitch.isEnabled = true }
 }

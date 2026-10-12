@@ -14,6 +14,6 @@ import kotlinx.coroutines.delay
 
 internal class SampleWindow6 : Window() {
     override fun initializeComponent() { super.initializeComponent(); GalleryWindows.track(this); checkNotNull(appWindow).apply { setIcon("Assets/Tiles/GalleryIcon.ico"); titleBar?.preferredTheme = TitleBarTheme.UseDefaultAppMode; setPresenter(AppWindowPresenterKind.FullScreen) } }
-    private fun Close_Click(sender: Any?, args: RoutedEventArgs) { close() }
+    private fun Close_Click(sender: Any?, args: RoutedEventArgs?) { close() }
 
 }

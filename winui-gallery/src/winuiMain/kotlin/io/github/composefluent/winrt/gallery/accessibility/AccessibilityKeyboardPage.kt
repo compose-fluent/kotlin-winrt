@@ -11,15 +11,15 @@ internal class AccessibilityKeyboardPage : Page() {
         super.initializeComponent()
     }
 
-    private fun MakeRedButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun MakeRedButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ColorRectangle.fill = brush(0xFF0000u)
     }
 
-    private fun MakeBlueButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun MakeBlueButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ColorRectangle.fill = brush(0x0000FFu)
     }
 
-    private fun MakeChartreuseButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun MakeChartreuseButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ColorRectangle.fill = brush(0x7FFF00u)
     }
 }

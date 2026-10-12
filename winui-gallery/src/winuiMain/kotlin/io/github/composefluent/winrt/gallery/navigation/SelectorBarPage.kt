@@ -17,14 +17,14 @@ internal class SelectorBarPage : Page() {
     val PlumColorCollection: MutableList<SolidColorBrush> = WinRTObservableList(List(7) { SolidColorBrush(rgb(0xDDA0DDu)) })
     val PowderBlueColorCollection: MutableList<SolidColorBrush> = WinRTObservableList(List(4) { SolidColorBrush(rgb(0xB0E0E6u)) })
     override fun initializeComponent() { super.initializeComponent(); ready = true; ContentFrame.navigate(SamplePage1::class); ItemsView3.itemsSource = PinkColorCollection }
-    private fun SelectorBar2_SelectionChanged(sender: SelectorBar, args: SelectorBarSelectionChangedEventArgs) {
+    private fun SelectorBar2_SelectionChanged(sender: SelectorBar?, args: SelectorBarSelectionChangedEventArgs?) { requireNotNull(sender);
         if (!ready) return
-        val index = sender.items.indexOf(sender.selectedItem)
+        val index = sender.items!!.indexOf(sender.selectedItem)
         val page = listOf(SamplePage1::class, SamplePage2::class, SamplePage3::class, SamplePage4::class, SamplePage5::class)[index.coerceIn(0, 4)]
         ContentFrame.navigate(page, null, SlideNavigationTransitionInfo().apply { effect = if (index > previousSelectedIndex) SlideNavigationTransitionEffect.FromRight else SlideNavigationTransitionEffect.FromLeft })
         previousSelectedIndex = index
     }
-    private fun SelectorBar3_SelectionChanged(sender: SelectorBar, args: SelectorBarSelectionChangedEventArgs) {
+    private fun SelectorBar3_SelectionChanged(sender: SelectorBar?, args: SelectorBarSelectionChangedEventArgs?) { requireNotNull(sender);
         if (ready) ItemsView3.itemsSource = when (sender.selectedItem) { SelectorBarItemPink -> PinkColorCollection; SelectorBarItemPlum -> PlumColorCollection; else -> PowderBlueColorCollection }
     }
 }

@@ -9,11 +9,11 @@ import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "MenuFlyout", title = "MenuFlyout", group = "MenusAndToolbars", order = 6)
 internal class MenuFlyoutPage : Page() {
-    private fun MenuFlyoutItem_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun MenuFlyoutItem_Click(sender: Any?, args: RoutedEventArgs?) {
         Control1Output.text = "Sort by: ${checkNotNull(sender).asWinRT<MenuFlyoutItem>().tag}"
     }
-    private fun SplitMenuFlyoutItem_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun SplitMenuFlyoutItem_Click(sender: Any?, args: RoutedEventArgs?) {
         Control3bOutput.text = "Clicked: ${checkNotNull(sender).asWinRT<MenuFlyoutItem>().text}"
     }
-    private fun Example5_Loaded(sender: Any?, args: RoutedEventArgs) {}
+    private fun Example5_Loaded(sender: Any?, args: RoutedEventArgs?) {}
 }

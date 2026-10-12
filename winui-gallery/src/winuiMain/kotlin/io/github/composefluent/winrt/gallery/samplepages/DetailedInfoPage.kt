@@ -14,10 +14,10 @@ import microsoft.ui.xaml.navigation.*
 internal class DetailedInfoPage : Page() {
     var DetailedObject: CustomDataObject? = null
     override fun initializeComponent() { super.initializeComponent(); GoBackButton.loaded.add { _, _ -> GoBackButton.focus(FocusState.Programmatic); GoBackButton.startBringIntoView() } }
-    override fun onNavigatedTo(args: NavigationEventArgs) {
+    override fun onNavigatedTo(args: NavigationEventArgs?) { requireNotNull(args);
         super.onNavigatedTo(args); DetailedObject = args.parameter as? CustomDataObject
-        ConnectedAnimationService.getForCurrentView().getAnimation("ForwardConnectedAnimation")?.tryStart(detailedImage, listOf(coordinatedPanel))
+        ConnectedAnimationService.getForCurrentView()!!.getAnimation("ForwardConnectedAnimation")?.tryStart(detailedImage, listOf(coordinatedPanel))
     }
-    override fun onNavigatingFrom(args: NavigatingCancelEventArgs) { super.onNavigatingFrom(args); ConnectedAnimationService.getForCurrentView().prepareToAnimate("BackConnectedAnimation", detailedImage) }
-    private fun BackButton_Click(sender: Any?, args: RoutedEventArgs) { checkNotNull(frame).goBack() }
+    override fun onNavigatingFrom(args: NavigatingCancelEventArgs?) { requireNotNull(args);  super.onNavigatingFrom(args); ConnectedAnimationService.getForCurrentView()!!.prepareToAnimate("BackConnectedAnimation", detailedImage) }
+    private fun BackButton_Click(sender: Any?, args: RoutedEventArgs?) { checkNotNull(frame).goBack() }
 }

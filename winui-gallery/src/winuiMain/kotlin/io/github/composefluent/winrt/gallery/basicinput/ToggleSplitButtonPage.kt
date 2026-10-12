@@ -21,7 +21,7 @@ internal class ToggleSplitButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun BulletButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun BulletButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>()
         val symbol = checkNotNull(button.content).asWinRT<SymbolIcon>().symbol
         marker = if (symbol == Symbol.List) MarkerType.Bullet else MarkerType.UppercaseRoman
@@ -33,7 +33,7 @@ internal class ToggleSplitButtonPage : Page() {
         myRichEditBox.focus(FocusState.Keyboard)
     }
 
-    private fun MyListButton_IsCheckedChanged(sender: ToggleSplitButton, args: ToggleSplitButtonIsCheckedChangedEventArgs) {
+    private fun MyListButton_IsCheckedChanged(sender: ToggleSplitButton?, args: ToggleSplitButtonIsCheckedChangedEventArgs?) { requireNotNull(sender);
         myRichEditBox.document!!.selection!!.paragraphFormat!!.listType =
             if (sender.isChecked) marker else MarkerType.None
     }

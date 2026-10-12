@@ -15,17 +15,17 @@ internal class CardPage : Page() {
     private val tasks = GalleryPageTasks(this)
     private var storedItem: CustomDataObject? = null
     override fun initializeComponent() { super.initializeComponent(); collection.itemsSource = CustomDataObject.GetDataObjects(true) }
-    private fun BackButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun BackButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val item = storedItem ?: return
-        val animation = ConnectedAnimationService.getForCurrentView().prepareToAnimate("backwardsAnimation", destinationElement)
+        val animation = ConnectedAnimationService.getForCurrentView()!!.prepareToAnimate("backwardsAnimation", destinationElement)
         SmokeGrid.children!!.remove(destinationElement)
-        animation.completed.add(::Animation_Completed)
+        animation!!.completed.add(::Animation_Completed)
         collection.scrollIntoView(item, ScrollIntoViewAlignment.Default); collection.updateLayout()
         animation.configuration = DirectConnectedAnimationConfiguration()
-        tasks.launch { if (!collection.tryStartConnectedAnimationAsync(animation, item, "connectedElement").await()) Animation_Completed(animation, null) }
+        tasks.launch { if (!collection.tryStartConnectedAnimationAsync(animation, item, "connectedElement")!!.await()) Animation_Completed(animation, null) }
     }
-    private fun Animation_Completed(sender: ConnectedAnimation, args: Any?) { SmokeGrid.visibility = Visibility.Collapsed; if (!SmokeGrid.children!!.contains(destinationElement)) SmokeGrid.children!!.add(destinationElement) }
-    private fun TipsGrid_ItemClick(sender: Any?, args: ItemClickEventArgs) {
+    private fun Animation_Completed(sender: ConnectedAnimation?, args: Any?) { SmokeGrid.visibility = Visibility.Collapsed; if (!SmokeGrid.children!!.contains(destinationElement)) SmokeGrid.children!!.add(destinationElement) }
+    private fun TipsGrid_ItemClick(sender: Any?, args: ItemClickEventArgs?) { requireNotNull(args);
         val item = args.clickedItem as? CustomDataObject ?: return
         storedItem = item
         val animation = collection.prepareConnectedAnimation("forwardAnimation", item, "connectedElement")

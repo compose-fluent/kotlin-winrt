@@ -20,6 +20,6 @@ internal class CopyButton : Button() {
         }
     }
     companion object {
-        val CopiedMessageProperty = DependencyProperty.register("CopiedMessage", String::class, CopyButton::class, PropertyMetadata("Copied to clipboard"))
+        val CopiedMessageProperty = DependencyProperty.register("CopiedMessage", String::class, CopyButton::class, PropertyMetadata("Copied to clipboard"))!!
     }
 }

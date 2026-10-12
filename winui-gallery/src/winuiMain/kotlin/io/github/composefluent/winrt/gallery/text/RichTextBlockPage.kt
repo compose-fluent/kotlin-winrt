@@ -12,7 +12,7 @@ import microsoft.ui.xaml.media.SolidColorBrush
 
 @GalleryPage(route = "RichTextBlock", title = "RichTextBlock", group = "Text", order = 4)
 internal class RichTextBlockPage : Page() {
-    private fun HighlightColorCombobox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+    private fun HighlightColorCombobox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) {
         val selected = (sender as? ComboBox)?.selectedItem as? ComboBoxItem
         val color = when (selected?.content as? String) {
             "Red" -> rgb(0xFF0000u)
@@ -21,9 +21,9 @@ internal class RichTextBlockPage : Page() {
         }
         val highlighter = TextHighlighter().apply {
             background = SolidColorBrush(color)
-            ranges.add(TextRange(28, 11))
+            ranges!!.add(TextRange(28, 11))
         }
-        TextHighlightingRichTextBlock.textHighlighters.clear()
-        TextHighlightingRichTextBlock.textHighlighters.add(highlighter)
+        TextHighlightingRichTextBlock.textHighlighters!!.clear()
+        TextHighlightingRichTextBlock.textHighlighters!!.add(highlighter)
     }
 }

@@ -32,10 +32,10 @@ internal class ItemsViewPage : ItemsPageBase() {
             }
         }
     }
-    private fun BasicItemsView_ItemInvoked(sender: ItemsView, args: ItemsViewItemInvokedEventArgs) { (args.invokedItem as? CustomDataObject)?.let { tblBasicInvokeOutput.text = "You invoked ${it.Title}." } }
+    private fun BasicItemsView_ItemInvoked(sender: ItemsView?, args: ItemsViewItemInvokedEventArgs?) { requireNotNull(args);  (args.invokedItem as? CustomDataObject)?.let { tblBasicInvokeOutput.text = "You invoked ${it.Title}." } }
     private fun ApplyLinedFlowLayoutLineHeight() { if (ready) linedFlowLayout?.lineHeight = if (rbSmallLineHeight.isChecked == true) 80.0 else 160.0 }
     private fun ApplyLinedFlowLayoutOptions() { if (ready) linedFlowLayout?.let { it.lineSpacing = nbLineSpacing.value; it.minItemSpacing = nbMinItemSpacing.value } }
-    private fun RbLayout_Checked(sender: Any?, args: RoutedEventArgs) {
+    private fun RbLayout_Checked(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         val name = checkNotNull(sender).asWinRT<RadioButton>().content.toString()
         when (name) {
@@ -47,25 +47,25 @@ internal class ItemsViewPage : ItemsPageBase() {
         spStackLayoutOptions.visibility = if (name == "StackLayout") Visibility.Visible else Visibility.Collapsed
         spUniformGridLayoutOptions.visibility = if (name == "UniformGridLayout") Visibility.Visible else Visibility.Collapsed
     }
-    private fun RbLineHeight_Checked(sender: Any?, args: RoutedEventArgs) {
+    private fun RbLineHeight_Checked(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         val view = SwappableLayoutsItemsView.scrollView
         if (view != null && view.verticalOffset != 0.0) { applyLineHeight = true; view.scrollTo(0.0, 0.0, ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)) } else ApplyLinedFlowLayoutLineHeight()
     }
-    private fun NbLinedFlowLayoutOptions_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) {
+    private fun NbLinedFlowLayoutOptions_ValueChanged(sender: NumberBox?, args: NumberBoxValueChangedEventArgs?) {
         if (!ready) return
         val view = SwappableLayoutsItemsView.scrollView
         if (view != null && view.verticalOffset != 0.0) { applyOptions = true; view.scrollTo(0.0, 0.0, ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)) } else ApplyLinedFlowLayoutOptions()
     }
-    private fun NbStackLayoutOptions_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) { if (ready) stackLayout?.spacing = nbSpacing.value }
-    private fun NbUniformGridLayoutOptions_ValueChanged(sender: NumberBox, args: NumberBoxValueChangedEventArgs) { if (ready) uniformGridLayout?.let { it.minColumnSpacing = nbMinColumnSpacing.value; it.minRowSpacing = nbMinRowSpacing.value; it.maximumRowsOrColumns = nbMaximumRowsOrColumns.value.toInt() } }
-    private fun SwappableLayoutsItemsViewScrollView_ViewChanged(sender: ScrollView, args: Any?) {
+    private fun NbStackLayoutOptions_ValueChanged(sender: NumberBox?, args: NumberBoxValueChangedEventArgs?) { if (ready) stackLayout?.spacing = nbSpacing.value }
+    private fun NbUniformGridLayoutOptions_ValueChanged(sender: NumberBox?, args: NumberBoxValueChangedEventArgs?) { if (ready) uniformGridLayout?.let { it.minColumnSpacing = nbMinColumnSpacing.value; it.minRowSpacing = nbMinRowSpacing.value; it.maximumRowsOrColumns = nbMaximumRowsOrColumns.value.toInt() } }
+    private fun SwappableLayoutsItemsViewScrollView_ViewChanged(sender: ScrollView?, args: Any?) { requireNotNull(sender);
         if (sender.verticalOffset != 0.0) return
         if (applyOptions) { applyOptions = false; ApplyLinedFlowLayoutOptions() }
         if (applyLineHeight) { applyLineHeight = false; ApplyLinedFlowLayoutLineHeight() }
     }
-    private fun SwappableSelectionModesItemsView_ItemInvoked(sender: ItemsView, args: ItemsViewItemInvokedEventArgs) { (args.invokedItem as? CustomDataObject)?.let { tblInvocationOutput.text = "You invoked ${it.Title}." } }
-    private fun SwappableSelectionModesItemsView_SelectionChanged(sender: ItemsView, args: ItemsViewSelectionChangedEventArgs) { if (ready) tblSelectionOutput.text = "You have selected ${sender.selectedItems.size} item(s)." }
-    private fun CmbSelectionMode_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) SwappableSelectionModesItemsView.selectionMode = ItemsViewSelectionMode.fromAbi(checkNotNull(sender).asWinRT<ComboBox>().selectedIndex) }
-    private fun ChkIsItemInvokedEnabled_IsCheckedChanged(sender: Any?, args: RoutedEventArgs) { if (ready) { tblInvocationOutput.text = ""; SwappableSelectionModesItemsView.isItemInvokedEnabled = chkIsItemInvokedEnabled.isChecked == true } }
+    private fun SwappableSelectionModesItemsView_ItemInvoked(sender: ItemsView?, args: ItemsViewItemInvokedEventArgs?) { requireNotNull(args);  (args.invokedItem as? CustomDataObject)?.let { tblInvocationOutput.text = "You invoked ${it.Title}." } }
+    private fun SwappableSelectionModesItemsView_SelectionChanged(sender: ItemsView?, args: ItemsViewSelectionChangedEventArgs?) { requireNotNull(sender);  if (ready) tblSelectionOutput.text = "You have selected ${sender.selectedItems!!.size} item(s)." }
+    private fun CmbSelectionMode_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) SwappableSelectionModesItemsView.selectionMode = ItemsViewSelectionMode.fromAbi(checkNotNull(sender).asWinRT<ComboBox>().selectedIndex) }
+    private fun ChkIsItemInvokedEnabled_IsCheckedChanged(sender: Any?, args: RoutedEventArgs?) { if (ready) { tblInvocationOutput.text = ""; SwappableSelectionModesItemsView.isItemInvokedEnabled = chkIsItemInvokedEnabled.isChecked == true } }
 }

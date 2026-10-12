@@ -22,7 +22,7 @@ internal class EmptyCollectionToObjectConverter : DependencyObject(), IValueConv
     }
     override fun convertBack(value: Any?, targetType: KClass<*>?, parameter: Any?, language: String): Any? = throw UnsupportedOperationException()
     companion object {
-        val EmptyValueProperty: DependencyProperty = DependencyProperty.register("EmptyValue", Any::class, EmptyCollectionToObjectConverter::class, PropertyMetadata(null))
-        val NotEmptyValueProperty: DependencyProperty = DependencyProperty.register("NotEmptyValue", Any::class, EmptyCollectionToObjectConverter::class, PropertyMetadata(null))
+        val EmptyValueProperty: DependencyProperty = DependencyProperty.register("EmptyValue", Any::class, EmptyCollectionToObjectConverter::class, PropertyMetadata(null))!!
+        val NotEmptyValueProperty: DependencyProperty = DependencyProperty.register("NotEmptyValue", Any::class, EmptyCollectionToObjectConverter::class, PropertyMetadata(null))!!
     }
 }

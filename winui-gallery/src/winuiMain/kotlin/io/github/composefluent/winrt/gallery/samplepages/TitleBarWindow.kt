@@ -17,11 +17,11 @@ internal class TitleBarWindow : Window() {
     override fun initializeComponent() {
         super.initializeComponent(); GalleryWindows.track(this); ready = true; extendsContentIntoTitleBar = true
         appWindow?.titleBar?.preferredHeightOption = TitleBarHeightOption.Tall; setTitleBar(titleBar); appWindow?.setIcon("Assets/Tiles/GalleryIcon.ico")
-        navView.selectedItem = navView.menuItems.firstOrNull()
+        navView.selectedItem = navView.menuItems!!.firstOrNull()
     }
-    private fun TitleBar_PaneToggleRequested(sender: TitleBar, args: Any?) { navView.isPaneOpen = !navView.isPaneOpen }
-    private fun TitleBar_BackRequested(sender: TitleBar, args: Any?) { if (navFrame.canGoBack) navFrame.goBack() }
-    private fun navView_SelectionChanged(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) {
+    private fun TitleBar_PaneToggleRequested(sender: TitleBar?, args: Any?) { navView.isPaneOpen = !navView.isPaneOpen }
+    private fun TitleBar_BackRequested(sender: TitleBar?, args: Any?) { if (navFrame.canGoBack) navFrame.goBack() }
+    private fun navView_SelectionChanged(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);
         if (!ready) return
         val tag = args.selectedItem?.asWinRT<NavigationViewItem>()?.tag?.toString() ?: return
         val page = when (tag) { "SamplePage1" -> SamplePage1::class; "SamplePage2" -> SamplePage2::class; "SamplePage3" -> SamplePage3::class; else -> SamplePage4::class }

@@ -13,8 +13,8 @@ internal class VariedImageSizeLayout : VirtualizingLayout() {
     private var lastWidth = -1f
     private var first = 0
     private var last = -1
-    override fun onItemsChangedCore(context: VirtualizingLayoutContext, source: Any?, args: NotifyCollectionChangedEventArgs) { bounds.clear(); offsets = floatArrayOf(); first = 0; last = -1; lastWidth = -1f; invalidateMeasure() }
-    override fun measureOverride(context: VirtualizingLayoutContext, availableSize: Size): Size {
+    override fun onItemsChangedCore(context: VirtualizingLayoutContext?, source: Any?, args: NotifyCollectionChangedEventArgs?) { bounds.clear(); offsets = floatArrayOf(); first = 0; last = -1; lastWidth = -1f; invalidateMeasure() }
+    override fun measureOverride(context: VirtualizingLayoutContext?, availableSize: Size): Size { requireNotNull(context);
         val width = availableSize.width
         val itemWidth = Width.toFloat()
         if (width != lastWidth || offsets.isEmpty()) {
@@ -28,12 +28,12 @@ internal class VariedImageSizeLayout : VirtualizingLayout() {
         var nextOffset = -1f
         var index = first
         while (index < context.itemCount && nextOffset < bottom) {
-            val child = context.getOrCreateElementAt(index); child.measure(Size(itemWidth, availableSize.height))
+            val child = context.getOrCreateElementAt(index); child!!.measure(Size(itemWidth, availableSize.height))
             if (index >= bounds.size) { val column = offsets.indices.minBy { offsets[it] }; nextOffset = offsets[column]; bounds.add(Rect(column * itemWidth, nextOffset, itemWidth, child.desiredSize.height)); offsets[column] += child.desiredSize.height }
             else nextOffset = bounds.getOrNull(index + 1)?.y ?: offsets.min()
             last = index++
         }
         return Size(width, offsets.max())
     }
-    override fun arrangeOverride(context: VirtualizingLayoutContext, finalSize: Size): Size { for (index in first..last) context.getOrCreateElementAt(index).arrange(bounds[index]); return finalSize }
+    override fun arrangeOverride(context: VirtualizingLayoutContext?, finalSize: Size): Size { requireNotNull(context); for (index in first..last) context.getOrCreateElementAt(index)!!.arrange(bounds[index]); return finalSize }
 }

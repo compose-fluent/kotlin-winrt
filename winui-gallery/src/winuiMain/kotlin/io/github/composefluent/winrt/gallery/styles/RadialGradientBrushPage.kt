@@ -33,7 +33,7 @@ internal class RadialGradientBrushPage : Page() {
             slider.stepFrequency = if (absolute) height / 50.0 else 0.02; slider.smallChange = if (absolute) 10.0 else 0.05
         }
     }
-    private fun OnSliderValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs) {
+    private fun OnSliderValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs?) {
         if (!ready) return
         RadialGradientBrushExample.center = windows.foundation.Point(CenterXSlider.value.toFloat(), CenterYSlider.value.toFloat())
         RadialGradientBrushExample.radiusX = RadiusXSlider.value; RadialGradientBrushExample.radiusY = RadiusYSlider.value

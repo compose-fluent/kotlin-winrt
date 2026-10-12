@@ -12,5 +12,5 @@ internal class SliderPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true; applySnapsTo() }
     private fun applySnapsTo() { Slider3.snapsTo = if (SnapsToRadioButtons.selectedItem == "StepValues") SliderSnapsTo.StepValues else SliderSnapsTo.Ticks }
-    private fun SnapsToRadioButtons_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) applySnapsTo() }
+    private fun SnapsToRadioButtons_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) applySnapsTo() }
 }

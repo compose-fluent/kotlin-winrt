@@ -94,7 +94,7 @@ internal object GalleryTheme {
         // https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.system.themesettings
         val settings = ThemeSettings.createForWindowId(checkNotNull(window.appWindow).id)
         themeSettings = settings
-        val token = settings.changed.add { _, _ -> element.dispatcherQueue?.tryEnqueue { safeRefresh("ThemeSettings.changed") } }
+        val token = settings!!.changed.add { _, _ -> element.dispatcherQueue?.tryEnqueue { safeRefresh("ThemeSettings.changed") } }
         window.activated.add { _, _ -> safeRefresh("window.activated") }
         window.closed.add { _, _ ->
             settings.changed.remove(token)
@@ -122,10 +122,10 @@ internal object GalleryTheme {
 
     private fun lookupThemeResource(dictionary: ResourceDictionary, key: String, theme: String): Any? {
         val variants = dictionary.themeDictionaries
-        val selected = if (variants.containsKey(theme)) variants[theme] else variants["Default"]
+        val selected = if (variants!!.containsKey(theme)) variants[theme] else variants["Default"]
         selected?.asWinRT<ResourceDictionary>()?.let { lookup(it, key) }?.let { return it }
-        for (merged in dictionary.mergedDictionaries.reversed()) {
-            lookupThemeResource(merged.asWinRT<ResourceDictionary>(), key, theme)?.let { return it }
+        for (merged in dictionary.mergedDictionaries!!.reversed()) {
+            lookupThemeResource(merged!!.asWinRT<ResourceDictionary>(), key, theme)?.let { return it }
         }
         return null
     }
@@ -207,7 +207,7 @@ internal object GalleryTheme {
             destination.startPoint = gradient.startPoint; destination.endPoint = gradient.endPoint
             destination.mappingMode = gradient.mappingMode; destination.spreadMethod = gradient.spreadMethod
             destination.colorInterpolationMode = gradient.colorInterpolationMode; destination.opacity = gradient.opacity
-            gradient.gradientStops!!.forEach { stop -> destination.gradientStops!!.add(GradientStop().apply { color = stop.color; offset = stop.offset }) }
+            gradient.gradientStops!!.forEach { stop -> destination.gradientStops!!.add(GradientStop().apply { color = stop!!.color; offset = stop.offset }) }
         }
     }
 

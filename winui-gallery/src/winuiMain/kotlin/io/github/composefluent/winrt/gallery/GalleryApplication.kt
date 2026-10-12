@@ -23,13 +23,13 @@ class GalleryApplication : Application() {
     override fun initializeComponent() {
         super.initializeComponent()
         unhandledException.add { _, args ->
-            println("Kotlin WinUI Gallery: ${args.message}")
+            println("Kotlin WinUI Gallery: ${args!!.message}")
         }
     }
 
-    override fun onLaunched(args: LaunchActivatedEventArgs) {
+    override fun onLaunched(args: LaunchActivatedEventArgs?) {
         try {
-            launchWindow(args.arguments)
+            launchWindow(args?.arguments.orEmpty())
         } catch (error: Throwable) {
             println("Kotlin WinUI Gallery: window creation failed\n${error.stackTraceToString()}")
             throw error
@@ -37,7 +37,7 @@ class GalleryApplication : Application() {
     }
 
     private fun launchWindow(arguments: String) {
-        val activation = AppInstance.getCurrent().getActivatedEventArgs()
+        val activation = checkNotNull(checkNotNull(AppInstance.getCurrent()).getActivatedEventArgs())
         // WinUI's LaunchActivatedEventArgs.Arguments is unsupported on desktop.
         // AppLifecycle's Launch payload implements the Windows launch interface;
         // use that interface because its implementation is an App SDK class.
@@ -62,7 +62,7 @@ class GalleryApplication : Application() {
             val size = appWindow.size
             if (size.width >= 640 && size.height >= 500) GalleryPreferences.putWindowSize(size)
         }
-        appWindow.changed.add { _, args -> if (args.didSizeChange) persistRestoredWindowSize() }
+        appWindow.changed.add { _, args -> if (args!!.didSizeChange) persistRestoredWindowSize() }
         galleryWindow.closed.add { _, _ ->
             persistRestoredWindowSize()
             GalleryWindows.closeAll()

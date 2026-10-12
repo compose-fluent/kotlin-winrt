@@ -14,10 +14,10 @@ internal class ColorPage : Page() {
     private var previousSelectedIndex = 0
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true }
-    private fun PageSelector_Loaded(sender: Any?, args: RoutedEventArgs) { PageSelector.selectedItem = PageSelector.items[0] }
-    private fun PageSelector_SelectionChanged(sender: SelectorBar, args: SelectorBarSelectionChangedEventArgs) {
+    private fun PageSelector_Loaded(sender: Any?, args: RoutedEventArgs?) { PageSelector.selectedItem = checkNotNull(PageSelector.items)[0] }
+    private fun PageSelector_SelectionChanged(sender: SelectorBar?, args: SelectorBarSelectionChangedEventArgs?) { requireNotNull(sender);
         if (!ready) return
-        val index = sender.items.indexOf(sender.selectedItem)
+        val index = sender.items!!.indexOf(sender.selectedItem)
         val types = listOf(io.github.composefluent.winrt.gallery.controls.colorsections.TextSection::class,
             io.github.composefluent.winrt.gallery.controls.colorsections.FillSection::class, io.github.composefluent.winrt.gallery.controls.colorsections.StrokeSection::class,
             io.github.composefluent.winrt.gallery.controls.colorsections.BackgroundSection::class, io.github.composefluent.winrt.gallery.controls.colorsections.SignalSection::class,

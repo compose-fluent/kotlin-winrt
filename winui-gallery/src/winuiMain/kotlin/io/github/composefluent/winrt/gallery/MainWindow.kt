@@ -45,27 +45,27 @@ internal class MainWindow : winui3package.WindowEx() {
         ElementSoundPlayer.spatialAudioMode = if (GalleryPreferences.flag("SpatialAudio")) ElementSpatialAudioMode.On else ElementSpatialAudioMode.Off
         titleBar.isPaneToggleButtonVisible = !GalleryPreferences.flag("TopNavigation")
         GalleryCatalog.home.let { home ->
-            navigation.menuItems.add(menu(home.id, home.title, home.glyph.ifBlank { null }))
+            navigation.menuItems!!.add(menu(home.id, home.title, home.glyph.ifBlank { null }))
         }
         var controlsHeaderAdded = false
         GalleryCatalog.groups.forEach { group ->
             if (!group.isSpecialSection && !controlsHeaderAdded) {
-                navigation.menuItems.add(NavigationViewItemHeader().apply { content = "Controls" })
-                navigation.menuItems.add(menu("All", "All", "\uE8A9"))
+                navigation.menuItems!!.add(NavigationViewItemHeader().apply { content = "Controls" })
+                navigation.menuItems!!.add(menu("All", "All", "\uE8A9"))
                 controlsHeaderAdded = true
             }
             val parent = menu(group.id, group.title, group.glyph, expandable = true)
-            navigation.menuItems.add(parent)
+            navigation.menuItems!!.add(parent)
             group.pages.forEach { page ->
-                parent.menuItems.add(menu(page.id, page.title, page.glyph.ifBlank { null }))
+                parent.menuItems!!.add(menu(page.id, page.title, page.glyph.ifBlank { null }))
             }
         }
         search.maxWidth = 580.0
         search.horizontalAlignment = HorizontalAlignment.Stretch
-        search.keyboardAccelerators.firstOrNull()?.invoked?.add { _,args -> search.focus(FocusState.Programmatic); args.handled = true }
+        search.keyboardAccelerators!!.firstOrNull()?.invoked?.add { _,args -> search.focus(FocusState.Programmatic); args!!.handled = true }
         navigation.selectionChanged.add { _, args ->
             if (!selecting) {
-                if (args.isSettingsSelected) navigate("Settings")
+                if (args!!.isSettingsSelected) navigate("Settings")
                 else {
                     // NavigationView reports the selected data item and its realized
                     // container separately.  The container is the stable source of the
@@ -78,30 +78,30 @@ internal class MainWindow : winui3package.WindowEx() {
         // SelectionChanged only exposes the parent container.  Resolve the route
         // from the invoked container first so every sample leaf is actionable.
         navigation.itemInvoked.add { _, args ->
-            if (!selecting) navigationRoute(args.invokedItemContainer, args.invokedItem)?.let(::navigate)
+            if (!selecting) navigationRoute(args!!.invokedItemContainer, args.invokedItem)?.let(::navigate)
         }
         titleBar.paneToggleRequested.add { _, _ -> navigation.isPaneOpen = !navigation.isPaneOpen }
         titleBar.backRequested.add { _, _ -> if (history.isNotEmpty()) show(history.removeAt(history.lastIndex)) }
         // The accelerator belongs to the page-wide Grid for key routing, but
         // its default placement would show an Alt+Left tooltip on empty content.
         root.keyboardAcceleratorPlacementMode = microsoft.ui.xaml.input.KeyboardAcceleratorPlacementMode.Hidden
-        root.keyboardAccelerators.add(KeyboardAccelerator().apply {
+        root.keyboardAccelerators!!.add(KeyboardAccelerator().apply {
             key = VirtualKey.Left; modifiers = VirtualKeyModifiers.Menu
-            invoked.add { _, args -> if (history.isNotEmpty()) { show(history.removeAt(history.lastIndex)); args.handled = true } }
+            invoked.add { _, args -> if (history.isNotEmpty()) { show(history.removeAt(history.lastIndex)); args!!.handled = true } }
         })
         root.pointerPressed.add { _, args ->
-            if (args.getCurrentPoint(root).properties?.isXButton1Pressed == true && history.isNotEmpty()) {
+            if (args!!.getCurrentPoint(root)!!.properties?.isXButton1Pressed == true && history.isNotEmpty()) {
                 show(history.removeAt(history.lastIndex)); args.handled = true
             }
         }
         search.textChanged.add { _, args ->
-            if (args.reason != AutoSuggestionBoxTextChangeReason.UserInput) return@add
+            if (args!!.reason != AutoSuggestionBoxTextChangeReason.UserInput) return@add
             val suggestions = results(search.text).take(12).map { it.title }
             search.itemsSource = suggestions.ifEmpty { listOf("No results found") }
         }
         search.querySubmitted.add { _, args ->
-            val page = GalleryCatalog.pages.firstOrNull { it.title == args.chosenSuggestion?.toString() }
-            navigate(page?.id ?: "Search:${args.queryText}")
+            val page = GalleryCatalog.pages.firstOrNull { it.title == args!!.chosenSuggestion?.toString() }
+            navigate(page?.id ?: "Search:${args!!.queryText}")
         }
         extendsContentIntoTitleBar = true
         setTitleBar(titleBar)
@@ -120,7 +120,7 @@ internal class MainWindow : winui3package.WindowEx() {
         // NavigationView event args that expose only the item's content string.
         tapped.add { _, args ->
             if (!selecting) navigate(id)
-            if (!expandable) args.handled = true
+            if (!expandable) args!!.handled = true
         }
         this@MainWindow.menuItems[id] = this
     }

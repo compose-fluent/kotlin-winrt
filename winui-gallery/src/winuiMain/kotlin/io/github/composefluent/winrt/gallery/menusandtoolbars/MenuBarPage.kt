@@ -12,7 +12,7 @@ internal class MenuBarPage : Page() {
         super.initializeComponent()
     }
 
-    private fun OnElementClicked(sender: Any?, args: RoutedEventArgs) {
+    private fun OnElementClicked(sender: Any?, args: RoutedEventArgs?) {
         val item = checkNotNull(sender).asWinRT<MenuFlyoutItem>()
         val output = when (item.name.firstOrNull()) {
             'o' -> SelectedOptionText

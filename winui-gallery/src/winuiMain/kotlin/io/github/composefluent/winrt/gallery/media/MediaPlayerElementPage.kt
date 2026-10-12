@@ -24,12 +24,12 @@ internal class MediaPlayerElementPage : Page() {
         }
     }
 
-    private fun OpenFileButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun OpenFileButton_Click(sender: Any?, args: RoutedEventArgs?) {
         tasks.launch {
             val picker = FileOpenPicker(checkNotNull(checkNotNull(Player1.xamlRoot).contentIslandEnvironment).appWindowId)
-            val file = picker.pickSingleFileAsync().await() ?: return@launch
+            val file = picker.pickSingleFileAsync()!!.await() ?: return@launch
             Player1.mediaPlayer?.pause()
-            Player1.source = MediaSource.createFromStorageFile(StorageFile.getFileFromPathAsync(file.path).await())
+            Player1.source = MediaSource.createFromStorageFile(StorageFile.getFileFromPathAsync(file.path)!!.await())
         }
     }
 }

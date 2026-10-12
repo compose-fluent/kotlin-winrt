@@ -11,7 +11,7 @@ internal object ScratchPadXamlTextFormatter {
         val document = checkNotNull(editor.textDocument)
         val dark = editor.actualTheme == ElementTheme.Dark
         fun color(start: Int, end: Int, light: UInt, night: UInt) {
-            if (end > start) checkNotNull(document.getRange(start, end).characterFormat).foregroundColor = rgb(if (dark) night else light)
+            if (end > start) checkNotNull(document.getRange(start, end)!!.characterFormat).foregroundColor = rgb(if (dark) night else light)
         }
         document.beginUndoGroup()
         try {

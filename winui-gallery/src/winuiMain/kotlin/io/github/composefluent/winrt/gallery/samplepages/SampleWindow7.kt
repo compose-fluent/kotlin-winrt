@@ -16,7 +16,7 @@ internal class SampleWindow7 : Window() {
     override fun initializeComponent() { super.initializeComponent(); GalleryWindows.track(this) }
     fun Configure(size: String) { checkNotNull(appWindow).apply {
         setIcon("Assets/Tiles/GalleryIcon.ico"); titleBar?.preferredTheme = TitleBarTheme.UseDefaultAppMode
-        setPresenter(CompactOverlayPresenter.create().apply { initialSize = when (size) { "Small" -> CompactOverlaySize.Small; "Large" -> CompactOverlaySize.Large; else -> CompactOverlaySize.Medium } })
+        setPresenter(CompactOverlayPresenter.create()!!.apply { initialSize = when (size) { "Small" -> CompactOverlaySize.Small; "Large" -> CompactOverlaySize.Large; else -> CompactOverlaySize.Medium } })
     } }
 
 }

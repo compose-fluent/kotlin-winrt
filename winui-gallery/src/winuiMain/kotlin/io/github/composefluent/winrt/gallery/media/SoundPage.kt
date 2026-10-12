@@ -19,7 +19,7 @@ internal class SoundPage : Page() {
         spatialAudioBox.isChecked = soundToggle.isOn && ElementSoundPlayer.spatialAudioMode == ElementSpatialAudioMode.On
     }
 
-    private fun Button_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun Button_Click(sender: Any?, args: RoutedEventArgs?) {
         val index = checkNotNull(sender).asWinRT<Button>().tag?.toString()?.toIntOrNull() ?: return
         val kind = listOf(ElementSoundKind.Focus, ElementSoundKind.Invoke, ElementSoundKind.Show,
             ElementSoundKind.Hide, ElementSoundKind.MovePrevious, ElementSoundKind.MoveNext, ElementSoundKind.GoBack)
@@ -27,15 +27,15 @@ internal class SoundPage : Page() {
         ElementSoundPlayer.play(kind)
     }
 
-    private fun spatialAudioBox_Checked(sender: Any?, args: RoutedEventArgs) {
+    private fun spatialAudioBox_Checked(sender: Any?, args: RoutedEventArgs?) {
         if (soundToggle.isOn) ElementSoundPlayer.spatialAudioMode = ElementSpatialAudioMode.On
     }
 
-    private fun spatialAudioBox_Unchecked(sender: Any?, args: RoutedEventArgs) {
+    private fun spatialAudioBox_Unchecked(sender: Any?, args: RoutedEventArgs?) {
         if (soundToggle.isOn) ElementSoundPlayer.spatialAudioMode = ElementSpatialAudioMode.Off
     }
 
-    private fun soundToggle_Toggled(sender: Any?, args: RoutedEventArgs) {
+    private fun soundToggle_Toggled(sender: Any?, args: RoutedEventArgs?) {
         spatialAudioBox.isEnabled = soundToggle.isOn
         if (soundToggle.isOn) {
             ElementSoundPlayer.state = ElementSoundPlayerState.On

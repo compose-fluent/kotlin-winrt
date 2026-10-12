@@ -14,7 +14,7 @@ internal class XamlUICommandPage : Page() {
         super.initializeComponent()
     }
 
-    private fun CustomXamlUICommand_ExecuteRequested(sender: XamlUICommand, args: ExecuteRequestedEventArgs) {
+    private fun CustomXamlUICommand_ExecuteRequested(sender: XamlUICommand?, args: ExecuteRequestedEventArgs?) {
         XamlUICommandOutput.text = "You fired the custom command"
         FrameworkElementAutomationPeer.fromElement(CustomButton)?.raiseNotificationEvent(
             AutomationNotificationKind.ActionCompleted,

@@ -24,7 +24,7 @@ internal class NavigationViewPage : Page() {
         Category("Category 4", "This is category 4", Symbol.Mail)))
     override fun initializeComponent() {
         super.initializeComponent(); ready = true
-        listOf(nvSample2, nvSample5, nvSample6, nvSample7, nvSample8, nvSample9).forEach { it.selectedItem = it.menuItems.firstOrNull() }
+        listOf(nvSample2, nvSample5, nvSample6, nvSample7, nvSample8, nvSample9).forEach { it.selectedItem = it.menuItems!!.firstOrNull() }
         nvSample4.selectedItem = Categories.first()
         setASBSubstitutionString()
         nvSample2.updateLayout()
@@ -38,29 +38,29 @@ internal class NavigationViewPage : Page() {
         if (header) sender.header = "Sample Page ${tag.last()}"
         if (transition) frame.navigate(page, null, args.recommendedNavigationTransitionInfo) else frame.navigate(page)
     }
-    private fun NavigationView_SelectionChanged(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame,true) }
-    private fun NavigationView_SelectionChanged2(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) {
+    private fun NavigationView_SelectionChanged(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);  if (ready) navigate(sender,args,contentFrame,true) }
+    private fun NavigationView_SelectionChanged2(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);
         if (ready && !CameFromGridChange) navigate(sender,args,contentFrame2)
         CameFromGridChange = false
     }
-    private fun NavigationView_SelectionChanged4(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) {
+    private fun NavigationView_SelectionChanged4(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);
         if (!ready) return
         if (args.isSettingsSelected) contentFrame4.navigate(SampleSettingsPage::class) else {
             val category = args.selectedItem as? Category ?: return
             sender.header = "Sample Page ${category.Name.last()}"; contentFrame4.navigate(SamplePage1::class)
         }
     }
-    private fun NavigationView_SelectionChanged5(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame5,true) }
-    private fun NavigationView_SelectionChanged6(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame6) }
-    private fun NavigationView_SelectionChanged7(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame7,transition=true) }
-    private fun NavigationView_SelectionChanged8(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame8,true) }
-    private fun NavigationView_SelectionChanged9(sender: NavigationView, args: NavigationViewSelectionChangedEventArgs) { if (ready) navigate(sender,args,contentFrame9,transition=true) }
+    private fun NavigationView_SelectionChanged5(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);  if (ready) navigate(sender,args,contentFrame5,true) }
+    private fun NavigationView_SelectionChanged6(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);  if (ready) navigate(sender,args,contentFrame6) }
+    private fun NavigationView_SelectionChanged7(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);  if (ready) navigate(sender,args,contentFrame7,transition=true) }
+    private fun NavigationView_SelectionChanged8(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);  if (ready) navigate(sender,args,contentFrame8,true) }
+    private fun NavigationView_SelectionChanged9(sender: NavigationView?, args: NavigationViewSelectionChangedEventArgs?) { requireNotNull(sender); requireNotNull(args);  if (ready) navigate(sender,args,contentFrame9,transition=true) }
     private fun checked(sender: Any?): Boolean = checkNotNull(sender).asWinRT<CheckBox>().isChecked == true
-    private fun headerCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.alwaysShowHeader = checked(sender) }
-    private fun settingsCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.isSettingsVisible = checked(sender) }
-    private fun visibleCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.isBackButtonVisible = if (checked(sender)) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed }
-    private fun enableCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.isBackEnabled = checked(sender) }
-    private fun autoSuggestCheck_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun headerCheck_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) nvSample.alwaysShowHeader = checked(sender) }
+    private fun settingsCheck_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) nvSample.isSettingsVisible = checked(sender) }
+    private fun visibleCheck_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) nvSample.isBackButtonVisible = if (checked(sender)) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed }
+    private fun enableCheck_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) nvSample.isBackEnabled = checked(sender) }
+    private fun autoSuggestCheck_Click(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         if (checked(sender)) {
             nvSample.autoSuggestBox = AutoSuggestBox().apply { queryIcon = SymbolIcon(Symbol.Find); microsoft.ui.xaml.automation.AutomationProperties.setName(this,"Search") }
@@ -68,8 +68,8 @@ internal class NavigationViewPage : Page() {
         } else { nvSample.autoSuggestBox = null; navViewASB.Value = null }
     }
     private fun setASBSubstitutionString() { navViewASB.Value = "\n    <NavigationView.AutoSuggestBox>\n        <AutoSuggestBox QueryIcon=\"Find\" AutomationProperties.Name=\"Search\" />\n    </NavigationView.AutoSuggestBox>\n" }
-    private fun panemc_Check_Click(sender: Any?, args: RoutedEventArgs) { if (ready) PaneHyperlink.visibility = if (checked(sender)) Visibility.Visible else Visibility.Collapsed }
-    private fun paneFooterCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) FooterStackPanel.visibility = if (checked(sender)) Visibility.Visible else Visibility.Collapsed }
+    private fun panemc_Check_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) PaneHyperlink.visibility = if (checked(sender)) Visibility.Visible else Visibility.Collapsed }
+    private fun paneFooterCheck_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) FooterStackPanel.visibility = if (checked(sender)) Visibility.Visible else Visibility.Collapsed }
     private fun setPanePosition(sender: Any?, mode: NavigationViewPaneDisplayMode) {
         if (!ready) return
         val radio = checkNotNull(sender).asWinRT<RadioButton>()
@@ -78,10 +78,10 @@ internal class NavigationViewPage : Page() {
         view.paneDisplayMode = mode; view.isPaneOpen = mode == NavigationViewPaneDisplayMode.Left
         if (view == nvSample) FooterStackPanel.orientation = if (mode == NavigationViewPaneDisplayMode.Top) Orientation.Horizontal else Orientation.Vertical
     }
-    private fun panePositionLeft_Checked(sender: Any?, args: RoutedEventArgs) = setPanePosition(sender,NavigationViewPaneDisplayMode.Left)
-    private fun panePositionTop_Checked(sender: Any?, args: RoutedEventArgs) = setPanePosition(sender,NavigationViewPaneDisplayMode.Top)
-    private fun panePositionLeftCompact_Checked(sender: Any?, args: RoutedEventArgs) = setPanePosition(sender,NavigationViewPaneDisplayMode.LeftCompact)
-    private fun sffCheck_Click(sender: Any?, args: RoutedEventArgs) { if (ready) nvSample.selectionFollowsFocus = if (checked(sender)) NavigationViewSelectionFollowsFocus.Enabled else NavigationViewSelectionFollowsFocus.Disabled }
-    private fun suppressselectionCheck_Checked_Click(sender: Any?, args: RoutedEventArgs) { if (ready) SamplePage2Item.selectsOnInvoked = !checked(sender) }
+    private fun panePositionLeft_Checked(sender: Any?, args: RoutedEventArgs?) = setPanePosition(sender,NavigationViewPaneDisplayMode.Left)
+    private fun panePositionTop_Checked(sender: Any?, args: RoutedEventArgs?) = setPanePosition(sender,NavigationViewPaneDisplayMode.Top)
+    private fun panePositionLeftCompact_Checked(sender: Any?, args: RoutedEventArgs?) = setPanePosition(sender,NavigationViewPaneDisplayMode.LeftCompact)
+    private fun sffCheck_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) nvSample.selectionFollowsFocus = if (checked(sender)) NavigationViewSelectionFollowsFocus.Enabled else NavigationViewSelectionFollowsFocus.Disabled }
+    private fun suppressselectionCheck_Checked_Click(sender: Any?, args: RoutedEventArgs?) { if (ready) SamplePage2Item.selectsOnInvoked = !checked(sender) }
 
 }

@@ -64,12 +64,13 @@ internal class SampleCodePresenter : UserControl() {
         text.selectionChanged.add { _, _ -> CopyButtonBorder.visibility = if (IsCopyButtonVisible && text.selectedText.isEmpty()) Visibility.Visible else Visibility.Collapsed }
         Substitutions.filterNot(subscriptions::containsKey).forEach { value -> val listener: () -> Unit = { Refresh() }; subscriptions[value] = listener; value.addValueChanged(listener) }
     }
-    private fun SampleCodePresenter_Loaded(sender: Any?, args: RoutedEventArgs) { hasLoaded = true; Refresh() }
-    private fun CodePresenter_Loaded(sender: Any?, args: RoutedEventArgs) { Refresh() }
-    private fun SampleCodePresenter_ActualThemeChanged(sender: FrameworkElement, args: Any?) { Refresh() }
-    private fun CopyCodeButton_Click(sender: Any?, args: RoutedEventArgs) { Clipboard.setContent(DataPackage().apply { setText(actualCode) }) }
-    private fun CodeScrollViewer_Loaded(sender: Any?, args: RoutedEventArgs) {
-        fun Find(element: DependencyObject): ScrollBar? {
+    private fun SampleCodePresenter_Loaded(sender: Any?, args: RoutedEventArgs?) { hasLoaded = true; Refresh() }
+    private fun CodePresenter_Loaded(sender: Any?, args: RoutedEventArgs?) { Refresh() }
+    private fun SampleCodePresenter_ActualThemeChanged(sender: FrameworkElement?, args: Any?) { Refresh() }
+    private fun CopyCodeButton_Click(sender: Any?, args: RoutedEventArgs?) { Clipboard.setContent(DataPackage().apply { setText(actualCode) }) }
+    private fun CodeScrollViewer_Loaded(sender: Any?, args: RoutedEventArgs?) {
+        fun Find(element: DependencyObject?): ScrollBar? {
+            if (element == null) return null
             (element as? ScrollBar)?.takeIf { it.orientation == Orientation.Horizontal }?.let { return it }
             for (i in 0 until VisualTreeHelper.getChildrenCount(element)) Find(VisualTreeHelper.getChild(element, i))?.let { return it }
             return null
@@ -81,9 +82,9 @@ internal class SampleCodePresenter : UserControl() {
         bar.scroll.add { _, _ -> CopyButtonBorder.visibility = Visibility.Collapsed; timer.stop(); timer.start() }
     }
     companion object {
-        val CodeProperty: DependencyProperty = DependencyProperty.register("Code", String::class, SampleCodePresenter::class, PropertyMetadata(""))
-        val CodeSourceFileProperty: DependencyProperty = DependencyProperty.register("CodeSourceFile", String::class, SampleCodePresenter::class, PropertyMetadata(""))
-        val SampleTypeProperty: DependencyProperty = DependencyProperty.register("SampleType", String::class, SampleCodePresenter::class, PropertyMetadata("XAML"))
-        val IsCopyButtonVisibleProperty: DependencyProperty = DependencyProperty.register("IsCopyButtonVisible", Boolean::class, SampleCodePresenter::class, PropertyMetadata(true))
+        val CodeProperty: DependencyProperty = DependencyProperty.register("Code", String::class, SampleCodePresenter::class, PropertyMetadata(""))!!
+        val CodeSourceFileProperty: DependencyProperty = DependencyProperty.register("CodeSourceFile", String::class, SampleCodePresenter::class, PropertyMetadata(""))!!
+        val SampleTypeProperty: DependencyProperty = DependencyProperty.register("SampleType", String::class, SampleCodePresenter::class, PropertyMetadata("XAML"))!!
+        val IsCopyButtonVisibleProperty: DependencyProperty = DependencyProperty.register("IsCopyButtonVisible", Boolean::class, SampleCodePresenter::class, PropertyMetadata(true))!!
     }
 }

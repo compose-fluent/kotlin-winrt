@@ -10,11 +10,11 @@ internal class ToggleButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun onToggleClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onToggleClick(sender: Any?, args: RoutedEventArgs?) {
         output.text = if (toggleButton.isChecked == true) "On" else "Off"
     }
 
-    private fun onDisableClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onDisableClick(sender: Any?, args: RoutedEventArgs?) {
         toggleButton.isEnabled = disableToggle.isChecked != true
     }
 }

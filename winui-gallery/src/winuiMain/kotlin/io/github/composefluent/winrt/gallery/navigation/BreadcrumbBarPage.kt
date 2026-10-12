@@ -15,10 +15,10 @@ internal class BreadcrumbBarPage : Page() {
     val Folders: MutableList<Folder> = WinRTObservableList(defaultFolders)
     val FoldersString: List<String> = listOf("Home", "Documents", "Design", "Northwind", "Images", "Folder1", "Folder2", "Folder3")
     override fun initializeComponent() { super.initializeComponent(); BreadcrumbBar2.itemClicked.add(::BreadcrumbBar2_ItemClicked) }
-    private fun BreadcrumbBar2_ItemClicked(sender: BreadcrumbBar, args: BreadcrumbBarItemClickedEventArgs) {
+    private fun BreadcrumbBar2_ItemClicked(sender: BreadcrumbBar?, args: BreadcrumbBarItemClickedEventArgs?) { requireNotNull(args);
         for (index in Folders.lastIndex downTo args.index.toInt() + 1) Folders.removeAt(index)
     }
-    private fun ResetSampleButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ResetSampleButton_Click(sender: Any?, args: RoutedEventArgs?) {
         defaultFolders.filterNot(Folders::contains).forEach(Folders::add)
         announce(ResetSampleBtn, "BreadcrumbBar sample reset successful.", "BreadCrumbBarSampleResetNotificationId")
     }

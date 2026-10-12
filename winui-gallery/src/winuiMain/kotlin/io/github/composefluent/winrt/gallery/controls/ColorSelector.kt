@@ -17,12 +17,12 @@ internal class ColorSelector : UserControl() {
     fun addColorChanged(handler: EventHandler<Color>) { handlers.add(handler) }
     fun removeColorChanged(handler: EventHandler<Color>) { handlers.remove(handler) }
     override fun initializeComponent() { super.initializeComponent(); ready = true; UpdateVisual(Color) }
-    private fun ColorPicker_ColorChanged(sender: ColorPicker, args: ColorChangedEventArgs) { if (ready && Color != args.newColor) Color = args.newColor }
+    private fun ColorPicker_ColorChanged(sender: ColorPicker?, args: ColorChangedEventArgs?) { requireNotNull(args);  if (ready && Color != args.newColor) Color = args.newColor }
     private fun UpdateVisual(color: Color) { if (!ready) return; CurrentColor.background = SolidColorBrush(color); if (ColorPicker.color != color) ColorPicker.color = color }
     companion object {
         val ColorProperty: DependencyProperty = DependencyProperty.register("Color",Color::class,ColorSelector::class,PropertyMetadata(Color(0u,0u,0u,0u),PropertyChangedCallback { value,args ->
-            val selector = checkNotNull(value).asWinRT<ColorSelector>(); val color = args.newValue as Color
+            val selector = checkNotNull(value).asWinRT<ColorSelector>(); val color = args!!.newValue as Color
             selector.UpdateVisual(color); selector.handlers.toList().forEach { it(selector,color) }
-        }))
+        }))!!
     }
 }

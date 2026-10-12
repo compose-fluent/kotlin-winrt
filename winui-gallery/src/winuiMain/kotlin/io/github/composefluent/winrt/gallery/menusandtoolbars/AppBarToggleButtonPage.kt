@@ -13,7 +13,7 @@ internal class AppBarToggleButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun AppBarButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun AppBarButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<AppBarToggleButton>()
         val output: TextBlock = when (button.name) {
             "Button1" -> Control1Output

@@ -4,5 +4,5 @@ import microsoft.ui.xaml.controls.Page
 import microsoft.ui.xaml.media.animation.*
 
 internal class SamplePage5 : Page() {
-    
+
 }

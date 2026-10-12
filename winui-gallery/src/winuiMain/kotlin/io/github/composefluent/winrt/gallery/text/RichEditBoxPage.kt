@@ -19,37 +19,37 @@ internal class RichEditBoxPage : Page() {
         checkNotNull(MathEditor.textDocument).setMathMode(microsoft.ui.text.RichEditMathMode.MathOnly)
         checkNotNull(mathEditor2.textDocument).setMathMode(microsoft.ui.text.RichEditMathMode.MathOnly)
     }
-    private fun Menu_Opening(sender: microsoft.ui.xaml.controls.primitives.FlyoutBase, args: Any?) {
+    private fun Menu_Opening(sender: microsoft.ui.xaml.controls.primitives.FlyoutBase?, args: Any?) { requireNotNull(sender);
         val flyout = sender.asWinRT<CommandBarFlyout>()
-        if (flyout.target == REBCustom) flyout.primaryCommands.add(AppBarButton().apply { command = microsoft.ui.xaml.input.StandardUICommand(microsoft.ui.xaml.input.StandardUICommandKind.Share).asWinRT<microsoft.ui.xaml.input.ICommand>() })
+        if (flyout.target == REBCustom) flyout.primaryCommands!!.add(AppBarButton().apply { command = microsoft.ui.xaml.input.StandardUICommand(microsoft.ui.xaml.input.StandardUICommandKind.Share).asWinRT<microsoft.ui.xaml.input.ICommand>() })
     }
-    private fun REBCustom_Loaded(sender: Any?, args: RoutedEventArgs) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.add(menuOpeningHandler) } }
-    private fun REBCustom_Unloaded(sender: Any?, args: RoutedEventArgs) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.remove(menuOpeningHandler) } }
-    private fun OpenButton_Click(sender: Any?, args: RoutedEventArgs) { tasks.launch {
+    private fun REBCustom_Loaded(sender: Any?, args: RoutedEventArgs?) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.add(menuOpeningHandler) } }
+    private fun REBCustom_Unloaded(sender: Any?, args: RoutedEventArgs?) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.remove(menuOpeningHandler) } }
+    private fun OpenButton_Click(sender: Any?, args: RoutedEventArgs?) { tasks.launch {
         val picker = microsoft.windows.storage.pickers.FileOpenPicker(checkNotNull(checkNotNull(checkNotNull(sender).asWinRT<FrameworkElement>().xamlRoot).contentIslandEnvironment).appWindowId).apply {
-            suggestedStartLocation = microsoft.windows.storage.pickers.PickerLocationId.DocumentsLibrary; fileTypeFilter.add(".rtf")
+            suggestedStartLocation = microsoft.windows.storage.pickers.PickerLocationId.DocumentsLibrary; fileTypeFilter!!.add(".rtf")
         }
-        val result = picker.pickSingleFileAsync().await() ?: return@launch
-        val file = windows.storage.StorageFile.getFileFromPathAsync(result.path).await()
-        file.openAsync(windows.storage.FileAccessMode.Read).await().use { checkNotNull(editor.document).loadFromStream(microsoft.ui.text.TextSetOptions.FormatRtf, it) }
+        val result = picker.pickSingleFileAsync()!!.await() ?: return@launch
+        val file = windows.storage.StorageFile.getFileFromPathAsync(result.path)!!.await()
+        file!!.openAsync(windows.storage.FileAccessMode.Read)!!.await().use { checkNotNull(editor.document).loadFromStream(microsoft.ui.text.TextSetOptions.FormatRtf, it) }
     } }
-    private fun SaveButton_Click(sender: Any?, args: RoutedEventArgs) { tasks.launch {
+    private fun SaveButton_Click(sender: Any?, args: RoutedEventArgs?) { tasks.launch {
         val picker = microsoft.windows.storage.pickers.FileSavePicker(checkNotNull(checkNotNull(checkNotNull(sender).asWinRT<FrameworkElement>().xamlRoot).contentIslandEnvironment).appWindowId).apply {
-            suggestedStartLocation = microsoft.windows.storage.pickers.PickerLocationId.DocumentsLibrary; suggestedFileName = "New Document"; fileTypeChoices["Rich Text"] = mutableListOf(".rtf")
+            suggestedStartLocation = microsoft.windows.storage.pickers.PickerLocationId.DocumentsLibrary; suggestedFileName = "New Document"; fileTypeChoices!!["Rich Text"] = mutableListOf(".rtf")
         }
-        val result = picker.pickSaveFileAsync().await() ?: return@launch
+        val result = picker.pickSaveFileAsync()!!.await() ?: return@launch
         val split = result.path.lastIndexOf('\\')
-        val folder = windows.storage.StorageFolder.getFolderFromPathAsync(result.path.substring(0, split)).await()
-        val file = folder.createFileAsync(result.path.substring(split + 1), windows.storage.CreationCollisionOption.ReplaceExisting).await()
+        val folder = windows.storage.StorageFolder.getFolderFromPathAsync(result.path.substring(0, split))!!.await()
+        val file = folder!!.createFileAsync(result.path.substring(split + 1), windows.storage.CreationCollisionOption.ReplaceExisting)!!.await()
         windows.storage.CachedFileManager.deferUpdates(file)
         var status: windows.storage.provider.FileUpdateStatus? = null
-        try { file.openAsync(windows.storage.FileAccessMode.ReadWrite).await().use { it.size = 0uL; checkNotNull(editor.document).saveToStream(microsoft.ui.text.TextGetOptions.FormatRtf, it) } }
-        finally { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { status = windows.storage.CachedFileManager.completeUpdatesAsync(file).await() } }
+        try { file!!.openAsync(windows.storage.FileAccessMode.ReadWrite)!!.await().use { it!!.size = 0uL; checkNotNull(editor.document).saveToStream(microsoft.ui.text.TextGetOptions.FormatRtf, it) } }
+        finally { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { status = windows.storage.CachedFileManager.completeUpdatesAsync(file)!!.await() } }
         check(status == windows.storage.provider.FileUpdateStatus.Complete) { "File ${file.name} couldn't be saved." }
     } }
-    private fun BoldButton_Click(sender: Any?, args: RoutedEventArgs) { checkNotNull(checkNotNull(checkNotNull(editor.document).selection).characterFormat).bold = microsoft.ui.text.FormatEffect.Toggle }
-    private fun ItalicButton_Click(sender: Any?, args: RoutedEventArgs) { checkNotNull(checkNotNull(checkNotNull(editor.document).selection).characterFormat).italic = microsoft.ui.text.FormatEffect.Toggle }
-    private fun ColorButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun BoldButton_Click(sender: Any?, args: RoutedEventArgs?) { checkNotNull(checkNotNull(checkNotNull(editor.document).selection).characterFormat).bold = microsoft.ui.text.FormatEffect.Toggle }
+    private fun ItalicButton_Click(sender: Any?, args: RoutedEventArgs?) { checkNotNull(checkNotNull(checkNotNull(editor.document).selection).characterFormat).italic = microsoft.ui.text.FormatEffect.Toggle }
+    private fun ColorButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val shape = checkNotNull(checkNotNull(sender).asWinRT<Button>().content).asWinRT<microsoft.ui.xaml.shapes.Rectangle>()
         currentColor = checkNotNull(shape.fill).asWinRT<SolidColorBrush>().color
         checkNotNull(checkNotNull(checkNotNull(editor.document).selection).characterFormat).foregroundColor = currentColor
@@ -59,7 +59,7 @@ internal class RichEditBoxPage : Page() {
         if (!ready) return
         FindBoxRemoveHighlights(); if (findBox.text.isEmpty()) return
         val range = checkNotNull(editor.document).getRange(0, 0)
-        while (range.findText(findBox.text, microsoft.ui.text.TextConstants.maxUnitCount, microsoft.ui.text.FindOptions.None) > 0) {
+        while (range!!.findText(findBox.text, microsoft.ui.text.TextConstants.maxUnitCount, microsoft.ui.text.FindOptions.None) > 0) {
             checkNotNull(range.characterFormat).backgroundColor = GalleryTheme.resource("SystemColorHighlightColor") as windows.ui.Color
             checkNotNull(range.characterFormat).foregroundColor = GalleryTheme.resource("SystemColorHighlightTextColor") as windows.ui.Color
         }
@@ -69,23 +69,23 @@ internal class RichEditBoxPage : Page() {
         val background = editor.background?.asWinRT<SolidColorBrush>() ?: return
         val foreground = editor.foreground?.asWinRT<SolidColorBrush>() ?: return
         val range = checkNotNull(editor.document).getRange(0, microsoft.ui.text.TextConstants.maxUnitCount)
-        checkNotNull(range.characterFormat).backgroundColor = background.color; checkNotNull(range.characterFormat).foregroundColor = foreground.color
+        checkNotNull(range!!.characterFormat).backgroundColor = background.color; checkNotNull(range.characterFormat).foregroundColor = foreground.color
     }
-    private fun Editor_GotFocus(sender: Any?, args: RoutedEventArgs) {
+    private fun Editor_GotFocus(sender: Any?, args: RoutedEventArgs?) {
         val range = checkNotNull(editor.document).getRange(0, microsoft.ui.text.TextConstants.maxUnitCount)
-        checkNotNull(range.characterFormat).backgroundColor = GalleryTheme.brush("TextControlBackgroundFocused").asWinRT<SolidColorBrush>().color
+        checkNotNull(range!!.characterFormat).backgroundColor = GalleryTheme.brush("TextControlBackgroundFocused").asWinRT<SolidColorBrush>().color
     }
-    private fun Editor_TextChanged(sender: Any?, args: RoutedEventArgs) {
+    private fun Editor_TextChanged(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         val format = checkNotNull(checkNotNull(checkNotNull(editor.document).selection).characterFormat)
         if (format.foregroundColor != currentColor) format.foregroundColor = currentColor
     }
-    private fun mathEditor2_TextChanged(sender: Any?, args: RoutedEventArgs) {
+    private fun mathEditor2_TextChanged(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         val mathML = WinRTOut<String>(); checkNotNull(mathEditor2.document).getMathML(mathML)
         MathmlPresenter.Code = mathML.value.takeIf { it.isNotEmpty() }?.let(::FormatMathML) ?: "<!-- No MathML content -->"
     }
-    private fun SetMathmlFormulaBtn_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun SetMathmlFormulaBtn_Click(sender: Any?, args: RoutedEventArgs?) {
         val formula = checkNotNull(GalleryCodeCatalog.sourceDocument("RichEditBox/MathmlFormula.txt")).source
         checkNotNull(mathEditor2.document).setMathML(if (mathEditor2.actualTheme == ElementTheme.Dark) formula.replace("#000000", "#FFFFFF") else formula)
     }

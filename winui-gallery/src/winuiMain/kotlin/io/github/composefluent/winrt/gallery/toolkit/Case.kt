@@ -15,8 +15,8 @@ internal class Case : DependencyObject() {
         set(value) { setValue(IsDefaultProperty, value) }
 
     companion object {
-        val ContentProperty: DependencyProperty = DependencyProperty.register("Content", Any::class, Case::class, PropertyMetadata(null))
-        val ValueProperty: DependencyProperty = DependencyProperty.register("Value", Any::class, Case::class, PropertyMetadata(null))
-        val IsDefaultProperty: DependencyProperty = DependencyProperty.register("IsDefault", Boolean::class, Case::class, PropertyMetadata(false))
+        val ContentProperty: DependencyProperty = DependencyProperty.register("Content", Any::class, Case::class, PropertyMetadata(null))!!
+        val ValueProperty: DependencyProperty = DependencyProperty.register("Value", Any::class, Case::class, PropertyMetadata(null))!!
+        val IsDefaultProperty: DependencyProperty = DependencyProperty.register("IsDefault", Boolean::class, Case::class, PropertyMetadata(false))!!
     }
 }

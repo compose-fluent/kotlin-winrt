@@ -17,8 +17,8 @@ internal class ColorPageExample : UserControl() {
         get() = getValue(ExampleContentProperty)?.asWinRT<UIElement>()
         set(value) { setValue(ExampleContentProperty, value) }
     companion object {
-        val DescriptionProperty: DependencyProperty = DependencyProperty.register("Description", String::class, ColorPageExample::class, PropertyMetadata(""))
-        val TitleProperty: DependencyProperty = DependencyProperty.register("Title", String::class, ColorPageExample::class, PropertyMetadata(""))
-        val ExampleContentProperty: DependencyProperty = DependencyProperty.register("ExampleContent", UIElement::class, ColorPageExample::class, PropertyMetadata(null))
+        val DescriptionProperty: DependencyProperty = DependencyProperty.register("Description", String::class, ColorPageExample::class, PropertyMetadata(""))!!
+        val TitleProperty: DependencyProperty = DependencyProperty.register("Title", String::class, ColorPageExample::class, PropertyMetadata(""))!!
+        val ExampleContentProperty: DependencyProperty = DependencyProperty.register("ExampleContent", UIElement::class, ColorPageExample::class, PropertyMetadata(null))!!
     }
 }

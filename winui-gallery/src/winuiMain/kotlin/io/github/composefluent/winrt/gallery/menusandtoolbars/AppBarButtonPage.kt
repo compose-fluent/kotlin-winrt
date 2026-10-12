@@ -16,7 +16,7 @@ internal class AppBarButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun AppBarButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun AppBarButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>()
         val name = button.name
         val output: TextBlock = when (name) {

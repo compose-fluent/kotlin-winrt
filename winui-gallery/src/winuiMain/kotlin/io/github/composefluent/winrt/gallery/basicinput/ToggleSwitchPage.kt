@@ -14,7 +14,7 @@ internal class ToggleSwitchPage : Page() {
         progress.isActive = workToggle.isOn
     }
 
-    private fun onWorkToggled(sender: Any?, args: RoutedEventArgs) {
+    private fun onWorkToggled(sender: Any?, args: RoutedEventArgs?) {
         // IsOn can raise Toggled while LoadComponent is still connecting later siblings.
         if (initialized) progress.isActive = workToggle.isOn
     }

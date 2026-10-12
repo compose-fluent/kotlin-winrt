@@ -14,7 +14,7 @@ internal fun colorSelector(initial: Color, changed: (Color) -> Unit): Button {
         color = initial
         isAlphaEnabled = true
         colorChanged.add { _, args ->
-            swatch.background = microsoft.ui.xaml.media.SolidColorBrush(args.newColor)
+            swatch.background = microsoft.ui.xaml.media.SolidColorBrush(args!!.newColor)
             changed(args.newColor)
         }
     }

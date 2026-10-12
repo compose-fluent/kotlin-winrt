@@ -37,11 +37,11 @@ internal class CounterControl : Control() {
     private fun UpdateUI() {
         CountText?.let { text -> text.text = Count.toString()
             if (AutomationPeer.listenerExists(AutomationEvents.LiveRegionChanged))
-                FrameworkElementAutomationPeer.createPeerForElement(text).raiseAutomationEvent(AutomationEvents.LiveRegionChanged)
+                FrameworkElementAutomationPeer.createPeerForElement(text)!!.raiseAutomationEvent(AutomationEvents.LiveRegionChanged)
         }
     }
     companion object {
-        val CountProperty: DependencyProperty = DependencyProperty.register("Count", Int::class, CounterControl::class, PropertyMetadata(0, PropertyChangedCallback { sender, _ -> checkNotNull(sender).asWinRT<CounterControl>().UpdateUI() }))
-        val ModeProperty: DependencyProperty = DependencyProperty.register("Mode", CounterMode::class, CounterControl::class, PropertyMetadata(CounterMode.Increment, PropertyChangedCallback { sender, _ -> checkNotNull(sender).asWinRT<CounterControl>().UpdateButtonText() }))
+        val CountProperty: DependencyProperty = DependencyProperty.register("Count", Int::class, CounterControl::class, PropertyMetadata(0, PropertyChangedCallback { sender, _ -> checkNotNull(sender).asWinRT<CounterControl>().UpdateUI() }))!!
+        val ModeProperty: DependencyProperty = DependencyProperty.register("Mode", CounterMode::class, CounterControl::class, PropertyMetadata(CounterMode.Increment, PropertyChangedCallback { sender, _ -> checkNotNull(sender).asWinRT<CounterControl>().UpdateButtonText() }))!!
     }
 }

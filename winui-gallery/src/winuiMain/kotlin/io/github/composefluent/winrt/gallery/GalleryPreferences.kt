@@ -20,7 +20,7 @@ internal object GalleryPreferences {
         if (packaged) ApplicationData.getDefault()
         else ApplicationData.getForUnpackaged("ComposeFluent", "KotlinWinUIGallery")
     }
-    private val values get() = checkNotNull(checkNotNull(data.localSettings).values)
+    private val values get() = checkNotNull(checkNotNull(data!!.localSettings).values)
     fun text(key: String, fallback: String = ""): String =
         if (values.containsKey(key)) values[key] as? String ?: fallback else fallback
     fun put(key: String, value: String) { values[key] = value }

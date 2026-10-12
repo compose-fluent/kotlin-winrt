@@ -26,12 +26,12 @@ internal class OpacityMaskView : ContentControl() {
         val mask = checkNotNull(getTemplateChild("PART_MaskContainer")).asWinRT<Border>()
         val presenter = checkNotNull(getTemplateChild("PART_ContentPresenter")).asWinRT<ContentPresenter>()
         val compositor = CompositionTarget.getCompositorForCurrentThread()
-        val brush = compositor.createMaskBrush().also { objects.add(it) }
+        val brush = compositor!!.createMaskBrush()!!.also { objects.add(it) }
         brush.source = visualBrush(presenter)
         captureBrush = visualBrush(mask)
         brush.mask = if (OpacityMask == null) null else captureBrush
         maskBrush = brush
-        val sprite = compositor.createSpriteVisual().also { objects.add(it) }
+        val sprite = compositor.createSpriteVisual()!!.also { objects.add(it) }
         sprite.relativeSizeAdjustment = Vector2(1f,1f)
         sprite.brush = brush
         templateRoot = root
@@ -39,19 +39,19 @@ internal class OpacityMaskView : ContentControl() {
     }
     private fun visualBrush(element: UIElement): CompositionSurfaceBrush {
         val visual = ElementCompositionPreview.getElementVisual(element)
-        val compositor = checkNotNull(visual.compositor)
-        val surface = compositor.createVisualSurface().also { objects.add(it) }
+        val compositor = checkNotNull(visual!!.compositor)
+        val surface = compositor.createVisualSurface()!!.also { objects.add(it) }
         surface.sourceVisual = visual
-        val size = compositor.createExpressionAnimation("visual.Size").also { objects.add(it) }
+        val size = compositor.createExpressionAnimation("visual.Size")!!.also { objects.add(it) }
         size.setReferenceParameter("visual",visual)
         surface.startAnimation("SourceSize",size)
         visual.opacity = 0f
-        return compositor.createSurfaceBrush(surface).also { objects.add(it) }
+        return compositor.createSurfaceBrush(surface)!!.also { objects.add(it) }
     }
     companion object {
         val OpacityMaskProperty: DependencyProperty = DependencyProperty.register("OpacityMask",UIElement::class,OpacityMaskView::class,
             PropertyMetadata(null,PropertyChangedCallback { sender,_ ->
                 checkNotNull(sender).asWinRT<OpacityMaskView>().apply { maskBrush?.mask = if (OpacityMask == null) null else captureBrush }
-            }))
+            }))!!
     }
 }

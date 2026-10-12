@@ -10,8 +10,8 @@ internal class Contact(val FirstName: String, val LastName: String, val Company:
     override fun toString(): String = "$Name, $Company"
     companion object {
         suspend fun GetContactsAsync(): List<Contact> {
-            val file = StorageFile.getFileFromApplicationUriAsync(Uri("ms-appx:///Assets/SampleMedia/Contacts.txt")).await()
-            return FileIO.readLinesAsync(file).await().chunked(3).filter { it.size == 3 }.map { Contact(it[0], it[1], it[2]) }
+            val file = StorageFile.getFileFromApplicationUriAsync(Uri("ms-appx:///Assets/SampleMedia/Contacts.txt"))!!.await()
+            return FileIO.readLinesAsync(file)!!.await()!!.chunked(3).filter { it.size == 3 }.map { Contact(it[0], it[1], it[2]) }
         }
     }
 }

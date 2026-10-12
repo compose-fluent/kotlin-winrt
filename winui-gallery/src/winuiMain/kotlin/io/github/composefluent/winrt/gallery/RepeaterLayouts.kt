@@ -12,7 +12,7 @@ import kotlin.math.min
 class GalleryActivityFeedLayout : VirtualizingLayout() {
     private val bounds = linkedMapOf<Int, Rect>()
 
-    override fun measureOverride(context: VirtualizingLayoutContext, availableSize: Size): Size {
+    override fun measureOverride(context: VirtualizingLayoutContext?, availableSize: Size): Size { requireNotNull(context);
         bounds.clear()
         val width = if (availableSize.width.isFinite()) availableSize.width else 520f
         val tileWidth = max(80f, (width - 36f) / 4f)
@@ -28,7 +28,7 @@ class GalleryActivityFeedLayout : VirtualizingLayout() {
                 val wide = if (row % 2 == 0) column == 2 else column == 0
                 val itemWidth = if (wide) tileWidth * 2f + 12f else tileWidth
                 val rect = Rect(x, row * 120f, itemWidth, 108f)
-                context.getOrCreateElementAt(index).measure(Size(itemWidth, 108f))
+                context.getOrCreateElementAt(index)!!.measure(Size(itemWidth, 108f))
                 bounds[index] = rect
                 x += itemWidth + 12f
             }
@@ -36,8 +36,8 @@ class GalleryActivityFeedLayout : VirtualizingLayout() {
         return Size(tileWidth * 4f + 36f, max(0f, rows * 120f - 12f))
     }
 
-    override fun arrangeOverride(context: VirtualizingLayoutContext, finalSize: Size): Size {
-        bounds.forEach { (index, rect) -> context.getOrCreateElementAt(index).arrange(rect) }
+    override fun arrangeOverride(context: VirtualizingLayoutContext?, finalSize: Size): Size { requireNotNull(context);
+        bounds.forEach { (index, rect) -> context.getOrCreateElementAt(index)!!.arrange(rect) }
         return finalSize
     }
 }
@@ -57,7 +57,7 @@ class GalleryRecipeLayout : VirtualizingLayout() {
         invalidateMeasure()
     }
 
-    override fun measureOverride(context: VirtualizingLayoutContext, availableSize: Size): Size {
+    override fun measureOverride(context: VirtualizingLayoutContext?, availableSize: Size): Size { requireNotNull(context);
         val width = if (availableSize.width.isFinite()) availableSize.width else 400f
         if (width != lastWidth) {
             offsets = FloatArray(max(1, (width / 200f).toInt()))
@@ -79,7 +79,7 @@ class GalleryRecipeLayout : VirtualizingLayout() {
             val nextY = bounds.getOrNull(index)?.y ?: offsets.min()
             if (nextY >= bottom && index > first) break
             val child = context.getOrCreateElementAt(index)
-            child.measure(Size(200f, Float.POSITIVE_INFINITY))
+            child!!.measure(Size(200f, Float.POSITIVE_INFINITY))
             if (index >= bounds.size) {
                 val column = offsets.indices.minBy { offsets[it] }
                 bounds.add(Rect(column * 200f, offsets[column], 200f, child.desiredSize.height))
@@ -90,8 +90,8 @@ class GalleryRecipeLayout : VirtualizingLayout() {
         return Size(width, offsets.max())
     }
 
-    override fun arrangeOverride(context: VirtualizingLayoutContext, finalSize: Size): Size {
-        for (index in first..last) context.getOrCreateElementAt(index).arrange(bounds[index])
+    override fun arrangeOverride(context: VirtualizingLayoutContext?, finalSize: Size): Size { requireNotNull(context);
+        for (index in first..last) context.getOrCreateElementAt(index)!!.arrange(bounds[index])
         return finalSize
     }
 }

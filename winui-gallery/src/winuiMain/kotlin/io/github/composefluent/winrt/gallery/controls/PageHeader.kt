@@ -19,7 +19,7 @@ internal class PageHeader : UserControl() {
     var ThemeButtonVisibility: Visibility
         get() = getValue(ThemeButtonVisibilityProperty) as Visibility
         set(value) { setValue(ThemeButtonVisibilityProperty,value) }
-    private fun UserControl_Loaded(sender: Any?,args: RoutedEventArgs) {
+    private fun UserControl_Loaded(sender: Any?,args: RoutedEventArgs?) {
         val item = Item ?: return
         APIDetailsBtn.visibility = if (item.ApiNamespace.isBlank() && item.BaseClasses.isEmpty()) Visibility.Collapsed else Visibility.Visible
         FavoriteButton.isChecked = item.UniqueId in GalleryPreferences.routes("Favorites")
@@ -33,22 +33,22 @@ internal class PageHeader : UserControl() {
     private fun GetSamplePageSourceInfoText(): String = "XAML and Kotlin source code of ${Item?.Title.orEmpty()} in the Kotlin/WinRT repository."
     private fun GetFavoriteGlyph(value: Boolean?): String = if (value == true) "\uE735" else "\uE734"
     private fun GetFavoriteToolTip(value: Boolean?): String = if (value == true) "Remove from favorites" else "Add to favorites"
-    private fun FavoriteButton_Click(sender: Any?,args: RoutedEventArgs) {
+    private fun FavoriteButton_Click(sender: Any?,args: RoutedEventArgs?) {
         val selected = FavoriteButton.isChecked == true
         SetFavoriteAction?.invoke(selected)
     }
-    private fun OnThemeButtonClick(sender: Any?,args: RoutedEventArgs) {
+    private fun OnThemeButtonClick(sender: Any?,args: RoutedEventArgs?) {
         ToggleThemeAction?.invoke(); announce(ThemeButton,"Theme changed.","ThemeChangedSuccessNotificationId")
     }
-    private fun OnCopyLinkButtonClick(sender: Any?,args: RoutedEventArgs) {
+    private fun OnCopyLinkButtonClick(sender: Any?,args: RoutedEventArgs?) {
         val item = Item ?: return
         Clipboard.setContent(DataPackage().apply { setText("kotlin-winui-gallery://${item.UniqueId}") })
         if (!GalleryPreferences.flag("HideCopyLinkTip")) CopyLinkButtonTeachingTip.isOpen = true
     }
-    private fun OnCopyDontShowAgainButtonClick(sender: TeachingTip,args: Any?) {
+    private fun OnCopyDontShowAgainButtonClick(sender: TeachingTip?,args: Any?) {
         GalleryPreferences.putFlag("HideCopyLinkTip",true); CopyLinkButtonTeachingTip.isOpen = false
     }
     companion object {
-        val ThemeButtonVisibilityProperty: DependencyProperty = DependencyProperty.register("ThemeButtonVisibility", Visibility::class, PageHeader::class, PropertyMetadata(Visibility.Visible))
+        val ThemeButtonVisibilityProperty: DependencyProperty = DependencyProperty.register("ThemeButtonVisibility", Visibility::class, PageHeader::class, PropertyMetadata(Visibility.Visible))!!
     }
 }

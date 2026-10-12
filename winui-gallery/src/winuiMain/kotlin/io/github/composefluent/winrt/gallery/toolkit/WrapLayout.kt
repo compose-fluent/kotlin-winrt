@@ -45,9 +45,9 @@ internal class WrapLayout : VirtualizingLayout() {
     private fun size(value: Uv) = if (Orientation == microsoft.ui.xaml.controls.Orientation.Horizontal) Size(value.u.toFloat(), value.v.toFloat()) else Size(value.v.toFloat(), value.u.toFloat())
     private fun rect(position: Uv, measure: Uv) = if (Orientation == microsoft.ui.xaml.controls.Orientation.Horizontal) Rect(position.u.toFloat(), position.v.toFloat(), measure.u.toFloat(), measure.v.toFloat()) else Rect(position.v.toFloat(), position.u.toFloat(), measure.v.toFloat(), measure.u.toFloat())
     private fun bounds(context: VirtualizingLayoutContext): Pair<Double, Double> = context.realizationRect.let { if (Orientation == microsoft.ui.xaml.controls.Orientation.Horizontal) it.y.toDouble() to (it.y + it.height).toDouble() else it.x.toDouble() to (it.x + it.width).toDouble() }
-    override fun initializeForContextCore(context: VirtualizingLayoutContext) { states[context] = State(); super.initializeForContextCore(context) }
-    override fun uninitializeForContextCore(context: VirtualizingLayoutContext) { states.remove(context); super.uninitializeForContextCore(context) }
-    override fun onItemsChangedCore(context: VirtualizingLayoutContext, source: Any?, args: NotifyCollectionChangedEventArgs) {
+    override fun initializeForContextCore(context: VirtualizingLayoutContext?) { requireNotNull(context); states[context] = State(); super.initializeForContextCore(context) }
+    override fun uninitializeForContextCore(context: VirtualizingLayoutContext?) { requireNotNull(context); states.remove(context); super.uninitializeForContextCore(context) }
+    override fun onItemsChangedCore(context: VirtualizingLayoutContext?, source: Any?, args: NotifyCollectionChangedEventArgs?) { requireNotNull(args);  requireNotNull(context);
         val state = states.getOrPut(context, ::State)
         when (args.action) {
             NotifyCollectionChangedAction.Add -> state.removeFrom(args.newStartingIndex)
@@ -58,7 +58,7 @@ internal class WrapLayout : VirtualizingLayout() {
         }
         super.onItemsChangedCore(context, source, args)
     }
-    override fun measureOverride(context: VirtualizingLayoutContext, availableSize: Size): Size {
+    override fun measureOverride(context: VirtualizingLayoutContext?, availableSize: Size): Size { requireNotNull(context);
         val state = states.getOrPut(context, ::State)
         val parent = uv(availableSize); val spacing = uv(Size(HorizontalSpacing.toFloat(), VerticalSpacing.toFloat()))
         if (state.orientation != Orientation) {
@@ -73,7 +73,7 @@ internal class WrapLayout : VirtualizingLayout() {
         for (index in 0 until context.itemCount) {
             val item = state.item(index); var measured = false
             if (item.measure == null) {
-                item.element = context.getOrCreateElementAt(index).also { it.measure(availableSize) }
+                item.element = context.getOrCreateElementAt(index).also { it!!.measure(availableSize) }
                 item.measure = uv(checkNotNull(item.element).desiredSize); measured = true
             }
             var measure = checkNotNull(item.measure)
@@ -88,7 +88,7 @@ internal class WrapLayout : VirtualizingLayout() {
                 continue
             }
             if (!measured) {
-                item.element = context.getOrCreateElementAt(index).also { it.measure(availableSize) }
+                item.element = context.getOrCreateElementAt(index).also { it!!.measure(availableSize) }
                 measure = uv(checkNotNull(item.element).desiredSize)
                 if (measure != item.measure) {
                     state.removeFrom(index + 1); item.measure = measure
@@ -100,20 +100,20 @@ internal class WrapLayout : VirtualizingLayout() {
         }
         return size(Uv(if (parent.u.isInfinite()) 0.0 else ceil(parent.u), state.height()))
     }
-    override fun arrangeOverride(context: VirtualizingLayoutContext, finalSize: Size): Size {
+    override fun arrangeOverride(context: VirtualizingLayoutContext?, finalSize: Size): Size { requireNotNull(context);
         val state = states[context] ?: return finalSize
         val (minimum, maximum) = bounds(context)
         for (index in 0 until context.itemCount) {
             val item = state.item(index); val position = item.position ?: break; val measure = item.measure ?: break
-            if (minimum <= position.v + measure.v && position.v <= maximum) context.getOrCreateElementAt(index).arrange(rect(position, measure))
+            if (minimum <= position.v + measure.v && position.v <= maximum) context.getOrCreateElementAt(index)!!.arrange(rect(position, measure))
             else if (position.v > maximum) break
         }
         return finalSize
     }
     companion object {
-        private fun Changed(owner: DependencyObject, args: DependencyPropertyChangedEventArgs) { owner.asWinRT<WrapLayout>().apply { invalidateMeasure(); invalidateArrange() } }
-        val HorizontalSpacingProperty: DependencyProperty = DependencyProperty.register("HorizontalSpacing", Double::class, WrapLayout::class, PropertyMetadata(0.0, ::Changed))
-        val VerticalSpacingProperty: DependencyProperty = DependencyProperty.register("VerticalSpacing", Double::class, WrapLayout::class, PropertyMetadata(0.0, ::Changed))
-        val OrientationProperty: DependencyProperty = DependencyProperty.register("Orientation", microsoft.ui.xaml.controls.Orientation::class, WrapLayout::class, PropertyMetadata(microsoft.ui.xaml.controls.Orientation.Horizontal, ::Changed))
+        private fun Changed(owner: DependencyObject?, args: DependencyPropertyChangedEventArgs?) { requireNotNull(owner); owner.asWinRT<WrapLayout>().apply { invalidateMeasure(); invalidateArrange() } }
+        val HorizontalSpacingProperty: DependencyProperty = DependencyProperty.register("HorizontalSpacing", Double::class, WrapLayout::class, PropertyMetadata(0.0, ::Changed))!!
+        val VerticalSpacingProperty: DependencyProperty = DependencyProperty.register("VerticalSpacing", Double::class, WrapLayout::class, PropertyMetadata(0.0, ::Changed))!!
+        val OrientationProperty: DependencyProperty = DependencyProperty.register("Orientation", microsoft.ui.xaml.controls.Orientation::class, WrapLayout::class, PropertyMetadata(microsoft.ui.xaml.controls.Orientation.Horizontal, ::Changed))!!
     }
 }

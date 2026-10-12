@@ -20,26 +20,26 @@ internal class ItemsRepeaterCollectionPage : Page() {
         super.initializeComponent(); navigationCacheMode = NavigationCacheMode.Enabled
         repeater.itemsSource = CustomDataObject.GetDataObjects(true); repeater.elementPrepared.add(::Repeater_ElementPrepared)
     }
-    private fun Repeater_ElementPrepared(sender: ItemsRepeater, args: ItemsRepeaterElementPreparedEventArgs) {
+    private fun Repeater_ElementPrepared(sender: ItemsRepeater?, args: ItemsRepeaterElementPreparedEventArgs?) { requireNotNull(args);
         checkNotNull(args.element).tapped.remove(tappedHandler); checkNotNull(args.element).tapped.add(tappedHandler)
         checkNotNull(args.element).keyDown.remove(keyHandler); checkNotNull(args.element).keyDown.add(keyHandler)
     }
-    private fun Item_Tapped(sender: Any?, args: TappedRoutedEventArgs) { sender?.asWinRT<FrameworkElement>()?.let(::NavigateToItem) }
-    private fun Item_KeyDown(sender: Any?, args: KeyRoutedEventArgs) {
+    private fun Item_Tapped(sender: Any?, args: TappedRoutedEventArgs?) { sender?.asWinRT<FrameworkElement>()?.let(::NavigateToItem) }
+    private fun Item_KeyDown(sender: Any?, args: KeyRoutedEventArgs?) { requireNotNull(args);
         if (args.key == windows.system.VirtualKey.Enter || args.key == windows.system.VirtualKey.Space) { sender?.asWinRT<FrameworkElement>()?.let(::NavigateToItem); args.handled = true }
     }
     private fun NavigateToItem(element: FrameworkElement) {
         storedItem = checkNotNull(repeater.itemsSourceView).getAt(repeater.getElementIndex(element)) as? CustomDataObject
-        FindChildByName(element, "connectedElement")?.let { ConnectedAnimationService.getForCurrentView().prepareToAnimate("ForwardConnectedAnimation", it) }
+        FindChildByName(element, "connectedElement")?.let { ConnectedAnimationService.getForCurrentView()!!.prepareToAnimate("ForwardConnectedAnimation", it) }
         persistedScrollPosition = scrollViewer.verticalOffset
         checkNotNull(frame).navigate(DetailedInfoPage::class, storedItem, SuppressNavigationTransitionInfo())
     }
-    override fun onNavigatedTo(args: NavigationEventArgs) {
+    override fun onNavigatedTo(args: NavigationEventArgs?) { requireNotNull(args);
         super.onNavigatedTo(args); val item = storedItem ?: return
         scrollViewer.changeView(null, persistedScrollPosition, null, true); updateLayout()
         val index = checkNotNull(repeater.itemsSourceView).indexOf(item)
         val container = repeater.tryGetElement(index)?.asWinRT<FrameworkElement>()
-        ConnectedAnimationService.getForCurrentView().getAnimation("BackConnectedAnimation")?.let { animation ->
+        ConnectedAnimationService.getForCurrentView()!!.getAnimation("BackConnectedAnimation")?.let { animation ->
             animation.configuration = DirectConnectedAnimationConfiguration()
             container?.let { FindChildByName(it, "connectedElement") }?.let { animation.tryStart(it) }
         }
@@ -47,7 +47,7 @@ internal class ItemsRepeaterCollectionPage : Page() {
     }
     private fun FindChildByName(parent: DependencyObject, name: String): UIElement? {
         for (index in 0 until VisualTreeHelper.getChildrenCount(parent)) {
-            val child = VisualTreeHelper.getChild(parent, index)
+            val child = VisualTreeHelper.getChild(parent, index) ?: continue
             val element = runCatching { child.asWinRT<FrameworkElement>() }.getOrNull()
             if (element?.name == name) return element
             FindChildByName(child, name)?.let { return it }

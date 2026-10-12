@@ -9,7 +9,7 @@ import microsoft.ui.xaml.media.animation.SlideNavigationTransitionEffect
 
 internal fun sampleFrame() = Frame().apply {
     navigated.add { _, args ->
-        checkNotNull(args.content).asWinRT<Page>().content = if (args.parameter.toString() == "0") Grid().apply {
+        checkNotNull(args!!.content).asWinRT<Page>().content = if (args.parameter.toString() == "0") Grid().apply {
             children!!.add(label("Sample Settings Page", 28.0).apply {
                 horizontalAlignment = HorizontalAlignment.Center; verticalAlignment = VerticalAlignment.Center
             })

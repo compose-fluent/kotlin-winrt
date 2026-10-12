@@ -9,5 +9,5 @@ import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "Spacing", title = "Spacing", group = "DesignItem", order = 3, glyph = "\uE8B3")
 internal class SpacingPage : Page() {
-    
+
 }

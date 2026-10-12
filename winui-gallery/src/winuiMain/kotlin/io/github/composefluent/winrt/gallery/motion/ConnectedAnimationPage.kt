@@ -21,7 +21,7 @@ internal class ConnectedAnimationPage : Page() {
     private fun GetConfiguration(): ConnectedAnimationConfiguration? = when (ConfigurationPanel.selectedItem?.asWinRT<RadioButton>()?.content?.toString()) {
         "Gravity" -> GravityConnectedAnimationConfiguration(); "Direct" -> DirectConnectedAnimationConfiguration(); "Basic" -> BasicConnectedAnimationConfiguration(); else -> null
     }
-    private fun NavigateButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun NavigateButton_Click(sender: Any?, args: RoutedEventArgs?) {
         when (val page = ContentFrame.content) {
             is SamplePage1 -> { page.PrepareConnectedAnimation(GetConfiguration()); ContentFrame.navigate(SamplePage2::class, null, SuppressNavigationTransitionInfo()) }
             is SamplePage2 -> { page.PrepareConnectedAnimation(GetConfiguration()); ContentFrame.navigate(SamplePage1::class, null, SuppressNavigationTransitionInfo()) }

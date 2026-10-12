@@ -33,7 +33,7 @@ internal class WrapPanel : Panel() {
     private fun size(u: Double,v: Double): Size = if (Orientation == microsoft.ui.xaml.controls.Orientation.Horizontal) Size(u.toFloat(),v.toFloat()) else Size(v.toFloat(),u.toFloat())
     override fun measureOverride(availableSize: Size): Size {
         val available = Size(max(0.0,availableSize.width-Padding.left-Padding.right).toFloat(),max(0.0,availableSize.height-Padding.top-Padding.bottom).toFloat())
-        children!!.forEach { it.measure(available) }
+        children!!.forEach { it!!.measure(available) }
         return UpdateRows(availableSize)
     }
     override fun arrangeOverride(finalSize: Size): Size {
@@ -54,7 +54,7 @@ internal class WrapPanel : Panel() {
         val parent = uv(available.width.toDouble(),available.height.toDouble()); val spacing = uv(HorizontalSpacing,VerticalSpacing)
         var u = start.first; var v = start.second; var row = Row(); var requiredU = 0.0
         children!!.forEachIndexed { index,child ->
-            if (child.visibility != Visibility.Collapsed) {
+            if (child!!.visibility != Visibility.Collapsed) {
                 val desired = uv(child.desiredSize.width.toDouble(),child.desiredSize.height.toDouble())
                 if (desired.first+u+end.first > parent.first || u >= parent.first) {
                     u = start.first; v += row.height+spacing.second; rows.add(row); row = Row()
@@ -72,10 +72,10 @@ internal class WrapPanel : Panel() {
     }
     companion object {
         private val changed = PropertyChangedCallback { value,_ -> checkNotNull(value).asWinRT<WrapPanel>().apply { invalidateMeasure(); invalidateArrange() } }
-        val HorizontalSpacingProperty: DependencyProperty = DependencyProperty.register("HorizontalSpacing",Double::class,WrapPanel::class,PropertyMetadata(0.0,changed))
-        val VerticalSpacingProperty: DependencyProperty = DependencyProperty.register("VerticalSpacing",Double::class,WrapPanel::class,PropertyMetadata(0.0,changed))
-        val OrientationProperty: DependencyProperty = DependencyProperty.register("Orientation",microsoft.ui.xaml.controls.Orientation::class,WrapPanel::class,PropertyMetadata(microsoft.ui.xaml.controls.Orientation.Horizontal,changed))
-        val PaddingProperty: DependencyProperty = DependencyProperty.register("Padding",Thickness::class,WrapPanel::class,PropertyMetadata(Thickness(0.0,0.0,0.0,0.0),changed))
-        val StretchChildProperty: DependencyProperty = DependencyProperty.register("StretchChild",io.github.composefluent.winrt.gallery.toolkit.StretchChild::class,WrapPanel::class,PropertyMetadata(io.github.composefluent.winrt.gallery.toolkit.StretchChild.None,changed))
+        val HorizontalSpacingProperty: DependencyProperty = DependencyProperty.register("HorizontalSpacing",Double::class,WrapPanel::class,PropertyMetadata(0.0,changed))!!
+        val VerticalSpacingProperty: DependencyProperty = DependencyProperty.register("VerticalSpacing",Double::class,WrapPanel::class,PropertyMetadata(0.0,changed))!!
+        val OrientationProperty: DependencyProperty = DependencyProperty.register("Orientation",microsoft.ui.xaml.controls.Orientation::class,WrapPanel::class,PropertyMetadata(microsoft.ui.xaml.controls.Orientation.Horizontal,changed))!!
+        val PaddingProperty: DependencyProperty = DependencyProperty.register("Padding",Thickness::class,WrapPanel::class,PropertyMetadata(Thickness(0.0,0.0,0.0,0.0),changed))!!
+        val StretchChildProperty: DependencyProperty = DependencyProperty.register("StretchChild",io.github.composefluent.winrt.gallery.toolkit.StretchChild::class,WrapPanel::class,PropertyMetadata(io.github.composefluent.winrt.gallery.toolkit.StretchChild.None,changed))!!
     }
 }

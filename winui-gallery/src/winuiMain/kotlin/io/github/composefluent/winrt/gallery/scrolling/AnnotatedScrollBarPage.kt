@@ -20,8 +20,8 @@ internal class AnnotatedScrollBarPage : Page() {
     private fun GetOffsetOfItem(index: Int): Double = 90.0 * (index / GetItemsPerRow())
     private fun GetItemColor(index: Int): String = when { index < 32 -> "Azure"; index < 82 -> "Crimson"; index < 90 -> "Cyan"; index < 160 -> "Fuchsia"; else -> "Gold" }
     private fun GetOffsetLabel(offset: Double): String = GetItemColor(listOf(31, 81, 89, 159).firstOrNull { offset <= GetOffsetOfItem(it) } ?: 160)
-    private fun PopulateLabelCollection() { if (!ready) return; annotatedScrollBar.labels.clear(); listOf("Azure" to 0, "Crimson" to 32, "Cyan" to 82, "Fuchsia" to 90, "Gold" to 160).forEach { (name, index) -> annotatedScrollBar.labels.add(AnnotatedScrollBarLabel(name, GetOffsetOfItem(index))) } }
-    private fun AnnotatedScrollBar_DetailLabelRequested(sender: AnnotatedScrollBar, args: AnnotatedScrollBarDetailLabelRequestedEventArgs) { args.content = GetOffsetLabel(args.scrollOffset) }
-    private fun ItemsRepeater_SizeChanged(sender: Any?, args: SizeChangedEventArgs) { PopulateLabelCollection() }
-    private fun AnnotatedScrollBarMaxHeightSlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs) { if (ready) annotatedScrollBar.maxHeight = args.newValue }
+    private fun PopulateLabelCollection() { if (!ready) return; annotatedScrollBar.labels!!.clear(); listOf("Azure" to 0, "Crimson" to 32, "Cyan" to 82, "Fuchsia" to 90, "Gold" to 160).forEach { (name, index) -> annotatedScrollBar.labels!!.add(AnnotatedScrollBarLabel(name, GetOffsetOfItem(index))) } }
+    private fun AnnotatedScrollBar_DetailLabelRequested(sender: AnnotatedScrollBar?, args: AnnotatedScrollBarDetailLabelRequestedEventArgs?) { requireNotNull(args);  args.content = GetOffsetLabel(args.scrollOffset) }
+    private fun ItemsRepeater_SizeChanged(sender: Any?, args: SizeChangedEventArgs?) { PopulateLabelCollection() }
+    private fun AnnotatedScrollBarMaxHeightSlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs?) { requireNotNull(args);  if (ready) annotatedScrollBar.maxHeight = args.newValue }
 }

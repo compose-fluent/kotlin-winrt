@@ -17,7 +17,7 @@ internal class SampleBuiltInSystemBackdropsWindow : Window() {
     private var currentBackdrop = GalleryBackdropType.None
     private fun root(): Grid = checkNotNull(content).asWinRT<Grid>()
     private fun SetNoneBackdropBackground() { root().background = SolidColorBrush(if (currentBackdrop == GalleryBackdropType.None && themeComboBox.selectedIndex != 0) { if (themeComboBox.selectedIndex == 1) rgb(0xFFFFFFu) else rgb(0u) } else Color(0u,0u,0u,0u)) }
-    private fun ThemeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+    private fun ThemeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) {
         if (!ready) return
         root().requestedTheme = listOf(ElementTheme.Default,ElementTheme.Light,ElementTheme.Dark)[themeComboBox.selectedIndex.coerceIn(0,2)]
         TitleBarHelper.ApplySystemThemeToCaptionButtons(this,root().actualTheme); SetNoneBackdropBackground()
@@ -42,6 +42,6 @@ internal class SampleBuiltInSystemBackdropsWindow : Window() {
         }
         SetNoneBackdropBackground(); announce(backdropComboBox,"Background changed to $currentBackdrop","BackgroundChangedNotificationActivityId")
     }
-    private fun BackdropComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) SetBackdrop(listOf(GalleryBackdropType.Mica,GalleryBackdropType.MicaAlt,GalleryBackdropType.Acrylic,GalleryBackdropType.None)[backdropComboBox.selectedIndex.coerceIn(0,3)]) }
+    private fun BackdropComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) SetBackdrop(listOf(GalleryBackdropType.Mica,GalleryBackdropType.MicaAlt,GalleryBackdropType.Acrylic,GalleryBackdropType.None)[backdropComboBox.selectedIndex.coerceIn(0,3)]) }
 
 }

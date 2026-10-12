@@ -11,7 +11,7 @@ import microsoft.ui.xaml.media.*
 internal class StackPanelPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true }
-    private fun OrientationGroup_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+    private fun OrientationGroup_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) {
         if (ready) Control1.orientation = if (checkNotNull(checkNotNull(sender).asWinRT<RadioButtons>().selectedItem).asWinRT<RadioButton>().tag == "Horizontal") Orientation.Horizontal else Orientation.Vertical
     }
 }

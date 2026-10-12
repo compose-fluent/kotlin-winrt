@@ -10,15 +10,15 @@ internal class ButtonPage : Page() {
         super.initializeComponent()
     }
 
-    private fun onStandardClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onStandardClick(sender: Any?, args: RoutedEventArgs?) {
         textOutput.text = "You clicked: Standard XAML button"
     }
 
-    private fun onImageClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onImageClick(sender: Any?, args: RoutedEventArgs?) {
         imageOutput.text = "You clicked: Image button"
     }
 
-    private fun onDisableClick(sender: Any?, args: RoutedEventArgs) {
+    private fun onDisableClick(sender: Any?, args: RoutedEventArgs?) {
         standardButton.isEnabled = disableButton.isChecked != true
     }
 }

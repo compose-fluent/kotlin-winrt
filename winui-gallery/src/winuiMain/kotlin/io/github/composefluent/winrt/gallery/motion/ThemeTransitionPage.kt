@@ -25,17 +25,17 @@ internal class ThemeTransitionPage : Page() {
         unloaded.add { _, _ -> ExamplePopup.isOpen = false }
     }
 
-    private fun ShowPopupButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ShowPopupButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ExamplePopup.isOpen = true
         ClosePopupButton.focus(FocusState.Programmatic)
     }
 
-    private fun ClosePopupButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ClosePopupButton_Click(sender: Any?, args: RoutedEventArgs?) {
         ExamplePopup.isOpen = false
         ShowPopupButton.focus(FocusState.Programmatic)
     }
 
-    private fun ContentRefreshButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun ContentRefreshButton_Click(sender: Any?, args: RoutedEventArgs?) {
         AddItemsToContentListView(true)
         announce(checkNotNull(sender).asWinRT<UIElement>(), "Data refreshed.", "ContentRefreshNotificationId")
     }
@@ -44,25 +44,25 @@ internal class ThemeTransitionPage : Page() {
         ContentList.itemsSource = List(5) { if (different) "Updated content $it" else "Item $it" }
     }
 
-    private fun AddButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun AddButton_Click(sender: Any?, args: RoutedEventArgs?) {
         AddRemoveListView.items!!.add(ListViewItem().apply { content = "New Item ${itemCount++}" })
         announce(checkNotNull(sender).asWinRT<UIElement>(), "Item added.", "AddDeleteItemAddedNotificationId")
     }
 
-    private fun DeleteButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun DeleteButton_Click(sender: Any?, args: RoutedEventArgs?) {
         if (AddRemoveListView.items!!.isNotEmpty()) {
             AddRemoveListView.items!!.removeAt(0)
             announce(checkNotNull(sender).asWinRT<UIElement>(), "Item deleted.", "AddDeleteItemDeletedNotificationId")
         }
     }
 
-    private fun RepositionButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun RepositionButton_Click(sender: Any?, args: RoutedEventArgs?) {
         MiddleElement.visibility = if (MiddleElement.visibility == Visibility.Visible) Visibility.Collapsed else Visibility.Visible
         val announcement = if (MiddleElement.visibility == Visibility.Visible) "Element restored." else "Element repositioned."
         announce(checkNotNull(sender).asWinRT<UIElement>(), announcement, "RepositionNotificationId")
     }
 
-    private fun EntranceAddButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun EntranceAddButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val count = checkNotNull(sender).asWinRT<Button>().tag?.toString()?.toIntOrNull() ?: return
         repeat(count) {
             EntranceStackPanel.children!!.add(Rectangle().apply {
@@ -75,12 +75,12 @@ internal class ThemeTransitionPage : Page() {
         announce(checkNotNull(sender).asWinRT<UIElement>(), announcement, "EntranceAddNotificationId")
     }
 
-    private fun EntranceClearButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun EntranceClearButton_Click(sender: Any?, args: RoutedEventArgs?) {
         EntranceStackPanel.children!!.clear()
         announce(checkNotNull(sender).asWinRT<UIElement>(), "All rectangles cleared.", "EntranceClearNotificationId")
     }
 
-    private fun AddDeleteButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun AddDeleteButton_Click(sender: Any?, args: RoutedEventArgs?) { requireNotNull(args);
         AddButton_Click(sender, args)
         DeleteButton_Click(sender, args)
         announce(checkNotNull(sender).asWinRT<UIElement>(), "Item added and item deleted.", "AddDeleteBothNotificationId")

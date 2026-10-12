@@ -52,38 +52,38 @@ internal class PullToRefreshPage : Page() {
         sun.actualThemeChanged.add { _, _ -> updateSun() }
         val visualizer = RefreshVisualizer().apply {
             content = sun
-            refreshStateChanged.add { _, _ -> ElementCompositionPreview.getElementVisual(sun).stopAnimation("RotationAngle") }
+            refreshStateChanged.add { _, _ -> ElementCompositionPreview.getElementVisual(sun)!!.stopAnimation("RotationAngle") }
         }
         val container = RefreshContainer().apply {
             content = customList
             this.visualizer = visualizer
-            refreshRequested.add { sender, args -> rc2_RefreshRequested(sender, args) }
+            refreshRequested.add { sender, args -> rc2_RefreshRequested(checkNotNull(sender), checkNotNull(args)) }
         }
         Grid.setRow(container, 1)
         Ex2Grid.children!!.add(container)
     }
 
-    private fun rc_RefreshRequested(sender: RefreshContainer, args: RefreshRequestedEventArgs) {
+    private fun rc_RefreshRequested(sender: RefreshContainer?, args: RefreshRequestedEventArgs?) { requireNotNull(args);
         val deferral = args.getDeferral()
         tasks.launch {
             try {
                 delay(500)
                 lv.items!!.add(0, "NewControl ${controlCount++}")
             } finally {
-                deferral.complete()
+                deferral!!.complete()
                 deferral.close()
             }
         }
     }
 
-    private fun rc2_RefreshRequested(sender: RefreshContainer, args: RefreshRequestedEventArgs) {
+    private fun rc2_RefreshRequested(sender: RefreshContainer?, args: RefreshRequestedEventArgs?) { requireNotNull(args);
         val deferral = args.getDeferral()
         tasks.launch {
             try {
                 delay(800)
                 customList.items!!.add(0, "New Friend ${friendCount++}")
             } finally {
-                deferral.complete()
+                deferral!!.complete()
                 deferral.close()
             }
         }

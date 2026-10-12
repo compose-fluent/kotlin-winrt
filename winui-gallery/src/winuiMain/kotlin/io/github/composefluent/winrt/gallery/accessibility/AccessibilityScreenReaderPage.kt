@@ -9,5 +9,5 @@ import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "AccessibilityScreenReader", title = "Screen Reader", group = "AccessibilityItem", order = 2)
 internal class AccessibilityScreenReaderPage : Page() {
-    
+
 }

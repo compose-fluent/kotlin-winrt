@@ -16,17 +16,17 @@ internal class AcrylicPage : Page() {
         super.initializeComponent(); ready = true
         loaded.add { _, _ -> ColorSelectorInApp.selectedIndex = 0; FallbackColorSelectorInApp.selectedIndex = 0; OpacitySliderInApp.value = 0.8; OpacitySliderLumin.value = 0.8; LuminositySlider.value = 0.8 }
     }
-    private fun Slider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs) {
+    private fun Slider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs?) { requireNotNull(args);
         if (!ready) return
         val shape = if (sender == OpacitySliderLumin) CustomAcrylicShapeLumin else CustomAcrylicShapeInApp
         checkNotNull(shape.fill).asWinRT<AcrylicBrush>().tintOpacity = args.newValue
     }
-    private fun ColorSelector_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
-        if (ready) args.addedItems.firstOrNull()?.asWinRT<SolidColorBrush>()?.let { checkNotNull(CustomAcrylicShapeInApp.fill).asWinRT<AcrylicBrush>().tintColor = it.color }
+    private fun ColorSelector_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { requireNotNull(args);
+        if (ready) args.addedItems!!.firstOrNull()?.asWinRT<SolidColorBrush>()?.let { checkNotNull(CustomAcrylicShapeInApp.fill).asWinRT<AcrylicBrush>().tintColor = it.color }
     }
-    private fun FallbackColorSelector_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
-        if (ready) args.addedItems.firstOrNull()?.asWinRT<SolidColorBrush>()?.let { checkNotNull(CustomAcrylicShapeInApp.fill).asWinRT<AcrylicBrush>().fallbackColor = it.color }
+    private fun FallbackColorSelector_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { requireNotNull(args);
+        if (ready) args.addedItems!!.firstOrNull()?.asWinRT<SolidColorBrush>()?.let { checkNotNull(CustomAcrylicShapeInApp.fill).asWinRT<AcrylicBrush>().fallbackColor = it.color }
     }
-    private fun LuminositySlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs) { if (ready) checkNotNull(CustomAcrylicShapeLumin.fill).asWinRT<AcrylicBrush>().tintLuminosityOpacity = args.newValue }
-    private fun SystemBackdropLink_Click(sender: microsoft.ui.xaml.documents.Hyperlink, args: microsoft.ui.xaml.documents.HyperlinkClickEventArgs) { GalleryNavigationHost.navigate("SystemBackdrops") }
+    private fun LuminositySlider_ValueChanged(sender: Any?, args: RangeBaseValueChangedEventArgs?) { requireNotNull(args);  if (ready) checkNotNull(CustomAcrylicShapeLumin.fill).asWinRT<AcrylicBrush>().tintLuminosityOpacity = args.newValue }
+    private fun SystemBackdropLink_Click(sender: microsoft.ui.xaml.documents.Hyperlink?, args: microsoft.ui.xaml.documents.HyperlinkClickEventArgs?) { GalleryNavigationHost.navigate("SystemBackdrops") }
 }

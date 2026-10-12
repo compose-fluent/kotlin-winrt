@@ -13,8 +13,8 @@ import windows.ui.Color
 
 @GalleryPage(route = "TitleBar", title = "TitleBar", group = "MultipleWindows", order = 3)
 internal class TitleBarPage : Page() {
-    private fun CreateTitleBarWindowClick(sender: Any?, args: RoutedEventArgs) { TitleBarWindow().activate() }
+    private fun CreateTitleBarWindowClick(sender: Any?, args: RoutedEventArgs?) { TitleBarWindow().activate() }
     private fun TitleBar_LayoutUpdated(sender: Any?, args: Any?) { GalleryWindows.forElement(this)?.let { TitleBarHelper.ApplySystemThemeToCaptionButtons(it,actualTheme) } }
-    private fun Hyperlink_Click(sender: microsoft.ui.xaml.documents.Hyperlink, args: microsoft.ui.xaml.documents.HyperlinkClickEventArgs) { GalleryNavigationHost.navigate("AppWindowTitleBar") }
+    private fun Hyperlink_Click(sender: microsoft.ui.xaml.documents.Hyperlink?, args: microsoft.ui.xaml.documents.HyperlinkClickEventArgs?) { GalleryNavigationHost.navigate("AppWindowTitleBar") }
 
 }

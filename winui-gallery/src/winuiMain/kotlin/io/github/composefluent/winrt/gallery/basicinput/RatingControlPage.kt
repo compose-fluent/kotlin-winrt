@@ -9,5 +9,5 @@ import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "RatingControl", title = "RatingControl", group = "BasicInput", order = 11)
 internal class RatingControlPage : Page() {
-    private fun RatingControl1_ValueChanged(sender: RatingControl, args: Any?) { sender.caption = "Your rating" }
+    private fun RatingControl1_ValueChanged(sender: RatingControl?, args: Any?) { requireNotNull(sender);  sender.caption = "Your rating" }
 }

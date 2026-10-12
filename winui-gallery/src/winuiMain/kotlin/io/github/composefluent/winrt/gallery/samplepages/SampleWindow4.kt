@@ -17,11 +17,11 @@ internal class SampleWindow4 : Window() {
     override fun initializeComponent() { super.initializeComponent(); GalleryWindows.track(this) }
     fun Configure(minWidth: Int, minHeight: Int, maxWidth: Int, maxHeight: Int) { checkNotNull(appWindow).apply {
         resize(SizeInt32(800,500)); setIcon("Assets/Tiles/GalleryIcon.ico"); titleBar?.preferredTheme = TitleBarTheme.UseDefaultAppMode
-        setPresenter(OverlappedPresenter.create().apply { preferredMinimumWidth = minWidth; preferredMinimumHeight = minHeight; preferredMaximumWidth = maxWidth; preferredMaximumHeight = maxHeight; isMaximizable = false })
+        setPresenter(OverlappedPresenter.create()!!.apply { preferredMinimumWidth = minWidth; preferredMinimumHeight = minHeight; preferredMaximumWidth = maxWidth; preferredMaximumHeight = maxHeight; isMaximizable = false })
     } }
     private fun presenter(): OverlappedPresenter = checkNotNull(checkNotNull(appWindow).presenter).asWinRT<OverlappedPresenter>()
-    private fun MinimizeBtn_Click(sender: Any?, args: RoutedEventArgs) { presenter().minimize() }
-    private fun RestoreBtn_Click(sender: Any?, args: RoutedEventArgs) { tasks.launch { presenter().minimize(); delay(3000); presenter().restore() } }
-    private fun CloseBtn_Click(sender: Any?, args: RoutedEventArgs) { close() }
+    private fun MinimizeBtn_Click(sender: Any?, args: RoutedEventArgs?) { presenter().minimize() }
+    private fun RestoreBtn_Click(sender: Any?, args: RoutedEventArgs?) { tasks.launch { presenter().minimize(); delay(3000); presenter().restore() } }
+    private fun CloseBtn_Click(sender: Any?, args: RoutedEventArgs?) { close() }
 
 }

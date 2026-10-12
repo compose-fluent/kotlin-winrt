@@ -29,7 +29,7 @@ internal class SplitButtonPage : Page() {
                 "sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Tempor commodo ullamcorper a lacus.")
     }
 
-    private fun GridView_ItemClick(sender: Any?, args: ItemClickEventArgs) {
+    private fun GridView_ItemClick(sender: Any?, args: ItemClickEventArgs?) { requireNotNull(args);
         val rectangle = checkNotNull(args.clickedItem).asWinRT<Rectangle>()
         currentColor = checkNotNull(rectangle.fill).asWinRT<SolidColorBrush>().color
         selectedTextFormat().foregroundColor = currentColor
@@ -42,16 +42,16 @@ internal class SplitButtonPage : Page() {
         }
     }
 
-    private fun RevealColorButton_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun RevealColorButton_Click(sender: Any?, args: RoutedEventArgs?) {
         myColorButtonReveal.flyout?.hide()
     }
 
-    private fun myColorButton_Click(sender: SplitButton, args: SplitButtonClickEventArgs) {
+    private fun myColorButton_Click(sender: SplitButton?, args: SplitButtonClickEventArgs?) {
         currentColor = checkNotNull(CurrentColor.background).asWinRT<SolidColorBrush>().color
         selectedTextFormat().foregroundColor = currentColor
     }
 
-    private fun MyRichEditBox_TextChanged(sender: Any?, args: RoutedEventArgs) {
+    private fun MyRichEditBox_TextChanged(sender: Any?, args: RoutedEventArgs?) {
         val format = selectedTextFormat()
         if (format.foregroundColor != currentColor) format.foregroundColor = currentColor
     }

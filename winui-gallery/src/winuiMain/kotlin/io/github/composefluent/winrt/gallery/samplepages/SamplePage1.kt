@@ -12,6 +12,6 @@ import microsoft.ui.xaml.media.animation.*
 import microsoft.ui.xaml.navigation.*
 
 internal class SamplePage1 : Page() {
-    fun PrepareConnectedAnimation(config: ConnectedAnimationConfiguration?) { ConnectedAnimationService.getForCurrentView().prepareToAnimate("ForwardConnectedAnimation", SourceElement).let { if (config != null) it.configuration = config } }
-    override fun onNavigatedTo(args: NavigationEventArgs) { super.onNavigatedTo(args); ConnectedAnimationService.getForCurrentView().getAnimation("BackwardConnectedAnimation")?.tryStart(SourceElement) }
+    fun PrepareConnectedAnimation(config: ConnectedAnimationConfiguration?) { ConnectedAnimationService.getForCurrentView()!!.prepareToAnimate("ForwardConnectedAnimation", SourceElement).let { if (config != null) it!!.configuration = config } }
+    override fun onNavigatedTo(args: NavigationEventArgs?) { requireNotNull(args);  super.onNavigatedTo(args); ConnectedAnimationService.getForCurrentView()!!.getAnimation("BackwardConnectedAnimation")?.tryStart(SourceElement) }
 }

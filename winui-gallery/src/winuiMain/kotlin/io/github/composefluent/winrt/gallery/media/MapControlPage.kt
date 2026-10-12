@@ -17,7 +17,7 @@ internal class MapControlPage : Page() {
         loaded.add { _, _ ->
             map1.center = Geopoint(BasicGeoposition(0.0, 0.0, 0.0))
             map1.zoomLevel = 1.0
-            if (map1.layers.isEmpty()) map1.layers.add(MapElementsLayer().apply {
+            if (map1.layers!!.isEmpty()) map1.layers!!.add(MapElementsLayer().apply {
                 mapElements = mutableListOf(MapIcon().apply {
                     location = Geopoint(BasicGeoposition(-30.034647, -51.217659, 0.0))
                 })
@@ -25,11 +25,11 @@ internal class MapControlPage : Page() {
         }
     }
 
-    private fun Button_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun Button_Click(sender: Any?, args: RoutedEventArgs?) {
         map1.mapServiceToken = MapToken.password
     }
 
-    private fun MapToken_KeyDown(sender: Any?, args: KeyRoutedEventArgs) {
+    private fun MapToken_KeyDown(sender: Any?, args: KeyRoutedEventArgs?) { requireNotNull(args);
         if (args.key == VirtualKey.Enter) map1.mapServiceToken = MapToken.password
     }
 }

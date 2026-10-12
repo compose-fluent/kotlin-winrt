@@ -11,7 +11,7 @@ import microsoft.ui.xaml.media.*
 internal class ExpanderPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true }
-    private fun ExpandDirectionComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) {
+    private fun ExpandDirectionComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) {
         if (!ready) return
         val up = checkNotNull(sender).asWinRT<ComboBox>().selectedItem == "Up"
         Expander1.expandDirection = if (up) ExpandDirection.Up else ExpandDirection.Down

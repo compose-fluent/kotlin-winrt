@@ -11,7 +11,7 @@ import microsoft.ui.xaml.media.animation.*
 
 @GalleryPage(route = "CreateMultipleWindows", title = "Multiple windows", group = "MultipleWindows", order = 2)
 internal class CreateMultipleWindowsPage : Page() {
-    private fun CreateWindow_Click(sender: Any?, args: RoutedEventArgs) {
+    private fun CreateWindow_Click(sender: Any?, args: RoutedEventArgs?) {
         val window = MultipleWindowsSampleWindow()
         checkNotNull(window.content).asWinRT<Page>().requestedTheme = actualTheme
         GalleryWindows.track(window); window.activate()

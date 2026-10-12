@@ -16,15 +16,15 @@ import windows.foundation.numerics.*
 import windows.ui.Color
 
 class GalleryLottieSource : IAnimatedVisualSource {
-    override fun tryCreateAnimatedVisual(compositor: Compositor, diagnostics: WinRTOut<Any?>): IAnimatedVisual {
+    override fun tryCreateAnimatedVisual(compositor: Compositor?, diagnostics: WinRTOut<Any?>): IAnimatedVisual {
         diagnostics.value = null
-        return GalleryLottieVisual(compositor)
+        return GalleryLottieVisual(requireNotNull(compositor))
     }
 }
 
 internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual {
-    private val _device = CanvasDevice.getSharedDevice().asWinRT<ICanvasResourceCreator>()
-    private val _reusableExpressionAnimation = _c.createExpressionAnimation()
+    private val _device = requireNotNull(CanvasDevice.getSharedDevice()).asWinRT<ICanvasResourceCreator>()
+    private val _reusableExpressionAnimation = requireNotNull(_c.createExpressionAnimation())
     private lateinit var _colorBrush_AlmostTeal_FF007A87: CompositionColorBrush
     private lateinit var _colorBrush_White: CompositionColorBrush
     private lateinit var _compositionPath_00: CompositionPath
@@ -79,17 +79,17 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Rectangle Path 1
     private fun ColorBrush_AlmostDarkTurquoise_FF00D1C1(): CompositionColorBrush
     {
-        return _c.createColorBrush(Color(0xFFu, 0x00u, 0xD1u, 0xC1u))
+        return _c.createColorBrush(Color(0xFFu, 0x00u, 0xD1u, 0xC1u))!!
     }
 
     private fun ColorBrush_AlmostTeal_FF007A87(): CompositionColorBrush
     {
-        return _c.createColorBrush(Color(0xFFu, 0x00u, 0x7Au, 0x87u)).also { _colorBrush_AlmostTeal_FF007A87 = it }
+        return _c.createColorBrush(Color(0xFFu, 0x00u, 0x7Au, 0x87u))!!.also { _colorBrush_AlmostTeal_FF007A87 = it }
     }
 
     private fun ColorBrush_White(): CompositionColorBrush
     {
-        return _c.createColorBrush(Color(0xFFu, 0xFFu, 0xFFu, 0xFFu)).also { _colorBrush_White = it }
+        return _c.createColorBrush(Color(0xFFu, 0xFFu, 0xFFu, 0xFFu))!!.also { _colorBrush_White = it }
     }
 
     private fun CompositionPath_00(): CompositionPath
@@ -149,7 +149,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot-Y
     private fun ContainerShape_00(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_01())
@@ -167,7 +167,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot-Y
     private fun ContainerShape_01(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_02())
@@ -177,7 +177,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for Bncr
     private fun ContainerShape_02(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(164.781998f, 57.4729996f))
         val shapes = checkNotNull(result.shapes)
@@ -196,7 +196,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for Dot-Y
     private fun ContainerShape_03(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(43.2630005f, 59.75f))
         val shapes = checkNotNull(result.shapes)
@@ -215,7 +215,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E3-Y
     private fun ContainerShape_04(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_05())
@@ -233,7 +233,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E3-Y
     private fun ContainerShape_05(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_06())
@@ -243,7 +243,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for E3-Y
     private fun ContainerShape_06(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(119.167f, 57.4790001f))
         val shapes = checkNotNull(result.shapes)
@@ -262,7 +262,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E3-B
     private fun ContainerShape_07(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_08())
@@ -280,7 +280,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E3-B
     private fun ContainerShape_08(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_09())
@@ -290,7 +290,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for E3-Y
     private fun ContainerShape_09(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(119.167f, 57.4790001f))
         val shapes = checkNotNull(result.shapes)
@@ -309,7 +309,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): I-Y
     private fun ContainerShape_10(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_11())
@@ -327,7 +327,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): I-Y
     private fun ContainerShape_11(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_12())
@@ -337,7 +337,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for I-Y
     private fun ContainerShape_12(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(93.5940018f, 62.8610001f))
         val shapes = checkNotNull(result.shapes)
@@ -356,7 +356,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): I-B
     private fun ContainerShape_13(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_14())
@@ -374,7 +374,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): I-B
     private fun ContainerShape_14(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_15())
@@ -384,7 +384,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for I-Y
     private fun ContainerShape_15(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(93.5940018f, 62.8610001f))
         val shapes = checkNotNull(result.shapes)
@@ -403,7 +403,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E2-Y
     private fun ContainerShape_16(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_17())
@@ -421,7 +421,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E2-Y
     private fun ContainerShape_17(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_18())
@@ -431,7 +431,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for E2-Y
     private fun ContainerShape_18(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(109.092003f, 33.6100006f))
         val shapes = checkNotNull(result.shapes)
@@ -450,7 +450,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E2-B
     private fun ContainerShape_19(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_20())
@@ -468,7 +468,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E2-B
     private fun ContainerShape_20(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_21())
@@ -478,7 +478,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for E2-Y
     private fun ContainerShape_21(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(109.092003f, 33.6100006f))
         val shapes = checkNotNull(result.shapes)
@@ -497,7 +497,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E1-Y
     private fun ContainerShape_22(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_23())
@@ -515,7 +515,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E1-Y
     private fun ContainerShape_23(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_24())
@@ -525,7 +525,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for E1-Y
     private fun ContainerShape_24(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(113.714996f, 9.14599991f))
         val shapes = checkNotNull(result.shapes)
@@ -544,7 +544,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E1-B
     private fun ContainerShape_25(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_26())
@@ -562,7 +562,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E1-B
     private fun ContainerShape_26(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_27())
@@ -572,7 +572,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for E1-Y
     private fun ContainerShape_27(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(113.714996f, 9.14599991f))
         val shapes = checkNotNull(result.shapes)
@@ -591,7 +591,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-Y
     private fun ContainerShape_28(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_29())
@@ -609,7 +609,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-Y
     private fun ContainerShape_29(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_30())
@@ -619,7 +619,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for T1a-Y
     private fun ContainerShape_30(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(39.0429993f, 48.6780014f))
         val shapes = checkNotNull(result.shapes)
@@ -638,7 +638,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2b-Y
     private fun ContainerShape_31(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_11())
@@ -656,7 +656,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2a-Y
     private fun ContainerShape_32(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_12())
@@ -674,7 +674,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2b-B
     private fun ContainerShape_33(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_13())
@@ -692,7 +692,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1b-Y
     private fun ContainerShape_34(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_14())
@@ -710,7 +710,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1b-B
     private fun ContainerShape_35(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_15())
@@ -728,7 +728,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): O-Y
     private fun ContainerShape_36(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_37())
@@ -746,7 +746,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): O-Y
     private fun ContainerShape_37(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_38())
@@ -756,7 +756,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for O-Y
     private fun ContainerShape_38(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(-62.7919998f, 73.0569992f))
         val shapes = checkNotNull(result.shapes)
@@ -775,7 +775,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): O-B
     private fun ContainerShape_39(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_40())
@@ -793,7 +793,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): O-B
     private fun ContainerShape_40(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_41())
@@ -803,7 +803,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for O-B
     private fun ContainerShape_41(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(-62.7919998f, 73.0569992f))
         val shapes = checkNotNull(result.shapes)
@@ -822,7 +822,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-Y 2
     private fun ContainerShape_42(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_43())
@@ -840,7 +840,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-Y 2
     private fun ContainerShape_43(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_44())
@@ -850,7 +850,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for T1a-Y 2
     private fun ContainerShape_44(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(39.0429993f, 48.6780014f))
         val shapes = checkNotNull(result.shapes)
@@ -869,7 +869,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2a-B
     private fun ContainerShape_45(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_19())
@@ -887,7 +887,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-B
     private fun ContainerShape_46(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_47())
@@ -905,7 +905,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-B
     private fun ContainerShape_47(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_48())
@@ -915,7 +915,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for T1a-Y
     private fun ContainerShape_48(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(39.0429993f, 48.6780014f))
         val shapes = checkNotNull(result.shapes)
@@ -934,7 +934,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot-Y
     private fun ContainerShape_49(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_50())
@@ -952,7 +952,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot-Y
     private fun ContainerShape_50(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_51())
@@ -962,7 +962,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for N
     private fun ContainerShape_51(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(-33.6669998f, 8.18200016f))
         val shapes = checkNotNull(result.shapes)
@@ -981,7 +981,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for Dot-Y
     private fun ContainerShape_52(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(39.875f, 60f))
         val shapes = checkNotNull(result.shapes)
@@ -1000,7 +1000,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): L-Y
     private fun ContainerShape_53(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_22())
@@ -1018,7 +1018,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): L-B
     private fun ContainerShape_54(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_23())
@@ -1036,7 +1036,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot1
     private fun ContainerShape_55(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_56())
         result.startAnimation("TransformMatrix._11", ScalarAnimation_to_0())
@@ -1053,7 +1053,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot1
     private fun ContainerShape_56(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 154.457001f, 287.821991f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(ContainerShape_57())
@@ -1063,7 +1063,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Transforms for Dot1
     private fun ContainerShape_57(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertVector2("Position", Vector2(295.770996f, 108.994003f))
         val shapes = checkNotNull(result.shapes)
@@ -1085,7 +1085,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S1-Y
     private fun ContainerShape_58(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_25())
@@ -1103,7 +1103,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S2-Y
     private fun ContainerShape_59(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_26())
@@ -1121,7 +1121,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S7
     private fun ContainerShape_60(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_27())
@@ -1139,7 +1139,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S8
     private fun ContainerShape_61(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_28())
@@ -1157,7 +1157,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S3-Y
     private fun ContainerShape_62(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_29())
@@ -1175,7 +1175,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S4-Y
     private fun ContainerShape_63(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_30())
@@ -1193,7 +1193,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S5-Y
     private fun ContainerShape_64(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_31())
@@ -1211,7 +1211,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S6-Y
     private fun ContainerShape_65(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_32())
@@ -1229,7 +1229,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S3-Y 2
     private fun ContainerShape_66(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_33())
@@ -1247,7 +1247,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S4-Y 2
     private fun ContainerShape_67(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_34())
@@ -1265,7 +1265,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S5-Y 2
     private fun ContainerShape_68(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_35())
@@ -1283,7 +1283,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S11
     private fun ContainerShape_69(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_36())
@@ -1301,7 +1301,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S12
     private fun ContainerShape_70(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_37())
@@ -1319,7 +1319,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S13
     private fun ContainerShape_71(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_38())
@@ -1337,7 +1337,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S3-Y 3
     private fun ContainerShape_72(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_39())
@@ -1355,7 +1355,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S4-Y 3
     private fun ContainerShape_73(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_40())
@@ -1373,7 +1373,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S5-Y 3
     private fun ContainerShape_74(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_41())
@@ -1391,7 +1391,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S3-Y 4
     private fun ContainerShape_75(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_42())
@@ -1409,7 +1409,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S4-Y 4
     private fun ContainerShape_76(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_43())
@@ -1427,7 +1427,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S5-Y 4
     private fun ContainerShape_77(): CompositionContainerShape
     {
-        val result = _c.createContainerShape()
+        val result = _c.createContainerShape()!!
         result.transformMatrix = Matrix3x2(0f, 0f, 0f, 0f, 0f, 0f)
         val shapes = checkNotNull(result.shapes)
         shapes.add(SpriteShape_44())
@@ -1446,72 +1446,72 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     //   Position
     private fun CubicBezierEasingFunction_00(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0f, 0f), Vector2(0f, 0.811999977f))
+        return _c.createCubicBezierEasingFunction(Vector2(0f, 0f), Vector2(0f, 0.811999977f))!!
     }
 
     // Transforms: Dot-Y
     //   Position
     private fun CubicBezierEasingFunction_01(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.389999986f, 0.707000017f), Vector2(0.708000004f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.389999986f, 0.707000017f), Vector2(0.708000004f, 1f))!!
     }
 
     private fun CubicBezierEasingFunction_02(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.180000007f, 1f)).also { _cubicBezierEasingFunction_02 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.180000007f, 1f))!!.also { _cubicBezierEasingFunction_02 = it }
     }
 
     private fun CubicBezierEasingFunction_03(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.819999993f, 0f), Vector2(0.833000004f, 0.833000004f)).also { _cubicBezierEasingFunction_03 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.819999993f, 0f), Vector2(0.833000004f, 0.833000004f))!!.also { _cubicBezierEasingFunction_03 = it }
     }
 
     private fun CubicBezierEasingFunction_04(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.833000004f, 0.833000004f)).also { _cubicBezierEasingFunction_04 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.833000004f, 0.833000004f))!!.also { _cubicBezierEasingFunction_04 = it }
     }
 
     private fun CubicBezierEasingFunction_05(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.666999996f, 1f)).also { _cubicBezierEasingFunction_05 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.666999996f, 1f))!!.also { _cubicBezierEasingFunction_05 = it }
     }
 
     // Position
     private fun CubicBezierEasingFunction_06(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0f), Vector2(0.666999996f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0f), Vector2(0.666999996f, 1f))!!
     }
 
     private fun CubicBezierEasingFunction_07(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.119999997f, 1f)).also { _cubicBezierEasingFunction_07 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.119999997f, 1f))!!.also { _cubicBezierEasingFunction_07 = it }
     }
 
     private fun CubicBezierEasingFunction_08(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0f), Vector2(0.119999997f, 1f)).also { _cubicBezierEasingFunction_08 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0f), Vector2(0.119999997f, 1f))!!.also { _cubicBezierEasingFunction_08 = it }
     }
 
     // Position
     private fun CubicBezierEasingFunction_09(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.119999997f, 0.119999997f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.119999997f, 0.119999997f))!!
     }
 
     // TStart
     private fun CubicBezierEasingFunction_10(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.300999999f, 0f), Vector2(0.833000004f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.300999999f, 0f), Vector2(0.833000004f, 1f))!!
     }
 
     private fun CubicBezierEasingFunction_11(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.300999999f, 0f), Vector2(0.666999996f, 1f)).also { _cubicBezierEasingFunction_11 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.300999999f, 0f), Vector2(0.666999996f, 1f))!!.also { _cubicBezierEasingFunction_11 = it }
     }
 
     private fun CubicBezierEasingFunction_12(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.0599999987f, 1f)).also { _cubicBezierEasingFunction_12 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.0599999987f, 1f))!!.also { _cubicBezierEasingFunction_12 = it }
     }
 
     // Layer (Shape): T1b-B
@@ -1520,23 +1520,23 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     //       TrimEnd
     private fun CubicBezierEasingFunction_13(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.209999993f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.209999993f, 1f))!!
     }
 
     // Radius
     private fun CubicBezierEasingFunction_14(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.333000004f, 0f), Vector2(0.666999996f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.333000004f, 0f), Vector2(0.666999996f, 1f))!!
     }
 
     private fun CubicBezierEasingFunction_15(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.180000007f, 0f), Vector2(0.34799999f, 1f)).also { _cubicBezierEasingFunction_15 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.180000007f, 0f), Vector2(0.34799999f, 1f))!!.also { _cubicBezierEasingFunction_15 = it }
     }
 
     private fun CubicBezierEasingFunction_16(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.693000019f, 0f), Vector2(0.270000011f, 1f)).also { _cubicBezierEasingFunction_16 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.693000019f, 0f), Vector2(0.270000011f, 1f))!!.also { _cubicBezierEasingFunction_16 = it }
     }
 
     // Transforms: O-B
@@ -1545,7 +1545,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     //       TrimStart
     private fun CubicBezierEasingFunction_17(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 1f), Vector2(0.432000011f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 1f), Vector2(0.432000011f, 1f))!!
     }
 
     // Transforms: T1a-Y
@@ -1554,67 +1554,67 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     //       TrimEnd
     private fun CubicBezierEasingFunction_18(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.672999978f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.672999978f, 1f))!!
     }
 
     // Transforms: N
     //   Position
     private fun CubicBezierEasingFunction_19(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.25999999f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.25999999f, 1f))!!
     }
 
     // Transforms: N
     //   Position
     private fun CubicBezierEasingFunction_20(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.74000001f, 0f), Vector2(0.833000004f, 0.833000004f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.74000001f, 0f), Vector2(0.833000004f, 0.833000004f))!!
     }
 
     // TStart
     private fun CubicBezierEasingFunction_21(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.703000009f, 0.856999993f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.703000009f, 0.856999993f))!!
     }
 
     // TStart
     private fun CubicBezierEasingFunction_22(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.333000004f, 0.202000007f), Vector2(0.938000023f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.333000004f, 0.202000007f), Vector2(0.938000023f, 1f))!!
     }
 
     private fun CubicBezierEasingFunction_23(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.337000012f, 1f)).also { _cubicBezierEasingFunction_23 = it }
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.337000012f, 1f))!!.also { _cubicBezierEasingFunction_23 = it }
     }
 
     // TStart
     private fun CubicBezierEasingFunction_24(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.703000009f, 0.82099998f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.166999996f), Vector2(0.703000009f, 0.82099998f))!!
     }
 
     // TStart
     private fun CubicBezierEasingFunction_25(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.0370000005f, 0.167999998f), Vector2(0.263000011f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.0370000005f, 0.167999998f), Vector2(0.263000011f, 1f))!!
     }
 
     // Transforms: Dot1
     //   Position
     private fun CubicBezierEasingFunction_26(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.823000014f, 0f), Vector2(0.833000004f, 0.833000004f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.823000014f, 0f), Vector2(0.833000004f, 0.833000004f))!!
     }
 
     private fun CubicBezierEasingFunction_27(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.197999999f), Vector2(0.638000011f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.166999996f, 0.197999999f), Vector2(0.638000011f, 1f))!!
     }
 
     private fun CubicBezierEasingFunction_28(): CubicBezierEasingFunction
     {
-        return _c.createCubicBezierEasingFunction(Vector2(0.523000002f, 0f), Vector2(0.795000017f, 1f))
+        return _c.createCubicBezierEasingFunction(Vector2(0.523000002f, 0f), Vector2(0.795000017f, 1f))!!
     }
 
     // Transforms: O-Y
@@ -1622,7 +1622,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1.ellipseGeometry
     private fun Ellipse_1p5_0(): CompositionEllipseGeometry
     {
-        val result = _c.createEllipseGeometry()
+        val result = _c.createEllipseGeometry()!!
         result.center = Vector2(0.800000012f, -0.5f)
         result.radius = Vector2(1.5f, 1.5f)
         result.startAnimation("Radius", Vector2Animation_07())
@@ -1637,7 +1637,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1.ellipseGeometry
     private fun Ellipse_1p5_1(): CompositionEllipseGeometry
     {
-        val result = _c.createEllipseGeometry()
+        val result = _c.createEllipseGeometry()!!
         result.center = Vector2(0.800000012f, -0.5f)
         result.radius = Vector2(1.5f, 1.5f)
         result.startAnimation("Radius", _vector2Animation_07)
@@ -1660,7 +1660,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1.ellipseGeometry
     private fun Ellipse_4p6(): CompositionEllipseGeometry
     {
-        val result = _c.createEllipseGeometry()
+        val result = _c.createEllipseGeometry()!!
         result.center = Vector2(0.800000012f, -0.5f)
         result.radius = Vector2(4.5999999f, 4.5999999f)
         return result
@@ -1669,7 +1669,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1.ellipseGeometry
     private fun Ellipse_4p7(): CompositionEllipseGeometry
     {
-        val result = _c.createEllipseGeometry().also { _ellipse_4p7 = it }
+        val result = _c.createEllipseGeometry()!!.also { _ellipse_4p7 = it }
         result.center = Vector2(0.800000012f, -0.5f)
         result.radius = Vector2(4.69999981f, 4.69999981f)
         return result
@@ -1682,7 +1682,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(-13.6639996f, -0.144999996f))
             builder.addLine(Vector2(75.663002f, 0.289999992f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1694,7 +1694,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(0.859000027f, -21.1429996f))
             builder.addLine(Vector2(-4.35900021f, 70.3919983f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1706,7 +1706,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(-26.6700001f, -0.282999992f))
             builder.addLine(Vector2(99.1709976f, 0.0659999996f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1718,7 +1718,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(-13.6639996f, -0.144999996f))
             builder.addLine(Vector2(62.1629982f, 0.289999992f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1734,7 +1734,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.addCubicBezier(Vector2(-46.637001f, 13.3339996f), Vector2(-47.8400002f, 0.933000028f), Vector2(-37.8730011f, -7.1170001f))
             builder.addCubicBezier(Vector2(-13.1960001f, -27.0459995f), Vector2(8.96000004f, 11.559f), Vector2(49.5060005f, 11.559f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1746,7 +1746,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(246.649994f, 213.813995f))
             builder.addLine(Vector2(340.955994f, 213.628006f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1758,7 +1758,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(1.68099999f, -29.9920006f))
             builder.addLine(Vector2(-1.68099999f, 29.9920006f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1770,7 +1770,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(1.76800001f, -25.9659996f))
             builder.addLine(Vector2(-1.76800001f, 25.9659996f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1787,7 +1787,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.addCubicBezier(Vector2(51.9570007f, 44.1339989f), Vector2(52.6870003f, 43.8740005f), Vector2(53.1879997f, 43.7410011f))
             builder.addCubicBezier(Vector2(53.6889992f, 43.6080017f), Vector2(68.9710007f, 41.3569984f), Vector2(140.393997f, 43.6720009f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1800,7 +1800,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.addCubicBezier(Vector2(-67.125f, -112f), Vector2(-73.5579987f, -100.719002f), Vector2(-75.4580002f, -89.9509964f))
             builder.addCubicBezier(Vector2(-78.625f, -72f), Vector2(-79.375f, -58.25f), Vector2(-80.375f, -39.25f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1813,7 +1813,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.addCubicBezier(Vector2(-67.25f, -105.5f), Vector2(-70.4329987f, -94.9690018f), Vector2(-72.3330002f, -84.2009964f))
             builder.addCubicBezier(Vector2(-75.5f, -66.25f), Vector2(-75.5f, -56.75f), Vector2(-76.5f, -37.75f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1826,7 +1826,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.addCubicBezier(Vector2(7.5f, -14.5f), Vector2(-4f, -37f), Vector2(-35.0460014f, -35.5789986f))
             builder.addCubicBezier(Vector2(-61.4720001f, -34.3689995f), Vector2(-62.25f, -5.75f), Vector2(-62.25f, -5.75f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1840,7 +1840,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.addCubicBezier(Vector2(-9.90299988f, -15.0190001f), Vector2(-21.5699997f, -20.5790005f), Vector2(-32.0460014f, -20.5790005f))
             builder.addCubicBezier(Vector2(-53.5f, -20.5790005f), Vector2(-42.25f, 4.25f), Vector2(-42.25f, 4.25f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1852,7 +1852,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(16.2310009f, 39.0730019f))
             builder.addLine(Vector2(-32.769001f, 57.3650017f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1864,7 +1864,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(7.44999981f, 21.9500008f))
             builder.addLine(Vector2(-32.75f, 55.75f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1876,7 +1876,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(-94.5f, 37.0730019f))
             builder.addLine(Vector2(-48.769001f, 55.3650017f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1888,7 +1888,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(-87.5f, 20.9500008f))
             builder.addLine(Vector2(-48.75f, 54.75f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1900,7 +1900,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(166.731003f, -7.92700005f))
             builder.addLine(Vector2(136.731003f, 7.11499977f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1912,7 +1912,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(156.449997f, -23.0499992f))
             builder.addLine(Vector2(132f, 2.75f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1924,7 +1924,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(169.5f, 18.073f))
             builder.addLine(Vector2(137.481003f, 11.3649998f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1936,7 +1936,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(119.5f, -45.0499992f))
             builder.addLine(Vector2(82.75f, -44.75f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1948,7 +1948,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(119.25f, -20.0499992f))
             builder.addLine(Vector2(63.5f, -20.5f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1960,7 +1960,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(128f, 3.6500001f))
             builder.addLine(Vector2(78.25f, 3.5f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1972,7 +1972,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(149.623993f, 8.24400043f))
             builder.addLine(Vector2(136.647995f, 10.1560001f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1984,7 +1984,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(144.429001f, -5.39699984f))
             builder.addLine(Vector2(132.274994f, 4.73099995f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -1996,7 +1996,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(145.677002f, 22.2199993f))
             builder.addLine(Vector2(134.921997f, 14.7489996f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -2008,7 +2008,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(147.699005f, 13.0249996f))
             builder.addLine(Vector2(133.195007f, 13.21f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -2020,7 +2020,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(142.182999f, -5.11199999f))
             builder.addLine(Vector2(130.029007f, 5.01599979f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
@@ -2032,21 +2032,21 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
             builder.beginFigure(Vector2(142.037994f, 29.2779999f))
             builder.addLine(Vector2(131.281998f, 21.8069992f))
             builder.endFigure(CanvasFigureLoop.Open)
-            result = CanvasGeometry.createPath(builder)
+            result = CanvasGeometry.createPath(builder)!!
         }
         return result
     }
 
     private fun HoldThenStepEasingFunction(): StepEasingFunction
     {
-        val result = _c.createStepEasingFunction().also { _holdThenStepEasingFunction = it }
+        val result = _c.createStepEasingFunction()!!.also { _holdThenStepEasingFunction = it }
         result.isFinalStepSingleFrame  = true
         return result
     }
 
     private fun LinearEasingFunction(): LinearEasingFunction
     {
-        return _c.createLinearEasingFunction().also { _linearEasingFunction = it }
+        return _c.createLinearEasingFunction()!!.also { _linearEasingFunction = it }
     }
 
     // Transforms: E3-Y
@@ -2054,7 +2054,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_00(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_00())
+        val result = _c.createPathGeometry(CompositionPath_00())!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p316_0())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2068,7 +2068,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_01(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_00)
+        val result = _c.createPathGeometry(_compositionPath_00)!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p316_1())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2082,7 +2082,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_02(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_01())
+        val result = _c.createPathGeometry(CompositionPath_01())!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p457_0())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2096,7 +2096,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_03(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_01)
+        val result = _c.createPathGeometry(_compositionPath_01)!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p457_1())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2110,7 +2110,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_04(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_02())
+        val result = _c.createPathGeometry(CompositionPath_02())!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p43_0())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2124,7 +2124,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_05(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_02)
+        val result = _c.createPathGeometry(_compositionPath_02)!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p43_1())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2138,7 +2138,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_06(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_03())
+        val result = _c.createPathGeometry(CompositionPath_03())!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p375_0())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2152,7 +2152,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_07(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_03)
+        val result = _c.createPathGeometry(_compositionPath_03)!!
         result.trimEnd = 0f
         result.startAnimation("TrimEnd", ScalarAnimation_0_to_0p375_1())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2164,7 +2164,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_08(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_04())
+        val result = _c.createPathGeometry(CompositionPath_04())!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0f)
         propertySet.insertScalar("TEnd", 0f)
@@ -2192,7 +2192,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_09(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_05())
+        val result = _c.createPathGeometry(CompositionPath_05())!!
         result.trimEnd = 0.411000013f
         result.trimStart = 0.289999992f
         result.startAnimation("TrimStart", ScalarAnimation_0p29_to_0_0())
@@ -2211,7 +2211,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_10(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_06())
+        val result = _c.createPathGeometry(CompositionPath_06())!!
         result.trimEnd = 0.5f
         result.trimStart = 0.5f
         result.startAnimation("TrimStart", ScalarAnimation_0p5_to_0_0())
@@ -2230,7 +2230,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_11(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_05)
+        val result = _c.createPathGeometry(_compositionPath_05)!!
         result.trimEnd = 0.411000013f
         result.trimStart = 0.289999992f
         result.startAnimation("TrimStart", ScalarAnimation_0p29_to_0_1())
@@ -2249,7 +2249,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_12(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_07())
+        val result = _c.createPathGeometry(CompositionPath_07())!!
         result.trimEnd = 0.116999999f
         result.startAnimation("TrimEnd", ScalarAnimation_0p117_to_1_0())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2263,7 +2263,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_13(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_07)
+        val result = _c.createPathGeometry(_compositionPath_07)!!
         result.trimEnd = 0.116999999f
         result.startAnimation("TrimEnd", ScalarAnimation_0p117_to_1_1())
         var controller = result.tryGetAnimationController("TrimEnd")!!
@@ -2275,7 +2275,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_14(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_04)
+        val result = _c.createPathGeometry(_compositionPath_04)!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0f)
         propertySet.insertScalar("TEnd", 0f)
@@ -2303,7 +2303,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_15(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_06)
+        val result = _c.createPathGeometry(_compositionPath_06)!!
         result.trimEnd = 0.5f
         result.trimStart = 0.5f
         result.startAnimation("TrimStart", ScalarAnimation_0p5_to_0_1())
@@ -2322,7 +2322,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_16(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_04)
+        val result = _c.createPathGeometry(_compositionPath_04)!!
         result.trimEnd = 0.248999998f
         result.trimStart = 0.248999998f
         result.startAnimation("TrimEnd", ScalarAnimation_0p249_to_0p891())
@@ -2335,7 +2335,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_17(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath_08())
+        val result = _c.createPathGeometry(CompositionPath_08())!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.800000012f)
         propertySet.insertScalar("TEnd", 0.810000002f)
@@ -2361,7 +2361,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_18(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(_compositionPath_08)
+        val result = _c.createPathGeometry(_compositionPath_08)!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.800000012f)
         propertySet.insertScalar("TEnd", 0.810000002f)
@@ -2387,7 +2387,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_19(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_09()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_09()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2413,7 +2413,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_20(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_10()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_10()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2439,7 +2439,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_21(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_11()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_11()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2465,7 +2465,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_22(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_12()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_12()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2491,7 +2491,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_23(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_13()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_13()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2517,7 +2517,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_24(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_14()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_14()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2543,7 +2543,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_25(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_15()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_15()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2569,7 +2569,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_26(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_16()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_16()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2595,7 +2595,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_27(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_17()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_17()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2621,7 +2621,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_28(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_18()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_18()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2647,7 +2647,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_29(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_19()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_19()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2673,7 +2673,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_30(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_20()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_20()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2699,7 +2699,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_31(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_21()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_21()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2725,7 +2725,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_32(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_22()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_22()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2751,7 +2751,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_33(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_23()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_23()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2777,7 +2777,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_34(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_24()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_24()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2803,7 +2803,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_35(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_25()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_25()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2829,7 +2829,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_36(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_26()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_26()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2855,7 +2855,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_37(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_27()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_27()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2881,7 +2881,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1.pathGeometry
     private fun PathGeometry_38(): CompositionPathGeometry
     {
-        val result = _c.createPathGeometry(CompositionPath(Geometry_28()))
+        val result = _c.createPathGeometry(CompositionPath(Geometry_28()))!!
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("TStart", 0.870000005f)
         propertySet.insertScalar("TEnd", 1f)
@@ -2907,7 +2907,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // The root of the composition.
     private fun Root(): ContainerVisual
     {
-        val result = _c.createContainerVisual().also { _root = it }
+        val result = _c.createContainerVisual()!!.also { _root = it }
         val propertySet = checkNotNull(result.properties)
         propertySet.insertScalar("Progress", 0f)
         propertySet.insertScalar("t0", 0f)
@@ -2929,7 +2929,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Rectangle Path 1.rectangleGeometry
     private fun RoundedRectangle_375x667(): CompositionRoundedRectangleGeometry
     {
-        val result = _c.createRoundedRectangleGeometry()
+        val result = _c.createRoundedRectangleGeometry()!!
         result.cornerRadius = Vector2(9.99999997E-07f, 9.99999997E-07f)
         result.offset = Vector2(-187.5f, -333.5f)
         result.size = Vector2(375f, 667f)
@@ -2939,7 +2939,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0_to_0p249(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_0_to_0p249 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_0_to_0p249 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0f, _linearEasingFunction)
@@ -2953,7 +2953,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p316_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.469273746f, 0f, LinearEasingFunction())
@@ -2967,7 +2967,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p316_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.513966501f, 0f, _linearEasingFunction)
@@ -2981,7 +2981,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p375_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.441340774f, 0f, _linearEasingFunction)
@@ -2995,7 +2995,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p375_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.469273746f, 0f, _linearEasingFunction)
@@ -3009,7 +3009,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimStart
     private fun ScalarAnimation_0_to_0p399(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0f, _linearEasingFunction)
@@ -3024,7 +3024,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p43_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.463687152f, 0f, _linearEasingFunction)
@@ -3038,7 +3038,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p43_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.480446935f, 0f, _linearEasingFunction)
@@ -3052,7 +3052,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p457_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.43575418f, 0f, _linearEasingFunction)
@@ -3066,7 +3066,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0_to_0p457_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.452513963f, 0f, _linearEasingFunction)
@@ -3077,7 +3077,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_0_to_1_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0f, _linearEasingFunction)
@@ -3088,7 +3088,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_0_to_1_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0f, _linearEasingFunction)
@@ -3098,7 +3098,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_0_to_1_2(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_0_to_1_2 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_0_to_1_2 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.196966588f, 0f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.245809957f, 1f, CubicBezierEasingFunction_27())
@@ -3113,7 +3113,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0p117_to_1_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.116999999f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.391061455f, 0.116999999f, _linearEasingFunction)
@@ -3127,7 +3127,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0p117_to_1_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.116999999f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.452513963f, 0.116999999f, _linearEasingFunction)
@@ -3141,7 +3141,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0p249_to_0p891(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.248999998f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.391061455f, 0.248999998f, _linearEasingFunction)
@@ -3155,7 +3155,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimStart
     private fun ScalarAnimation_0p29_to_0_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.289999992f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.424580991f, 0.289999992f, _linearEasingFunction)
@@ -3169,7 +3169,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimStart
     private fun ScalarAnimation_0p29_to_0_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.289999992f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.458100557f, 0.289999992f, _linearEasingFunction)
@@ -3183,7 +3183,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0p411_to_0p665_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.411000013f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.424580991f, 0.411000013f, _linearEasingFunction)
@@ -3197,7 +3197,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0p411_to_0p665_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.411000013f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.458100557f, 0.411000013f, _linearEasingFunction)
@@ -3211,7 +3211,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimStart
     private fun ScalarAnimation_0p5_to_0_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.5f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.402234644f, 0.5f, _linearEasingFunction)
@@ -3225,7 +3225,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimStart
     private fun ScalarAnimation_0p5_to_0_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.5f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.418994427f, 0.5f, _linearEasingFunction)
@@ -3239,7 +3239,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0p5_to_1_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.5f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.402234644f, 0.5f, _linearEasingFunction)
@@ -3253,7 +3253,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_0p5_to_1_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.5f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.418994427f, 0.5f, _linearEasingFunction)
@@ -3264,7 +3264,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p8_to_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.800000012f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.0893854722f, 0.800000012f, _linearEasingFunction)
@@ -3276,7 +3276,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p8_to_0p3(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.800000012f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.100558661f, 0.800000012f, _linearEasingFunction)
@@ -3288,7 +3288,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_0p81_to_0p734_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.810000002f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.0893854722f, 0.810000002f, _linearEasingFunction)
@@ -3299,7 +3299,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_0p81_to_0p734_1(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.810000002f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.100558661f, 0.810000002f, _linearEasingFunction)
@@ -3310,7 +3310,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_00(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.162011176f, 0.870000005f, _linearEasingFunction)
@@ -3322,7 +3322,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_01(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.162011176f, 0.870000005f, _linearEasingFunction)
@@ -3334,7 +3334,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_02(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_0p87_to_0_02 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_0p87_to_0_02 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.363128483f, 0.870000005f, _linearEasingFunction)
@@ -3346,7 +3346,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_03(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0.870000005f, _linearEasingFunction)
@@ -3358,7 +3358,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_04(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0.870000005f, _linearEasingFunction)
@@ -3370,7 +3370,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_05(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0.870000005f, _linearEasingFunction)
@@ -3382,7 +3382,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_06(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 0.870000005f, _linearEasingFunction)
@@ -3394,7 +3394,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_07(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.541899443f, 0.870000005f, _linearEasingFunction)
@@ -3406,7 +3406,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_08(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.541899443f, 0.870000005f, _linearEasingFunction)
@@ -3418,7 +3418,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_09(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.541899443f, 0.870000005f, _linearEasingFunction)
@@ -3430,7 +3430,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_10(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.446927369f, 0.870000005f, _linearEasingFunction)
@@ -3442,7 +3442,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_11(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.469273746f, 0.870000005f, _linearEasingFunction)
@@ -3454,7 +3454,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_12(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.47486034f, 0.870000005f, _linearEasingFunction)
@@ -3466,7 +3466,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_13(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.418994427f, 0.870000005f, _linearEasingFunction)
@@ -3478,7 +3478,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_14(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.418994427f, 0.870000005f, _linearEasingFunction)
@@ -3490,7 +3490,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_15(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.418994427f, 0.870000005f, _linearEasingFunction)
@@ -3502,7 +3502,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_16(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.424580991f, 0.870000005f, _linearEasingFunction)
@@ -3514,7 +3514,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_17(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.424580991f, 0.870000005f, _linearEasingFunction)
@@ -3526,7 +3526,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TStart
     private fun ScalarAnimation_0p87_to_0_18(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 0.870000005f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.424580991f, 0.870000005f, _linearEasingFunction)
@@ -3538,7 +3538,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E3-Y
     private fun ScalarAnimation_1_to_0_00(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.469273746f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.569832385f, 0f, _holdThenStepEasingFunction)
@@ -3548,7 +3548,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): I-Y
     private fun ScalarAnimation_1_to_0_01(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.43575418f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.519553065f, 0f, _holdThenStepEasingFunction)
@@ -3558,7 +3558,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E2-Y
     private fun ScalarAnimation_1_to_0_02(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.463687152f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.536312878f, 0f, _holdThenStepEasingFunction)
@@ -3568,7 +3568,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E1-Y
     private fun ScalarAnimation_1_to_0_03(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.441340774f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.525139689f, 0f, _holdThenStepEasingFunction)
@@ -3578,7 +3578,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-Y
     private fun ScalarAnimation_1_to_0_04(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.329608947f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.87150836f, 0f, _holdThenStepEasingFunction)
@@ -3588,7 +3588,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2b-Y
     private fun ScalarAnimation_1_to_0_05(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.424580991f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.513966501f, 0f, _holdThenStepEasingFunction)
@@ -3598,7 +3598,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2a-Y
     private fun ScalarAnimation_1_to_0_06(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.402234644f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.497206718f, 0f, _holdThenStepEasingFunction)
@@ -3608,7 +3608,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1b-Y
     private fun ScalarAnimation_1_to_0_07(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.391061455f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.899441361f, 0f, _holdThenStepEasingFunction)
@@ -3618,7 +3618,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot-Y
     private fun ScalarAnimation_1_to_0_08(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.156424582f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.301675975f, 0f, _holdThenStepEasingFunction)
@@ -3628,7 +3628,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_09(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.162011176f, 1f, _linearEasingFunction)
@@ -3639,7 +3639,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_1_to_0_10(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_10 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_10 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.167597771f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.206703916f, 0f, _holdThenStepEasingFunction)
@@ -3649,7 +3649,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_11(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.162011176f, 1f, _linearEasingFunction)
@@ -3661,7 +3661,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_12(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_12 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_12 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.363128483f, 1f, _linearEasingFunction)
@@ -3672,7 +3672,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_1_to_0_13(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_13 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_13 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.363128483f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.418994427f, 0f, _holdThenStepEasingFunction)
@@ -3682,7 +3682,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_14(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_14 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_14 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 1f, _linearEasingFunction)
@@ -3693,7 +3693,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_1_to_0_15(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_15 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_15 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.301675975f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.357541889f, 0f, _holdThenStepEasingFunction)
@@ -3703,7 +3703,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_16(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 1f, _linearEasingFunction)
@@ -3715,7 +3715,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_17(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 1f, _linearEasingFunction)
@@ -3727,7 +3727,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_18(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_18 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_18 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.541899443f, 1f, _linearEasingFunction)
@@ -3738,7 +3738,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_1_to_0_19(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_19 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_19 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.541899443f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.597765386f, 0f, _holdThenStepEasingFunction)
@@ -3748,7 +3748,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_20(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.541899443f, 1f, _linearEasingFunction)
@@ -3760,7 +3760,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_21(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.446927369f, 1f, _linearEasingFunction)
@@ -3772,7 +3772,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S11
     private fun ScalarAnimation_1_to_0_22(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.446927369f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.502793312f, 0f, _holdThenStepEasingFunction)
@@ -3782,7 +3782,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_23(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.469273746f, 1f, _linearEasingFunction)
@@ -3794,7 +3794,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S12
     private fun ScalarAnimation_1_to_0_24(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.469273746f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.525139689f, 0f, _holdThenStepEasingFunction)
@@ -3804,7 +3804,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_25(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.47486034f, 1f, _linearEasingFunction)
@@ -3816,7 +3816,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): S13
     private fun ScalarAnimation_1_to_0_26(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.47486034f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.530726254f, 0f, _holdThenStepEasingFunction)
@@ -3826,7 +3826,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_27(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_27 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_27 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.418994427f, 1f, _linearEasingFunction)
@@ -3837,7 +3837,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_1_to_0_28(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_28 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_28 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.418994427f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.463687152f, 0f, _holdThenStepEasingFunction)
@@ -3847,7 +3847,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_29(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.418994427f, 1f, _linearEasingFunction)
@@ -3859,7 +3859,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_30(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_30 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_30 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.424580991f, 1f, _linearEasingFunction)
@@ -3870,7 +3870,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_1_to_0_31(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_1_to_0_31 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_1_to_0_31 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.424580991f, 1f, _holdThenStepEasingFunction)
         result.insertKeyFrame(0.469273746f, 0f, _holdThenStepEasingFunction)
@@ -3880,7 +3880,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TEnd
     private fun ScalarAnimation_1_to_0_32(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.424580991f, 1f, _linearEasingFunction)
@@ -3895,7 +3895,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // TrimEnd
     private fun ScalarAnimation_1_to_0p88(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, 1f, _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, 1f, _linearEasingFunction)
@@ -3906,7 +3906,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot1
     private fun ScalarAnimation_to_0(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.0949720666f, 0f, _holdThenStepEasingFunction)
         return result
@@ -3915,7 +3915,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): Dot-Y
     private fun ScalarAnimation_to_1_00(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.536312878f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3924,7 +3924,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E3-B
     private fun ScalarAnimation_to_1_01(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.513966501f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3932,7 +3932,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_to_1_02(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_to_1_02 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_to_1_02 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.452513963f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3941,7 +3941,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E2-B
     private fun ScalarAnimation_to_1_03(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.480446935f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3950,7 +3950,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): E1-B
     private fun ScalarAnimation_to_1_04(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.469273746f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3959,7 +3959,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2b-B
     private fun ScalarAnimation_to_1_05(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.458100557f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3967,7 +3967,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarAnimation_to_1_06(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation().also { _scalarAnimation_to_1_06 = it }
+        val result = _c.createScalarKeyFrameAnimation()!!.also { _scalarAnimation_to_1_06 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.301675975f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3976,7 +3976,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-Y 2
     private fun ScalarAnimation_to_1_07(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.329608947f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3985,7 +3985,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T2a-B
     private fun ScalarAnimation_to_1_08(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.418994427f, 1f, _holdThenStepEasingFunction)
         return result
@@ -3994,7 +3994,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): T1a-B
     private fun ScalarAnimation_to_1_09(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.391061455f, 1f, _holdThenStepEasingFunction)
         return result
@@ -4003,7 +4003,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): L-Y
     private fun ScalarAnimation_to_1_10(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.0893854722f, 1f, _holdThenStepEasingFunction)
         return result
@@ -4012,7 +4012,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Layer (Shape): L-B
     private fun ScalarAnimation_to_1_11(): ScalarKeyFrameAnimation
     {
-        val result = _c.createScalarKeyFrameAnimation()
+        val result = _c.createScalarKeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0.100558661f, 1f, _holdThenStepEasingFunction)
         return result
@@ -4020,7 +4020,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ScalarExpressionAnimation(): ExpressionAnimation
     {
-        val result = _c.createExpressionAnimation().also { _scalarExpressionAnimation = it }
+        val result = _c.createExpressionAnimation()!!.also { _scalarExpressionAnimation = it }
         result.setReferenceParameter("_", _root)
         result.expression = "_.Progress"
         return result
@@ -4028,7 +4028,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun ShapeVisual(): ShapeVisual
     {
-        val result = _c.createShapeVisual()
+        val result = _c.createShapeVisual()!!
         result.size = Vector2(375f, 667f)
         val shapes = checkNotNull(result.shapes)
         // Rectangle Path 1
@@ -4127,7 +4127,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Rectangle Path 1
     private fun SpriteShape_00(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 187.5f, 333.5f)
         result.fillBrush = ColorBrush_AlmostDarkTurquoise_FF00D1C1()
         result.geometry = RoundedRectangle_375x667()
@@ -4138,7 +4138,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1
     private fun SpriteShape_01(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 196f, 267f)
         result.fillBrush = ColorBrush_White()
         result.geometry = Ellipse_4p6()
@@ -4149,7 +4149,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_02(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 344.674011f, 261.877014f)
         result.geometry = PathGeometry_00()
         result.strokeBrush = ColorBrush_AlmostTeal_FF007A87()
@@ -4165,7 +4165,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_03(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 344.739014f, 261.877014f)
         result.geometry = PathGeometry_01()
         result.strokeBrush = _colorBrush_White
@@ -4181,7 +4181,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_04(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 304.13501f, 282.408997f)
         result.geometry = PathGeometry_02()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4197,7 +4197,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_05(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 304.13501f, 282.408997f)
         result.geometry = PathGeometry_03()
         result.strokeBrush = _colorBrush_White
@@ -4213,7 +4213,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_06(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 331.664001f, 238.139999f)
         result.geometry = PathGeometry_04()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4229,7 +4229,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_07(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 331.664001f, 238.139999f)
         result.geometry = PathGeometry_05()
         result.strokeBrush = _colorBrush_White
@@ -4245,7 +4245,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_08(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 344.671997f, 214.841995f)
         result.geometry = PathGeometry_06()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4261,7 +4261,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_09(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 344.671997f, 214.841995f)
         result.geometry = PathGeometry_07()
         result.strokeBrush = _colorBrush_White
@@ -4277,7 +4277,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_10(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 227.677002f, 234.375f)
         result.geometry = PathGeometry_08()
         result.strokeBrush = _colorBrush_White
@@ -4293,7 +4293,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_11(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, -56.5f, 83.5f)
         result.geometry = PathGeometry_09()
         result.strokeBrush = _colorBrush_White
@@ -4309,7 +4309,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_12(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 221.197998f, 330.757996f)
         result.geometry = PathGeometry_10()
         result.strokeBrush = _colorBrush_White
@@ -4325,7 +4325,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_13(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, -56.5f, 83.5f)
         result.geometry = PathGeometry_11()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4341,7 +4341,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_14(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 186.255997f, 349.080994f)
         result.geometry = PathGeometry_12()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4358,7 +4358,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_15(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 186.255997f, 349.080994f)
         result.geometry = PathGeometry_13()
         result.strokeBrush = _colorBrush_White
@@ -4375,7 +4375,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1
     private fun SpriteShape_16(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 196f, 267f)
         result.geometry = Ellipse_1p5_0()
         result.strokeBrush = _colorBrush_White
@@ -4388,7 +4388,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1
     private fun SpriteShape_17(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 196f, 267f)
         result.geometry = Ellipse_1p5_1()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4404,7 +4404,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_18(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 227.677002f, 234.375f)
         result.geometry = PathGeometry_14()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4420,7 +4420,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_19(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 221.197998f, 330.757996f)
         result.geometry = PathGeometry_15()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4436,7 +4436,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_20(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 227.677002f, 234.375f)
         result.geometry = PathGeometry_16()
         result.strokeBrush = _colorBrush_White
@@ -4452,7 +4452,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1
     private fun SpriteShape_21(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 196f, 267f)
         result.fillBrush = _colorBrush_White
         result.geometry = Ellipse_4p7()
@@ -4463,7 +4463,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_22(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 109.529007f, 354.143005f)
         result.geometry = PathGeometry_17()
         result.strokeBrush = _colorBrush_White
@@ -4479,7 +4479,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_23(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 109.529007f, 354.143005f)
         result.geometry = PathGeometry_18()
         result.strokeBrush = _colorBrush_AlmostTeal_FF007A87
@@ -4495,7 +4495,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Ellipse Path 1
     private fun SpriteShape_24(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 196f, 267f)
         result.fillBrush = _colorBrush_White
         result.geometry = _ellipse_4p7
@@ -4506,7 +4506,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_25(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_19()
         result.strokeBrush = _colorBrush_White
@@ -4522,7 +4522,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_26(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_20()
         result.strokeBrush = _colorBrush_White
@@ -4538,7 +4538,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_27(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_21()
         result.strokeBrush = _colorBrush_White
@@ -4554,7 +4554,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_28(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_22()
         result.strokeBrush = _colorBrush_White
@@ -4570,7 +4570,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_29(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_23()
         result.strokeBrush = _colorBrush_White
@@ -4586,7 +4586,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_30(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_24()
         result.strokeBrush = _colorBrush_White
@@ -4602,7 +4602,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_31(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_25()
         result.strokeBrush = _colorBrush_White
@@ -4618,7 +4618,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_32(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_26()
         result.strokeBrush = _colorBrush_White
@@ -4634,7 +4634,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_33(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_27()
         result.strokeBrush = _colorBrush_White
@@ -4650,7 +4650,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_34(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_28()
         result.strokeBrush = _colorBrush_White
@@ -4666,7 +4666,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_35(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_29()
         result.strokeBrush = _colorBrush_White
@@ -4682,7 +4682,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_36(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_30()
         result.strokeBrush = _colorBrush_White
@@ -4698,7 +4698,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_37(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_31()
         result.strokeBrush = _colorBrush_White
@@ -4714,7 +4714,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_38(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(1f, 0f, 0f, 1f, 179.5f, 333.5f)
         result.geometry = PathGeometry_32()
         result.strokeBrush = _colorBrush_White
@@ -4730,7 +4730,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_39(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(-0.137444615f, 0.99050945f, -0.99050945f, -0.137444615f, 212.662003f, 248.427994f)
         result.geometry = PathGeometry_33()
         result.strokeBrush = _colorBrush_White
@@ -4746,7 +4746,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_40(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(-0.137444615f, 0.99050945f, -0.99050945f, -0.137444615f, 212.662003f, 248.427994f)
         result.geometry = PathGeometry_34()
         result.strokeBrush = _colorBrush_White
@@ -4762,7 +4762,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_41(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(-0.137444615f, 0.99050945f, -0.99050945f, -0.137444615f, 212.662003f, 248.427994f)
         result.geometry = PathGeometry_35()
         result.strokeBrush = _colorBrush_White
@@ -4778,7 +4778,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_42(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(0.0157073997f, -0.999876618f, 0.999876618f, 0.0157073997f, 207.662003f, 419.427979f)
         result.geometry = PathGeometry_36()
         result.strokeBrush = _colorBrush_White
@@ -4794,7 +4794,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_43(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(0.0157073997f, -0.999876618f, 0.999876618f, 0.0157073997f, 207.662003f, 419.427979f)
         result.geometry = PathGeometry_37()
         result.strokeBrush = _colorBrush_White
@@ -4810,7 +4810,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Path 1
     private fun SpriteShape_44(): CompositionSpriteShape
     {
-        val result = _c.createSpriteShape()
+        val result = _c.createSpriteShape()!!
         result.transformMatrix = Matrix3x2(0.0157073997f, -0.999876618f, 0.999876618f, 0.0157073997f, 207.662003f, 419.427979f)
         result.geometry = PathGeometry_38()
         result.strokeBrush = _colorBrush_White
@@ -4824,7 +4824,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
 
     private fun StepThenHoldEasingFunction(): StepEasingFunction
     {
-        val result = _c.createStepEasingFunction().also { _stepThenHoldEasingFunction = it }
+        val result = _c.createStepEasingFunction()!!.also { _stepThenHoldEasingFunction = it }
         result.isInitialStepSingleFrame  = true
         return result
     }
@@ -4833,7 +4833,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_00(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation()
+        val result = _c.createVector2KeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(43.2630005f, 59.75f), StepThenHoldEasingFunction())
         result.insertKeyFrame(0.536312878f, Vector2(43.2630005f, 59.75f), HoldThenStepEasingFunction())
@@ -4846,7 +4846,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_01(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation()
+        val result = _c.createVector2KeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(164.781998f, 57.4729996f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.536312878f, Vector2(164.781998f, 57.4729996f), _holdThenStepEasingFunction)
@@ -4860,7 +4860,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_02(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation().also { _vector2Animation_02 = it }
+        val result = _c.createVector2KeyFrameAnimation()!!.also { _vector2Animation_02 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(119.167f, 57.4790001f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.469273746f, Vector2(119.167f, 57.4790001f), _holdThenStepEasingFunction)
@@ -4872,7 +4872,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_03(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation().also { _vector2Animation_03 = it }
+        val result = _c.createVector2KeyFrameAnimation()!!.also { _vector2Animation_03 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(93.5940018f, 62.8610001f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.43575418f, Vector2(93.5940018f, 62.8610001f), _holdThenStepEasingFunction)
@@ -4884,7 +4884,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_04(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation().also { _vector2Animation_04 = it }
+        val result = _c.createVector2KeyFrameAnimation()!!.also { _vector2Animation_04 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(109.092003f, 33.6100006f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.463687152f, Vector2(109.092003f, 33.6100006f), _holdThenStepEasingFunction)
@@ -4896,7 +4896,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_05(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation().also { _vector2Animation_05 = it }
+        val result = _c.createVector2KeyFrameAnimation()!!.also { _vector2Animation_05 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(113.714996f, 9.14599991f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.441340774f, Vector2(113.714996f, 9.14599991f), _holdThenStepEasingFunction)
@@ -4908,7 +4908,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_06(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation().also { _vector2Animation_06 = it }
+        val result = _c.createVector2KeyFrameAnimation()!!.also { _vector2Animation_06 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(39.0429993f, 48.6780014f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.312849164f, Vector2(39.0429993f, 48.6780014f), _holdThenStepEasingFunction)
@@ -4919,7 +4919,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Radius
     private fun Vector2Animation_07(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation().also { _vector2Animation_07 = it }
+        val result = _c.createVector2KeyFrameAnimation()!!.also { _vector2Animation_07 = it }
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(1.5f, 1.5f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.301675975f, Vector2(1.5f, 1.5f), _holdThenStepEasingFunction)
@@ -4931,7 +4931,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_08(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation()
+        val result = _c.createVector2KeyFrameAnimation()!!
         result.setReferenceParameter("_", _root)
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(-62.7919998f, 73.0569992f), _stepThenHoldEasingFunction)
@@ -4949,7 +4949,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_09(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation()
+        val result = _c.createVector2KeyFrameAnimation()!!
         result.setReferenceParameter("_", _root)
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(-62.7919998f, 73.0569992f), _stepThenHoldEasingFunction)
@@ -4967,7 +4967,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_10(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation()
+        val result = _c.createVector2KeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(39.875f, 60f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.156424582f, Vector2(39.875f, 60f), _holdThenStepEasingFunction)
@@ -4979,7 +4979,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_11(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation()
+        val result = _c.createVector2KeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(-33.6669998f, 8.18200016f), _stepThenHoldEasingFunction)
         result.insertKeyFrame(0.156424582f, Vector2(-33.6669998f, 8.18200016f), _holdThenStepEasingFunction)
@@ -4992,7 +4992,7 @@ internal class GalleryLottieVisual(private val _c: Compositor) : IAnimatedVisual
     // Position
     private fun Vector2Animation_12(): Vector2KeyFrameAnimation
     {
-        val result = _c.createVector2KeyFrameAnimation()
+        val result = _c.createVector2KeyFrameAnimation()!!
         result.duration = 5_967_000_000L.nanoseconds
         result.insertKeyFrame(0f, Vector2(295.770996f, 108.994003f), _holdThenStepEasingFunction)
         result.insertKeyFrame(0.104395606f, Vector2(35.7709999f, 108.994003f), CubicBezierEasingFunction_26())

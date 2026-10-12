@@ -16,13 +16,13 @@ internal class SwipeControlPage : Page() {
     private var isAccepted = false
     private val items: MutableList<Any?> = WinRTObservableList(listOf("Swipe Item 1", "Swipe Item 2", "Swipe Item 3", "Swipe Item 4"))
     override fun initializeComponent() { super.initializeComponent(); lv.itemsSource = items }
-    private fun DeleteOne_ItemInvoked(sender: SwipeItem, args: SwipeItemInvokedEventArgs) { isArchived = !isArchived; checkNotNull(checkNotNull(args.swipeControl).content).asWinRT<TextBlock>().text = if (isArchived) "Archived - Swipe Left" else "Swipe Left" }
-    private fun DeleteItem_ItemInvoked(sender: SwipeItem, args: SwipeItemInvokedEventArgs) { items.remove(args.swipeControl?.dataContext) }
-    private fun Accept_ItemInvoked(sender: SwipeItem, args: SwipeItemInvokedEventArgs) {
+    private fun DeleteOne_ItemInvoked(sender: SwipeItem?, args: SwipeItemInvokedEventArgs?) { requireNotNull(args);  isArchived = !isArchived; checkNotNull(checkNotNull(args.swipeControl).content).asWinRT<TextBlock>().text = if (isArchived) "Archived - Swipe Left" else "Swipe Left" }
+    private fun DeleteItem_ItemInvoked(sender: SwipeItem?, args: SwipeItemInvokedEventArgs?) { requireNotNull(args);  items.remove(args.swipeControl?.dataContext) }
+    private fun Accept_ItemInvoked(sender: SwipeItem?, args: SwipeItemInvokedEventArgs?) { requireNotNull(sender); requireNotNull(args);
         isAccepted = !isAccepted; CheckAcceptFlagBool(checkNotNull(args.swipeControl))
         sender.iconSource = FontIconSource().apply { glyph = if (isAccepted) "\uE711" else "\uE10B" }; sender.text = if (isAccepted) "Cancel" else "Accept"
     }
-    private fun Flag_ItemInvoked(sender: SwipeItem, args: SwipeItemInvokedEventArgs) {
+    private fun Flag_ItemInvoked(sender: SwipeItem?, args: SwipeItemInvokedEventArgs?) { requireNotNull(sender); requireNotNull(args);
         isFlagged = !isFlagged; CheckAcceptFlagBool(checkNotNull(args.swipeControl))
         sender.iconSource = FontIconSource().apply { glyph = if (isFlagged) "\uEB4B" else "\uE129" }; sender.text = if (isFlagged) "Unmark" else "Flag"
     }

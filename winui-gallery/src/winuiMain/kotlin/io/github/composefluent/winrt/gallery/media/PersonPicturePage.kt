@@ -16,5 +16,5 @@ internal class PersonPicturePage : Page() {
         personPicture.displayName = if (DisplayNameRadio.isChecked == true) "Jane Doe" else ""
         personPicture.initials = if (InitialsRadio.isChecked == true) "SB" else ""
     }
-    private fun RadioButtons_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs) { if (ready) applyProfile() }
+    private fun RadioButtons_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { if (ready) applyProfile() }
 }

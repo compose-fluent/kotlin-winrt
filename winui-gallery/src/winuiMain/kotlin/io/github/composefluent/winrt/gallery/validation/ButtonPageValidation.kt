@@ -36,7 +36,7 @@ internal fun validateButtonPage(page: ButtonPage) = with(page) {
         check("Slices.png" in imageMarkup && "standardButton" !in imageMarkup)
         check("onImageClick" !in checkNotNull(GalleryCodeCatalog.document("Button", "", 0)).source)
         stylesExample.sourcePresenter.isExpanded = true
-        val tabs = checkNotNull(stylesExample.sourcePresenter.content).asWinRT<Grid>().children!![0].asWinRT<SelectorBar>()
-        check(tabs.items.size == 1 && tabs.items[0].text == "XAML")
+        val tabs = checkNotNull(stylesExample.sourcePresenter.content).asWinRT<Grid>().children!![0]!!.asWinRT<SelectorBar>()
+        check(tabs.items!!.size == 1 && tabs.items!![0]!!.text == "XAML")
     })
 }

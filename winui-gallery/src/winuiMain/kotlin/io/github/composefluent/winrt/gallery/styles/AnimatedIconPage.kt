@@ -9,8 +9,8 @@ import microsoft.ui.xaml.media.*
 
 @GalleryPage(route = "AnimatedIcon", title = "AnimatedIcon", group = "Styles", order = 1)
 internal class AnimatedIconPage : Page() {
-    private fun Button_PointerEntered(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs) { AnimatedIcon.setState(SearchAnimatedIcon, "PointerOver") }
-    private fun Button_PointerExited(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs) { AnimatedIcon.setState(SearchAnimatedIcon, "Normal") }
+    private fun Button_PointerEntered(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs?) { AnimatedIcon.setState(SearchAnimatedIcon, "PointerOver") }
+    private fun Button_PointerExited(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs?) { AnimatedIcon.setState(SearchAnimatedIcon, "Normal") }
     companion object {
         fun GetAnimationSourceFromString(selection: Any?): IAnimatedVisualSource2 = when (selection?.toString()) {
             "AnimatedBackVisualSource" -> microsoft.ui.xaml.controls.animatedvisuals.AnimatedBackVisualSource()
