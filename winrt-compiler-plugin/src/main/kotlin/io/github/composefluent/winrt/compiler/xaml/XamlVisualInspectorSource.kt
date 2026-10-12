@@ -102,7 +102,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel) {
             window = null; application = null
           }
           internal fun showWindow() {
-            requireNotNull(application).resources.mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
+            requireNotNull(requireNotNull(application).resources).mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
             window = ${xamlPreviewWindowSource().prependIndent("            ").trimStart()}
           }
         }
@@ -231,7 +231,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               internal fun showWindow() {
                 // The native Application resource dictionary is ready after Start's
                 // initialization callback returns, when OnLaunched is dispatched.
-                requireNotNull(application).resources.mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
+                requireNotNull(requireNotNull(application).resources).mergedDictionaries.add(microsoft.ui.xaml.controls.XamlControlsResources())
                 window = ${xamlPreviewWindowSource().prependIndent("                ").trimStart()}
               }
             }
