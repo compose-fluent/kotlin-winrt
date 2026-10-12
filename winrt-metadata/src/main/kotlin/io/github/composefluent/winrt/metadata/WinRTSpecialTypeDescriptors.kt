@@ -195,6 +195,9 @@ class WinRTMetadataSpecialTypeResolver private constructor(
     }
 
     companion object {
+        internal fun create(types: Map<String, WinRTTypeDefinition>): WinRTMetadataSpecialTypeResolver =
+            WinRTMetadataSpecialTypeResolver(types)
+
         fun create(model: WinRTMetadataModel): WinRTMetadataSpecialTypeResolver =
             WinRTMetadataSpecialTypeResolver(buildTypesByQualifiedName(model))
     }

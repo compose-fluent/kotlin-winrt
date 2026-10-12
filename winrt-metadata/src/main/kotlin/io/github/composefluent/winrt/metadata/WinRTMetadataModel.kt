@@ -715,7 +715,7 @@ data class WinRTTypeDefinition(
             .values
             .map { duplicates -> duplicates.reduce(WinRTMethodDefinition::merge) }
             .sortedWith(compareBy<WinRTMethodDefinition>({ it.methodRowId ?: Int.MAX_VALUE }, { it.signatureKey() }))
-            .map { it.withNullableReturnContract(qualifiedName.trim()).withNullableParameterContract(qualifiedName.trim()) }
+
         val normalizedProperties = properties
             .map(WinRTPropertyDefinition::normalized)
             .groupBy(WinRTPropertyDefinition::signatureKey)
@@ -728,7 +728,7 @@ data class WinRTTypeDefinition(
             .values
             .map { duplicates -> duplicates.reduce(WinRTEventDefinition::merge) }
             .sortedWith(compareBy<WinRTEventDefinition>({ it.addMethodRowId ?: it.removeMethodRowId ?: Int.MAX_VALUE }, { it.signatureKey() }))
-            .map { it.withNullableEventContract(qualifiedName.trim()) }
+
         return copy(
             namespace = namespace.trim(),
             name = name.trim(),

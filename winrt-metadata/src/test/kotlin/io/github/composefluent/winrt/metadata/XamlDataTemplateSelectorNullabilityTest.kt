@@ -33,7 +33,7 @@ class XamlDataTemplateSelectorNullabilityTest {
                 ))),
             ).normalized()
             val methods = model.namespaces.single().types.map { it.methods.single() }
-            assertEquals(listOf("$templateType?", "$templateType?"), methods.map { it.returnTypeName })
+            assertEquals(listOf(templateType, templateType), methods.map { it.returnTypeName })
             // Kotlin nullability must not alter the WinMD/ABI type signature.
             assertEquals(listOf(select.returnType, select.returnType), methods.map { it.returnType })
             assertEquals(model, model.normalized())

@@ -10,7 +10,7 @@ import org.junit.Test
 
 class WinRTMetadataModelTest {
     @Test
-    fun picker_cancellation_preserves_nullable_async_result_without_changing_abi_signature() {
+    fun picker_metadata_preserves_the_original_async_signature() {
         // CsWinRT MarshalInterface<T>.FromAbi(null) and the picker cancellation contract.
         listOf("Windows.Storage.Pickers", "Microsoft.Windows.Storage.Pickers").forEach { namespace ->
             listOf(
@@ -26,7 +26,7 @@ class WinRTMetadataModelTest {
                         namespace = namespace, name = typeName, kind = WinRTTypeKind.Interface,
                         methods = listOf(WinRTMethodDefinition(method, signature)),
                     ).normalized()
-                    assertEquals("Windows.Foundation.IAsyncOperation<Sample.Result?>", type.methods.single().returnTypeName)
+                    assertEquals(signature, type.methods.single().returnTypeName)
                     assertEquals(signature, type.methods.single().returnType.typeName)
                     assertEquals(type, type.normalized())
                 }
@@ -35,7 +35,7 @@ class WinRTMetadataModelTest {
     }
 
     @Test
-    fun layout_default_transition_provider_preserves_native_null_return() {
+    fun layout_metadata_preserves_the_original_return_signature() {
         // WinUI Layout.h returns nullptr; CsWinRT MarshalInterface<T>.FromAbi
         // preserves that value for both calls and inherited virtual callbacks.
         listOf("Layout", "ILayoutOverrides").forEach { owner ->
@@ -48,7 +48,7 @@ class WinRTMetadataModelTest {
                     "Microsoft.UI.Xaml.Controls.ItemCollectionTransitionProvider",
                 )),
             ).normalized()
-            assertEquals("Microsoft.UI.Xaml.Controls.ItemCollectionTransitionProvider?", type.methods.single().returnTypeName)
+            assertEquals("Microsoft.UI.Xaml.Controls.ItemCollectionTransitionProvider", type.methods.single().returnTypeName)
             assertEquals(type, type.normalized())
             assertEquals("Microsoft.UI.Xaml.Controls.ItemCollectionTransitionProvider", type.methods.single().returnType.typeName)
         }

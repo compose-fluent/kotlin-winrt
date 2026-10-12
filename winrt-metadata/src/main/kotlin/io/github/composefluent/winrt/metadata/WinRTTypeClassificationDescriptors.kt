@@ -28,6 +28,7 @@ data class WinRTMappedTypeDescriptor(
     val requiresMarshaling: Boolean = false,
     val hasCustomMembersOutput: Boolean = false,
     val kotlinQualifiedName: String? = null,
+    val preservesNullReference: Boolean? = null,
 ) {
     val abiQualifiedName: String
         get() = "$abiNamespace.$abiName"
@@ -231,6 +232,7 @@ private fun mapped(
     requiresMarshaling: Boolean = false,
     hasCustomMembersOutput: Boolean = false,
     kotlinQualifiedName: String? = null,
+    preservesNullReference: Boolean? = null,
 ): WinRTMappedTypeDescriptor {
     val abiNamespace = abiQualifiedName.substringBeforeLast('.', "")
     val abiName = abiQualifiedName.substringAfterLast('.')
@@ -242,6 +244,7 @@ private fun mapped(
         requiresMarshaling = requiresMarshaling,
         hasCustomMembersOutput = hasCustomMembersOutput,
         kotlinQualifiedName = kotlinQualifiedName,
+        preservesNullReference = preservesNullReference,
     )
 }
 
@@ -287,7 +290,8 @@ private val MAPPED_TYPES: Map<String, WinRTMappedTypeDescriptor> = listOf(
     mapped("Windows.Foundation.TimeSpan", "System", "TimeSpan", requiresMarshaling = true, kotlinQualifiedName = "kotlin.time.Duration"),
     mapped("Windows.Foundation.Collections.IIterable", "System.Collections.Generic", "IEnumerable`1", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IIterator", "System.Collections.Generic", "IEnumerator`1", requiresMarshaling = true, hasCustomMembersOutput = true),
-    mapped("Windows.Foundation.Collections.IKeyValuePair", "System.Collections.Generic", "KeyValuePair`2", requiresMarshaling = true),
+    // CsWinRT KeyValuePair.FromAbi(null) returns the default value-type pair.
+    mapped("Windows.Foundation.Collections.IKeyValuePair", "System.Collections.Generic", "KeyValuePair`2", requiresMarshaling = true, preservesNullReference = false),
     mapped("Windows.Foundation.Collections.IMap", "System.Collections.Generic", "IDictionary`2", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IMapView", "System.Collections.Generic", "IReadOnlyDictionary`2", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IVector", "System.Collections.Generic", "IList`1", requiresMarshaling = true, hasCustomMembersOutput = true),

@@ -562,6 +562,9 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
     private val typesByQualifiedName = buildTypesByQualifiedName(normalizedModel)
     private val closureResolver = normalizedModel.closureResolver()
     private val typeClassifier = normalizedModel.typeClassifier()
+    fun isNullableReferenceProjection(typeName: String, currentNamespace: String = ""): Boolean =
+        WinRTTypeRef.fromDisplayName(typeName).isNullableReferenceProjection(currentNamespace, typesByQualifiedName)
+
     private val typeSemanticsResolver = normalizedModel.typeSemanticsResolver()
     // CsWinRT helpers.h caches find_fast_abi_class_type. Keep our fallback for
     // normalized metadata without attribute arguments, but index it once per model.
@@ -1546,7 +1549,7 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             val instantiatedEvent = event.copy(
                 delegateTypeName = eventType.typeName,
                 delegateTypeSignature = eventType,
-            ).withNullableEventContract(type.qualifiedName)
+            )
             val eventHandlerDescriptor =
                 typeClassifier.classify(eventType, type.namespace).specialType as? WinRTEventHandlerTypeDescriptor
             val usesSharedEventHandlerSource =
@@ -1641,7 +1644,7 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
         val invokeSignature = invoke?.let(::signatureWriterDescriptor)
         return WinRTEventInvokeDescriptor(
             eventName = event.name,
-            delegateTypeName = event.withNullableEventContract(type.qualifiedName).delegateTypeName,
+            delegateTypeName = event.delegateTypeName,
             invokeMethodName = invoke?.name,
             returnTypeName = invoke?.returnType?.normalized()?.typeName
                 ?.let { returnTypeName -> if (isWinRTVoidTypeName(returnTypeName)) "Unit" else returnTypeName }
