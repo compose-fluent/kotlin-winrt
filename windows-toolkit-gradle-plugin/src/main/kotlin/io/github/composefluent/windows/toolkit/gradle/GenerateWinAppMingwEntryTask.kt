@@ -29,10 +29,11 @@ abstract class GenerateWinAppMingwEntryTask : DefaultTask() {
     @get:Optional
     abstract val mainClass: Property<String>
 
-    @get:Input
+    /** Retained for task DSL compatibility; deployment is supplied by the staged host configuration. */
+    @get:Internal
     abstract val packageType: Property<String>
 
-    @get:Input
+    @get:Internal
     abstract val windowsAppSdkDeployment: Property<WindowsAppSdkDeployment>
 
     @get:Input
@@ -61,12 +62,9 @@ abstract class GenerateWinAppMingwEntryTask : DefaultTask() {
             return
         }
         val mainFunction = nativeMainFunctionName(mainClassValue)
-        val unpackaged = packageType.get() == WindowsPackageType.None.name
         mingwApplicationEntrySource(
             mainFunctionName = mainFunction,
-            unpackaged = unpackaged,
             entryFunctionName = entryPointFunctionName.get(),
-            windowsAppSdkDeployment = windowsAppSdkDeployment.get(),
         ).writeTo(outputRoot)
     }
 }
@@ -87,13 +85,8 @@ private fun nativeMainFunctionName(mainClass: String): String {
 
 private fun mingwApplicationEntrySource(
     mainFunctionName: String,
-    unpackaged: Boolean,
     entryFunctionName: String,
-    windowsAppSdkDeployment: WindowsAppSdkDeployment = WindowsAppSdkDeployment.FrameworkDependent,
 ): FileSpec {
-    require(windowsAppSdkDeployment != WindowsAppSdkDeployment.Auto) {
-        "Generated application entries require a concrete Windows App SDK deployment mode."
-    }
     val userMainPackage = mainFunctionName.substringBeforeLast('.', missingDelimiterValue = "")
     val userMainName = mainFunctionName.substringAfterLast('.')
     if (userMainPackage.isBlank() || userMainName.isBlank()) {
@@ -104,23 +97,16 @@ private fun mingwApplicationEntrySource(
     val userMain = MemberName(userMainPackage, userMainName)
     val bootstrap = ClassName("io.github.composefluent.winrt.runtime", "WindowsAppSdkBootstrap")
     val hostConfiguration = ClassName("io.github.composefluent.winrt.runtime", "WinAppHostConfiguration")
-    val packageIdentity = ClassName("io.github.composefluent.winrt.runtime", "WinAppPackageIdentity")
-    val deploymentMode = ClassName("io.github.composefluent.winrt.runtime", "WindowsAppSdkDeploymentMode")
     val deployment = ClassName("io.github.composefluent.winrt.runtime", "WindowsAppSdkDeployment")
-    val packageIdentityName = if (unpackaged) "Unpackaged" else "Packaged"
     val fileName = if (entryFunctionName == "main") "WinRTMingwApplicationEntry" else "WinRTMingwApplicationEntry_$entryFunctionName"
     return FileSpec.builder("io.github.composefluent.winrt.application", fileName)
         .addAliasedImport(userMain, "userMain")
         .addFunction(
             FunSpec.builder(entryFunctionName)
                 .beginControlFlow(
-                    "%T.initializeApplicationHost(%T.fromStagedRuntimeAssets(packageIdentity = %T.%L, windowsAppSdkDeployment = %T.%L, runtimeAssetsRoot = %T.discoverRuntimeAssetsRoot())).use",
+                    "%T.initializeApplicationHost(%T.fromStagedRuntimeAssets(runtimeAssetsRoot = %T.discoverRuntimeAssetsRoot())).use",
                     bootstrap,
                     hostConfiguration,
-                    packageIdentity,
-                    packageIdentityName,
-                    deploymentMode,
-                    windowsAppSdkDeployment.name,
                     deployment,
                 )
                 .addStatement("%M()", userMain)

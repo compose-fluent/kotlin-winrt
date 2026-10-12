@@ -1,5 +1,8 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.runtime.WinAppHostConfiguration
+import io.github.composefluent.winrt.runtime.WinAppPackageIdentity
+import io.github.composefluent.winrt.runtime.WindowsAppSdkDeploymentMode
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -30,6 +33,12 @@ import kotlin.streams.asSequence
 
 @CacheableTask
 abstract class StageWinAppPackageTask : DefaultTask() {
+    @get:Input
+    abstract val packageIdentity: Property<WinAppPackageIdentity>
+
+    @get:Input
+    abstract val windowsAppSdkDeployment: Property<WindowsAppSdkDeploymentMode>
+
     /** Direct JVM staging avoids constructing an intermediate standalone application host. */
     @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.NAME_ONLY)
     abstract val jvmRuntimeClasspath: ConfigurableFileCollection
@@ -214,6 +223,8 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             .map { Path.of(it).toAbsolutePath().normalize().toString() }
 
     init {
+        packageIdentity.convention(WinAppPackageIdentity.Packaged)
+        windowsAppSdkDeployment.convention(WindowsAppSdkDeploymentMode.None)
         jvmRuntimeJavaMajor.convention(25)
         generateProjectPri.convention(true)
         developmentIdentity.convention(false)
@@ -316,7 +327,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             outputRoot,
             executableBaseName.get(),
             windowsManifestProcessorArchitecture(runtimeIdentifier.get()),
-            redirectDlls = false,
+            redirectDlls = jvmLauncherExecutable.isPresent && packageIdentity.get() == WinAppPackageIdentity.Unpackaged,
         )
         val generatedPri = generateProjectPri(
             outputRoot = outputRoot,
@@ -357,6 +368,10 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             )
         }
         validateStagedManifestPayload(outputRoot)
+        Files.writeString(
+            outputRoot.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME),
+            WinAppHostConfiguration(packageIdentity.get(), windowsAppSdkDeployment.get()).toStagedProperties(),
+        )
     }
 
     private fun stageAppxManifest(outputRoot: Path) {
@@ -404,6 +419,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
     }
 
     private fun reservedPayloadPaths(): Set<Path> = buildSet {
+        add(Path.of(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME))
         add(Path.of("${executableBaseName.get()}.exe.manifest"))
         if (generateProjectPri.get()) add(Path.of("resources.pri"))
         val targetPaths = projectPriTargetPaths.get()

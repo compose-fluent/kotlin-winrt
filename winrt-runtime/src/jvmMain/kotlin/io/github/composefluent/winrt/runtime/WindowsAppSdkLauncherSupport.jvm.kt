@@ -4,6 +4,12 @@ import kotlinx.io.files.Path
 
 object WindowsAppSdkLauncherSupport {
     @JvmStatic
+    fun initializeApplicationHost(runtimeAssetsRoot: String): AutoCloseable =
+        WindowsAppSdkBootstrap.initializeApplicationHost(
+            WinAppHostConfiguration.fromStagedRuntimeAssets(Path(runtimeAssetsRoot)),
+        )
+
+    @JvmStatic
     fun initializeApplicationHost(
         packageIdentity: String,
         deploymentMode: String,

@@ -220,6 +220,122 @@ class NamedWinAppsTest {
     }
 
     @Test
+    fun native_packaging_formats_reuse_the_linked_executable_without_build_script_changes() {
+        val makeAppx = findWindowsSdk()?.tool("makeappx.exe", "x64")
+        assumeNotNull(makeAppx)
+        val root = fixture("native-format-repack")
+        val suffix = "DesktopMainAppDebugExecutable"
+        val variantId = "desktop_main_appDebugExecutable"
+        val script = """
+            plugins { id 'org.jetbrains.kotlin.multiplatform'; id 'io.github.compose-fluent.windows-toolkit' }
+            repositories { mavenCentral() }
+            kotlin { mingwX64('desktop') { binaries {
+                executable('app', [org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG]) { entryPoint = 'sample.main' }
+            } } }
+            windows {
+                packageReferences { restoreNuGetPackages = false }
+                application {
+                    packageType = io.github.composefluent.windows.toolkit.gradle.WindowsPackageType.None
+                    console = true
+                    minWindowsVersion = '10.0.17763.0'
+                    maxVersionTested = '10.0.26100.0'
+                    generateProjectPri = false
+                    enableDefaultProjectPriResources = false
+                    makeAppxExecutable = '${makeAppx.toString().replace("\\", "/")}'
+                    appxManifest('payload/AppxManifest.xml')
+                    packagePayload('payload/Logo.png', 'Assets/Logo.png')
+                }
+            }
+            tasks.named('generateWinAppConfiguration') { includeToolingPackages = false }
+            tasks.named('restoreWinAppDependencies') { includeToolingPackages = false }
+        """.trimIndent()
+        writeGradleFile(root.resolve("build.gradle"), script)
+        writeGradleFile(root.resolve("src/commonMain/kotlin/sample/Main.kt"), "package sample\nfun main() = println(\"repack\")")
+        writeGradleFile(root.resolve("payload/AppxManifest.xml"), manifest("Repack"))
+        Files.write(root.resolve("payload/Logo.png"), Base64.getDecoder().decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+        ))
+        val initial = runner(root, "packageWinApp$suffix").build()
+        assertEquals(TaskOutcome.SUCCESS, initial.task(":linkAppDebugExecutableDesktop")?.outcome)
+        val layout = root.resolve("build/kotlin-winrt/application-layout/$variantId")
+        val originalExe = layout.resolve("package/native-format-repack.exe")
+        val originalHash = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(originalExe)).toList()
+        for (format in WinAppPackagingFormat.entries) {
+            val result = runner(root, "packageWinApp${format.name}$suffix").build()
+            assertEquals(result.output, TaskOutcome.UP_TO_DATE, result.task(":compileKotlinDesktop")?.outcome)
+            assertEquals(result.output, TaskOutcome.UP_TO_DATE, result.task(":linkAppDebugExecutableDesktop")?.outcome)
+            val packageRoot = layout.resolve("${format.directoryName}/package")
+            assertEquals(originalHash, java.security.MessageDigest.getInstance("SHA-256")
+                .digest(Files.readAllBytes(packageRoot.resolve("native-format-repack.exe"))).toList())
+            val configuration = Files.readString(packageRoot.resolve("kotlin-winrt-host.properties"))
+            assertTrue(configuration.contains("packageIdentity=${format.packageType.hostPackageIdentity().name}"))
+            assertTrue(configuration.contains("windowsAppSdkDeployment=${format.deployment.name}"))
+            if (format.packageType == WindowsPackageType.Packaged) {
+                val archive = root.resolve("build/kotlin-winrt/packages/native-format-repack-$variantId-${format.directoryName}.msix")
+                ZipFile(archive.toFile()).use { zip ->
+                    assertNotEquals(null, zip.getEntry("native-format-repack.exe"))
+                    assertEquals(configuration, zip.getInputStream(zip.getEntry("kotlin-winrt-host.properties")).bufferedReader().readText())
+                }
+            }
+        }
+        assertEquals(script, Files.readString(root.resolve("build.gradle")))
+        val repeated = runner(root, "packageWinAppUnpackagedSelfContained$suffix").build()
+        assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":stageWinAppPackageUnpackagedSelfContained$suffix")?.outcome)
+        assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":linkAppDebugExecutableDesktop")?.outcome)
+    }
+
+    @Test
+    fun jvm_launcher_reads_staged_deployment_before_running_user_main() {
+        val root = fixture("staged-jvm-host")
+        // TestKit supplies the local runtime as a file dependency, without its published POM.
+        val runtimeLibraries = listOf(
+            kotlin.Unit::class.java,
+            kotlinx.io.files.Path::class.java,
+            kotlinx.io.bytestring.ByteString::class.java,
+            kotlinx.coroutines.Job::class.java,
+        ).map { Path.of(it.protectionDomain.codeSource.location.toURI()).toString().replace("\\", "/") }
+            .distinct().joinToString(", ") { "'${it.replace("'", "\\'")}'" }
+        writeGradleFile(root.resolve("build.gradle"), """
+            plugins { id 'java'; id 'io.github.compose-fluent.windows-toolkit' }
+            repositories { mavenCentral() }
+            dependencies { implementation files($runtimeLibraries) }
+            windows {
+                packageReferences { restoreNuGetPackages = false }
+                application {
+                    mainClass = 'sample.Main'
+                    console = true
+                    packageType = io.github.composefluent.windows.toolkit.gradle.WindowsPackageType.None
+                    windowsAppSdkDeployment = io.github.composefluent.windows.toolkit.gradle.WindowsAppSdkDeployment.None
+                    externalJvmRuntime('${System.getProperty("java.home").replace("\\", "/")}')
+                    generateProjectPri = false
+                    enableDefaultProjectPriResources = false
+                }
+            }
+            tasks.named('generateWinAppConfiguration') { includeToolingPackages = false }
+            tasks.named('restoreWinAppDependencies') { includeToolingPackages = false }
+        """.trimIndent())
+        writeGradleFile(root.resolve("src/main/java/sample/Main.java"), """
+            package sample;
+            public class Main {
+                public static void main(String[] args) { System.out.println("staged-host-started"); }
+            }
+        """.trimIndent())
+        val result = runner(root, "buildWinAppHostJvmMain").build()
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileWinAppLauncherJvmMain")?.outcome)
+        val packageRoot = root.resolve("build/kotlin-winrt/application-layout/jvm_main/jvm-host")
+        val process = ProcessBuilder(packageRoot.resolve("staged-jvm-host.exe").toString())
+            .directory(packageRoot.toFile()).redirectErrorStream(true).start()
+        try {
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS))
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(output, 0, process.exitValue())
+            assertTrue(output, output.contains("staged-host-started"))
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+        }
+    }
+
+    @Test
     fun two_native_applications_share_compilation_but_link_and_package_distinct_entries() {
         val makeAppx = findWindowsSdk()?.tool("makeappx.exe", "x64")
         assumeNotNull(makeAppx)
@@ -262,11 +378,7 @@ class NamedWinAppsTest {
                 val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             ) {
                 companion object {
-                    fun fromStagedRuntimeAssets(
-                        packageIdentity: WinAppPackageIdentity,
-                        windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
-                        runtimeAssetsRoot: Any?,
-                    ) = WinAppHostConfiguration(packageIdentity, windowsAppSdkDeployment)
+                    fun fromStagedRuntimeAssets(runtimeAssetsRoot: Any?) = WinAppHostConfiguration(WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None)
                 }
             }
             object WindowsAppSdkDeployment {

@@ -217,7 +217,29 @@ JVM native EXE and authoring DLL hosts automatically discover installed Visual S
 
 WinApp CLI `0.6.0` performs its normal C++/WinRT workspace setup during restore and may check or install Windows App SDK runtime packages. That release does not expose a switch that limits `restore` to NuGet download and lockfile generation, and WinApp itself has no `--offline` option. When Gradle runs with `--offline`, the plugin does not invoke `winapp restore`: it reuses the verified `.winapp` lock/cache and fails if the lock, package contents, or restore context is missing or stale. Without Gradle offline, a normal restore may use the configured NuGet sources and CLI behavior. Set `packageReferences { restoreNuGetPackages = false }` to retain the legacy NuGet cache/CLI resolution path.
 
-For the default packaged application mode, the plugin creates one package task graph per matching Kotlin target variant. Set `application { packageType = WindowsPackageType.None }` to keep a loose unpackaged layout for a generated JVM host or `mingwX64` executable. The unsuffixed `packageWinApp` task aggregates those concrete tasks. A `mingwX64` executable remains its variant's package entry payload; JVM variants package the generated host, runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. Each concrete `verifyWinAppPackage<TargetVariant>` task unpacks its result through `winapp tool makeappx` and validates its manifest, payload, and resource-resolution report. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override:
+The plugin creates one package task graph per matching Kotlin target variant. `application.packageType` and `application.windowsAppSdkDeployment` select the default used by `packageWinApp<TargetVariant>`; the unsuffixed `packageWinApp` aggregates those default tasks. Applications are packaged by default. Set `application { packageType = WindowsPackageType.None }` for a default loose unpackaged layout. A `mingwX64` executable remains its variant's package entry payload; JVM variants package the generated host, runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. Each concrete `verifyWinAppPackage<TargetVariant>` task unpacks its result through `winapp tool makeappx` and validates its manifest, payload, and resource-resolution report. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override.
+
+Windows App SDK applications also expose four explicit packaging formats. Append the usual Kotlin target variant suffix, or a named application suffix, to any of these tasks:
+
+| Task prefix | Output | Windows App SDK deployment |
+| --- | --- | --- |
+| `packageWinAppPackagedFrameworkDependent` | MSIX | Installed framework runtime |
+| `packageWinAppPackagedSelfContained` | MSIX | Runtime included in the package |
+| `packageWinAppUnpackagedFrameworkDependent` | Loose directory | Installed framework runtime and bootstrap |
+| `packageWinAppUnpackagedSelfContained` | Loose directory | Runtime included beside the executable |
+
+For example, repackage a release MinGW application without editing its build script:
+
+```powershell
+.\gradlew.bat :app:packageWinAppUnpackagedSelfContainedMingwX64MainReleaseExecutable
+.\gradlew.bat :app:packageWinAppPackagedFrameworkDependentMingwX64MainReleaseExecutable
+```
+
+Each format has its own `stageWinAppPackage<Format><TargetVariant>` and runtime-assets stage. Packaged formats also have matching `verifyWinAppPackage`, `signWinAppPackage`, and `installWinAppPackage` tasks. Unsuffixed format tasks aggregate that format across the application's targets. Explicit format tasks create the requested artifact even when the default's `generatePackage` is false. They retain the application's manifest, resource, JVM, signing, and installation settings; explicit `packageOutputFile`, `signedPackageOutputFile`, and `installPackageFile` overrides apply only to the default tasks. Formats use separate automatic output paths.
+
+All formats share the Kotlin compilation, Native executable link, JVM launcher, authored host DLLs, and JVM runtime image. Generated JVM and Native hosts read `kotlin-winrt-host.properties` from their staged directory, so switching formats changes deployment inputs without changing generated application source. Unchanged compilation and link tasks stay up-to-date. Updating from a plugin version that embedded the packaging mode requires one rebuild of the host/Native entry; subsequent format switches reuse that executable. Custom Native entry points remain responsible for their own bootstrap configuration.
+
+Format layouts live at `build/kotlin-winrt/application-layout/<variant>/<format>/package`, and MSIX files use `build/kotlin-winrt/packages/<project>-<variant>-<format>.msix`. Keep the complete loose directory when distributing an unpackaged application. Framework-dependent formats require the appropriate Windows App SDK runtime on the target machine.
 
 Application package files live under the owning Kotlin source set at `src/<targetSourceSet>/appxResources/` (for example `src/winuiMain/appxResources/` or `src/main/appxResources/`). The plugin copies every file below that directory into the staged AppX root using its path relative to `appxResources/`; `AppxManifest.xml` is used automatically when no `application { appxManifest(...) }` is configured and is not copied as a second payload file. Source-set dependencies are merged from the least-specific source set to the selected target, so a target resource can override a shared resource. Explicit `appxManifest(...)` manifests take precedence. Explicit `packagePayload(...)` entries have the highest normal resource priority; same-level conflicts fail instead of being chosen by directory traversal order.
 

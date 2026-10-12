@@ -288,8 +288,9 @@ abstract class WinAppOptions @Inject constructor(
     private var runTaskRegistrar: ((WinAppRunTaskRegistration) -> Unit)? = null
 
     /**
-     * Controls whether the application has an AppX/MSIX package identity. Applications are
-     * packaged by default; use [WindowsPackageType.None] for a loose unpackaged layout.
+     * Default packaging for packageWinApp. Applications are packaged by default; use
+     * [WindowsPackageType.None] for a loose layout. Explicit packaging-format tasks override
+     * this default without changing compilation or the application DSL.
      */
     val packageType: Property<WindowsPackageType> =
         objects.property(WindowsPackageType::class.java).convention(WindowsPackageType.Packaged)
@@ -365,7 +366,7 @@ abstract class WinAppOptions @Inject constructor(
     )
     /** Java major version used for JNI headers, jlink, and the runtime image contract. */
     val jvmToolchainVersion: Property<Int> = objects.property(Int::class.java).convention(25)
-    /** Windows App SDK deployment mode; [WindowsAppSdkDeployment.Auto] selects it from the app graph. */
+    /** Default SDK deployment; explicit packaging-format tasks select their own deployment mode. */
     val windowsAppSdkDeployment: Property<WindowsAppSdkDeployment> =
         objects.property(WindowsAppSdkDeployment::class.java)
             .convention(WindowsAppSdkDeployment.Auto)

@@ -10,6 +10,45 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class WindowsAppSdkDeploymentJvmTest {
+    // Windows App SDK bootstrap and self-contained deployment are selected at the host boundary,
+    // independently of the Kotlin compilation, as in CsWinRT's WinUI desktop sample.
+    @Test
+    fun staged_host_configuration_selects_each_packaging_mode_without_compiled_defaults() {
+        val root = Files.createTempDirectory("kotlin-winrt-host-modes-")
+        val rootPath = kotlinx.io.files.Path(root.toString())
+        Files.writeString(root.resolve("windows-app-sdk.properties"),
+            "schemaVersion=1\nmajorMinorVersion=65544\nversionTag=preview.7\nminVersion=281509336449024\n")
+        for (identity in WinAppPackageIdentity.entries) {
+            for (deployment in listOf(WindowsAppSdkDeploymentMode.None,
+                WindowsAppSdkDeploymentMode.FrameworkDependent, WindowsAppSdkDeploymentMode.SelfContained)) {
+                Files.writeString(root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME),
+                    WinAppHostConfiguration(identity, deployment).toStagedProperties())
+                val actual = WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath)
+                assertEquals(identity, actual.packageIdentity)
+                assertEquals(deployment, actual.windowsAppSdkDeployment)
+                if (deployment == WindowsAppSdkDeploymentMode.FrameworkDependent) {
+                    assertEquals("preview.7", assertNotNull(actual.windowsAppSdkVersion).versionTag)
+                } else {
+                    assertEquals(null, actual.windowsAppSdkVersion)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun staged_host_configuration_rejects_missing_unknown_or_incomplete_metadata() {
+        val root = Files.createTempDirectory("kotlin-winrt-invalid-host-")
+        val rootPath = kotlinx.io.files.Path(root.toString())
+        val file = root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME)
+        assertFailsWith<IllegalArgumentException> { WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath) }
+        Files.writeString(file, "schemaVersion=2\npackageIdentity=Unpackaged\nwindowsAppSdkDeployment=None\n")
+        assertFailsWith<IllegalStateException> { WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath) }
+        Files.writeString(file, "schemaVersion=1\npackageIdentity=Invalid\nwindowsAppSdkDeployment=None\n")
+        assertFailsWith<IllegalArgumentException> { WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath) }
+        Files.writeString(file, "schemaVersion=1\npackageIdentity=Unpackaged\n")
+        assertFailsWith<IllegalStateException> { WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath) }
+    }
+
     @Test
     fun staged_configuration_preserves_a_nonempty_windows_app_sdk_version_tag() {
         val root = Files.createTempDirectory("kotlin-winrt-staged-windows-app-sdk-")
