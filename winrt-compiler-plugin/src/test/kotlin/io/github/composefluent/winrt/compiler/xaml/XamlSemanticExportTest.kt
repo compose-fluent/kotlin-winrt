@@ -18,6 +18,61 @@ import io.github.composefluent.winrt.runtime.WinUiXamlLoadState
 
 class XamlSemanticExportTest {
     @Test
+    fun semantic_pass_reports_nullable_delegate_mismatch_as_a_source_error() {
+        val root = Files.createTempDirectory("xaml-handler-nullability").toFile()
+        try {
+            val location = WinUiXamlSourceLocation(3, 9)
+            val declarations = WinUiXamlDeclarationIndex(WinUiXamlDeclarations.SCHEMA_VERSION, listOf(
+                WinUiXamlPageDeclaration("probe.MainPage", "MainPage.xaml", "Microsoft.UI.Xaml.Controls.Page",
+                    false, listOf("events"), listOf(WinUiXamlConnectionDeclaration(1,
+                        "Microsoft.UI.Xaml.Controls.Page", null, location, listOf(WinUiXamlEventDeclaration(
+                            "Changed", "onChanged", "Microsoft.UI.Xaml.Controls.Page", "Microsoft.UI.Xaml.Handler", location)))))
+            ), emptyList())
+            val input = File(root, "declarations.json").apply { writeText(WinUiXamlDeclarations.canonicalText(declarations)) }
+            val index = File(root, "metadata.tsv").apply { writeText("") }
+            val references = File(root, "references.txt").apply { writeText("") }
+            val symbols = File(root, "symbols.json").apply { writeText("stale") }
+            File(root, "MainPage.xaml").writeText("<Page />")
+            File(root, "MainPage.kt").writeText("""
+                package probe
+                class MainPage : microsoft.ui.xaml.controls.Page() {
+                    private fun onChanged(sender: Any, args: Any) { }
+                }
+            """.trimIndent())
+            File(root, "UI.kt").writeText("""
+                package microsoft.ui.xaml.controls
+                fun interface Handler<T> { fun invoke(sender: Any?, args: T) }
+                open class Page { fun addChanged(handler: Handler<Any?>?) { } }
+            """.trimIndent())
+            File(root, "Connector.kt").writeText("""
+                package microsoft.ui.xaml.markup
+                interface IComponentConnector {
+                    fun connect(connectionId: Int, target: Any?)
+                    fun getBindingConnector(connectionId: Int, target: Any?): IComponentConnector?
+                }
+            """.trimIndent())
+            val classpath = listOf(Unit::class.java, WinUiXamlLoadState::class.java).joinToString(File.pathSeparator) {
+                File(it.protectionDomain.codeSource.location.toURI()).absolutePath
+            }
+            val options = mapOf("xamlDeclarations" to input.absolutePath, "metadataIndex" to index.absolutePath,
+                "xamlSemanticOutput" to symbols.absolutePath, "xamlReferencesFile" to references.absolutePath)
+            val arguments = listOf("-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", classpath,
+                "-Xplugin=${System.getProperty("winrt.test.fullPluginJar")}", "-d", File(root, "output").absolutePath) +
+                root.listFiles()!!.filter { it.extension == "kt" }.map { it.absolutePath } +
+                options.flatMap { (key, value) -> listOf("-P", "plugin:io.github.composefluent.winrt.compiler:$key=$value") }
+            val diagnostics = ByteArrayOutputStream()
+            val result = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *arguments.toTypedArray()) }
+            assertEquals(diagnostics.toString(), ExitCode.COMPILATION_ERROR, result)
+            assertTrue(diagnostics.toString(), diagnostics.toString().contains("onChanged does not match projected delegate"))
+            assertTrue(diagnostics.toString(), diagnostics.toString().contains("nullable arguments"))
+            assertTrue(diagnostics.toString(), diagnostics.toString().contains("MainPage.xaml:3:9"))
+            assertFalse(symbols.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun development_accessors_use_the_system_type_projection_for_style_target_type() {
         // CsWinRT helpers.h maps Windows.UI.Xaml.Interop.TypeName to System.Type;
         // KotlinProjectionTypeResolver emits KClass<*>?, not a TypeName struct.
@@ -456,6 +511,18 @@ class XamlSemanticExportTest {
             assertEquals("external:reference", loader.loadClass("consumer.ConsumerKt").getMethod("exercise").invoke(null))
         }
         val validSource = source.readText()
+        val validArgs = argsType.readText()
+        argsType.writeText(validArgs.replace("args: RoutedEventArgs)", "args: RoutedEventArgs?)"))
+        val narrowedHandler = compile()
+        assertEquals(narrowedHandler.second, ExitCode.COMPILATION_ERROR, narrowedHandler.first)
+        assertTrue(narrowedHandler.second, narrowedHandler.second.contains("onClick does not match projected delegate"))
+        assertTrue(narrowedHandler.second, narrowedHandler.second.contains("nullable arguments"))
+        assertFalse("Rejected handler must invalidate the symbol sidecar", symbols.exists())
+        source.writeText(validSource.replace("args: microsoft.ui.xaml.RoutedEventArgs)", "args: microsoft.ui.xaml.RoutedEventArgs?)"))
+        val nullableHandler = compile()
+        assertEquals(nullableHandler.second, ExitCode.OK, nullableHandler.first)
+        argsType.writeText(validArgs)
+        source.writeText(validSource)
         source.writeText("""
             package probe
             enum class Choice { Zero, One }

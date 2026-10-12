@@ -7,6 +7,8 @@ import io.github.composefluent.winrt.metadata.*
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
@@ -85,6 +87,37 @@ private class XamlSemanticExport(
         val classes = moduleFragment.files.flatMap { file ->
             file.declarations.filterIsInstance<IrClass>().map { it to file }
         }
+        // The CLR symbol sidecar cannot express Kotlin nullability. Validate against
+        // the projected delegate here, before XamlCompiler accepts that sidecar.
+        var invalidHandler = false
+        for (page in declarations.pages) {
+            val (klass, file) = classes.singleOrNull { it.first.fqNameWhenAvailable?.asString() == page.className }
+                ?: continue
+            for (event in page.connections.flatMap { it.events }) {
+                val handler = xamlIrFunctions(klass, event.handlerName).singleOrNull()
+                val declaringId = xamlTypeClassId(event.declaringTypeName)
+                val declaringClass = classes.firstOrNull {
+                    it.first.fqNameWhenAvailable?.asString() == event.declaringTypeName ||
+                        it.first.fqNameWhenAvailable == declaringId.asSingleFqName()
+                }?.first
+                    ?: pluginContext.referenceClass(declaringId)?.owner
+                val delegateType = declaringClass?.let { xamlIrFunctions(it, "add${event.name}") }?.singleOrNull()
+                    ?.parameters?.singleOrNull { it.kind == IrParameterKind.Regular }?.type
+                if (handler == null || delegateType == null || !xamlEventHandlerMatches(handler, delegateType)) {
+                    @Suppress("DEPRECATION")
+                    pluginContext.messageCollector.report(CompilerMessageSeverity.ERROR,
+                        "XAML handler ${page.className}.${event.handlerName} does not match projected delegate " +
+                            "${event.delegateTypeName}; parameter types must accept all delegate arguments, including null " +
+                            "for nullable arguments, and the handler must be an ordinary non-generic instance method.",
+                        CompilerMessageLocation.create(
+                            Path.of(file.fileEntry.name).resolveSibling(Path.of(file.fileEntry.name).fileName.toString()
+                                .removeSuffix(".kt") + ".xaml").toString(),
+                            event.location.line, event.location.column, null))
+                    invalidHandler = true
+                }
+            }
+        }
+        if (invalidHandler) return
         val authored = mutableListOf<WinUiXamlApplicationTypeDescriptor>()
         val applicationMembers = mutableMapOf<String, WinUiXamlApplicationTypeMembers>()
         val headerTypes = applicationHeader?.let { WinRTMetadataLoader.load(it).namespaces.flatMap { it.types } }.orEmpty()

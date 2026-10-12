@@ -35,6 +35,7 @@ class XamlTemplateConnectorTest {
             open class UIElement : DependencyObject()
             class RoutedEventArgs
             fun interface RoutedEventHandler { fun invoke(sender: Any?, args: RoutedEventArgs) }
+            fun interface EventHandler<T> { fun invoke(sender: Any?, args: T) }
             class Window
             open class FrameworkElement : UIElement() {
                 var dataContext: Any? = null
@@ -123,9 +124,9 @@ class XamlTemplateConnectorTest {
             class TextBlock : microsoft.ui.xaml.FrameworkElement()
             class ControlTemplate
             class Button : microsoft.ui.xaml.FrameworkElement() {
-                private val clicks = mutableListOf<microsoft.ui.xaml.RoutedEventHandler>()
-                fun addClick(handler: microsoft.ui.xaml.RoutedEventHandler) { clicks += handler }
-                fun raiseClick() { clicks.toList().forEach { it.invoke(this, microsoft.ui.xaml.RoutedEventArgs()) } }
+                private val clicks = mutableListOf<microsoft.ui.xaml.EventHandler<Int>>()
+                fun addClick(handler: microsoft.ui.xaml.EventHandler<Int>?) { if (handler != null) clicks += handler }
+                fun raiseClick() { clicks.toList().forEach { it.invoke(this, 7) } }
                 var isEnabled = true
                     set(value) { field = value; changed(isEnabledProperty) }
                 companion object Metadata { val isEnabledProperty = microsoft.ui.xaml.DependencyProperty() }
@@ -187,9 +188,9 @@ class XamlTemplateConnectorTest {
                 var boundClicks = 0
                 var templateClicks = 0
                 val PageEnabled = false
-                private fun onClick(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { ordinaryClicks++ }
-                private fun onTemplateClick(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { templateClicks++ }
-                fun BoundClick(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { boundClicks++ }
+                private fun onClick(sender: Any?, args: Int) { check(args == 7); ordinaryClicks++ }
+                private fun onTemplateClick(sender: Any?, args: Int) { check(args == 7); templateClicks++ }
+                fun BoundClick(sender: Any?, args: Int) { check(args == 7); boundClicks++ }
             }
             fun exerciseGenerated(): String {
                 val page = MainPage()
@@ -244,13 +245,13 @@ class XamlTemplateConnectorTest {
                             location, isLoad = true))),
                 WinUiXamlConnectionDeclaration(5, "Microsoft.UI.Xaml.Controls.Button", null, location,
                     listOf(WinUiXamlEventDeclaration("Click", "onTemplateClick", "Microsoft.UI.Xaml.Controls.Button",
-                        "Microsoft.UI.Xaml.RoutedEventHandler", location)), scopeId = 2, isTemplateChild = true),
+                        "Microsoft.UI.Xaml.EventHandler`1<Int32>", location)), scopeId = 2, isTemplateChild = true),
                 WinUiXamlConnectionDeclaration(6, "Microsoft.UI.Xaml.Controls.Button", "fileButton", location,
                     listOf(WinUiXamlEventDeclaration("Click", "onClick", "Microsoft.UI.Xaml.Controls.Button",
-                        "Microsoft.UI.Xaml.RoutedEventHandler", location)), scopeId = 1, bindings = listOf(
+                        "Microsoft.UI.Xaml.EventHandler`1<Int32>", location)), scopeId = 1, bindings = listOf(
                         WinUiXamlBindingDeclaration("IsEnabled", "Microsoft.UI.Xaml.Controls.Button", "System.Boolean", "OneTime",
                             WinUiXamlBindingExpression("member", "PageEnabled", receiver = WinUiXamlBindingExpression("root")), location),
-                        WinUiXamlBindingDeclaration("Click", "Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.RoutedEventHandler", "OneTime",
+                        WinUiXamlBindingDeclaration("Click", "Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.EventHandler`1<Int32>", "OneTime",
                             WinUiXamlBindingExpression("member", "BoundClick", receiver = WinUiXamlBindingExpression("root")), location,
                             isEvent = true))),
             ))), emptyList())

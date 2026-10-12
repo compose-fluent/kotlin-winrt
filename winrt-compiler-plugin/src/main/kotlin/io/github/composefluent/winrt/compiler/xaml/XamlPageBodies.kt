@@ -255,31 +255,7 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                                         it.name.asString() == "add${event.name}" && it.parameters.count { p -> p.kind == IrParameterKind.Regular } == 1
                                     }
                                     val delegateType = add.parameters.single { it.kind == IrParameterKind.Regular }.type
-                                    val delegateClass = requireNotNull(delegateType.classOrNull) {
-                                        "XAML requires projected delegate ${event.delegateTypeName}"
-                                    }.owner
-                                    val invoke = delegateClass.functions.single { it.name.asString() == "invoke" }
-                                    val handlerParameters = handler.parameters.filter { it.kind == IrParameterKind.Regular }
-                                    val delegateParameters = invoke.parameters.filter { it.kind == IrParameterKind.Regular }
-                                    val typeArguments = (delegateType as? IrSimpleType)?.arguments.orEmpty()
-                                    fun delegateParameterType(type: IrType): IrType {
-                                        val parameterIndex = delegateClass.typeParameters.indexOfFirst { parameter ->
-                                            parameter.symbol == (type as? IrSimpleType)?.classifier
-                                        }
-                                        return typeArguments.getOrNull(parameterIndex)?.typeOrNull ?: type
-                                    }
-                                    require(!handler.isSuspend && handler.typeParameters.isEmpty() &&
-                                        handler.returnType.classFqName == invoke.returnType.classFqName &&
-                                        handlerParameters.size == delegateParameters.size &&
-                                        handlerParameters.zip(delegateParameters).all { (handlerParameter, delegateParameter) ->
-                                            val source = delegateParameterType(delegateParameter.type)
-                                            val destination = handlerParameter.type
-                                            // C# method groups allow a RoutedEventArgs handler for
-                                            // a derived event argument. Keep the same conversion in
-                                            // the final Kotlin bridge as in XamlCompiler's plan.
-                                            (!source.isNullable() || destination.isNullable()) &&
-                                                destination.classOrNull?.let { source.isSubtypeOfClass(it) } == true
-                                        }) {
+                                    require(xamlEventHandlerMatches(handler, delegateType)) {
                                         "${page.resourcePath}:${event.location.line}:${event.location.column}: " +
                                             "handler ${event.handlerName} no longer matches ${event.delegateTypeName}; rebuild XAML semantic symbols"
                                     }
