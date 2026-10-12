@@ -185,7 +185,7 @@ private class XamlLibrarySchema(private val root: Path, private val assembly: St
         // accessor sources. Preserve full type inference above, then consume the IR so
         // the JVM/Native backend does not compile a second, unused copy of the library.
         // The ordinary compilation compiles the original sources with these accessors.
-        moduleFragment.files.clear()
+        moduleFragment.consumeXamlSemanticDeclarations()
     }
 
     private fun defaultConstructor(klass: IrClass): IrConstructor? = if (klass.kind != ClassKind.CLASS || klass.modality == Modality.ABSTRACT) null

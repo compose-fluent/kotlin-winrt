@@ -204,6 +204,6 @@ private class XamlSemanticExport(
         // export so JVM/Native lowering and code generation do not compile business bodies
         // that the final application compilation must compile again. Never do this in the
         // final XAML implementation pass or a library's ordinary compilation.
-        moduleFragment.files.clear()
+        moduleFragment.consumeXamlSemanticDeclarations()
     }
 }
