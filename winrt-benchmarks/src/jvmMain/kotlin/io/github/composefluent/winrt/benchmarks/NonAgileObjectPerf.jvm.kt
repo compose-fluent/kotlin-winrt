@@ -82,7 +82,7 @@ private class JvmNonAgileObjectPerf : NonAgileObjectPerf {
         }
     }
 
-    private fun callObject(): Int = requireNotNull(nonAgileObject).commands.size
+    private fun callObject(): Int = requireNotNull(requireNotNull(nonAgileObject).commands).size
 }
 
 private object JvmWindowsWait {

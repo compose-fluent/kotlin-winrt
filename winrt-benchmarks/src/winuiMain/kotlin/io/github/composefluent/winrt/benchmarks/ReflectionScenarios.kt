@@ -12,12 +12,12 @@ import kotlin.time.Duration.Companion.microseconds
 
 private class ReflectionPerf {
     private lateinit var instance: ClassWithMarshalingRoutines
-    private lateinit var instanceDictionary: MutableMap<String, WrappedClass>
+    private lateinit var instanceDictionary: MutableMap<String, WrappedClass?>
     private lateinit var managedObject: ManagedObjectWithInterfaces
 
     fun setup() {
         instance = ClassWithMarshalingRoutines()
-        instanceDictionary = instance.existingDictionary
+        instanceDictionary = requireNotNull(instance.existingDictionary)
         managedObject = ManagedObjectWithInterfaces()
     }
 
@@ -56,7 +56,7 @@ private class ReflectionPerf {
     }
 
     fun existingDictionaryLookup(): Int {
-        val dictionary = instance.existingDictionary
+        val dictionary = requireNotNull(instance.existingDictionary)
         var count = 0
         repeat(100) {
             if (dictionary["a"] != null) count++
@@ -65,7 +65,7 @@ private class ReflectionPerf {
     }
 
     fun existingDictionaryLookupCached(): Any? {
-        val dictionary = instance.existingDictionary
+        val dictionary = requireNotNull(instance.existingDictionary)
         var cache: WrappedClass? = null
         repeat(1_000) { cache = dictionary["a"] }
         return cache
@@ -73,7 +73,7 @@ private class ReflectionPerf {
 
     fun existingDictionaryLookup2(): Any? = instanceDictionary["a"]
 
-    fun existingDictionaryLookup3(): Any? = instance.existingDictionary["a"]
+    fun existingDictionaryLookup3(): Any? = requireNotNull(instance.existingDictionary)["a"]
 
     fun getNullableInt(): Int = requireNotNull(instance.nullableInt)
 
@@ -116,7 +116,7 @@ private class ReflectionPerf {
     fun getExistingIntDelegate(): Any? = instance.existingIntDelegate
 
     fun createAndIterateList(): String {
-        val list = instance.newList()
+        val list = requireNotNull(instance.newList())
         list.add("How")
         list.add("Are")
         list.add("You")

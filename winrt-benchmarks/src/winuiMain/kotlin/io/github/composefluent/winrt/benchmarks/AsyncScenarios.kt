@@ -12,16 +12,16 @@ private class AsyncPerf {
     }
 
     suspend fun complete() {
-        instance.complete().await()
+        requireNotNull(instance.complete()).await()
     }
 
     suspend fun yieldComplete() {
-        instance.yieldComplete().await()
+        requireNotNull(instance.yieldComplete()).await()
     }
 
-    suspend fun returnValue(): Int = instance.`return`(5).await()
+    suspend fun returnValue(): Int = requireNotNull(instance.`return`(5)).await()
 
-    suspend fun yieldReturn(): Int = instance.yieldReturn(5).await()
+    suspend fun yieldReturn(): Int = requireNotNull(instance.yieldReturn(5)).await()
 }
 
 internal fun asyncScenarios(): List<BenchmarkScenario> =

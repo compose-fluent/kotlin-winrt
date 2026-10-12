@@ -30,14 +30,14 @@ private class ManagedEvents : IEvents {
         intHandlers.forEachHandler { handler -> handler(this, 4) }
     }
 
-    override fun addIntPropertyChanged(handler: EventHandler<Int>): EventRegistrationToken =
+    override fun addIntPropertyChanged(handler: EventHandler<Int>?): EventRegistrationToken =
         intPropertyChanged.add(handler)
 
     override fun removeIntPropertyChanged(token: EventRegistrationToken) {
         intPropertyChanged.remove(token)
     }
 
-    override fun addDoublePropertyChanged(handler: EventHandler<Double>): EventRegistrationToken =
+    override fun addDoublePropertyChanged(handler: EventHandler<Double>?): EventRegistrationToken =
         doublePropertyChanged.add(handler)
 
     override fun removeDoublePropertyChanged(token: EventRegistrationToken) {

@@ -120,7 +120,7 @@ private class NativeNonAgileObjectPerf : NonAgileObjectPerf {
         }
     }
 
-    private fun callObject(): Int = requireNotNull(nonAgileObject).commands.size
+    private fun callObject(): Int = requireNotNull(requireNotNull(nonAgileObject).commands).size
 }
 
 private const val COM_AWARE_WAIT_FLAGS: UInt = 0x0000000Au
