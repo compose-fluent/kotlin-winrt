@@ -127,6 +127,8 @@ class KotlinProjectionRenderer(
 ) {
     private var cachedRuntimeClassForwardTargetsPlan: KotlinTypeProjectionPlan? = null
     private var cachedRuntimeClassForwardTargets: Map<String, RuntimeClassInterfaceProjectionForwardTarget> = emptyMap()
+    private var cachedGuidSignatureTypes: Map<String, WinRTTypeDefinition>? = null
+    private var cachedGuidSignatureHelpers: WinRTMetadataSemanticHelpers? = null
 
     internal fun withModulePlatformAbiCalls(
         calls: KotlinModulePlatformAbiCallSupport?,
@@ -438,13 +440,6 @@ class KotlinProjectionRenderer(
                 if (useKotlinDurationAlias) {
                     addAliasedImport(KOTLIN_DURATION_CLASS_NAME, KOTLIN_DURATION_ALIAS_CLASS_NAME.simpleName)
                 }
-                if (useWinUiXamlTypeRedirects && plan.requiresApplicationModelCoreAliasImports()) {
-                    addAliasedImport(WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_CLASS_NAME, "WindowsApplicationModelCoreIFrameworkView")
-                    addAliasedImport(
-                        WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_SOURCE_CLASS_NAME,
-                        "WindowsApplicationModelCoreIFrameworkViewSource",
-                    )
-                }
             }
             .apply {
                 if (plan.declarationKind == KotlinProjectionDeclarationKind.Delegate) {
@@ -483,9 +478,6 @@ class KotlinProjectionRenderer(
     internal fun renderInterfaceShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan)
-        winUiCoveredApplicationModelCoreInterface(plan.type.qualifiedName)?.let { coveredInterface ->
-            builder.addSuperinterface(resolveTypeName(coveredInterface))
-        }
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
@@ -1695,12 +1687,6 @@ class KotlinProjectionRenderer(
             }
             .filterNot { implemented ->
                 implemented.interfaceName.isMappedRuntimeHelperInterfaceName()
-            }
-            .filterNot { implemented ->
-                plan.defaultInterfaceName?.let { defaultInterfaceName ->
-                    winUiCoveredApplicationModelCoreInterface(defaultInterfaceName) ==
-                        implemented.interfaceName.substringBefore('<').removeSuffix("?")
-                } == true
             }
             .forEach { implemented ->
                 builder.addRuntimeClassSuperinterface(
@@ -3470,73 +3456,19 @@ class KotlinProjectionRenderer(
     private fun enumConstantName(name: String): String =
         if (name == "Metadata") "MetadataValue" else name
 
-    internal fun nativeStructGuidSignature(plan: KotlinTypeProjectionPlan): String? =
-        nativeStructGuidSignature(
-            typeName = plan.type.qualifiedName,
-            currentNamespace = plan.type.namespace,
-            typesByQualifiedName = plan.typesByQualifiedName,
-            visiting = emptySet(),
-        )
-
-    private fun nativeStructGuidSignature(
-        typeName: String,
-        currentNamespace: String,
-        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
-        visiting: Set<String>,
-    ): String? {
-        val qualifiedName = when {
-            typesByQualifiedName.containsKey(typeName) -> typeName
-            currentNamespace.isNotBlank() && typesByQualifiedName.containsKey("$currentNamespace.$typeName") -> "$currentNamespace.$typeName"
-            else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$typeName") }
-        } ?: return mappedTypeByAbiName(typeName)?.abiQualifiedName?.let { mapped ->
-            when (mapped) {
-                "Windows.Foundation.DateTime" -> "struct(Windows.Foundation.DateTime;i8)"
-                "Windows.Foundation.EventRegistrationToken" -> "struct(Windows.Foundation.EventRegistrationToken;i8)"
-                "Windows.Foundation.HResult" -> "struct(Windows.Foundation.HResult;i4)"
-                "Windows.Foundation.TimeSpan" -> "struct(Windows.Foundation.TimeSpan;i8)"
-                else -> null
+    internal fun nativeStructGuidSignature(plan: KotlinTypeProjectionPlan): String? {
+        val helpers = guidSignatureHelpers ?: run {
+            if (cachedGuidSignatureTypes !== plan.typesByQualifiedName) {
+                cachedGuidSignatureHelpers = WinRTMetadataModel(
+                    namespaces = plan.typesByQualifiedName.values
+                        .groupBy { it.namespace }
+                        .map { (namespace, types) -> WinRTNamespace(namespace, types) },
+                ).semanticHelpers()
+                cachedGuidSignatureTypes = plan.typesByQualifiedName
             }
+            checkNotNull(cachedGuidSignatureHelpers)
         }
-        if (qualifiedName in visiting) {
-            return null
-        }
-        val resolvedType = typesByQualifiedName[qualifiedName] ?: return null
-        if (resolvedType.kind == WinRTTypeKind.Enum) {
-            val underlyingSignature = resolvedType.enumUnderlyingType?.guidSignatureFragment() ?: return null
-            return "enum($qualifiedName;$underlyingSignature)"
-        }
-        val type = resolvedType.takeIf { it.kind == WinRTTypeKind.Struct } ?: return null
-        val fieldSignatures = type.fields
-            .filterNot { it.isStatic || it.isLiteral }
-            .map { field ->
-                nativeStructFieldGuidSignature(field.typeName, type.namespace, typesByQualifiedName, visiting + qualifiedName) ?: return null
-            }
-        return "struct($qualifiedName;${fieldSignatures.joinToString(";")})"
-    }
-
-    private fun nativeStructFieldGuidSignature(
-        typeName: String,
-        currentNamespace: String,
-        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
-        visiting: Set<String>,
-    ): String? {
-        if (isWinRTObjectTypeName(typeName)) {
-            return "cinterface(IInspectable)"
-        }
-        if (isWinRTGuidTypeName(typeName)) {
-            return "g16"
-        }
-        winRTFundamentalTypeForName(typeName)?.let { fundamentalType ->
-            return fundamentalType.guidSignatureFragment()
-        }
-        return when (typeName) {
-            IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
-            "io.github.composefluent.winrt.runtime.IInspectableReference" -> "cinterface(IInspectable)"
-            IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
-            "io.github.composefluent.winrt.runtime.IUnknownReference" -> "cinterface(IUnknown)"
-            else -> nativeStructGuidSignature(typeName, currentNamespace, typesByQualifiedName, visiting)
-                ?: nativeStructReferenceFieldGuidSignature(typeName, currentNamespace, typesByQualifiedName)
-        }
+        return helpers.guidSignatureDescriptor(plan.type).signatureFragment.takeIf { it.isNotEmpty() }
     }
 
     internal fun nativeStructFieldSpec(
@@ -3574,24 +3506,6 @@ class KotlinProjectionRenderer(
         val fieldQualifiedName = nativeNestedStructFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
         val fieldType = runCatching { resolveTypeName(fieldQualifiedName) as? ClassName }.getOrNull() ?: return null
         return CodeBlock.of("%T(%S, %T.Metadata.layout)", NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), fieldType)
-    }
-
-    private fun nativeStructReferenceFieldGuidSignature(
-        typeName: String,
-        currentNamespace: String,
-        typesByQualifiedName: Map<String, WinRTTypeDefinition>,
-    ): String? {
-        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
-        val qualifiedName = when {
-            typesByQualifiedName.containsKey(rawTypeName) -> rawTypeName
-            currentNamespace.isNotBlank() && typesByQualifiedName.containsKey("$currentNamespace.$rawTypeName") -> "$currentNamespace.$rawTypeName"
-            else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") }
-        } ?: return null
-        return when (typesByQualifiedName[qualifiedName]?.kind) {
-            WinRTTypeKind.Interface -> "cinterface($qualifiedName)"
-            WinRTTypeKind.RuntimeClass -> "rc($qualifiedName;default)"
-            else -> null
-        }
     }
 
     private fun nativeStructReferenceFieldKind(
@@ -4365,24 +4279,8 @@ class KotlinProjectionRenderer(
             .build()
 }
 
-private fun winUiCoveredApplicationModelCoreInterface(interfaceName: String): String? =
-    when (interfaceName.substringBefore('<').removeSuffix("?")) {
-        "Microsoft.UI.Xaml.IFrameworkView" -> "Windows.ApplicationModel.Core.IFrameworkView"
-        "Microsoft.UI.Xaml.IFrameworkViewSource" -> "Windows.ApplicationModel.Core.IFrameworkViewSource"
-        else -> null
-    }
-
-private val WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_CLASS_NAME =
-    ClassName("windows.applicationmodel.core", "IFrameworkView")
-
-private val WINDOWS_APPLICATION_MODEL_CORE_FRAMEWORK_VIEW_SOURCE_CLASS_NAME =
-    ClassName("windows.applicationmodel.core", "IFrameworkViewSource")
-
 private val WINRT_ENUM_CONSTANT_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.runtime", "WinRTEnumConstant")
-
-private fun KotlinTypeProjectionPlan.requiresApplicationModelCoreAliasImports(): Boolean =
-    winUiCoveredApplicationModelCoreInterface(type.qualifiedName) != null
 
 internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): Boolean =
     type.kind == WinRTTypeKind.RuntimeClass &&

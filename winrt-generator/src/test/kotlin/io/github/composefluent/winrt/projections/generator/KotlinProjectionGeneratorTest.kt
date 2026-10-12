@@ -10735,7 +10735,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(mode, mode.contains("public fun fromAbi("))
         assertTrue(mode, mode.contains("UShort): WidgetMode"))
         assertTrue(state, state.contains("NativeScalarFieldSpec(\"mode\", NativeStructScalarKind.INT16)"))
-        assertTrue(state, state.contains("\"struct(Sample.Foundation.WidgetState;u4;enum(Sample.Foundation.WidgetMode;u2))\""))
+        assertTrue(state, state.contains("\"struct(Sample.Foundation.WidgetState;u4;enum(Sample.Foundation.WidgetMode;i4))\""))
         assertTrue(state, state.contains("WidgetMode.Metadata.fromAbi(PlatformAbi.readInt16(layout.slice(source,"))
         assertTrue(state, state.contains("\"mode\")).toUShort())"))
         assertTrue(state, state.contains("PlatformAbi.writeInt16(layout.slice(destination, \"mode\"),"))
@@ -15018,6 +15018,12 @@ class KotlinProjectionGeneratorTest {
                 WinRTNamespace(
                     name = "Windows.Foundation",
                     types = listOf(
+                        WinRTTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "TimeSpan",
+                            kind = WinRTTypeKind.Struct,
+                            fields = listOf(WinRTFieldDefinition("Duration", "Int64")),
+                        ),
                         WinRTTypeDefinition(
                             namespace = "Windows.Foundation",
                             name = "Point",

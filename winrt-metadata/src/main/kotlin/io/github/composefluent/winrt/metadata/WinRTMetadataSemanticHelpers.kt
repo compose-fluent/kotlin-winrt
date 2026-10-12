@@ -2302,13 +2302,15 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             .chunked(2)
             .mapNotNull { it.toIntOrNull(16) }
 
-    private fun guidSignatureFragment(type: WinRTTypeDefinition): String =
-        when (type.kind) {
+    private fun guidSignatureFragment(type: WinRTTypeDefinition, visiting: Set<String> = emptySet()): String {
+        if (type.qualifiedName in visiting) return ""
+        val path = visiting + type.qualifiedName
+        return when (type.kind) {
             WinRTTypeKind.Interface -> type.iid?.let(::guidSignatureFragmentForGuid).orEmpty()
             WinRTTypeKind.Delegate -> type.iid?.let { guid -> "delegate(${guidSignatureFragmentForGuid(guid)})" }.orEmpty()
             WinRTTypeKind.RuntimeClass -> {
                 val defaultInterfaceSignature = getDefaultInterface(type)
-                    ?.let { defaultInterface -> guidSignatureFragmentForTypeRef(defaultInterface, type.namespace) }
+                    ?.let { defaultInterface -> guidSignatureFragmentForTypeRef(defaultInterface, type.namespace, path) }
                     .orEmpty()
                 if (defaultInterfaceSignature.isNotEmpty()) {
                     "rc(${type.qualifiedName};$defaultInterfaceSignature)"
@@ -2319,14 +2321,15 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
             WinRTTypeKind.Struct -> {
                 val fieldSignatures = type.fields
                     .filterNot { field -> field.isStatic || field.isLiteral }
-                    .joinToString(";") { field -> guidSignatureFragmentForTypeRef(field.type, type.namespace) }
-                "struct(${type.qualifiedName};$fieldSignatures)"
+                    .map { field -> guidSignatureFragmentForTypeRef(field.type, type.namespace, path) }
+                if (fieldSignatures.any { it.isEmpty() }) "" else "struct(${type.qualifiedName};${fieldSignatures.joinToString(";")})"
             }
             WinRTTypeKind.Enum -> "enum(${type.qualifiedName};${if (isFlagsEnum(type)) "u4" else "i4"})"
             WinRTTypeKind.Unknown -> ""
         }
+    }
 
-    private fun guidSignatureFragmentForTypeRef(type: WinRTTypeRef, currentNamespace: String): String {
+    private fun guidSignatureFragmentForTypeRef(type: WinRTTypeRef, currentNamespace: String, visiting: Set<String> = emptySet()): String {
         val normalizedType = type.normalized()
         fundamentalGuidSignatureFragment(normalizedType.typeName)?.let { signature -> return signature }
         if (normalizedType.kind != WinRTTypeRefKind.Named) {
@@ -2335,17 +2338,19 @@ class WinRTMetadataSemanticHelpers(private val model: WinRTMetadataModel) {
         val resolvedType = resolveTypeReference(normalizedType, currentNamespace, typesByQualifiedName)
         val definition = resolvedType.definitionType
         if (normalizedType.typeArguments.isNotEmpty() && definition?.iid != null) {
+            val arguments = normalizedType.typeArguments.map { guidSignatureFragmentForTypeRef(it, currentNamespace, visiting) }
+            if (arguments.any { it.isEmpty() }) return ""
             return buildString {
                 append("pinterface(")
                 append(guidSignatureFragmentForGuid(definition.iid))
-                normalizedType.typeArguments.forEach { argument ->
+                arguments.forEach { argument ->
                     append(';')
-                    append(guidSignatureFragmentForTypeRef(argument, currentNamespace))
+                    append(argument)
                 }
                 append(')')
             }
         }
-        return definition?.let(::guidSignatureFragment)
+        return definition?.let { guidSignatureFragment(it, visiting) }
             ?: fundamentalGuidSignatureFragment(resolvedType.displayName)
             ?: ""
     }
