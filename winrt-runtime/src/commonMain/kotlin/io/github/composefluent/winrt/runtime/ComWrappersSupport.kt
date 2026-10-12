@@ -723,12 +723,18 @@ object ComWrappersSupport {
             // Generated constructors may already have registered this wrapper. Like
             // CsWinRT's AddOrUpdate, retain a live cache entry instead of allocating
             // another weak reference (and another hot entry) during publication.
-            val winner = findCachedRcw(pointerKey, staticallyDeterminedType)
-                ?: candidate.also { rcwCache[pointerKey] = it }
-            if (directPointerKey != pointerKey && rcwCache[directPointerKey] !== winner) {
-                rcwCache[directPointerKey] = winner
+            val cached = findCachedRcw(pointerKey, staticallyDeterminedType)
+            if (cached != null) {
+                if (directPointerKey != pointerKey && rcwCache[directPointerKey] !== cached) {
+                    rcwCache[directPointerKey] = cached
+                }
+                return@withLock cached
             }
-            winner
+            // A first publication must write both aliases; probing the empty alias
+            // would add another cache lookup to every cold wrapper construction.
+            rcwCache[pointerKey] = candidate
+            if (directPointerKey != pointerKey) rcwCache[directPointerKey] = candidate
+            candidate
         }
     }
 
@@ -739,12 +745,16 @@ object ComWrappersSupport {
         directPointerKey: Long,
         interfaceId: Guid,
     ): IWinRTObject = rcwPublicationLock.withLock {
-        val winner = findClosedInterfaceRcw(pointerKey, interfaceId)
-            ?: candidate.also { cacheClosedInterfaceRcw(pointerKey, interfaceId, it) }
-        if (directPointerKey != pointerKey && closedInterfaceRcwCache[directPointerKey, interfaceId] !== winner) {
-            cacheClosedInterfaceRcw(directPointerKey, interfaceId, winner)
+        val cached = findClosedInterfaceRcw(pointerKey, interfaceId)
+        if (cached != null) {
+            if (directPointerKey != pointerKey && closedInterfaceRcwCache[directPointerKey, interfaceId] !== cached) {
+                cacheClosedInterfaceRcw(directPointerKey, interfaceId, cached)
+            }
+            return@withLock cached
         }
-        winner
+        cacheClosedInterfaceRcw(pointerKey, interfaceId, candidate)
+        if (directPointerKey != pointerKey) cacheClosedInterfaceRcw(directPointerKey, interfaceId, candidate)
+        candidate
     }
 
     @PublishedApi
