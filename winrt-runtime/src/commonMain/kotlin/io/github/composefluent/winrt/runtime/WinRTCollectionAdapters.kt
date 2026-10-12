@@ -14,12 +14,13 @@ class WinRTVectorViewListAdapter<T>(
 
     override fun get(index: Int): T {
         require(index >= 0) { "index must be non-negative." }
-        return projectOwned(vectorView.getAtAbiOrNull(index.toUInt()), elementAdapter)
+        return vectorView.getElement(index.toUInt(), elementAdapter)
     }
 
-    override fun indexOf(element: T): Int = elementAdapter.withInputAbi(element) { value ->
-        val (found, index) = vectorView.indexOf(value)
-        if (found) index.toIntChecked("IVectorView.IndexOf") else -1
+    override fun indexOf(element: T): Int {
+        val (found, index) = if (elementAdapter.valueAbi == null) elementAdapter.withInputAbi(element, vectorView::indexOf)
+            else vectorView.indexOfElement(8, element, elementAdapter)
+        return if (found) index.toIntChecked("IVectorView.IndexOf") else -1
     }
 
     override fun contains(element: T): Boolean = indexOf(element) >= 0
@@ -39,14 +40,15 @@ class WinRTVectorListAdapter<T>(
 
     override fun get(index: Int): T {
         require(index >= 0) { "index must be non-negative." }
-        return projectOwned(vector.getAtAbiOrNull(index.toUInt()), elementAdapter)
+        return vector.getElement(index.toUInt(), elementAdapter)
     }
 
     // CsWinRT IListMethods<T> delegates membership to IVector.IndexOf. Comparing
     // projected wrappers instead would make the result depend on RCW caching.
-    override fun indexOf(element: T): Int = elementMarshaller(element).use { marshaled ->
-        val (found, index) = vector.indexOf(marshaled.abi)
-        if (found) index.toIntChecked("IVector.IndexOf") else -1
+    override fun indexOf(element: T): Int {
+        val (found, index) = if (elementAdapter.valueAbi == null) elementMarshaller(element).use { vector.indexOf(it.abi) }
+            else vector.indexOfElement(9, element, elementAdapter)
+        return if (found) index.toIntChecked("IVector.IndexOf") else -1
     }
 
     override fun contains(element: T): Boolean = indexOf(element) >= 0
@@ -60,28 +62,19 @@ class WinRTVectorListAdapter<T>(
 
     override fun set(index: Int, element: T): T {
         val previous = get(index)
-        elementMarshaller(element).use { marshaler ->
-            vector.setAt(index.toUInt(), marshaler.abi)
-        }
+        vector.setElement(index.toUInt(), element, elementAdapter)
         return previous
     }
 
     override fun add(element: T): Boolean {
-        elementMarshaller(element).use { marshaler ->
-            vector.append(marshaler.abi)
-        }
+        vector.appendElement(element, elementAdapter)
         return true
     }
 
     override fun add(index: Int, element: T) {
         require(index >= 0) { "index must be non-negative." }
-        elementMarshaller(element).use { marshaler ->
-            if (index == size) {
-                vector.append(marshaler.abi)
-            } else {
-                vector.insertAt(index.toUInt(), marshaler.abi)
-            }
-        }
+        if (index == size) vector.appendElement(element, elementAdapter)
+        else vector.setElement(index.toUInt(), element, elementAdapter, insert = true)
     }
 
     override fun removeAt(index: Int): T {
@@ -112,15 +105,22 @@ class WinRTMapViewAdapter<K, V>(
         get() = mapView.size().toIntChecked("IMapView.Size")
 
     override val entries: Set<Map.Entry<K, V>>
-        get() = buildEntries().toSet()
+        get() = object : AbstractSet<Map.Entry<K, V>>() {
+            override val size: Int get() = this@WinRTMapViewAdapter.size
+            override fun iterator(): Iterator<Map.Entry<K, V>> =
+                mapView.asIterable(iterableInterfaceId).elementIterator(iteratorInterfaceId, winRTKeyValuePairAdapter(keyAdapter, valueAdapter))
+            override fun contains(element: Map.Entry<K, V>): Boolean =
+                containsKey(element.key) && this@WinRTMapViewAdapter[element.key] == element.value
+        }
 
     override fun containsKey(key: K): Boolean =
-        keyMarshaller(key).use { marshaledKey ->
+        if (keyAdapter.valueAbi != null) mapView.hasElementKey(key, keyAdapter) else keyMarshaller(key).use { marshaledKey ->
             mapView.hasKey(marshaledKey.abi)
         }
 
     override fun get(key: K): V? =
-        keyMarshaller(key).use { marshaledKey ->
+        if (keyAdapter.valueAbi != null || valueAdapter.valueAbi != null) mapView.lookupElement(key, keyAdapter, valueAdapter)
+        else keyMarshaller(key).use { marshaledKey ->
             if (mapView.hasKey(marshaledKey.abi)) {
                 mapView.lookupProjectedOrNull(marshaledKey.abi, valueAdapter)
             } else null
@@ -130,12 +130,6 @@ class WinRTMapViewAdapter<K, V>(
         mapView.close()
     }
 
-    private fun buildEntries(): List<Map.Entry<K, V>> {
-        return mapView.asIterable(iterableInterfaceId).useAndCollect(
-            iteratorInterfaceId,
-            winRTKeyValuePairAdapter(keyAdapter, valueAdapter),
-        )
-    }
 }
 
 class WinRTMapAdapter<K, V>(
@@ -153,25 +147,24 @@ class WinRTMapAdapter<K, V>(
         get() = map.size().toIntChecked("IMap.Size")
 
     override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
-        get() = buildEntries().toMutableSet()
+        get() = WinRTMutableMapEntries(this) {
+            map.asIterable(iterableInterfaceId).elementIterator(iteratorInterfaceId, winRTKeyValuePairAdapter(keyAdapter, valueAdapter))
+        }
 
     override fun containsKey(key: K): Boolean =
-        keyMarshaller(key).use { marshaledKey ->
+        if (keyAdapter.valueAbi != null) map.hasElementKey(key, keyAdapter) else keyMarshaller(key).use { marshaledKey ->
             map.hasKey(marshaledKey.abi)
         }
 
     override fun put(key: K, value: V): V? {
         val previous = get(key)
-        keyMarshaller(key).use { marshaledKey ->
-            valueMarshaller(value).use { marshaledValue ->
-                map.insert(marshaledKey.abi, marshaledValue.abi)
-            }
-        }
+        map.insertElement(key, value, keyAdapter, valueAdapter)
         return previous
     }
 
     override fun get(key: K): V? =
-        keyMarshaller(key).use { marshaledKey ->
+        if (keyAdapter.valueAbi != null || valueAdapter.valueAbi != null) map.lookupElement(key, keyAdapter, valueAdapter)
+        else keyMarshaller(key).use { marshaledKey ->
             if (map.hasKey(marshaledKey.abi)) {
                 map.lookupProjectedOrNull(marshaledKey.abi, valueAdapter)
             } else null
@@ -179,12 +172,8 @@ class WinRTMapAdapter<K, V>(
 
     override fun remove(key: K): V? {
         val previous = get(key)
-        keyMarshaller(key).use { marshaledKey ->
-            if (!map.hasKey(marshaledKey.abi)) {
-                return null
-            }
-            map.remove(marshaledKey.abi)
-        }
+        if (!containsKey(key)) return null
+        map.removeElement(key, keyAdapter)
         return previous
     }
 
@@ -196,85 +185,78 @@ class WinRTMapAdapter<K, V>(
         map.close()
     }
 
-    private fun buildEntries(): List<MutableMap.MutableEntry<K, V>> {
-        val view = map.getView(mapViewInterfaceId)
-        val adapter = WinRTMapViewAdapter(
-            mapView = view,
-            iterableInterfaceId = iterableInterfaceId,
-            iteratorInterfaceId = iteratorInterfaceId,
-            keyValuePairInterfaceId = keyValuePairInterfaceId,
-            keyAdapter = keyAdapter,
-            valueAdapter = valueAdapter,
-            keyMarshaller = keyMarshaller,
-        )
-        return adapter.use { readOnly ->
-            readOnly.entries.map { entry -> MutableEntrySnapshot(entry.key, entry.value) }
-        }
-    }
 }
 
-private fun UInt.toIntChecked(operation: String): Int {
+internal fun UInt.toIntChecked(operation: String): Int {
     if (this > Int.MAX_VALUE.toUInt()) {
         throw IllegalStateException("$operation exceeded Int.MAX_VALUE.")
     }
     return toInt()
 }
 
-private fun <T> projectOwned(
-    value: RawAddress?,
-    adapter: WinRTReferenceValueAdapter<T>,
-): T = adapter.projectOwnedAbi(value ?: PlatformAbi.nullPointer)
-
-private fun <T> WinRTIterableReference.useAndCollect(
+private fun <T> WinRTIterableReference.elementIterator(
     iteratorInterfaceId: Guid,
     adapter: WinRTReferenceValueAdapter<T>,
-): List<T> {
-    return use { iterable ->
-        iterable.first(iteratorInterfaceId).use { iterator ->
-            val values = mutableListOf<T>()
-            while (iterator.hasCurrent()) {
-                values += projectOwned(iterator.currentAbiOrNull(), adapter)
-                if (!iterator.moveNext()) {
-                    break
-                }
-            }
-            values
-        }
+): Iterator<T> = use { iterable ->
+    WinRTIteratorProjection.FromAbiHelper(
+        iterable.first(iteratorInterfaceId), adapter,
+        WinRTTypeHandle("kotlin.collections.Iterator<${adapter.projectedTypeName}>", iteratorInterfaceId),
+    )
+}
+
+/** Kotlin mutable views over the same native map, alongside CsWinRT IDictionary's views. */
+private class WinRTMutableMapEntries<K, V>(
+    private val map: MutableMap<K, V>,
+    private val iteratorFactory: () -> Iterator<Map.Entry<K, V>>,
+) : AbstractMutableSet<MutableMap.MutableEntry<K, V>>() {
+    override val size: Int get() = map.size
+    override fun contains(element: MutableMap.MutableEntry<K, V>): Boolean =
+        map.containsKey(element.key) && map[element.key] == element.value
+    override fun add(element: MutableMap.MutableEntry<K, V>): Boolean =
+        throw UnsupportedOperationException("Add entries through the map")
+    override fun clear() = map.clear()
+    override fun remove(element: MutableMap.MutableEntry<K, V>): Boolean {
+        if (!contains(element)) return false
+        map.remove(element.key)
+        return true
     }
-}
-
-private fun <K, V> WinRTKeyValuePairReference?.usePair(
-    keyAdapter: WinRTReferenceValueAdapter<K>,
-    valueAdapter: WinRTReferenceValueAdapter<V>,
-): Map.Entry<K, V> {
-    require(this != null) { "IKeyValuePair reference cannot be null." }
-    return use { pair -> pair.projectPair(keyAdapter, valueAdapter) }
-}
-
-private fun <K, V> WinRTKeyValuePairReference.projectPair(
-    keyAdapter: WinRTReferenceValueAdapter<K>,
-    valueAdapter: WinRTReferenceValueAdapter<V>,
-): Map.Entry<K, V> {
-    val key = projectOwned(keyAbiOrNull(), keyAdapter)
-    val value = projectOwned(valueAbiOrNull(), valueAdapter)
-    return EntrySnapshot(key, value)
-}
-
-private data class EntrySnapshot<K, V>(
-    override val key: K,
-    override val value: V,
-) : Map.Entry<K, V>
-
-private data class MutableEntrySnapshot<K, V>(
-    override val key: K,
-    private var backingValue: V,
-) : MutableMap.MutableEntry<K, V> {
-    override val value: V
-        get() = backingValue
-
-    override fun setValue(newValue: V): V {
-        val previous = backingValue
-        backingValue = newValue
-        return previous
+    override fun iterator(): MutableIterator<MutableMap.MutableEntry<K, V>> = object : MutableIterator<MutableMap.MutableEntry<K, V>> {
+        private var source = iteratorFactory()
+        private var last: Map.Entry<K, V>? = null
+        private var detachedRemainder = false
+        override fun hasNext(): Boolean = source.hasNext()
+        override fun next(): MutableMap.MutableEntry<K, V> {
+            val entry = source.next()
+            last = entry
+            return object : MutableMap.MutableEntry<K, V> {
+                override val key: K = entry.key
+                override var value: V = entry.value
+                    private set
+                override fun setValue(newValue: V): V {
+                    val previous = value
+                    preserveRemainder()
+                    map[key] = newValue
+                    value = newValue
+                    return previous
+                }
+                override fun equals(other: Any?): Boolean = other is Map.Entry<*, *> && key == other.key && value == other.value
+                override fun hashCode(): Int = (key?.hashCode() ?: 0) xor (value?.hashCode() ?: 0)
+                override fun toString(): String = "$key=$value"
+            }
+        }
+        override fun remove() {
+            val entry = last ?: throw IllegalStateException("Call next before removing an entry")
+            preserveRemainder()
+            map.remove(entry.key)
+            last = null
+        }
+        private fun preserveRemainder() {
+            // IMap mutations invalidate its native iterator. Materialize only when this
+            // iterator itself mutates the map, so ordinary traversal remains streaming.
+            if (!detachedRemainder) {
+                source = source.asSequence().toList().iterator()
+                detachedRemainder = true
+            }
+        }
     }
 }

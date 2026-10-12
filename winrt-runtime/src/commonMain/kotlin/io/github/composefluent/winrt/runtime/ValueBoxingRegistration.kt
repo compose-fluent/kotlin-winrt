@@ -59,6 +59,7 @@ object WinRTValueBoxingRegistration {
                 },
                 readOwnedValue = adapter::read,
                 writeTransferredValue = adapter::write,
+                disposeTransferredValue = adapter::disposeAbi,
             ),
         )
         WinRTValueBoxing.clearRuntimeClassProjectionPlans()

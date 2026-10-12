@@ -552,6 +552,11 @@ open class WinRTMapReference(
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRTCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
+    open fun asIterable(iterableInterfaceId: Guid): WinRTIterableReference =
+        queryInterface(iterableInterfaceId).getOrThrow().use { reference ->
+            WinRTIterableReference(reference.getRefPointer().asRawAddress(), iterableInterfaceId)
+        }
+
     open fun lookup(key: ComObjectReference): IUnknownReference =
         lookupOrNull(key)
             ?: throw WinRTIllegalStateException(

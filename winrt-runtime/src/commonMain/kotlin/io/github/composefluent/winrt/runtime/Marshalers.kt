@@ -4,6 +4,7 @@ import kotlin.reflect.KClass
 
 enum class WinRTAbiCategory {
     BLITTABLE,
+    VALUE,
     STRING,
     INTERFACE,
     INSPECTABLE,
@@ -594,7 +595,7 @@ object MarshalGenericParameter {
 
 object MarshalReferenceValueAdapter {
     fun <T> of(adapter: WinRTReferenceValueAdapter<T>): Marshaler<T> =
-        pointerMarshaler(
+        if (adapter.valueAbi != null) valueElementMarshaler(adapter) else pointerMarshaler(
             category = WinRTAbiCategory.INTERFACE,
             nullFromAbi = { adapter.projector(null) },
             // CsWinRT Marshaler<T>.CreateMarshaler2 owns only a scoped input; FromManaged

@@ -24,6 +24,7 @@ internal class WinRTValueAdapter<T : Any>(
     val propertyType: PropertyType?,
     val propertyTypeArray: PropertyType?,
     val abiLayout: NativeAbiLayout,
+    val abiKind: ComAbiValueKind = ComAbiValueKind.Struct(abiLayout),
     val isNumericScalar: Boolean = false,
     private val exactUnbox: (Any) -> T,
     private val propertyValueCoerce: (Any) -> T = exactUnbox,
@@ -118,6 +119,7 @@ internal fun <T : Any> directValueAdapter(
     propertyType: PropertyType?,
     propertyTypeArray: PropertyType?,
     abiLayout: NativeAbiLayout,
+    abiKind: ComAbiValueKind = ComAbiValueKind.Struct(abiLayout),
     isNumericScalar: Boolean = false,
     exactUnbox: (Any) -> T,
     propertyValueCoerce: (Any) -> T = exactUnbox,
@@ -132,6 +134,7 @@ internal fun <T : Any> directValueAdapter(
         propertyType = propertyType,
         propertyTypeArray = propertyTypeArray,
         abiLayout = abiLayout,
+        abiKind = abiKind,
         isNumericScalar = isNumericScalar,
         exactUnbox = exactUnbox,
         propertyValueCoerce = propertyValueCoerce,
@@ -159,6 +162,7 @@ internal fun <T : Any> pointerValueAdapter(
         propertyType = propertyType,
         propertyTypeArray = propertyTypeArray,
         abiLayout = NativeAbiLayout.ADDRESS,
+        abiKind = ComAbiValueKind.Pointer,
         exactUnbox = exactUnbox,
         propertyValueCoerce = propertyValueCoerce,
         readOwnedValue = { source -> readOwnedPointer(PlatformAbi.readPointer(source)) },
@@ -228,6 +232,7 @@ internal object ValueBoxingInterop {
             propertyType = null,
             propertyTypeArray = null,
             abiLayout = NativeAbiLayout.INT32,
+            abiKind = ComAbiValueKind.Int32,
             exactUnbox = { it as Exception },
             readOwnedValue = { source -> ExceptionProjection.fromAbi(PlatformAbi.readInt32(source)) },
             writeTransferredValue = { value, destination -> PlatformAbi.writeInt32(destination, ExceptionProjection.toAbi(value)) },
@@ -248,6 +253,7 @@ internal object ValueBoxingInterop {
                 propertyType = null,
                 propertyTypeArray = null,
                 abiLayout = NativeAbiLayout.INT8,
+                abiKind = ComAbiValueKind.Int8,
                 exactUnbox = { it as Byte },
                 readOwnedValue = { source -> PlatformAbi.readInt8(source) },
                 writeTransferredValue = { value, destination -> PlatformAbi.writeInt8(destination, value) },
@@ -259,6 +265,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.UInt8,
                 propertyTypeArray = PropertyType.UInt8Array,
                 abiLayout = NativeAbiLayout.INT8,
+                abiKind = ComAbiValueKind.Int8,
                 isNumericScalar = true,
                 exactUnbox = { it as UByte },
                 propertyValueCoerce = ::coerceUByte,
@@ -272,6 +279,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.Int16,
                 propertyTypeArray = PropertyType.Int16Array,
                 abiLayout = NativeAbiLayout.INT16,
+                abiKind = ComAbiValueKind.Int16,
                 isNumericScalar = true,
                 exactUnbox = { it as Short },
                 propertyValueCoerce = ::coerceShort,
@@ -285,6 +293,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.UInt16,
                 propertyTypeArray = PropertyType.UInt16Array,
                 abiLayout = NativeAbiLayout.INT16,
+                abiKind = ComAbiValueKind.Int16,
                 isNumericScalar = true,
                 exactUnbox = { it as UShort },
                 propertyValueCoerce = ::coerceUShort,
@@ -298,6 +307,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.Int32,
                 propertyTypeArray = PropertyType.Int32Array,
                 abiLayout = NativeAbiLayout.INT32,
+                abiKind = ComAbiValueKind.Int32,
                 isNumericScalar = true,
                 exactUnbox = { it as Int },
                 propertyValueCoerce = ::coerceInt,
@@ -311,6 +321,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.UInt32,
                 propertyTypeArray = PropertyType.UInt32Array,
                 abiLayout = NativeAbiLayout.INT32,
+                abiKind = ComAbiValueKind.Int32,
                 isNumericScalar = true,
                 exactUnbox = { it as UInt },
                 propertyValueCoerce = ::coerceUInt,
@@ -324,6 +335,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.Int64,
                 propertyTypeArray = PropertyType.Int64Array,
                 abiLayout = NativeAbiLayout.INT64,
+                abiKind = ComAbiValueKind.Int64,
                 isNumericScalar = true,
                 exactUnbox = { it as Long },
                 propertyValueCoerce = ::coerceLong,
@@ -337,6 +349,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.UInt64,
                 propertyTypeArray = PropertyType.UInt64Array,
                 abiLayout = NativeAbiLayout.INT64,
+                abiKind = ComAbiValueKind.Int64,
                 isNumericScalar = true,
                 exactUnbox = { it as ULong },
                 propertyValueCoerce = ::coerceULong,
@@ -350,6 +363,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.Single,
                 propertyTypeArray = PropertyType.SingleArray,
                 abiLayout = NativeAbiLayout.FLOAT32,
+                abiKind = ComAbiValueKind.Float,
                 isNumericScalar = true,
                 exactUnbox = { it as Float },
                 propertyValueCoerce = ::coerceFloat,
@@ -363,6 +377,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.Double,
                 propertyTypeArray = PropertyType.DoubleArray,
                 abiLayout = NativeAbiLayout.FLOAT64,
+                abiKind = ComAbiValueKind.Double,
                 isNumericScalar = true,
                 exactUnbox = { it as Double },
                 propertyValueCoerce = ::coerceDouble,
@@ -376,6 +391,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.Char16,
                 propertyTypeArray = PropertyType.Char16Array,
                 abiLayout = NativeAbiLayout.CHAR16,
+                abiKind = ComAbiValueKind.Int16,
                 exactUnbox = { it as Char },
                 propertyValueCoerce = ::coerceChar,
                 readOwnedValue = { source -> PlatformAbi.readChar16(source) },
@@ -388,6 +404,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.Boolean,
                 propertyTypeArray = PropertyType.BooleanArray,
                 abiLayout = NativeAbiLayout.INT8,
+                abiKind = ComAbiValueKind.Int8,
                 exactUnbox = { it as Boolean },
                 propertyValueCoerce = ::coerceBoolean,
                 readOwnedValue = { source -> PlatformAbi.readInt8(source).toInt() != 0 },
@@ -413,6 +430,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.DateTime,
                 propertyTypeArray = PropertyType.DateTimeArray,
                 abiLayout = NativeAbiLayout.INT64,
+                abiKind = ComAbiValueKind.Int64,
                 exactUnbox = { it as kotlin.time.Instant },
                 readOwnedValue = { source -> DateTimeProjection.fromAbi(PlatformAbi.readInt64(source)) },
                 writeTransferredValue = { value, destination -> PlatformAbi.writeInt64(destination, DateTimeProjection.toAbi(value)) },
@@ -424,6 +442,7 @@ internal object ValueBoxingInterop {
                 propertyType = PropertyType.TimeSpan,
                 propertyTypeArray = PropertyType.TimeSpanArray,
                 abiLayout = NativeAbiLayout.INT64,
+                abiKind = ComAbiValueKind.Int64,
                 exactUnbox = { it as kotlin.time.Duration },
                 readOwnedValue = { source -> TimeSpanProjection.fromAbi(PlatformAbi.readInt64(source)) },
                 writeTransferredValue = { value, destination -> PlatformAbi.writeInt64(destination, TimeSpanProjection.toAbi(value)) },
@@ -460,6 +479,33 @@ internal object ValueBoxingInterop {
 
     internal fun adapterForReferenceInterface(interfaceId: Guid): WinRTValueAdapter<*>? =
         builtInAdaptersByNullableIid[interfaceId] ?: dynamicAdaptersByNullableIid[interfaceId]
+
+    /** The same typed ABI descriptor serves nullable values and generic collection elements. */
+    internal fun requireValueAdapter(type: KClass<*>): WinRTValueAdapter<*> {
+        Projections.isTypeWindowsRuntimeType(type)
+        ValueBoxingMetadata.enumMetadataForClass(type)?.let { descriptor ->
+            return adapterForReferenceInterface(descriptor.nullableInterfaceId) ?: directValueAdapter(
+                projectedClass = type,
+                nullableInterfaceId = descriptor.nullableInterfaceId,
+                referenceArrayInterfaceId = null,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = NativeAbiLayout.INT32,
+                abiKind = ComAbiValueKind.Int32,
+                exactUnbox = { it },
+                readOwnedValue = { descriptor.fromAbiBits(PlatformAbi.readInt32(it)) },
+                writeTransferredValue = { value, destination ->
+                    PlatformAbi.writeInt32(destination, descriptor.toAbiBits(value))
+                },
+            ).also(::registerAdapter)
+        }
+        val descriptor = requireNotNull(ValueBoxingMetadata.descriptorForClass(type)) {
+            "Unregistered WinRT value type: $type"
+        }
+        return requireNotNull(descriptor.nullableInterfaceId?.let(::adapterForReferenceInterface)) {
+            "WinRT value type has no ABI adapter: $type"
+        }
+    }
 
     internal fun adapterForReferenceArrayInterface(interfaceId: Guid): WinRTValueAdapter<*>? =
         builtInAdaptersByReferenceArrayIid[interfaceId] ?: dynamicAdaptersByReferenceArrayIid[interfaceId]

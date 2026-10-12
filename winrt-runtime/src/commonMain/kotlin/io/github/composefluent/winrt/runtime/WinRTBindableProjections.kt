@@ -656,13 +656,6 @@ private val managedBindableIterableDefinition =
         ),
     )
 
-private fun UInt.toIntChecked(operation: String): Int {
-    if (this > Int.MAX_VALUE.toUInt()) {
-        throw IllegalStateException("$operation exceeded Int.MAX_VALUE.")
-    }
-    return toInt()
-}
-
 private fun RawAddress.writeReturnedPointer(pointer: RawAddress) {
     PlatformAbi.writePointer(this, pointer)
 }

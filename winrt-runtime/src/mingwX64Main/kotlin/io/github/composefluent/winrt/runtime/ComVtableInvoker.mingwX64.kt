@@ -313,12 +313,28 @@ actual object ComVtableInvoker {
         require(args.size == signature.explicitParameterKinds.size) {
             "Argument word count ${args.size} must match COM signature arity ${signature.explicitParameterKinds.size}."
         }
-        signature.explicitParameterKinds.forEach { kind ->
-            require(kind.supportsHResultWordDispatch()) {
-                "Unsupported mingw COM generic argument kind for HRESULT word dispatch: $kind."
+        require(args.size <= maxHResultArgumentWordCount)
+        var floatingPointKinds = 0L
+        val words = LongArray(args.size) { index ->
+            val kind = signature.explicitParameterKinds[index]
+            when (kind) {
+                ComAbiValueKind.Float -> { floatingPointKinds = floatingPointKinds or (1L shl (index * 2)); args[index] }
+                ComAbiValueKind.Double -> { floatingPointKinds = floatingPointKinds or (2L shl (index * 2)); args[index] }
+                is ComAbiValueKind.Struct -> when (kind.layout.byteSize) {
+                    1L -> PlatformAbi.readInt8(RawAddress(args[index])).toLong()
+                    2L -> PlatformAbi.readInt16(RawAddress(args[index])).toLong()
+                    4L -> PlatformAbi.readInt32(RawAddress(args[index])).toLong()
+                    8L -> PlatformAbi.readInt64(RawAddress(args[index]))
+                    else -> args[index]
+                }
+                else -> args[index]
             }
         }
-        return invokeHResultWordArray(instance, slot, args)
+        if (floatingPointKinds == 0L) return invokeHResultWordArray(instance, slot, words)
+        val thunk = winRTCreateHResultRecipeThunk(words.size, floatingPointKinds)
+            .value.toCPointer<CFunction<(Long, Long, Long, Long, Long, Long, Long, Long) -> Int>>()!!
+        return thunk(instance.value, slot.toLong(), words.getOrElse(0) { 0L }, words.getOrElse(1) { 0L },
+            words.getOrElse(2) { 0L }, words.getOrElse(3) { 0L }, words.getOrElse(4) { 0L }, words.getOrElse(5) { 0L })
     }
 
     internal actual fun createComMethodCallback(
@@ -920,21 +936,6 @@ private fun invokeHResultWordArray(
 }
 
 private const val maxHResultArgumentWordCount = 6
-
-private fun ComAbiValueKind.supportsHResultWordDispatch(): Boolean =
-    when (this) {
-        ComAbiValueKind.Pointer,
-        ComAbiValueKind.Int8,
-        ComAbiValueKind.Int16,
-        ComAbiValueKind.Int32,
-        ComAbiValueKind.Int64,
-        is ComAbiValueKind.Struct,
-        -> true
-
-        ComAbiValueKind.Float,
-        ComAbiValueKind.Double,
-        -> false
-    }
 
 private object Win64ComHResultDispatcher {
     private val pointer: RawAddress by lazy(::allocate)

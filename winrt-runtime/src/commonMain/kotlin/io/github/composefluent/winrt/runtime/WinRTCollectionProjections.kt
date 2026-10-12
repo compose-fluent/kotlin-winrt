@@ -11,9 +11,8 @@ import kotlin.reflect.KClass
  * `IList*`, `IReadOnlyList*`, `IDictionary*`, and `IReadOnlyDictionary*`.
  *
  * This slice owns RCW/CCW helper structure and `CreateMarshaler` / `FromManaged` / `FromAbi` paths.
- * Element-specific scalar/string/value-type marshalling is still a separate runtime concern in the later
- * `Marshalers.cs` parity work, so the helper layer is parameterized by reference-style projector/marshaller
- * lambdas instead of inventing a second marshaling model here.
+ * Reference elements use pointer marshalers; value elements reuse the registered typed ABI
+ * descriptor used by value boxing. Collection behavior is shared by all generated projections.
  */
 open class WinRTReferenceValueAdapter<T>(
     val projectedTypeName: String,
@@ -21,6 +20,8 @@ open class WinRTReferenceValueAdapter<T>(
     val projector: (IUnknownReference?) -> T,
     val marshaller: (T) -> ComObjectReference,
 ) {
+    internal open val valueAbi: WinRTValueAdapter<*>? = null
+
     /** Default projected value, independent of unmarshaling a null IReference<T>. */
     open fun defaultValue(): T = error("No projected default for $projectedTypeName")
 
@@ -278,6 +279,10 @@ object WinRTReferenceValueAdapters {
         ) {
             @Suppress("UNCHECKED_CAST")
             override fun defaultValue(): T = defaultWinRTValue(projectedType) as T
+
+            override val valueAbi: WinRTValueAdapter<*> by lazy {
+                ValueBoxingInterop.requireValueAdapter(projectedType)
+            }
         }
 
     @Suppress("UNCHECKED_CAST")
@@ -522,7 +527,8 @@ object WinRTIteratorProjection {
 
         private var initialized = false
         private var hasCurrent = false
-        private var currentValue: T? = null
+        private var needsAdvance = false
+        private var closed = false
 
         override fun hasNext(): Boolean {
             ensureInitialized()
@@ -534,33 +540,29 @@ object WinRTIteratorProjection {
             if (!hasCurrent) {
                 throw NoSuchElementException("IIterator has no remaining elements.")
             }
-            val value = currentValue ?: error("Iterator current value must be initialized.")
-            advance()
+            val value = iterable.currentElement(elementAdapter)
+            needsAdvance = true
             return value
         }
 
         override fun close() {
-            iterable.close()
+            if (!closed) {
+                closed = true
+                hasCurrent = false
+                iterable.close()
+            }
         }
 
         private fun ensureInitialized() {
-            if (initialized) {
-                return
+            if (closed) return
+            if (!initialized) {
+                initialized = true
+                hasCurrent = iterable.hasCurrent()
+            } else if (needsAdvance) {
+                needsAdvance = false
+                hasCurrent = iterable.moveNext()
             }
-            initialized = true
-            hasCurrent = iterable.hasCurrent()
-            if (hasCurrent) {
-                currentValue = projectOwned(iterable.currentAbiOrNull(), elementAdapter)
-            }
-        }
-
-        private fun advance() {
-            hasCurrent = iterable.moveNext()
-            currentValue = if (hasCurrent) {
-                projectOwned(iterable.currentAbiOrNull(), elementAdapter)
-            } else {
-                null
-            }
+            if (!hasCurrent) close()
         }
     }
 
@@ -756,9 +758,9 @@ object WinRTReadOnlyListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(elementAdapter.elementAbiKind, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val value = decodeBorrowedValue(rawArgs[0] as RawAddress, elementAdapter)
+                            val value = elementAdapter.readElementArgument(rawArgs[0])
                             val indexOut = rawArgs[1] as RawAddress
                             val foundOut = rawArgs[2] as RawAddress
                             val index = managed.indexOf(value)
@@ -954,9 +956,9 @@ object WinRTListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(elementAdapter.elementAbiKind, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val value = decodeBorrowedValue(rawArgs[0] as RawAddress, elementAdapter)
+                            val value = elementAdapter.readElementArgument(rawArgs[0])
                             val indexOut = rawArgs[1] as RawAddress
                             val foundOut = rawArgs[2] as RawAddress
                             val index = managed.indexOf(value)
@@ -965,10 +967,10 @@ object WinRTListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, elementAdapter.elementAbiKind),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val value = decodeBorrowedValue(rawArgs[1] as RawAddress, elementAdapter)
+                            val value = elementAdapter.readElementArgument(rawArgs[1])
                             if (index.toInt() !in managed.indices) {
                                 return@WinRTInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -976,10 +978,10 @@ object WinRTListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, elementAdapter.elementAbiKind),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val value = decodeBorrowedValue(rawArgs[1] as RawAddress, elementAdapter)
+                            val value = elementAdapter.readElementArgument(rawArgs[1])
                             if (index.toInt() > managed.size) {
                                 return@WinRTInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -997,9 +999,9 @@ object WinRTListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(elementAdapter.elementAbiKind),
                         ) { rawArgs ->
-                            managed.add(decodeBorrowedValue(rawArgs[0] as RawAddress, elementAdapter))
+                            managed.add(elementAdapter.readElementArgument(rawArgs[0]))
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
@@ -1042,10 +1044,7 @@ object WinRTListProjection {
                             val itemsIn = rawArgs[1] as RawAddress
                             managed.clear()
                             repeat(size) { index ->
-                                managed += decodeBorrowedValue(
-                                    PlatformAbi.readPointerAt(itemsIn, index),
-                                    elementAdapter,
-                                )
+                                managed += elementAdapter.readElement(elementAdapter.elementAt(itemsIn, index))
                             }
                             KnownHResults.S_OK.value
                         },
@@ -1147,16 +1146,19 @@ object WinRTReadOnlyDictionaryProjection {
             )
         }
 
+        override val size: Int get() = mapView.size().toIntChecked("IMapView.Size")
+
         override val entries: Set<Map.Entry<K, V>>
             get() = adapter.entries
 
         override fun containsKey(key: K): Boolean =
-            keyAdapter.withInputAbi(key) { keyAbi ->
+            if (keyAdapter.valueAbi != null) adapter.containsKey(key) else keyAdapter.withInputAbi(key) { keyAbi ->
                 mapView.hasKey(keyAbi)
             }
 
         override fun get(key: K): V? =
-            keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
+            if (keyAdapter.valueAbi != null || valueAdapter.valueAbi != null) adapter[key]
+            else keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
 
         override fun close() {
             mapView.close()
@@ -1176,15 +1178,15 @@ object WinRTReadOnlyDictionaryProjection {
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = winRTKeyValuePairAdapter(keyAdapter, valueAdapter),
-                    iteratorFactory = { managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
+                    iteratorFactory = { managed.entries.asSequence().map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
                 ),
                 WinRTInspectableInterfaceDefinition(
                             interfaceId = mapViewId,
                     methods = listOf(
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val key = keyAdapter.readElementArgument(rawArgs[0])
                             val resultOut = rawArgs[1] as RawAddress
                             if (!managed.containsKey(key)) {
                                 return@WinRTInspectableMethodDefinition KnownHResults.E_BOUNDS.value
@@ -1200,9 +1202,9 @@ object WinRTReadOnlyDictionaryProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val key = keyAdapter.readElementArgument(rawArgs[0])
                             (rawArgs[1] as RawAddress).writeBoolean(managed.containsKey(key))
                             KnownHResults.S_OK.value
                         },
@@ -1324,35 +1326,29 @@ object WinRTDictionaryProjection {
             )
         }
 
+        override val size: Int get() = map.size().toIntChecked("IMap.Size")
+
         override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
             get() = adapter.entries
 
         override fun containsKey(key: K): Boolean =
-            keyAdapter.withInputAbi(key) { keyAbi -> map.hasKey(keyAbi) }
+            if (keyAdapter.valueAbi != null) adapter.containsKey(key) else keyAdapter.withInputAbi(key) { keyAbi -> map.hasKey(keyAbi) }
 
         override fun put(key: K, value: V): V? {
             val previous = get(key)
-            keyAdapter.withInputAbi(key) { keyAbi ->
-                valueAdapter.withInputAbi(value) { valueAbi ->
-                    map.insert(keyAbi, valueAbi)
-                }
-            }
+            map.insertElement(key, value, keyAdapter, valueAdapter)
             return previous
         }
 
         override fun get(key: K): V? =
-            keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
+            if (keyAdapter.valueAbi != null || valueAdapter.valueAbi != null) adapter[key]
+            else keyAdapter.withInputAbiAndPointerOutRaw(key, lookupAction)
 
         override fun remove(key: K): V? {
             val previous = get(key)
-            return keyAdapter.withInputAbi(key) { keyAbi ->
-                if (!map.hasKey(keyAbi)) {
-                    null
-                } else {
-                    map.remove(keyAbi)
-                    previous
-                }
-            }
+            if (!containsKey(key)) return null
+            map.removeElement(key, keyAdapter)
+            return previous
         }
 
         override fun clear() {
@@ -1377,15 +1373,15 @@ object WinRTDictionaryProjection {
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = winRTKeyValuePairAdapter(keyAdapter, valueAdapter),
-                    iteratorFactory = { managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
+                    iteratorFactory = { managed.entries.asSequence().map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
                 ),
                 WinRTInspectableInterfaceDefinition(
                             interfaceId = mapId,
                     methods = listOf(
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val key = keyAdapter.readElementArgument(rawArgs[0])
                             val resultOut = rawArgs[1] as RawAddress
                             if (!managed.containsKey(key)) {
                                 return@WinRTInspectableMethodDefinition KnownHResults.E_BOUNDS.value
@@ -1401,9 +1397,9 @@ object WinRTDictionaryProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val key = keyAdapter.readElementArgument(rawArgs[0])
                             (rawArgs[1] as RawAddress).writeBoolean(managed.containsKey(key))
                             KnownHResults.S_OK.value
                         },
@@ -1421,19 +1417,19 @@ object WinRTDictionaryProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, valueAdapter.elementAbiKind, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
-                            val value = decodeBorrowedValue(rawArgs[1] as RawAddress, valueAdapter)
+                            val key = keyAdapter.readElementArgument(rawArgs[0])
+                            val value = valueAdapter.readElementArgument(rawArgs[1])
                             val replaced = managed.containsKey(key)
                             managed[key] = value
                             (rawArgs[2] as RawAddress).writeBoolean(replaced)
                             KnownHResults.S_OK.value
                         },
                         WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val key = keyAdapter.readElementArgument(rawArgs[0])
                             if (!managed.containsKey(key)) {
                                 KnownHResults.E_BOUNDS.value
                             } else {
@@ -1582,8 +1578,8 @@ fun <K, V> winRTKeyValuePairAdapter(
             )
             pair.use {
                 ProjectionEntrySnapshot(
-                    projectOwned(it.keyAbiOrNull(), keyAdapter),
-                    projectOwned(it.valueAbiOrNull(), valueAdapter),
+                    it.keyElement(keyAdapter),
+                    it.valueElement(valueAdapter),
                 )
             }
         },
@@ -1664,27 +1660,6 @@ private fun iterableInterfaceDefinition(
         ),
     )
 
-private fun <T> projectBorrowed(
-    reference: IUnknownReference?,
-    adapter: WinRTReferenceValueAdapter<T>,
-): T = try {
-    adapter.projectAbi(reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer)
-} finally {
-    if (adapter.abiValueIsComReference) {
-        reference?.close()
-    }
-}
-
-private fun <T> projectOwned(
-    pointer: RawAddress?,
-    adapter: WinRTReferenceValueAdapter<T>,
-): T = adapter.projectOwnedAbi(pointer ?: PlatformAbi.nullPointer)
-
-private fun <T> decodeBorrowedValue(
-    pointer: RawAddress,
-    adapter: WinRTReferenceValueAdapter<T>,
-): T = adapter.projectAbi(pointer)
-
 private fun RawAddress.writeReturnedPointer(pointer: RawAddress) {
     PlatformAbi.writePointer(this, pointer)
 }
@@ -1704,7 +1679,7 @@ private fun <T> RawAddress.writeManagedValues(
         // The scalar writer already rolled back the current element before propagating.
         repeat(writtenCount) { index ->
             try {
-                adapter.disposeAbi(PlatformAbi.readPointerAt(this, index))
+                adapter.disposeElement(adapter.elementAt(this, index))
             } catch (cleanupError: Throwable) {
                 error.addSuppressed(cleanupError)
             }
@@ -1718,21 +1693,7 @@ private fun <T> RawAddress.writeManagedValue(
     adapter: WinRTReferenceValueAdapter<T>,
     index: Int = 0,
 ) {
-    val marshaler = adapter.createOutputMarshaler(value)
-    val abi = marshaler.abi
-    try {
-        marshaler.use {
-            PlatformAbi.writePointerAt(this, index, abi)
-        }
-    } catch (error: Throwable) {
-        // A successful output factory detached this owned ABI; use only closes its carrier.
-        try {
-            adapter.disposeAbi(abi)
-        } catch (cleanupError: Throwable) {
-            error.addSuppressed(cleanupError)
-        }
-        throw error
-    }
+    adapter.writeElement(value, adapter.elementAt(this, index))
 }
 
 private fun RawAddress.writeBoolean(value: Boolean) {
@@ -1744,7 +1705,11 @@ private fun RawAddress.writeUInt32(value: UInt) {
 }
 
 
-private data class ProjectionEntrySnapshot<K, V>(
+private class ProjectionEntrySnapshot<K, V>(
     override val key: K,
     override val value: V,
-) : Map.Entry<K, V>
+) : Map.Entry<K, V> {
+    override fun equals(other: Any?): Boolean = other is Map.Entry<*, *> && key == other.key && value == other.value
+    override fun hashCode(): Int = (key?.hashCode() ?: 0) xor (value?.hashCode() ?: 0)
+    override fun toString(): String = "$key=$value"
+}
