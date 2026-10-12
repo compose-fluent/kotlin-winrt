@@ -187,7 +187,36 @@ fun readAuthoringMetadataIndexRows(
                 types[type.qualifiedName] = type
             }
         }
-    return types
+    return AuthoringMetadataIndex(types)
+}
+
+/** CsWinRT helpers.h resolves names through the reader's type cache. Kotlin package
+ * spelling additionally needs a case-insensitive lookup; build it once per immutable
+ * index instead of scanning every WinMD type for each ordinary Kotlin declaration.
+ */
+private class AuthoringMetadataIndex(
+    private val types: Map<String, IndexedWinRTType>,
+) : AbstractMap<String, IndexedWinRTType>() {
+    override val entries: Set<Map.Entry<String, IndexedWinRTType>> get() = types.entries
+    override fun get(key: String): IndexedWinRTType? = types[key]
+
+    private val insensitive = java.util.TreeMap<String, IndexedValue<IndexedWinRTType>>(String.CASE_INSENSITIVE_ORDER).apply {
+        types.values.forEachIndexed { index, type ->
+            putIfAbsent(type.qualifiedName, IndexedValue(index, type))
+        }
+    }
+
+    fun findIgnoringCase(typeName: String, projectedName: String): IndexedWinRTType? {
+        val source = insensitive[typeName]
+        val projected = insensitive[projectedName]
+        // The previous scan chose the first row matching either spelling, not
+        // necessarily the source spelling. Preserve that order for ambiguous names.
+        return when {
+            source == null -> projected?.value
+            projected == null || source.index <= projected.index -> source.value
+            else -> projected.value
+        }
+    }
 }
 
 fun writeAuthoringMetadataIndex(
@@ -314,14 +343,18 @@ fun resolveIndexedWinRTTypeByProjectedName(
     typeName: String,
     winRTTypes: Map<String, IndexedWinRTType>,
 ): IndexedWinRTType? {
+    winRTTypes[typeName]?.let { return it }
     val projectedName = winRTMappedTypeForKotlinName(typeName)?.abiQualifiedName
         ?: projectionPackageToMetadataName(typeName)
-    return winRTTypes[typeName]
-        ?: winRTTypes[projectedName]
-        ?: winRTTypes.values.firstOrNull { type ->
+    winRTTypes[projectedName]?.let { return it }
+    return if (winRTTypes is AuthoringMetadataIndex) {
+        winRTTypes.findIgnoringCase(typeName, projectedName)
+    } else {
+        winRTTypes.values.firstOrNull { type ->
             type.qualifiedName.equals(typeName, ignoreCase = true) ||
                 type.qualifiedName.equals(projectedName, ignoreCase = true)
         }
+    }
 }
 
 fun projectionPackageToMetadataName(typeName: String): String {
