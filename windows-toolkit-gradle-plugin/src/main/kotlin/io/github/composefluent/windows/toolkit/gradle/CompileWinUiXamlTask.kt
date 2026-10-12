@@ -197,6 +197,12 @@ abstract class CompileWinUiXamlTask @Inject constructor(
         }
         val compilerOutput = WinUiXamlPageCache.merge(reused.values.map { cache.materialize(it, compiled) } + listOfNotNull(fresh), symbols)
         val plan = WinUiXamlDeclarations.parse(compilerOutput.getValue("KotlinDeclarations").toString())
+        if (symbols != null) {
+            require(WinUiXamlDeclarations.canonicalText(plan) == WinUiXamlDeclarations.canonicalText(
+                WinUiXamlDeclarations.parse(symbols.getValue("Declarations").toString()))) {
+                "XamlCompiler changed the declarations used to compile Kotlin; refusing to publish inconsistent XAML resources."
+            }
+        }
         require((plan.resources + plan.pages.map { it.resourcePath }).toSet() == sources.keys) {
             "XamlCompiler returned an incomplete resource set."
         }

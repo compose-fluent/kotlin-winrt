@@ -26,7 +26,7 @@ import java.nio.file.Path
 /** Private handlers remain private in application schema, never in the public component ABI. */
 @OptIn(ExperimentalCompilerApi::class)
 internal object XamlSemanticOptions {
-    private val keys = listOf("xamlDeclarations", "xamlSemanticOutput", "xamlReferences", "xamlReferencesFile", "xamlApplicationHeader", "xamlImplementation")
+    private val keys = listOf("xamlDeclarations", "xamlSemanticOutput", "xamlReferences", "xamlReferencesFile", "xamlApplicationHeader", "xamlImplementation", "xamlCompile")
         .associateWith { CompilerConfigurationKey<String>(it) }
     val options = keys.keys.map { CliOption(it, "<path>", "Kotlin XAML semantic compilation $it", false) }
 
@@ -64,12 +64,14 @@ internal object XamlSemanticOptions {
         val references = value("xamlReferencesFile")?.let { Files.readAllLines(Path.of(it)).filter(String::isNotBlank) }
             ?: requireNotNull(value("xamlReferences")).split(File.pathSeparator)
         val metadataIndex = Path.of(requireNotNull(configuration.get(KotlinWinRTCommandLineProcessor.METADATA_INDEX_KEY)))
+        val semanticOnly = value("xamlCompile")?.toBooleanStrict()?.not() ?: true
         return XamlCompilation(declarations, XamlSemanticExport(declarationPath, output, references.map(Path::of), metadataIndex,
-            value("xamlApplicationHeader")?.let(Path::of)))
+            value("xamlApplicationHeader")?.let(Path::of), semanticOnly), semanticOnly)
     }
 }
 
-internal data class XamlCompilation(val declarations: WinUiXamlDeclarationIndex, val semanticExport: IrGenerationExtension?)
+internal data class XamlCompilation(val declarations: WinUiXamlDeclarationIndex, val semanticExport: IrGenerationExtension?,
+    val semanticOnly: Boolean = false)
 
 @OptIn(UnsafeDuringIrConstructionAPI::class)
 private class XamlSemanticExport(
@@ -78,11 +80,16 @@ private class XamlSemanticExport(
     private val references: List<Path>,
     private val metadataIndex: Path,
     private val applicationHeader: Path?,
+    private val semanticOnly: Boolean,
 ) : IrGenerationExtension {
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         Files.deleteIfExists(output)
         Files.deleteIfExists(output.resolveSibling("KotlinXaml.winmd"))
-        val declarations = WinUiXamlDeclarations.parse(Files.readString(declarationPath))
+        val declarations = WinUiXamlDeclarations.parse(Files.readString(declarationPath)).let { index ->
+            // Runtime/IDE source hashes belong to executable page bodies, not XAMLC's
+            // semantic contract. Both isolated and combined export use the same schema.
+            index.copy(pages = index.pages.map { it.copy(sourceHash = "") })
+        }
         val types = readAuthoringMetadataIndex(metadataIndex)
         val classes = moduleFragment.files.flatMap { file ->
             file.declarations.filterIsInstance<IrClass>().map { it to file }
@@ -204,6 +211,6 @@ private class XamlSemanticExport(
         // export so JVM/Native lowering and code generation do not compile business bodies
         // that the final application compilation must compile again. Never do this in the
         // final XAML implementation pass or a library's ordinary compilation.
-        moduleFragment.consumeXamlSemanticDeclarations()
+        if (semanticOnly) moduleFragment.consumeXamlSemanticDeclarations()
     }
 }

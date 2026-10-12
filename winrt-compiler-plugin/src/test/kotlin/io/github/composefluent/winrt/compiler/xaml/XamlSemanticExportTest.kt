@@ -46,6 +46,15 @@ class XamlSemanticExportTest {
             assertTrue(symbols.isFile)
             assertTrue(File(root, "KotlinXaml.winmd").isFile)
             assertFalse(output.walkTopDown().any { it.extension == "class" })
+            // Combined mode exports the same inferred schema while retaining executable IR.
+            // No second Kotlin frontend invocation is needed for the business classes.
+            val combined = args + listOf("-P", "plugin:io.github.composefluent.winrt.compiler:xamlCompile=true")
+            val compiled = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *combined.toTypedArray()) }
+            assertEquals(diagnostics.toString(), ExitCode.OK, compiled)
+            URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+                val business = loader.loadClass("Business")
+                assertEquals(listOf(2, 4), business.getMethod("values").invoke(business.getConstructor().newInstance()))
+            }
             source.writeText("class Business { fun values(): Int = \"wrong type\" }")
             val failure = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *args.toTypedArray()) }
             assertEquals(diagnostics.toString(), ExitCode.COMPILATION_ERROR, failure)

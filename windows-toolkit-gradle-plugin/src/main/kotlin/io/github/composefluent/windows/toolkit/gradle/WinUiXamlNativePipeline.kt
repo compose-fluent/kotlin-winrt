@@ -9,7 +9,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import java.io.File
 
-/** Native runs the same FIR/IR semantic export; its temporary KLIB never enters application libraries. */
+/** Native exports schema and executable IR in one compilation; XAMLC validates and emits resources afterward. */
 @OptIn(org.jetbrains.kotlin.gradle.InternalKotlinGradlePluginApi::class)
 internal fun configureWinUiXamlNativePipeline(
     project: Project,
@@ -30,64 +30,32 @@ internal fun configureWinUiXamlNativePipeline(
                 val (applicationHeader, declarations) = compilationInputs(suffix, sourceRoots)
                 val semanticRoot = project.layout.buildDirectory.dir("intermediates/kotlin-winrt/xaml/$suffix/semantic")
                 val symbols = semanticRoot.map { it.file("symbols.json") }
-                val semanticCompilation = target.compilations.create("winRTXamlSemantic")
-                semanticCompilation.defaultSourceSet.kotlin.setSrcDirs(emptyList<String>())
-                // Share the dependency files, not the main default source set or
-                // its compiled output. Native task.libraries returns a fresh collection.
-                semanticCompilation.compileDependencyFiles = compilation.compileDependencyFiles
-                // Only static projection friends, never the final application compilation.
-                compilation.associatedCompilations.forEach(semanticCompilation::associateWith)
-                val semantic = semanticCompilation.compileTaskProvider
-                semantic.configure { task ->
-                    task.group = "kotlin-winrt"
-                    task.description = "Exports isolated Native XAML semantic symbols; the temporary KLIB is never packaged."
-                    task.source(business.sources)
-                    task.commonSources.from(business.commonSources)
-                    task.compilerPluginClasspath = project.files(task.compilerPluginClasspath, compilerPluginClasspath)
-                    task.compilerOptions.apply {
-                        apiVersion.set(business.compilerOptions.apiVersion)
-                        languageVersion.set(business.compilerOptions.languageVersion)
-                        optIn.set(business.compilerOptions.optIn)
-                        moduleName.set("${project.name}-xaml-semantic-$suffix")
-                        freeCompilerArgs.set(business.compilerOptions.freeCompilerArgs.map(::withoutKotlinWinRTCompilerPluginOptions))
-                        freeCompilerArgs.addAll(project.provider {
-                            listOf("xamlDeclarations=${declarations.get().semanticDeclarationsFile.get().asFile.absolutePath}",
-                                "metadataIndex=${metadataIndex.get().asFile.absolutePath}",
-                                "xamlSemanticOutput=${symbols.get().asFile.absolutePath}",
-                                "xamlApplicationHeader=${applicationHeader.get().outputFile.get().asFile.absolutePath}",
-                                "xamlReferencesFile=${declarations.get().outputDirectory.file("references.txt").get().asFile.absolutePath}")
-                                .flatMap { listOf("-P", "plugin:io.github.composefluent.winrt.compiler:$it") }
-                        })
-                    }
-                    task.multiplatformStructure.fragments.set(business.multiplatformStructure.fragments)
-                    task.multiplatformStructure.refinesEdges.set(business.multiplatformStructure.refinesEdges)
-                    task.multiplatformStructure.defaultFragmentName.set(business.multiplatformStructure.defaultFragmentName)
-                    task.destinationDirectory.set(semanticRoot.map { it.dir("klib") })
-                    task.produceUnpackagedKlib.set(false)
-                    task.inputs.file(declarations.flatMap { it.semanticDeclarationsFile })
-                    task.inputs.file(metadataManifest)
-                    task.outputs.file(symbols)
-                    task.outputs.file(semanticRoot.map { it.file("KotlinXaml.winmd") })
-                    task.dependsOn(declarations)
-                }
+                business.compilerOptions.freeCompilerArgs.addAll(project.provider {
+                    listOf("xamlDeclarations=${declarations.get().declarationsFile.get().asFile.absolutePath}",
+                            "xamlSemanticOutput=${symbols.get().asFile.absolutePath}", "xamlCompile=true",
+                        "xamlApplicationHeader=${applicationHeader.get().outputFile.get().asFile.absolutePath}",
+                        "xamlReferencesFile=${declarations.get().outputDirectory.file("references.txt").get().asFile.absolutePath}")
+                        .flatMap { listOf("-P", "plugin:io.github.composefluent.winrt.compiler:$it") }
+                })
+                business.inputs.file(declarations.flatMap { it.declarationsFile })
+                business.inputs.file(metadataManifest)
+                business.outputs.file(symbols)
+                business.outputs.file(semanticRoot.map { it.file("KotlinXaml.winmd") })
+                business.dependsOn(declarations)
                 val implementation = project.tasks.register("compileWinRTXaml$suffix", CompileWinUiXamlTask::class.java) { task ->
                     configure(task)
                     task.sourceRoots.setFrom(sourceRoots)
                     task.semanticSymbols.set(symbols)
                     task.semanticWinmd.set(semanticRoot.map { it.file("KotlinXaml.winmd") })
                     task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml/$suffix/final"))
-                    task.dependsOn(semantic)
+                    task.dependsOn(business)
+                    val exportedSymbols = symbols.get().asFile
+                    task.onlyIf("Kotlin XAML semantic export exists") { exportedSymbols.isFile }
                 }
                 val sourceGeneration = project.tasks.matching { it.name == "ksp" + business.name.removePrefix("compile") }
-                semantic.configure { it.dependsOn(sourceGeneration) }
+                business.dependsOn(sourceGeneration)
                 implementation.configure { it.dependsOn(sourceGeneration) }
-                business.inputs.file(implementation.flatMap { it.implementationFile })
-                business.compilerOptions.freeCompilerArgs.addAll(project.provider {
-                    listOf("xamlDeclarations=${declarations.get().declarationsFile.get().asFile.absolutePath}",
-                        "xamlImplementation=${implementation.get().implementationFile.get().asFile.absolutePath}")
-                        .flatMap { listOf("-P", "plugin:io.github.composefluent.winrt.compiler:$it") }
-                })
-                business.dependsOn(implementation)
+                business.finalizedBy(implementation)
                 configureWinUiXamlPackageResources(project, sourceRoots, implementation, business.name, WinAppVariantKind.MingwX64,
                     compilation.defaultSourceSet.name)
             }

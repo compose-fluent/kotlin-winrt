@@ -62,7 +62,7 @@ class WinUiXamlLibraryPipelineTest {
         assertTrue(result.output, result.output.contains("generateWinRTXamlApplicationHeader -"))
         assertTrue(result.output, result.output.contains("generateWinRTXamlApplicationHeaderMain"))
         assertTrue(result.output, result.output.contains("analyzeWinRTXamlMain"))
-        assertTrue(result.output, result.output.contains("compileKotlinWinRTXamlSemanticMain"))
+        assertTrue(result.output, !result.output.contains("compileKotlinWinRTXamlSemanticMain"))
         assertTrue(result.output, result.output.contains("compileWinRTXamlMain"))
         val reused = run(root, "tasks", "--all", "--configuration-cache")
         assertTrue(reused.output, reused.output.contains("Reusing configuration cache."))

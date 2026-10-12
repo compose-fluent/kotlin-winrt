@@ -272,15 +272,19 @@ class KotlinWinRTCompilerPluginRegistrar : CompilerPluginRegistrar() {
         }
         XamlSemanticOptions.compilation(configuration)?.let { xaml ->
             FirExtensionRegistrarAdapter.registerExtension(XamlFirRegistrar(xaml.declarations))
-            val xamlRegistrars = if (xaml.semanticExport == null) readCompilerSupportManifestIfConfigured(
+            val xamlRegistrars = if (!xaml.semanticOnly) readCompilerSupportManifestIfConfigured(
                 configuration.get(KotlinWinRTCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY))
                 .filter { it.kind == "xaml-type-registrar" }.map { it.className } else emptyList()
-            IrGenerationExtension.registerExtension(XamlPageBodies(xaml.declarations, xaml.semanticExport != null, xamlRegistrars))
-            xaml.semanticExport?.let {
+            if (xaml.semanticOnly) {
+                IrGenerationExtension.registerExtension(XamlPageBodies(xaml.declarations, true, xamlRegistrars))
                 // Isolated semantic pass: these binaries are never runtime or packaging inputs.
-                IrGenerationExtension.registerExtension(it)
+                IrGenerationExtension.registerExtension(requireNotNull(xaml.semanticExport))
                 return
             }
+            // Export from the original, fully inferred module before generating executable
+            // page bodies. XAMLC validates the same declaration contract after compilation.
+            xaml.semanticExport?.let { IrGenerationExtension.registerExtension(it) }
+            IrGenerationExtension.registerExtension(XamlPageBodies(xaml.declarations, false, xamlRegistrars))
         }
         IrGenerationExtension.registerExtension(
             KotlinWinRTIrGenerationExtension(
