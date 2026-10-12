@@ -1136,6 +1136,41 @@ class WinRTDelegateBridgeTest {
     }
 
     @Test
+    fun delegate_struct_parameters_round_trip_register_and_indirect_sizes() {
+        // CsWinRT code_writers.h write_abi_parameter emits typed structs; Win64
+        // passes only 1/2/4/8-byte aggregates directly, including for callbacks.
+        for (size in listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 16)) {
+            val adapter = object : NativeStructAdapter<List<Byte>> {
+                override val layout = NativeStructLayout.sequential(
+                    *Array(size) { NativeScalarFieldSpec("b$it", NativeStructScalarKind.INT8) },
+                )
+                override fun read(source: RawAddress): List<Byte> =
+                    List(size) { PlatformAbi.readInt8(layout.slice(source, "b$it")) }
+                override fun write(value: List<Byte>, destination: RawAddress) {
+                    value.forEachIndexed { index, byte ->
+                        PlatformAbi.writeInt8(layout.slice(destination, "b$index"), byte)
+                    }
+                }
+            }
+            val input = List(size) { (0x91 + it * 7).toByte() }
+            WinRTDelegateBridge.createDelegate(
+                iid = Guid("527d41ce-d70e-49f9-91ca-56dd09a64191"),
+                parameterKinds = listOf(WinRTDelegateValueKind.STRUCT),
+                returnKind = WinRTDelegateValueKind.STRUCT,
+                parameterStructAdapters = listOf(adapter),
+                returnStructAdapter = adapter,
+            ) { arguments ->
+                assertEquals(input, arguments.single(), "$size-byte inbound struct")
+                input.reversed()
+            }.use { handle ->
+                handle.createReference().use { reference ->
+                    assertEquals(input.reversed(), reference.invoke(listOf(input)), "$size-byte result")
+                }
+            }
+        }
+    }
+
+    @Test
     fun delegate_descriptor_expands_uint8_array_parameters() {
         val descriptor = WinRTDelegateDescriptor(
             interfaceId = Guid("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),

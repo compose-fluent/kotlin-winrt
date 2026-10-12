@@ -320,12 +320,12 @@ actual object ComVtableInvoker {
             when (kind) {
                 ComAbiValueKind.Float -> { floatingPointKinds = floatingPointKinds or (1L shl (index * 2)); args[index] }
                 ComAbiValueKind.Double -> { floatingPointKinds = floatingPointKinds or (2L shl (index * 2)); args[index] }
-                is ComAbiValueKind.Struct -> when (kind.layout.byteSize) {
+                is ComAbiValueKind.Struct -> if (!kind.layout.isWin64RegisterStruct()) args[index] else when (kind.layout.byteSize) {
                     1L -> PlatformAbi.readInt8(RawAddress(args[index])).toLong()
                     2L -> PlatformAbi.readInt16(RawAddress(args[index])).toLong()
                     4L -> PlatformAbi.readInt32(RawAddress(args[index])).toLong()
                     8L -> PlatformAbi.readInt64(RawAddress(args[index]))
-                    else -> args[index]
+                    else -> error("Invalid Win64 register struct size")
                 }
                 else -> args[index]
             }
@@ -484,7 +484,7 @@ private object NativeCallbackRegistry {
         }
 
     private fun materializeCallbackStruct(scope: NativeScope, layout: NativeAbiLayout, word: Long): RawAddress {
-        if (layout.byteSize > 8L) {
+        if (!layout.isWin64RegisterStruct()) {
             return RawAddress(word)
         }
         val pointer = PlatformAbi.allocateBytes(scope, layout.byteSize, layout.byteAlignment)
@@ -500,6 +500,12 @@ private object NativeCallbackRegistry {
         }
     }
 }
+
+// CsWinRT emits typed struct parameters (write_abi_parameter); its native call ABI
+// handles this distinction. Keep the equivalent Kotlin/Native rule at this boundary:
+// only 1, 2, 4 and 8 byte aggregates occupy an integer register directly.
+private fun NativeAbiLayout.isWin64RegisterStruct(): Boolean =
+    byteSize in 1L..8L && (byteSize and (byteSize - 1L)) == 0L
 
 private data class RegisteredNativeCallback(
     val parameterKinds: List<ComAbiValueKind>,
