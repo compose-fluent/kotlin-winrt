@@ -167,7 +167,7 @@ private fun KotlinProjectionRenderer.renderEventSourceBackedFunctions(
         FunSpec.builder("add${event.name}")
             .addProjectedAttributeAnnotations(projectedAttributes)
             .addModifiers(modifiers)
-            .addParameter("handler", typeName)
+            .addParameter("handler", typeName.copy(nullable = true))
             .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("return %L.add(handler)\n", propertyName)
             .build(),
@@ -193,8 +193,9 @@ internal fun KotlinProjectionRenderer.buildBoundEventFunctions(
         FunSpec.builder("add${event.name}")
             .addProjectedAttributeAnnotations(projectedAttributes)
             .addModifiers(modifiers)
-            .addParameter("handler", typeName)
+            .addParameter("handler", typeName.copy(nullable = true))
             .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+            .addCode("if (handler == null) return %T()\n", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L\n", addInvocation)
             .build(),
         FunSpec.builder("remove${event.name}")
@@ -298,7 +299,7 @@ internal fun KotlinProjectionRenderer.renderEventFunctions(
     val typeName = resolveTypeName(event.delegateTypeName)
     return listOf(
         FunSpec.builder("add${event.name}")
-            .addParameter("handler", typeName)
+            .addParameter("handler", typeName.copy(nullable = true))
             .apply {
                 if (abstract) {
                     addModifiers(KModifier.ABSTRACT)

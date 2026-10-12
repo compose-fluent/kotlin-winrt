@@ -663,7 +663,7 @@ internal class KotlinExpectActualProjectionRenderer(
         return listOf(
             FunSpec.builder("add${event.name}")
                 .addModifiers(KModifier.OVERRIDE)
-                .addParameter("handler", typeName)
+                .addParameter("handler", typeName.copy(nullable = true))
                 .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
                 .addCode("return %L.add%L(handler)\n", cacheName, event.name)
                 .build(),

@@ -3116,7 +3116,7 @@ class KotlinProjectionSupportRenderer private constructor(
                         index = 0,
                     ),
                 )
-                code.add("val token = value.add%L(requireNotNull(handler))\n", event.name)
+                code.add("val token = value.add%L(handler)\n", event.name)
                 code.add("%T.Metadata.copyTo(token, rawArgs[1] as %T)\n", EVENT_REGISTRATION_TOKEN_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
                 code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
             }

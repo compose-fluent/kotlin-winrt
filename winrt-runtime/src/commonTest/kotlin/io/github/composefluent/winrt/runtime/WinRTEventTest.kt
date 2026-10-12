@@ -9,6 +9,23 @@ import windows.foundation.EventRegistrationToken
 /** Kotlin token bookkeeping around CsWinRT EventSource's subscribe/unsubscribe contract. */
 class WinRTEventTest {
     @Test
+    fun null_handler_returns_zero_without_subscribing_or_allocating_a_token() {
+        // CsWinRT EventRegistrationTokenTable<T>.AddEventHandler(null) returns default.
+        var subscriptions = 0
+        val event = WinRTEvent<String>(
+            subscribe = { EventRegistrationToken((++subscriptions).toLong()) },
+            unsubscribe = { error("Null registrations must not reach the native event") },
+        )
+        assertEquals(EventRegistrationToken(), event.add(null))
+        event += null
+        event -= null
+        assertFalse(event.remove(null))
+        event.remove(EventRegistrationToken())
+        assertEquals(0, subscriptions)
+        assertEquals(EventRegistrationToken(1), event.add("handler"))
+    }
+
+    @Test
     fun empty_removal_then_duplicate_subscriptions_preserve_token_order() {
         var nextToken = 1L
         val removed = mutableListOf<EventRegistrationToken>()

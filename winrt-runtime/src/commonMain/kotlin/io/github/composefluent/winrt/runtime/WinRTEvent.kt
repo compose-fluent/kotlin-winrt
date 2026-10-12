@@ -19,7 +19,9 @@ class WinRTEvent<T : Any>(
         unsubscribeHandler = subscription::unsubscribe,
     )
 
-    fun add(handler: T): EventRegistrationToken {
+    fun add(handler: T?): EventRegistrationToken {
+        // CsWinRT EventRegistrationTokenTable<T>.AddEventHandler(null) is a no-op.
+        if (handler == null) return EventRegistrationToken()
         val token = subscribe(handler)
         val tokensByHandler = tokensByHandler
             ?: mutableMapOf<T, MutableList<EventRegistrationToken>>().also { this.tokensByHandler = it }
@@ -34,11 +36,12 @@ class WinRTEvent<T : Any>(
         return token
     }
 
-    operator fun plusAssign(handler: T) {
+    operator fun plusAssign(handler: T?) {
         add(handler)
     }
 
     fun remove(token: EventRegistrationToken) {
+        if (token == EventRegistrationToken()) return
         val handler = handlersByToken?.remove(token)
         if (handler != null && unsubscribeHandler != null) {
             unsubscribeHandler.invoke(handler)
@@ -48,7 +51,8 @@ class WinRTEvent<T : Any>(
         tokensByHandler?.values?.forEach { it.remove(token) }
     }
 
-    fun remove(handler: T): Boolean {
+    fun remove(handler: T?): Boolean {
+        if (handler == null) return false
         val tokensByHandler = tokensByHandler ?: return false
         val tokens = tokensByHandler[handler] ?: return false
         val token = tokens.removeLastOrNull() ?: return false
@@ -60,7 +64,7 @@ class WinRTEvent<T : Any>(
         return true
     }
 
-    operator fun minusAssign(handler: T) {
+    operator fun minusAssign(handler: T?) {
         remove(handler)
     }
 

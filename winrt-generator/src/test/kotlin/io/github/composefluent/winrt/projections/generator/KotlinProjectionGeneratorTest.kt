@@ -1899,7 +1899,7 @@ class KotlinProjectionGeneratorTest {
         val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
         val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
         assertTrue(common, common.contains("public val changed: WinRTEvent<WidgetChangedHandler>"))
-        assertTrue(common, common.contains("public fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
+        assertTrue(common, common.contains("public fun addChanged(handler: WidgetChangedHandler?): EventRegistrationToken"))
         assertTrue(common, common.contains("public fun removeChanged(token: EventRegistrationToken)"))
         assertTrue(common, common.contains("const val CHANGED_ADD_SLOT: Int = 6"))
         assertTrue(common, common.contains("const val CHANGED_REMOVE_SLOT: Int = 7"))
@@ -1907,7 +1907,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jvm, jvm.contains("WinRTEventProjectionHelper_"))
         assertTrue(jvm, jvm.contains(".createEventSource_"))
         assertTrue(jvm, jvm.contains("IWidget.Metadata.CHANGED_ADD_SLOT"))
-        assertTrue(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
+        assertTrue(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler?): EventRegistrationToken"))
         assertTrue(jvm, jvm.contains("changed.add(handler)"))
         assertTrue(jvm, jvm.contains("override fun removeChanged(token: EventRegistrationToken)"))
         assertTrue(jvm, jvm.contains("changed.remove(token)"))
@@ -3228,7 +3228,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jvm, jvm.contains("public actual class Widget protected actual constructor("))
         assertTrue(jvm, jvm.contains("IWidget by IWidgetJvmProjection.wrap(Metadata.acquireInterface(nativeObject,"))
         assertFalse(jvm, jvm.contains("override val changed: WinRTEvent<WidgetChangedHandler>"))
-        assertFalse(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
+        assertFalse(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler?): EventRegistrationToken"))
         assertFalse(jvm, jvm.contains("override fun removeChanged(token: EventRegistrationToken)"))
     }
 
@@ -6462,7 +6462,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("const val CHANGED_REMOVE_SLOT: Int = 8"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val name: String"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val changed: WinRTEvent<WidgetHandler>"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler?): EventRegistrationToken"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun removeChanged(token: EventRegistrationToken)"))
 
         val iWidgetContents = filesByName.getValue("IWidget.kt").contents
@@ -6525,13 +6525,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("var count: Int"))
         assertTrue(widgetContents.contains("STATIC_COUNT_SETTER_SLOT"))
         assertTrue(widgetContents.contains("val changed: WinRTEvent<WidgetHandler>"))
-        assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler?): EventRegistrationToken"))
         assertTrue(widgetContents.contains("fun removeChanged(token: EventRegistrationToken)"))
-        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler?): EventRegistrationToken"))
         assertTrue(widgetContents.contains("val loaded: WinRTEvent<WidgetHandler> by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("\"Sample.Foundation.IWidgetStatics\""))
         assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics()"))
-        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): EventRegistrationToken ="))
+        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler?): EventRegistrationToken ="))
         assertTrue(widgetContents.contains("loaded.add(handler)"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
@@ -10923,7 +10923,7 @@ class KotlinProjectionGeneratorTest {
         }?.contents.orEmpty()
 
         assertTrue(widgetContents.contains("fun setHandler(handler: WidgetHandler?)"))
-        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler?): EventRegistrationToken"))
         assertEquals(1, widgetContents.projectionCallSiteCount())
         assertTrue(
             widgetContents,
@@ -10934,7 +10934,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(callSiteSupport.contains("codec_create_"))
         assertFalse(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
         assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler?) = error(\"WinRT ABI binding is unavailable\")"))
-        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken = error(\"WinRT ABI binding is unavailable\")"))
+        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler?): EventRegistrationToken = error(\"WinRT ABI binding is unavailable\")"))
     }
 
     @Test
@@ -12358,7 +12358,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories, setHandlerMethod.contains("val value = managedValue as ICallback"))
         assertFalse(ccwFactories, setHandlerMethod.contains("abiEntryPoint"))
         assertTrue(ccwFactories, ccwFactories.contains("WinRTDelegateVftblSlots.Invoke"))
-        assertTrue(ccwFactories, ccwFactories.contains("value.addChanged(requireNotNull(handler))"))
+        assertTrue(ccwFactories, ccwFactories.contains("value.addChanged(handler)"))
         assertTrue(ccwFactories, ccwFactories.contains("managedHandler = { managedValue, rawArgs ->"))
         assertTrue(
             ccwFactories,
@@ -12955,13 +12955,13 @@ class KotlinProjectionGeneratorTest {
         )
         assertTrue(widgetContents.contains("var title: String"))
         assertTrue(widgetContents.contains("val maxCount: Int"))
-        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler?): EventRegistrationToken"))
         assertTrue(widgetContents, widgetContents.contains("addUpdated(handler)") || widgetContents.contains("WinRTEvent(::addUpdated, ::removeUpdated)"))
         assertTrue(widgetContents.contains("updated.remove(token)") || widgetContents.contains("removeUpdated(token)"))
-        assertTrue(widgetContents.contains("fun addReset(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(widgetContents.contains("fun addReset(handler: WidgetHandler?): EventRegistrationToken"))
         assertTrue(widgetContents.contains("public val reset: WinRTEvent<WidgetHandler>"))
         assertTrue(widgetContents.contains("public fun removeReset(token: EventRegistrationToken)"))
-        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken {\n        return __handlerHandle.createReference().use"))
+        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler?): EventRegistrationToken {\n        return __handlerHandle.createReference().use"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class, DEFAULT_INTERFACE_IID)"))
         assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE"))
@@ -15427,7 +15427,7 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(filesByName.containsKey("EventHandler.kt"))
         assertTrue(widgetContents, widgetContents.contains("import windows.foundation.EventHandler"))
-        assertTrue(widgetContents, widgetContents.contains("fun addChanged(handler: EventHandler<Int>): EventRegistrationToken"))
+        assertTrue(widgetContents, widgetContents.contains("fun addChanged(handler: EventHandler<Int>?): EventRegistrationToken"))
     }
 
     @Test
@@ -15512,7 +15512,7 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(filesByName.containsKey("TypedEventHandler.kt"))
         assertTrue(widgetContents, widgetContents.contains("import windows.foundation.TypedEventHandler"))
-        assertTrue(widgetContents, widgetContents.contains("fun addChanged(handler: TypedEventHandler<IWidget?, Any?>): EventRegistrationToken"))
+        assertTrue(widgetContents, widgetContents.contains("fun addChanged(handler: TypedEventHandler<IWidget?, Any?>?): EventRegistrationToken"))
         assertTrue(eventProjectionHelpers, eventProjectionHelpers.contains("internal class _EventSource_"))
     }
 
@@ -15609,7 +15609,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers, eventProjectionHelpers.contains("TypedEventHandler<IExpander?, ExpanderExpandingEventArgs?>"))
         assertTrue(eventProjectionHelpers, eventProjectionHelpers.replace(Regex("\\s+"), " ").contains("if (__args[1] == null) null else ExpanderExpandingEventArgs.Metadata.wrap"))
         assertTrue(widgetContents, widgetContents.contains("import windows.foundation.TypedEventHandler"))
-        assertTrue(widgetContents, widgetContents.replace(Regex("\\s+"), " ").contains("fun addExpanding(handler: TypedEventHandler<IExpander?, ExpanderExpandingEventArgs?>): EventRegistrationToken"))
+        assertTrue(widgetContents, widgetContents.replace(Regex("\\s+"), " ").contains("fun addExpanding(handler: TypedEventHandler<IExpander?, ExpanderExpandingEventArgs?>?): EventRegistrationToken"))
         assertTrue(eventProjectionHelpers, eventProjectionHelpers.contains("internal class _EventSource_"))
     }
 
@@ -15710,7 +15710,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents, file.contents.contains("val propertyChanged: INotifyPropertyChanged"))
         assertTrue(file.contents, file.contents.contains("val collectionChanged: INotifyCollectionChanged"))
         assertTrue(file.contents, file.contents.contains("val collectionChangedArgs: NotifyCollectionChangedEventArgs"))
-        assertTrue(file.contents, file.contents.contains("fun addChanged(handler: EventHandler<Int>): EventRegistrationToken"))
+        assertTrue(file.contents, file.contents.contains("fun addChanged(handler: EventHandler<Int>?): EventRegistrationToken"))
     }
 
     @Test
@@ -19917,7 +19917,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("value.roundTripGenericArray(__arg0)"))
         assertTrue(ccwFactories.contains("val __returnArrayMarshaler = Marshaler.genericParameter<M0>()"))
         assertFalse(ccwFactories.contains("EventHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
-        assertTrue(ccwFactories.contains("value.addChanged(requireNotNull(handler))"))
+        assertTrue(ccwFactories.contains("value.addChanged(handler)"))
         assertTrue(ccwFactories.contains("EventRegistrationToken.Metadata.copyTo(token, rawArgs[1] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.removeChanged(EventRegistrationToken(rawArgs[0] as Long))"))
         assertTrue(ccwFactories.contains("ExceptionHelpers.hResultFromException(error).value"))
@@ -21407,7 +21407,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("WinRTListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVector.getRefPointer())"))
         assertFalse(contents, contents.contains("WinRTListProjection.fromAbi(PlatformAbi.fromRawComPtr(_defaultInterface.getRefPointer())"))
         assertTrue(contents, contents.contains("override val vectorChanged: WinRTEvent<VectorChangedEventHandler<Any?>>"))
-        assertTrue(contents, contents.contains("override fun addVectorChanged(handler: VectorChangedEventHandler<Any?>): EventRegistrationToken"))
+        assertTrue(contents, contents.contains("override fun addVectorChanged(handler: VectorChangedEventHandler<Any?>?): EventRegistrationToken"))
         assertTrue(contents, contents.contains("override fun removeVectorChanged(token: EventRegistrationToken)"))
         assertFalse(contents, contents.contains("VECTORCHANGED_ADD_SLOT_OWNER_CACHE"))
         assertTrue(contents, contents.contains("const val VECTORCHANGED_ADD_SLOT: Int ="))
@@ -21513,7 +21513,7 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents, contents.contains("WinRTBindableVectorProjection.fromAbi(_inner)"))
         assertTrue(contents, contents.contains("override val vectorChanged: WinRTEvent<BindableVectorChangedEventHandler>"))
-        assertTrue(contents, contents.contains("override fun addVectorChanged(handler: BindableVectorChangedEventHandler): EventRegistrationToken"))
+        assertTrue(contents, contents.contains("override fun addVectorChanged(handler: BindableVectorChangedEventHandler?): EventRegistrationToken"))
         assertTrue(contents, contents.contains("const val VECTORCHANGED_ADD_SLOT: Int ="))
         assertFalse(contents, contents.contains("VECTORCHANGED_ADD_SLOT_OWNER_CACHE"))
     }
@@ -24587,7 +24587,7 @@ class KotlinProjectionGeneratorTest {
             .getValue("IWidget.kt")
             .contents
 
-        assertTrue(contents.contains("fun addUpdated(handler: TypedEventHandler<Widget?, Any?>): EventRegistrationToken"))
+        assertTrue(contents.contains("fun addUpdated(handler: TypedEventHandler<Widget?, Any?>?): EventRegistrationToken"))
     }
 
     @Test
