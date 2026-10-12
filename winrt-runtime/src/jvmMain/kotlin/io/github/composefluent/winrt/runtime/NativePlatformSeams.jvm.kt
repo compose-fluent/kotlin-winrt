@@ -663,9 +663,6 @@ actual object PlatformAbi {
             .setAtIndex(ValueLayout.ADDRESS, index.toLong(), value.asMemorySegment())
     }
 
-    actual fun structArgumentWord(layout: NativeAbiLayout, address: RawAddress): Long =
-        address.value
-
     actual fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation {
         require(sizeBytes >= 0L) { "Owned native allocation size cannot be negative: $sizeBytes." }
         require(alignmentBytes > 0L && alignmentBytes and (alignmentBytes - 1L) == 0L) {

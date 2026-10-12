@@ -78,7 +78,9 @@ internal object ComAbiWord {
 
             is ComAbiValueKind.Struct ->
                 when (value) {
-                    is RawAddress -> PlatformAbi.structArgumentWord(kind.layout, value)
+                    // Generic calls carry struct storage; the platform invoker lowers it
+                    // to the native ABI once, just as CsWinRT's typed unmanaged call does.
+                    is RawAddress -> value.value
                     else -> error("Expected struct-compatible ABI address, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
                 }
         }

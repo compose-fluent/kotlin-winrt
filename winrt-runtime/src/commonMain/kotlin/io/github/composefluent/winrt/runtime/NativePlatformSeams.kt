@@ -294,8 +294,6 @@ expect object PlatformAbi {
 
     fun writePointerAt(array: RawAddress, index: Int, value: RawAddress)
 
-    fun structArgumentWord(layout: NativeAbiLayout, address: RawAddress): Long
-
     /**
      * Allocates [sizeBytes] bytes of zeroed, cross-thread native memory.
      * Closing the returned owner frees the backing memory. Use this when ownership of a heap
