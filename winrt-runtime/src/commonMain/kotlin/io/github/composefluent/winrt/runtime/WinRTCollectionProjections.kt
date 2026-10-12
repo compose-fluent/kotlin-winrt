@@ -92,6 +92,34 @@ open class WinRTReferenceValueAdapter<T>(
 }
 
 object WinRTReferenceValueAdapters {
+    /** CsWinRT MarshalInterface<T>: a null COM reference round-trips as null.
+     * This adapts reference elements without changing their WinRT signature/IID.
+     * HSTRING and value-type adapters retain their own marshaling semantics.
+     */
+    fun <T> nullableReference(adapter: WinRTReferenceValueAdapter<T>): WinRTReferenceValueAdapter<T?> {
+        require(adapter.abiValueIsComReference)
+        return object : WinRTReferenceValueAdapter<T?>(
+            projectedTypeName = adapter.projectedTypeName,
+            typeSignature = adapter.typeSignature,
+            projector = { reference -> reference?.let(adapter.projector) },
+            marshaller = { value -> adapter.marshaller(requireNotNull(value)) },
+        ) {
+            override fun createInputMarshaler(value: T?): WinRTObjectMarshaler =
+                if (value == null) WinRTObjectMarshaler(PlatformAbi.nullPointer) else adapter.createInputMarshaler(value)
+
+            override fun createOutputMarshaler(value: T?): WinRTObjectMarshaler =
+                if (value == null) WinRTObjectMarshaler(PlatformAbi.nullPointer) else adapter.createOutputMarshaler(value)
+
+            override fun projectAbi(pointer: RawAddress): T? =
+                if (PlatformAbi.isNull(pointer)) null else adapter.projectAbi(pointer)
+
+            override fun projectOwnedAbi(pointer: RawAddress): T? =
+                if (PlatformAbi.isNull(pointer)) null else adapter.projectOwnedAbi(pointer)
+
+            override fun disposeAbi(pointer: RawAddress) = adapter.disposeAbi(pointer)
+        }
+    }
+
     val string: WinRTReferenceValueAdapter<String> =
         object : WinRTReferenceValueAdapter<String>(
             projectedTypeName = "String",

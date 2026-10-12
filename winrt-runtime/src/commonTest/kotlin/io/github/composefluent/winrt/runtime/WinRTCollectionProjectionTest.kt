@@ -8,6 +8,28 @@ import kotlin.test.assertTrue
 
 class WinRTCollectionProjectionTest {
     @Test
+    fun nullable_reference_elements_preserve_null_and_the_underlying_signature() {
+        // CsWinRT MarshalInterface<T>.FromAbi/CreateMarshaler in Marshalers.cs.
+        val allocated = mutableListOf<AutoCloseable>()
+        try {
+            val original = labelAdapter(allocated)
+            val nullable = WinRTReferenceValueAdapters.nullableReference(original)
+            assertSame(original.typeSignature, nullable.typeSignature)
+            assertEquals(original.projectedTypeName, nullable.projectedTypeName)
+            assertEquals(null, nullable.projectAbi(PlatformAbi.nullPointer))
+            assertEquals(null, nullable.projectOwnedAbi(PlatformAbi.nullPointer))
+            nullable.createInputMarshaler(null).use { assertTrue(PlatformAbi.isNull(it.abi)) }
+            nullable.createOutputMarshaler(null).use { assertTrue(PlatformAbi.isNull(it.abi)) }
+            nullable.createInputMarshaler("reference").use { assertEquals("reference", nullable.projectAbi(it.abi)) }
+            assertFailsWith<IllegalArgumentException> {
+                WinRTReferenceValueAdapters.nullableReference(WinRTReferenceValueAdapters.string)
+            }
+        } finally {
+            allocated.asReversed().forEach(AutoCloseable::close)
+        }
+    }
+
+    @Test
     fun missing_dictionary_keys_are_not_looked_up_before_get_put_or_remove() {
         // CsWinRT IDictionary.net5.cs / IReadOnlyDictionary.net5.cs TryGetValue preflight.
         // WinUI ResourceDictionary can fail Lookup with E_FAIL rather than E_BOUNDS.
