@@ -75,7 +75,7 @@ object ComWrappersSupport {
     @OptIn(ExperimentalAtomicApi::class)
     private val ccwHostCacheGeneration = AtomicInt(0)
     private val ccwSlowStateCreationLock = PlatformLock()
-    private val rcwSlowStateCreationLock = PlatformLock()
+    private val rcwCreationLocks = RcwCreationLocks()
     private val ccwHostCache =
         WeakKeyStateMap<Any, CachedCcwHosts> { cachedHosts ->
             cachedHosts.releaseCacheRoots()
@@ -325,14 +325,16 @@ object ComWrappersSupport {
             }
         }
 
-        val rcw = createRcwCore(pointer, staticallyDeterminedType)
-        if (tryUseCache && rcw != null) {
-            rcwCache[pointerKey] = rcw
-            if (directPointerKey != pointerKey) {
-                rcwCache[directPointerKey] = rcw
+        if (!tryUseCache) return createRcwCore(pointer, staticallyDeterminedType)
+        return withRcwCreationLock(pointerKey) {
+            val rcw = findCachedRcw(pointerKey, staticallyDeterminedType)
+                ?: createRcwCore(pointer, staticallyDeterminedType)
+            if (rcw != null) {
+                rcwCache[pointerKey] = rcw
+                if (directPointerKey != pointerKey) rcwCache[directPointerKey] = rcw
             }
+            rcw
         }
-        return rcw
     }
 
     /**
@@ -369,7 +371,7 @@ object ComWrappersSupport {
             }
         }
 
-        return rcwSlowStateCreationLock.withLock {
+        return withRcwCreationLock(pointerKey) {
             if (tryUseCache) {
                 val cached = findCachedRcw(pointerKey)
                     ?: if (directPointerKey != pointerKey) {
@@ -383,7 +385,7 @@ object ComWrappersSupport {
                         rcwCache[directPointerKey] = cached
                     }
                     WinRTPlatformApi.releaseRaw(pointer)
-                    return@withLock cached
+                    return@withRcwCreationLock cached
                 }
             }
 
@@ -418,7 +420,7 @@ object ComWrappersSupport {
                                     rcwCache[directPointerKey] = projectedValue
                                 }
                             }
-                            return@withLock projectedValue
+                            return@withRcwCreationLock projectedValue
                         }
                 }
 
@@ -435,7 +437,7 @@ object ComWrappersSupport {
                                 rcwCache[directPointerKey] = rcw
                             }
                         }
-                        return@withLock rcw
+                        return@withRcwCreationLock rcw
                     }
                     tryProjectInspectableValue(
                         inspectable,
@@ -453,7 +455,7 @@ object ComWrappersSupport {
                                 rcwCache[directPointerKey] = projectedValue
                             }
                         }
-                        return@withLock projectedValue
+                        return@withRcwCreationLock projectedValue
                     }
 
                     ownershipTransferred = true
@@ -546,7 +548,7 @@ object ComWrappersSupport {
     ): T {
         var rawPointerNeedsRelease = true
         try {
-            return rcwSlowStateCreationLock.withLock {
+            return withRcwCreationLock(pointerKey) {
                 val cached = findCachedRcw(pointerKey, staticallyDeterminedType)
                     ?: if (directPointerKey != pointerKey) {
                         findCachedRcw(directPointerKey, staticallyDeterminedType)
@@ -558,7 +560,7 @@ object ComWrappersSupport {
                         rcwCache[pointerKey] = cached
                         rcwCache[directPointerKey] = cached
                     }
-                    return@withLock cached as T
+                    return@withRcwCreationLock cached as T
                 }
 
                 // This constructor explicitly consumes the ABI reference even if it
@@ -710,7 +712,7 @@ object ComWrappersSupport {
             }
         }
 
-        return withRcwSlowStateCreationLock {
+        return withRcwCreationLock(pointerKey) {
             val cached = findClosedInterfaceRcw(pointerKey, interfaceId)
                 ?: if (directPointerKey != pointerKey) {
                     findClosedInterfaceRcw(directPointerKey, interfaceId)
@@ -724,7 +726,7 @@ object ComWrappersSupport {
                 }
                 WinRTPlatformApi.releaseRaw(pointer)
                 @Suppress("UNCHECKED_CAST")
-                return@withRcwSlowStateCreationLock cached as T
+                return@withRcwCreationLock cached as T
             }
 
             val typeHandle = typeHandleFactory()
@@ -743,8 +745,8 @@ object ComWrappersSupport {
     }
 
     @PublishedApi
-    internal fun <R> withRcwSlowStateCreationLock(block: () -> R): R =
-        rcwSlowStateCreationLock.withLock(block)
+    internal fun <R> withRcwCreationLock(identity: Long, block: () -> R): R =
+        rcwCreationLocks.withIdentity(identity, block)
 
     @PublishedApi
     internal fun findHotClosedInterfaceRcw(
