@@ -77,12 +77,15 @@ data class WinAppHostConfiguration(
         const val STAGED_CONFIGURATION_FILE_NAME: String = "kotlin-winrt-host.properties"
 
         /**
-         * Kotlin's deployment boundary for the Windows App SDK bootstrap/self-contained split.
+         * Kotlin's staged application-host boundary, including hosts without Windows App SDK.
          * Generated JVM and Native hosts share this contract instead of baking packaging choices
          * into application code. Explicit custom-host configurations remain supported below.
          */
         fun fromStagedRuntimeAssets(runtimeAssetsRoot: Path? = null): WinAppHostConfiguration {
-            val root = runtimeAssetsRoot ?: WindowsAppSdkDeployment.discoverRuntimeAssetsRoot()
+            // CsWinRT resolves application assets from AppContext.BaseDirectory. Our shared
+            // platform search finds this host's configuration beside its executable/resources;
+            // no Windows App SDK bootstrap DLL is required for a UWP or runtime-only host.
+            val root = runtimeAssetsRoot ?: platformDiscoverRuntimeAssetsRoot(STAGED_CONFIGURATION_FILE_NAME)
                 ?: error("Application hosting requires a staged runtime assets root.")
             val properties = Path(root, STAGED_CONFIGURATION_FILE_NAME)
             require(properties.isRegularFile()) {
@@ -233,7 +236,7 @@ object WindowsAppSdkDeployment {
     }
 
     fun discoverRuntimeAssetsRoot(): Path? =
-        platformDiscoverWindowsAppSdkRuntimeAssetsRoot(windowsAppRuntimeBootstrapDllName)
+        platformDiscoverRuntimeAssetsRoot(windowsAppRuntimeBootstrapDllName)
 
     internal fun readStagedVersion(root: Path): WindowsAppSdkVersion {
         val properties = Path(root, versionInfoPropertiesRelativePath)
@@ -455,7 +458,7 @@ private fun parseStagedProperties(content: String): Map<String, String> = conten
     }
     .toMap()
 
-internal expect fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileName: String): Path?
+internal expect fun platformDiscoverRuntimeAssetsRoot(anchorFileName: String): Path?
 internal expect fun platformWindowsApplicationManifestPath(root: Path): Path
 internal expect fun platformActivateWindowsManifest(manifestPath: Path): AutoCloseable
 internal expect fun platformGetWindowsEnvironmentVariable(name: String): String?

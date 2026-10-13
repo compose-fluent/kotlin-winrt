@@ -11,6 +11,39 @@ import kotlin.test.assertTrue
 
 class WindowsAppSdkDeploymentJvmTest {
     @Test
+    fun staged_uwp_host_discovery_uses_the_host_configuration_resource() {
+        // CsWinRT ActivationFactory.cs anchors assets at AppContext.BaseDirectory;
+        // a UWP application has host metadata there without a WASDK bootstrap DLL.
+        val root = Files.createTempDirectory("kotlin-winrt-uwp-discovery-")
+        val properties = root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME)
+        val thread = Thread.currentThread()
+        val originalLoader = thread.contextClassLoader
+        val propertyName = WinRTRuntimeAssets.runtimeAssetsRootPropertyName
+        val originalRoot = System.getProperty(propertyName)
+        try {
+            val expected = WinAppHostConfiguration(
+                WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None,
+                kotlinx.io.files.Path(root.toString()), applicationModel = WinAppApplicationModel.Uwp,
+                xamlFramework = XamlFramework.Uwp,
+            )
+            Files.writeString(properties, expected.toStagedProperties())
+            thread.contextClassLoader = object : ClassLoader(originalLoader) {
+                override fun getResource(name: String): java.net.URL? =
+                    if (name == "${WinRTRuntimeAssets.runtimeAssetsDirectoryName}/${properties.fileName}") {
+                        properties.toUri().toURL()
+                    } else null
+            }
+            System.clearProperty(propertyName)
+            assertEquals(expected, WinAppHostConfiguration.fromStagedRuntimeAssets())
+        } finally {
+            thread.contextClassLoader = originalLoader
+            if (originalRoot == null) System.clearProperty(propertyName) else System.setProperty(propertyName, originalRoot)
+            Files.deleteIfExists(properties)
+            Files.delete(root)
+        }
+    }
+
+    @Test
     fun staged_uwp_host_preserves_framework_and_assets_without_windows_app_sdk() {
         val root = Files.createTempDirectory("kotlin-winrt-uwp-host-")
         try {

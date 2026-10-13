@@ -30,12 +30,12 @@ import platform.windows.ULONG_PTRVar
 
 private var bootstrapShutdown: CPointer<CFunction<() -> Unit>>? = null
 
-internal actual fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileName: String): Path? {
+internal actual fun platformDiscoverRuntimeAssetsRoot(anchorFileName: String): Path? {
     getenv(runtimeAssetsRootEnvironmentVariableName)?.toKString()?.takeIf { it.isNotBlank() }?.let { root ->
         Path(root).takeIf { path -> path.isDirectory() }?.let { return it }
     }
-    val bootstrapPath = Path(WinRTPlatformApi.resolveModulePathRaw(anchorFileName))
-    return bootstrapPath.parentPath()?.takeIf { it.isDirectory() }
+    val anchorPath = Path(WinRTPlatformApi.resolveModulePathRaw(anchorFileName))
+    return anchorPath.parentPath()?.takeIf { it.isDirectory() }
 }
 
 internal actual fun platformWindowsApplicationManifestPath(root: Path): Path =

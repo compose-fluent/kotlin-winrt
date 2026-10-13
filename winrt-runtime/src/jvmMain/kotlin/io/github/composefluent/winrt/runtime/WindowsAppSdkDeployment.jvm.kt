@@ -35,7 +35,7 @@ private val actCtxLayout: MemoryLayout = MemoryLayout.structLayout(
     ValueLayout.ADDRESS.withName("hModule"),
 )
 
-internal actual fun platformDiscoverWindowsAppSdkRuntimeAssetsRoot(anchorFileName: String): Path? =
+internal actual fun platformDiscoverRuntimeAssetsRoot(anchorFileName: String): Path? =
     WinRTRuntimeAssets.discoverRuntimeAssetsRoot(anchorFileName)?.let { Path(it.toString()) }
 
 internal actual fun platformWindowsApplicationManifestPath(root: Path): Path =
