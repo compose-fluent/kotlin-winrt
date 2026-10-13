@@ -1,30 +1,28 @@
 package io.github.composefluent.winrt.runtime
 
 internal object RawObjectAbiSupport {
-    fun <T> nullableObjectResult(
+    inline fun <T> nullableObjectResult(
         invoke: (RawAddress) -> Int,
         wrap: (RawAddress) -> T,
     ): T? =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            val hResult = invoke(resultOut)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val hResult = invoke(frame.pointer)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            val pointer = PlatformAbi.readPointer(resultOut)
+            val pointer = frame.readPointer()
             return if (PlatformAbi.isNull(pointer)) null else wrap(pointer)
         }
 
-    fun nullableAbiResult(
+    inline fun nullableAbiResult(
         invoke: (RawAddress) -> Int,
     ): RawAddress? =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            val hResult = invoke(resultOut)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val hResult = invoke(frame.pointer)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            val pointer = PlatformAbi.readPointer(resultOut)
+            val pointer = frame.readPointer()
             return if (PlatformAbi.isNull(pointer)) null else pointer
         }
 
-    fun lookupAbiResult(
+    inline fun lookupAbiResult(
         invoke: (RawAddress) -> Int,
     ): RawAddress? =
         lookupResult(invoke) { pointer ->

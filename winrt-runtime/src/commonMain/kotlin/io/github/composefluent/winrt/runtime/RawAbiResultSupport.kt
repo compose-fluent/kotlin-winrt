@@ -1,18 +1,17 @@
 package io.github.composefluent.winrt.runtime
 
 internal object RawAbiResultSupport {
-    fun <T> objectResult(
+    inline fun <T> objectResult(
         invoke: (RawAddress) -> Int,
         wrap: (RawAddress) -> T,
     ): T =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            val hResult = invoke(resultOut)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val hResult = invoke(frame.pointer)
             WinRTPlatformApi.checkSucceededRaw(hResult)
-            return wrap(PlatformAbi.readPointer(resultOut))
+            return wrap(frame.readPointer())
         }
 
-    fun hStringResult(
+    inline fun hStringResult(
         invoke: (RawAddress) -> Int,
     ): HString =
         objectResult(
@@ -20,7 +19,7 @@ internal object RawAbiResultSupport {
             wrap = { HString.fromHandle(it, owner = true) },
         )
 
-    fun int32Result(
+    inline fun int32Result(
         invoke: (RawAddress) -> Int,
     ): Int =
         acquireNativeScalarScratchFrame().use { frame ->
@@ -29,11 +28,11 @@ internal object RawAbiResultSupport {
             return frame.readInt32()
         }
 
-    fun uint32Result(
+    inline fun uint32Result(
         invoke: (RawAddress) -> Int,
     ): UInt = int32Result(invoke).toUInt()
 
-    fun booleanResult(
+    inline fun booleanResult(
         invoke: (RawAddress) -> Int,
     ): Boolean =
         acquireNativeScalarScratchFrame().use { frame ->
@@ -42,7 +41,7 @@ internal object RawAbiResultSupport {
             return frame.readInt8().toInt() != 0
         }
 
-    fun doubleResult(
+    inline fun doubleResult(
         invoke: (RawAddress) -> Int,
     ): Double =
         acquireNativeScalarScratchFrame().use { frame ->
