@@ -1,5 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.gradle.api.Action
 import org.gradle.api.Project
 import org.gradle.api.file.ConfigurableFileCollection
@@ -14,6 +15,10 @@ import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Nested
 import javax.inject.Inject
+
+private const val DEFAULT_WINUI_XAML_COMPILER_VERSION = "0.1.0-preview.6"
+private const val DEFAULT_WINUI_XAML_COMPILER_SHA256 =
+    "7718088e70e1d4e95446e0b1e6891fcce09ab70c82ba3ae6027d6aaa43fbc628"
 
 typealias NamedNuGetPackageContainer = NamedDomainObjectContainer<KotlinWinRTNuGetPackage>
 
@@ -173,15 +178,32 @@ abstract class WindowsExtension @Inject constructor(
     /** The forked compiler package; local overrides use the same versioned protocol. */
     @get:Nested
     val xaml: WinUiXamlConfiguration = objects.newInstance(WinUiXamlConfiguration::class.java).apply {
+        framework.convention(project.provider {
+            if (application.applicationModel.get() == WindowsApplicationModel.Uwp)
+                io.github.composefluent.winrt.runtime.XamlFramework.Uwp
+            else io.github.composefluent.winrt.runtime.XamlFramework.WinUi
+        })
         val projectDirectory = project.layout.projectDirectory
         compilerDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.compilerDirectory").map { projectDirectory.dir(it) })
         genXbfDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.genXbfDirectory").map { projectDirectory.dir(it) })
-        compilerVersion.convention(project.providers.gradleProperty("kotlinWinRT.xaml.version").orElse("0.1.0-preview.6"))
-        archiveSha256.convention(project.providers.gradleProperty("kotlinWinRT.xaml.sha256").orElse(
-            "7718088e70e1d4e95446e0b1e6891fcce09ab70c82ba3ae6027d6aaa43fbc628",
+        // No UWP release is bundled yet. Keep unused download inputs harmless for local
+        // compiler overrides, including configuration-cache serialization; the resolver
+        // diagnoses missing version/checksum only when a download is actually requested.
+        compilerVersion.convention(project.providers.gradleProperty("kotlinWinRT.xaml.version").orElse(
+            framework.map { if (it == XamlFramework.WinUi) DEFAULT_WINUI_XAML_COMPILER_VERSION else "" },
         ))
-        archiveUrl.convention(compilerVersion.map { version ->
-            "https://github.com/compose-fluent/microsoft-ui-xaml/releases/download/kotlin-xamlc-v$version/kotlin-xamlc-$version-win-x64.zip"
+        archiveSha256.convention(project.providers.gradleProperty("kotlinWinRT.xaml.sha256").orElse(
+            framework.zip(compilerVersion) { selected, version ->
+                if (selected == XamlFramework.WinUi && version == DEFAULT_WINUI_XAML_COMPILER_VERSION)
+                    DEFAULT_WINUI_XAML_COMPILER_SHA256 else ""
+            },
+        ))
+        archiveUrl.convention(compilerVersion.zip(framework) { version, selected ->
+            if (version.isBlank()) "" else {
+                val frameworkSuffix = if (selected == XamlFramework.Uwp) "-uwp" else ""
+                "https://github.com/compose-fluent/microsoft-ui-xaml/releases/download/kotlin-xamlc-v$version/" +
+                    "kotlin-xamlc-$version$frameworkSuffix-win-x64.zip"
+            }
         })
         exportLibrarySchema.convention(project.providers.gradleProperty("kotlinWinRT.xaml.exportLibrarySchema")
             .map(String::toBoolean).orElse(true))
@@ -235,6 +257,9 @@ abstract class WindowsExtension @Inject constructor(
 }
 
 abstract class WinUiXamlConfiguration @Inject constructor(objects: ObjectFactory) {
+    /** UI framework used by the XAML schema and compiler; independent of AppX packaging. */
+    val framework: Property<io.github.composefluent.winrt.runtime.XamlFramework> =
+        objects.property(io.github.composefluent.winrt.runtime.XamlFramework::class.java)
     val compilerVersion: Property<String> = objects.property(String::class.java)
     val archiveSha256: Property<String> = objects.property(String::class.java)
     val archiveUrl: Property<String> = objects.property(String::class.java)
@@ -286,6 +311,10 @@ abstract class WinAppOptions @Inject constructor(
 ) {
     internal val runTaskRegistrations = mutableListOf<WinAppRunTaskRegistration>()
     private var runTaskRegistrar: ((WinAppRunTaskRegistration) -> Unit)? = null
+
+    /** Selects desktop or the packaged UWP AppContainer application model. */
+    val applicationModel: Property<WindowsApplicationModel> =
+        objects.property(WindowsApplicationModel::class.java).convention(WindowsApplicationModel.Desktop)
 
     /**
      * Default packaging for packageWinApp. Applications are packaged by default; use
@@ -372,6 +401,7 @@ abstract class WinAppOptions @Inject constructor(
             .convention(WindowsAppSdkDeployment.Auto)
 
     internal fun inheritFrom(defaults: WinAppOptions) {
+        applicationModel.convention(defaults.applicationModel)
         packageType.convention(defaults.packageType)
         minWindowsVersion.convention(defaults.minWindowsVersion)
         maxVersionTested.convention(defaults.maxVersionTested)

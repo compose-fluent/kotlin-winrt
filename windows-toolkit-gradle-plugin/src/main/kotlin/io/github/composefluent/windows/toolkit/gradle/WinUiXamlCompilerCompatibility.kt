@@ -3,6 +3,37 @@ package io.github.composefluent.windows.toolkit.gradle
 import kotlinx.serialization.json.*
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageResolver
 import java.io.File
+import io.github.composefluent.winrt.runtime.XamlFramework
+
+internal fun validateXamlCompilerFramework(manifest: JsonObject, framework: XamlFramework,
+    metadataReferences: Iterable<File>, genXbf: File, windowsAppSdk: String?, windowsSdk: String?) {
+    val compatibility = manifest["compatibility"]?.jsonObject
+        ?: error("The Kotlin XamlCompiler package must declare framework compatibility.")
+    val frameworks = compatibility["frameworks"]?.jsonArray?.map { it.jsonPrimitive.content } ?: listOf("winui")
+    require(framework.name.lowercase() in frameworks) { "The selected XamlCompiler package does not support ${framework.name}." }
+    if (framework == XamlFramework.WinUi) {
+        validateXamlCompilerWinui(manifest, metadataReferences, genXbf, windowsAppSdk)
+        return
+    }
+    require(compatibility["genXbfHost"]?.jsonPrimitive?.content == "win-x64" &&
+        File(genXbf, "x64/GenXbf.dll").isFile) { "UWP XAML requires the Windows SDK's x64 GenXbf.dll." }
+    val supported = compatibility["windowsSdkVersions"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+    require(!windowsSdk.isNullOrBlank() && windowsSdk in supported) {
+        "XamlCompiler does not declare UWP compatibility with Windows SDK $windowsSdk; supported versions: $supported."
+    }
+}
+
+internal fun findUwpGenXbfDirectory(metadataReferences: Iterable<File>, windowsSdk: String?): File {
+    val roots = metadataReferences.mapNotNull { reference ->
+        generateSequence(reference.parentFile) { it.parentFile }
+            .firstOrNull { it.name.equals("References", true) }?.parentFile
+    }.distinct()
+    fun locate(binRoots: Iterable<File>) = binRoots.flatMap { listOf(it.resolve("XamlCompiler"), it) }
+        .firstOrNull { File(it, "x64/GenXbf.dll").isFile }
+    return locate(roots.mapNotNull { root -> windowsSdk?.let { root.resolve("bin/$it") } })
+        ?: locate(listOfNotNull(findWindowsSdk(windowsSdk)?.binRoot?.toFile()))
+        ?: error("The selected Windows SDK has no x64 GenXbf.dll; configure windows.xaml.genXbfDirectory with its bin/version/XamlCompiler directory.")
+}
 
 /** The selected WinUI NuGet package owns GenXbf; the compiler package declares its supported versions. */
 internal fun validateXamlCompilerWinui(manifest: JsonObject, metadataReferences: Iterable<File>, genXbf: File, windowsAppSdk: String?) {

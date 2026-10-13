@@ -1,5 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.compiler.xaml.xamlCompilerSupportTypeNames
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.gradle.api.Project
 import org.gradle.api.file.FileCollection
 import org.gradle.api.file.RegularFile
@@ -41,6 +43,13 @@ internal fun configureWinUiXamlPipeline(
     val hasXaml = project.provider {
         xamlSourceRoots.get().any { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }
     }
+    // Generated connectors and template/inspection helpers have SDK dependencies
+    // which do not occur in the selected page's inheritance or method signatures.
+    // Keep them in the same root selection used by metadata, local projection
+    // ownership, identity and caching, including consumers of prebuilt SDKs.
+    extension.includeTypes.addAll(project.provider {
+        requiredXamlProjectionTypes(xamlSourceRoots.get(), extension.xaml.framework.get(), extension.applicationEnabled.get())
+    })
     project.extensions.extraProperties.set("kotlinWinRTXamlSourcesPresent", hasXaml)
     val exportsLibrarySchema = project.provider { !extension.applicationEnabled.get() && !hasXaml.get() &&
         extension.xaml.exportLibrarySchema.get() &&
@@ -77,10 +86,19 @@ internal fun configureWinUiXamlPipeline(
         task.outputFile.set(project.layout.buildDirectory.file("intermediates/kotlin-winrt/xaml/compiler-references.txt"))
     }
     project.tasks.withType(GenerateWinUiXamlApplicationHeaderTask::class.java).configureEach {
+        it.xamlFramework.set(extension.xaml.framework)
         it.referenceManifests.from(compilerPackageReferences.flatMap { task -> task.outputFile })
     }
     project.tasks.withType(CompileWinUiXamlTask::class.java).configureEach {
+        it.xamlFramework.set(extension.xaml.framework)
+        it.windowsSdkVersion.set(extension.windowsSdkVersion)
         it.referenceManifests.from(compilerPackageReferences.flatMap { task -> task.outputFile })
+    }
+    project.tasks.withType(StageWindowsPackageRuntimeAssetsTask::class.java).configureEach { task ->
+        // Providers belong to the complete application dependency graph, including
+        // programmatic entry points whose XAML and WinUI 2 controls live in libraries.
+        task.xamlPreparedMetadataManifest.set(metadataManifest)
+        task.xamlReferenceManifests.from(compilerPackageReferences.flatMap { it.outputFile })
     }
     val localCompilerDirectory = extension.xaml.compilerDirectory
     val sourceRootOwners = project.provider { winRTSourceRootOwners(project) }
@@ -133,7 +151,8 @@ internal fun configureWinUiXamlPipeline(
                 .get().dependencyIdentityFiles
         })
         task.emitSources.set(hasXaml)
-        task.previewHost.set(extension.applicationEnabled)
+        task.previewHost.set(project.provider { extension.applicationEnabled.get() &&
+            extension.xaml.framework.get() == io.github.composefluent.winrt.runtime.XamlFramework.WinUi })
         task.onlyIf { hasXaml.get() || exportsLibrarySchema.get() }
         task.dependsOn(removeStaleXaml)
     }
@@ -173,6 +192,7 @@ internal fun configureWinUiXamlPipeline(
             configure(task)
             task.sourceRoots.setFrom(roots)
             task.applicationHeaderWinmd.set(header.flatMap { it.outputFile })
+            task.applicationItemsFile.set(header.flatMap { it.applicationItemsFile })
             task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml/$suffix/declarations"))
         }
         analyzeAll.configure { it.dependsOn(declarations) }
@@ -243,6 +263,7 @@ internal fun configureWinUiXamlPipeline(
                 task.sourceRoots.setFrom(roots)
                 task.semanticSymbols.set(symbols)
                 task.semanticWinmd.set(semanticRoot.map { it.file("KotlinXaml.winmd") })
+                task.applicationItemsFile.set(header.flatMap { it.applicationItemsFile })
                 task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml/$suffix/final"))
                 task.dependsOn(business)
                 val exportedSymbols = symbols.get().asFile
@@ -271,3 +292,12 @@ internal data class WinUiXamlCompilationInputs(
     val header: TaskProvider<GenerateWinUiXamlApplicationHeaderTask>,
     val declarations: TaskProvider<CompileWinUiXamlTask>,
 )
+
+internal fun requiredXamlProjectionTypes(sourceRoots: Iterable<File>, framework: XamlFramework, previewHost: Boolean): List<String> {
+    // The header scanner owns a page only when its adjacent Kotlin class exists.
+    // Resource-only libraries emit an empty schema marker and need no SDK helpers.
+    val hasPages = sourceRoots.any { root -> root.isDirectory && root.walkTopDown().any { source ->
+        source.isFile && source.extension.equals("xaml", true) && File(source.parentFile, source.nameWithoutExtension + ".kt").isFile
+    } }
+    return if (hasPages) xamlCompilerSupportTypeNames(framework, previewHost) else emptyList()
+}

@@ -1,5 +1,8 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.runtime.XamlFramework
+import org.gradle.api.provider.Property
+
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
@@ -63,10 +66,13 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
     @get:Input
     abstract val scannerJvmArgs: ListProperty<String>
 
+    @get:Input abstract val xamlFramework: Property<XamlFramework>
+
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
     init {
+        xamlFramework.convention(XamlFramework.WinUi)
         scannerJvmArgs.convention(emptyList())
         sourceRootOwners.convention(emptyMap())
     }
@@ -93,6 +99,7 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
                 )
                 spec.args(
                     buildList {
+                        add("--xaml-framework"); add(xamlFramework.get().name.lowercase())
                         add("--metadata-index")
                         add(metadataIndex.get().asFile.absolutePath)
                         add("--output")

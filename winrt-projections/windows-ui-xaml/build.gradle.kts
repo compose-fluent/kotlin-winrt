@@ -33,6 +33,7 @@ dependencies {
 }
 
 windows {
+    xaml.framework.set(io.github.composefluent.winrt.runtime.XamlFramework.Uwp)
     packageReferences {
         windowsSdk(projectionWindowsSdkVersion.get(), includeExtensions = false, generateProjection = true)
         namespace("Windows.UI.Xaml")

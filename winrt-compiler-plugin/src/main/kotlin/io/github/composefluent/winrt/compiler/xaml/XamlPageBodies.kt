@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.WinUiXamlDeclarationIndex
 import io.github.composefluent.winrt.metadata.xamlTypeName
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
@@ -149,7 +150,10 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                 propertyBodies.defaults(this, page, properties) {
                     irGet(requireNotNull(load.dispatchReceiverParameter))
                 }.forEach { +it }
-                +irCall(loadComponent.symbol).apply {
+                // SDK CppWinRT_AppPass1 emits an empty InitializeComponent for UWP:
+                // the system loads App.xaml after the Application callback returns.
+                // WinUI 3 and ordinary UWP pages explicitly call LoadComponent.
+                if (!(index.framework == XamlFramework.Uwp && page.isApplication)) +irCall(loadComponent.symbol).apply {
                     dispatchReceiver = irGetObject(applicationMetadata.symbol)
                     arguments[1] = irGet(requireNotNull(load.dispatchReceiverParameter))
                     arguments[2] = irCallConstructor(uri.symbol, emptyList()).apply {

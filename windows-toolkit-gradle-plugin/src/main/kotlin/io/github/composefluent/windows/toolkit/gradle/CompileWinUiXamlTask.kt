@@ -1,6 +1,8 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.metadata.WinUiXamlDeclarations
+import io.github.composefluent.winrt.metadata.WinUiXamlDeclarationIndex
+import io.github.composefluent.winrt.runtime.XamlFramework
 import kotlinx.serialization.json.*
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -23,6 +25,8 @@ abstract class CompileWinUiXamlTask @Inject constructor(
     private val fileSystem: FileSystemOperations,
     private val objects: ObjectFactory,
 ) : DefaultTask() {
+    @get:Input abstract val xamlFramework: Property<XamlFramework>
+    @get:Input @get:Optional abstract val windowsSdkVersion: Property<String>
     @get:Internal
     abstract val sourceRoots: ConfigurableFileCollection
     // A final pass consumes markup only. Snapshot actual files, not the entire
@@ -59,6 +63,9 @@ abstract class CompileWinUiXamlTask @Inject constructor(
         inputReferenceFiles.elements.map { windowsSdkUnionMetadataFiles(it.map { reference -> reference.asFile }) }, windowsSdkFacadeFiles)
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
     val inputGenXbfDirectory get() = genXbfDirectory.map { it.asFile }.orElse(inputReferenceFiles.elements.map { references ->
+        if (xamlFramework.get() == XamlFramework.Uwp) {
+            return@map findUwpGenXbfDirectory(references.map { it.asFile }, resolvedWindowsSdkVersion())
+        }
         // Keep the restore producer edge when GenXbf comes from compiler-only
         // package references rather than the projection metadata manifest.
         val winuiReferences = references.map { it.asFile }.filter { it.name.equals("Microsoft.UI.Xaml.winmd", true) }
@@ -81,16 +88,32 @@ abstract class CompileWinUiXamlTask @Inject constructor(
 
     @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NONE)
     abstract val applicationHeaderWinmd: RegularFileProperty
+    @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NONE)
+    abstract val applicationItemsFile: RegularFileProperty
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
     @get:LocalState abstract val pageCacheDirectory: DirectoryProperty
     @get:Internal val declarationsFile get() = outputDirectory.file("declarations.json")
     /** XAMLC's type/binding contract, without the IDE/runtime source-content fingerprint. */
     @get:Internal val semanticDeclarationsFile get() = outputDirectory.file("semantic-declarations.json")
     @get:Internal val implementationFile get() = outputDirectory.file("output.json")
+    @get:Internal val packageResourcesDirectory get() = outputDirectory.dir("resources")
 
     init {
+        xamlFramework.convention(XamlFramework.WinUi)
         minimumWindowsVersion.convention("10.0.19041.0")
         pageCacheDirectory.convention(project.layout.buildDirectory.dir("intermediates/kotlin-winrt/xaml-pages/$name"))
+    }
+
+    internal fun resolvedWindowsSdkVersion(): String? {
+        if (xamlFramework.get() != XamlFramework.Uwp) return windowsSdkVersion.orNull
+        // CsWinRT's resolved references and TargetPlatformVersion describe one SDK.
+        // An explicit metadata input may select it without setting the DSL SDK property.
+        val versions = readPreparedMetadataCache(preparedMetadataManifest.get().asFile.toPath())
+            .windowsSdkSelections.map { it.version }.distinct()
+        require(versions.size <= 1) {
+            "UWP XAML requires one resolved Windows SDK version; metadata contains ${versions.joinToString()}."
+        }
+        return versions.singleOrNull() ?: windowsSdkVersion.orNull
     }
 
     @TaskAction fun compile() {
@@ -103,8 +126,8 @@ abstract class CompileWinUiXamlTask @Inject constructor(
         File(output, "state.xml").delete()
         val compilerManifest = validateXamlCompilerPackage(compilerDirectory.get().asFile.toPath())
         validateXamlCompilerHost(compilerManifest)
-        validateXamlCompilerWinui(compilerManifest, inputReferenceFiles.files,
-            inputGenXbfDirectory.get(), windowsAppSdkVersion.orNull)
+        validateXamlCompilerFramework(compilerManifest, xamlFramework.get(), inputReferenceFiles.files,
+            inputGenXbfDirectory.get(), windowsAppSdkVersion.orNull, resolvedWindowsSdkVersion())
         val roots = sourceRoots.files.filter { it.isDirectory }.sortedBy { it.absolutePath }
         val sources = linkedMapOf<String, File>()
         roots.forEach { root -> root.walkTopDown().filter { it.isFile && it.extension.equals("xaml", true) }.forEach { file ->
@@ -117,14 +140,8 @@ abstract class CompileWinUiXamlTask @Inject constructor(
         val refs = inputReferenceFiles.files.sortedBy { it.absolutePath }
         GradleFileOperations.writeStringIfChanged(File(output, "references.txt").toPath(),
             refs.map { it.absolutePath }.sorted().joinToString("\n"))
-        fun item(file: File, link: String? = null) = buildJsonObject {
-            put("ItemSpec", file.absolutePath); put("FullPath", file.absolutePath)
-            // Unlike MSBuild's Windows.winmd facade input, prepared metadata contains
-            // individual SDK contracts. SortReferenceAssemblies defers system references
-            // in pass 1, which would hide Foundation's IReference<T> from the schema.
-            // Supply the complete resolved reference set to both compiler passes.
-            if (link != null) { put("MSBuild_Link", link); put("MSBuild_TargetPath", link) }
-        }
+        val sourceItems = xamlCompilerSourceItems(sources,
+            applicationItemsFile.orNull?.asFile?.readLines()?.filter(String::isNotBlank)?.map(::File).orEmpty())
         val finalPass = semanticSymbols.isPresent
         require(finalPass == semanticWinmd.isPresent) { "Final XAML pass requires both semantic symbols and WinMD." }
         require(finalPass || applicationHeaderWinmd.isPresent) {
@@ -134,19 +151,22 @@ abstract class CompileWinUiXamlTask @Inject constructor(
             put("ProjectPath", File(output, "${projectName.get()}.proj").absolutePath)
             put("ProjectName", projectName.get()); put("RootNamespace", projectName.get().replace('-', '_'))
             put("Language", "Kotlin"); put("LanguageSourceExtension", ".kt"); put("OutputType", "WinExe")
+            put("XamlFramework", xamlFramework.get().name.lowercase())
             put("IsPass1", !finalPass); put("OutputPath", File(output, "compiled").absolutePath)
             put("TargetPlatformMinVersion", minimumWindowsVersion.get())
             put("GenXbfPath", inputGenXbfDirectory.get().absolutePath)
             put("SavedStateFile", File(output, "state.xml").absolutePath)
-            put("ReferenceAssemblies", JsonArray(refs.map { item(it) }))
+            // Supply all split SDK contracts in both passes. Marking them as MSBuild
+            // system references hides Foundation's IReference<T> from the pass 1 schema.
+            put("ReferenceAssemblies", JsonArray(refs.map { xamlCompilerItem(it) }))
             put("ReferenceAssemblyPaths", JsonArray((refs.map { it.parentFile } + inputWindowsSdkFacadeFiles.files.map { it.parentFile } +
-                File(System.getenv("WINDIR"), "Microsoft.NET/Framework64/v4.0.30319")).distinct().map { item(it) }))
-            put("XamlPages", JsonArray(sources.toSortedMap().map { (path, file) -> item(file, path) }))
+                File(System.getenv("WINDIR"), "Microsoft.NET/Framework64/v4.0.30319")).distinct().map { xamlCompilerItem(it) }))
+            sourceItems.forEach { (name, items) -> put(name, items) }
             if (finalPass) {
                 put("KotlinSymbols", Json.parseToJsonElement(semanticSymbols.get().asFile.readText()))
-                put("LocalAssembly", JsonArray(listOf(item(semanticWinmd.get().asFile))))
+                put("LocalAssembly", JsonArray(listOf(xamlCompilerItem(semanticWinmd.get().asFile))))
             } else {
-                put("LocalAssembly", JsonArray(listOf(item(applicationHeaderWinmd.get().asFile))))
+                put("LocalAssembly", JsonArray(listOf(xamlCompilerItem(applicationHeaderWinmd.get().asFile))))
             }
         }
         // IDE snapshot compilation needs the complete input, even when this invocation is partial.
@@ -158,13 +178,18 @@ abstract class CompileWinUiXamlTask @Inject constructor(
         val context = WinUiXamlPageCache.context(input, refs + inputWindowsSdkFacadeFiles.files + compilerFiles +
             listOfNotNull(semanticWinmd.orNull?.asFile, applicationHeaderWinmd.orNull?.asFile))
         val keys = sources.mapValues { (path, file) -> cache.key(context, path, file, sourceHashes.getValue(path)) }
-        val cached = keys.mapNotNull { (path, key) -> cache.read(key, path)?.let { path to it } }.toMap()
+        // Application resources affect every page. This must be decided before invoking
+        // XAMLC, including when an application is first added to a previously isolated batch.
+        val cached = if (sourceItems.getValue("XamlApplications").jsonArray.isNotEmpty()) emptyMap()
+            else keys.mapNotNull { (path, key) -> cache.read(key, path)?.let { path to it } }.toMap()
         val symbols = input["KotlinSymbols"]?.jsonObject
         fun invoke(resources: Set<String>): JsonObject {
             val selected = JsonObject(input + buildMap {
-                put("XamlPages", JsonArray(input.getValue("XamlPages").jsonArray.filter {
-                    it.jsonObject.getValue("MSBuild_Link").jsonPrimitive.content in resources
-                }))
+                sourceItems.forEach { (name, items) ->
+                    put(name, JsonArray(items.jsonArray.filter {
+                        it.jsonObject.getValue("MSBuild_Link").jsonPrimitive.content in resources
+                    }))
+                }
                 if (symbols != null) put("KotlinSymbols", WinUiXamlPageCache.symbolsForResources(symbols, resources))
             })
             val invocationFile = File(output, "incremental-input.json").apply { writeText(selected.toString()) }
@@ -197,6 +222,7 @@ abstract class CompileWinUiXamlTask @Inject constructor(
         }
         val compilerOutput = WinUiXamlPageCache.merge(reused.values.map { cache.materialize(it, compiled) } + listOfNotNull(fresh), symbols)
         val plan = WinUiXamlDeclarations.parse(compilerOutput.getValue("KotlinDeclarations").toString())
+        require(plan.framework == xamlFramework.get()) { "XamlCompiler returned ${plan.framework} declarations for a ${xamlFramework.get()} compilation." }
         if (symbols != null) {
             require(WinUiXamlDeclarations.canonicalText(plan) == WinUiXamlDeclarations.canonicalText(
                 WinUiXamlDeclarations.parse(symbols.getValue("Declarations").toString()))) {
@@ -252,5 +278,55 @@ abstract class CompileWinUiXamlTask @Inject constructor(
             freshPlan.pages.forEach { page -> cache.write(keys.getValue(page.resourcePath), page.resourcePath, nativeOutput, compiled) }
         }
         cache.retain(if (WinUiXamlPageCache.canIsolate(plan)) keys.values.toSet() else emptySet())
+        if (finalPass) {
+            val resourceRoot = packageResourcesDirectory.get().asFile
+            fileSystem.delete { it.delete(resourceRoot) }
+            xamlPackageResources(compiled.toFile(), plan).forEach { (source, target) ->
+                GradleFileOperations.copyFile(source.toPath(), resourceRoot.resolve(target).toPath())
+            }
+        }
+    }
+}
+
+/** System UWP initializes Application from Files/App.xaml, independently of its class name.
+ * SDK CppWinRT_AppPass1.InitializeComponent is empty; WinUI 3 explicitly loads the source URI.
+ * Keep compiler/IDE source paths intact and normalize only the package resource boundary. */
+internal fun xamlPackageResources(compiled: File, plan: WinUiXamlDeclarationIndex): Map<File, String> {
+    val application = if (plan.framework == XamlFramework.Uwp) {
+        val applications = plan.pages.filter { it.isApplication }
+        require(applications.size <= 1) { "A UWP application package can contain only one XAML Application." }
+        applications.singleOrNull()?.resourcePath?.substringBeforeLast('.')
+    } else null
+    val targets = mutableSetOf<String>()
+    return compiled.walkTopDown().filter { it.isFile && it.extension.lowercase() in setOf("xaml", "xbf") }
+        .sortedBy { it.relativeTo(compiled).invariantSeparatorsPath }.associateWith { source ->
+            val path = source.relativeTo(compiled).invariantSeparatorsPath
+            val target = if (application != null && path.substringBeforeLast('.') == application)
+                "App.${source.extension.lowercase()}" else path
+            require(targets.add(target.lowercase())) { "XAML resources collide at package path $target." }
+            target
+        }
+}
+
+private fun xamlCompilerItem(file: File, link: String? = null) = buildJsonObject {
+    put("ItemSpec", file.absolutePath)
+    put("FullPath", file.absolutePath)
+    if (link != null) {
+        put("MSBuild_Link", link)
+        put("MSBuild_TargetPath", link)
+    }
+}
+
+/** XAMLC SourceFileManager uses these two MSBuild item kinds to set IsApplication. */
+internal fun xamlCompilerSourceItems(sources: Map<String, File>, applications: Collection<File>): JsonObject {
+    fun key(file: File) = file.toPath().toAbsolutePath().normalize().toString().lowercase()
+    val applicationPaths = applications.map(::key).toSet()
+    require(applicationPaths.all { application -> sources.values.any { key(it) == application } }) {
+        "Kotlin XAML application items contain a file outside the compilation's XAML inputs."
+    }
+    val (applicationItems, pages) = sources.toSortedMap().entries.partition { key(it.value) in applicationPaths }
+    return buildJsonObject {
+        put("XamlApplications", JsonArray(applicationItems.map { (path, file) -> xamlCompilerItem(file, path) }))
+        put("XamlPages", JsonArray(pages.map { (path, file) -> xamlCompilerItem(file, path) }))
     }
 }

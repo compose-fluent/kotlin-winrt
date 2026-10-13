@@ -78,8 +78,14 @@ class XamlTemplateConnectorTest {
                 var lookups = 0
                 var unloads = 0
             }
-            class Application { companion object Metadata {
+            open class Application { companion object Metadata {
+                var applicationLoads = 0
                 fun loadComponent(page: Any, uri: windows.foundation.Uri) {
+                    if (page is Application) {
+                        check(uri.value == "ms-appx:///CustomApplication.xaml")
+                        applicationLoads++
+                        return
+                    }
                     check(uri.value == "ms-appx:///MainPage.xaml")
                     val component = page as microsoft.ui.xaml.markup.IComponentConnector
                     val fileBinding = checkNotNull(component.getBindingConnector(1, page))
@@ -261,6 +267,16 @@ class XamlTemplateConnectorTest {
                             WinUiXamlBindingExpression("member", "BoundClick", receiver = WinUiXamlBindingExpression("root")), location,
                             isEvent = true))),
             ))), emptyList())
+        File(root, "CustomApplication.kt").writeText("""
+            package probe
+            class CustomApplication : microsoft.ui.xaml.Application()
+            fun exerciseApplication(): Int {
+                val app = CustomApplication()
+                app.initializeComponent()
+                app.initializeComponent()
+                return microsoft.ui.xaml.Application.applicationLoads
+            }
+        """.trimIndent())
         // Windows SDK IComponentConnector2 owns GetBindingConnector; a namespace-only
         // substitution would compile WinUI yet produce the wrong UWP ABI contract.
         if (framework == XamlFramework.Uwp) {
@@ -277,7 +293,11 @@ class XamlTemplateConnectorTest {
                 .replace("fileBinding.getBindingConnector", "(fileBinding as windows.ui.xaml.markup.IComponentConnector2).getBindingConnector"))
         }
         val index = WinUiXamlDeclarations.parse(WinUiXamlDeclarations.canonicalText(fixtureIndex)
-            .replace("Microsoft.UI.Xaml", framework.xamlNamespace)).copy(framework = framework)
+            .replace("Microsoft.UI.Xaml", framework.xamlNamespace)).let { declarations ->
+                declarations.copy(framework = framework, pages = declarations.pages + WinUiXamlPageDeclaration(
+                    "probe.CustomApplication", "CustomApplication.xaml", "${framework.xamlNamespace}.Application",
+                    true, emptyList(), emptyList()))
+            }
         val declarations = File(root, "declarations.json").apply { writeText(WinUiXamlDeclarations.canonicalText(index)) }
         val implementation = File(root, "implementation.json").apply { writeText(buildJsonObject {
             put("KotlinDeclarations", Json.parseToJsonElement(declarations.readText()))
@@ -298,6 +318,10 @@ class XamlTemplateConnectorTest {
         val result = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *arguments.toTypedArray()) }
         assertEquals(diagnostics.toString(), ExitCode.OK, result)
         URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            // SDK UWP CppWinRT_AppPass1 has an empty InitializeComponent, while
+            // WinUI's equivalent invokes LoadComponent exactly once.
+            assertEquals(if (framework == XamlFramework.Uwp) 0 else 1,
+                loader.loadClass("probe.CustomApplicationKt").getMethod("exerciseApplication").invoke(null))
             assertEquals("control:2;template:3", loader.loadClass("probe.ProbeKt").getMethod("exercise").invoke(null))
             assertEquals("lookups:2;unloads:1", loader.loadClass("probe.ProbeKt").getMethod("exerciseGenerated").invoke(null))
         }

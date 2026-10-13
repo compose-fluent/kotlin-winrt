@@ -1,5 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.metadata.xamlKotlinTypeName
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -23,6 +25,7 @@ import kotlin.io.path.name
 abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
     init {
         emitXamlComponentResourceSources.convention(false)
+        xamlFramework.convention(XamlFramework.WinUi)
     }
 
     @get:InputFiles
@@ -40,6 +43,9 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
 
     @get:Input
     abstract val emitXamlComponentResourceSources: Property<Boolean>
+
+    @get:Input
+    abstract val xamlFramework: Property<XamlFramework>
 
     @TaskAction
     fun merge() {
@@ -119,7 +125,7 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
                     lines.drop(1).any(String::isNotBlank)
             }
             if (hasXamlResourceRows) {
-                writeWinUiXamlComponentResourcesSource(outputRoot, sourceRows)
+                writeWinUiXamlComponentResourcesSource(outputRoot, sourceRows, xamlFramework.get())
             } else {
                 Files.deleteIfExists(
                     outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
@@ -136,6 +142,7 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
 private fun writeWinUiXamlComponentResourcesSource(
     outputRoot: Path,
     sourceRows: Map<CompilerSupportSourceKey, List<String>>,
+    framework: XamlFramework,
 ) {
     val runtimeClassNames = sourceRows
         .filterKeys { key -> key.kind == "xaml-component-resource" && key.sourceFile == "xaml-component-resources.tsv" }
@@ -156,11 +163,11 @@ private fun writeWinUiXamlComponentResourcesSource(
             buildString {
                 appendLine("@file:Suppress(\"KOTLIN_WINRT_GENERATED\")")
                 appendLine()
-                appendLine("// Deterministic merged WinUI component XAML resource bootstrap.")
+                appendLine("// Deterministic merged component XAML resource bootstrap.")
                 appendLine("package io.github.composefluent.winrt.projections.support")
                 appendLine()
                 appendLine("import io.github.composefluent.winrt.runtime.ActivationFactory")
-                appendLine("import microsoft.ui.xaml.ResourceDictionary")
+                appendLine("import ${framework.xamlKotlinTypeName("ResourceDictionary")}")
                 appendLine()
                 appendLine("public object WinUiXamlComponentResources {")
                 appendLine("    public fun installInto(mergedDictionaries: MutableList<ResourceDictionary>) {")

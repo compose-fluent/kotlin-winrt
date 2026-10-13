@@ -47,6 +47,7 @@ internal fun configureWinUiXamlNativePipeline(
                     task.sourceRoots.setFrom(sourceRoots)
                     task.semanticSymbols.set(symbols)
                     task.semanticWinmd.set(semanticRoot.map { it.file("KotlinXaml.winmd") })
+                    task.applicationItemsFile.set(applicationHeader.flatMap { it.applicationItemsFile })
                     task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml/$suffix/final"))
                     task.dependsOn(business)
                     val exportedSymbols = symbols.get().asFile
@@ -75,7 +76,7 @@ internal fun configureWinUiXamlPackageResources(
     val artifactTaskName = sourceSetName?.let { "packageAppxResources" + it.replaceFirstChar(Char::uppercaseChar) }
         ?: "packageAppxResources"
     project.tasks.withType(GenerateAppxResourcesArtifactTask::class.java).matching { it.name == artifactTaskName }.configureEach { task ->
-        val compiled = implementation.flatMap { it.outputDirectory.dir("compiled") }
+        val compiled = implementation.flatMap { it.packageResourcesDirectory }
         task.resourceRoots.add(compiled.map { it.asFile.absolutePath })
         task.resourceInputs.from(compiled)
         task.excludedSourcePaths.addAll(implementation.map { it.inputXamlFiles.files.map { source -> source.absolutePath } })
@@ -86,8 +87,8 @@ internal fun configureWinUiXamlPackageResources(
     }.map { it.id }.toSet()
     project.tasks.withType(StageWinAppPackageTask::class.java).configureEach { task ->
         if (task.applicationVariant.get() in applicationVariants) {
-            task.projectPriLayoutFiles.from(implementation.flatMap { it.outputDirectory.dir("compiled") })
-            task.projectPriTargetPaths.putAll(implementation.flatMap { it.outputDirectory.dir("compiled") }
+            task.projectPriLayoutFiles.from(implementation.flatMap { it.packageResourcesDirectory })
+            task.projectPriTargetPaths.putAll(implementation.flatMap { it.packageResourcesDirectory }
                 .map { mapOf(it.asFile.absolutePath to "") })
             task.projectPriExcludedFromBuildPaths.addAll(sourceRoots.map { roots ->
                 roots.filter(File::isDirectory).flatMap { root ->

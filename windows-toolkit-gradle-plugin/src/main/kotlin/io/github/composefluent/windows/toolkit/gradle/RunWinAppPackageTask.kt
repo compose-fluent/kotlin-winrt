@@ -4,9 +4,12 @@ import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
@@ -17,12 +20,31 @@ import org.gradle.api.tasks.options.Option
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
 import javax.inject.Inject
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /** Package-aware development launch, corresponding to CsWinRT's MsixPackage launch profiles. */
 @DisableCachingByDefault(because = "Registers and launches a development package in the local Windows user profile.")
 abstract class RunWinAppPackageTask @Inject constructor(
     private val execOperations: ExecOperations,
 ) : DefaultTask() {
+    @get:Input abstract val applicationModel: Property<WindowsApplicationModel>
+    @get:Input abstract val powerShellExecutable: Property<String>
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val dependencyPackageFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val dependencyLockFiles: ConfigurableFileCollection
+
+    @get:Input abstract val dependencyPackageSpecs: ListProperty<String>
+    @get:Input abstract val runtimeIdentifier: Property<String>
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val packageDirectory: DirectoryProperty
@@ -93,6 +115,10 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal abstract val previewHostExecutable: org.gradle.api.file.RegularFileProperty
 
     init {
+        applicationModel.convention(WindowsApplicationModel.Desktop)
+        powerShellExecutable.convention("powershell.exe")
+        dependencyPackageSpecs.convention(emptyList())
+        runtimeIdentifier.convention(currentWindowsRuntimeIdentifier())
         packageType.convention(WindowsPackageType.Packaged.name)
         selfContained.convention(false)
         applicationVariant.convention("default")
@@ -144,6 +170,65 @@ abstract class RunWinAppPackageTask @Inject constructor(
             ProjectPriManifestSupport.validatePackageManifestPayload(manifest, input)
         if (errors.isNotEmpty()) {
             throw GradleException("Cannot run packaged application from $input:\n${errors.joinToString("\n")}")
+        }
+        if (applicationModel.get() == WindowsApplicationModel.Uwp) {
+            require(!designPreview.get()) { "The WinUI designer is not a UWP AppContainer launch mode." }
+            require(!debugOutput.get()) { "UWP launch does not capture WinApp CLI debug output; attach a native debugger to the reported PID." }
+            val restoredRoots = dependencyLockFiles.files.filter(java.io.File::isFile).let { lockFiles ->
+                if (lockFiles.isEmpty()) emptyList() else readWinAppRestoredPackageRoots(
+                    lockFiles = lockFiles, rootPackageSpecs = dependencyPackageSpecs.get(),
+                )
+            }
+            val explicitDependencies = dependencyPackageFiles.files.map { it.toPath().toAbsolutePath().normalize() }
+                .onEach { AppxManifestPackageSupport.validateFrameworkPackageArchive(it, runtimeIdentifier.get()) }
+            val dependencyPaths = AppxManifestPackageSupport.selectFrameworkPackageArchivesForManifest(
+                applicationManifest = manifest,
+                candidateArchives = explicitDependencies + AppxManifestPackageSupport.discoverFrameworkPackageArchives(
+                    restoredRoots, runtimeIdentifier.get(),
+                ),
+                runtimeIdentifier = runtimeIdentifier.get(),
+            )
+            val script = temporaryDir.toPath().resolve("run-uwp.ps1")
+            val configuration = temporaryDir.toPath().resolve("run-uwp.json")
+            Files.writeString(script, uwpDevelopmentRunnerScript)
+            execOperations.exec { spec ->
+                spec.commandLine(
+                    powerShellExecutable.get(), "-NoProfile", "-ExecutionPolicy", "Bypass",
+                    "-File", script.toString(), "-Manifest", manifest.toString(),
+                    "-Configuration", configuration.toString(), "-StopOnly",
+                )
+            }
+            GradleFileOperations.cleanDirectory(output)
+            Files.walk(input).use { files -> files.forEach { source ->
+                val target = output.resolve(input.relativize(source))
+                if (Files.isDirectory(source)) Files.createDirectories(target)
+                else Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+            } }
+            // PowerShell -File reparses quoted and switch-shaped arguments. Pass application data
+            // through UTF-8 JSON so ActivateApplication receives the original command-line string.
+            Files.writeString(configuration, buildJsonObject {
+                put("applicationArguments", args.get())
+                put("dependencyPackages", JsonArray(dependencyPaths.map { path ->
+                    val identity = AppxManifestPackageSupport.validateFrameworkPackageArchive(path, runtimeIdentifier.get())
+                    buildJsonObject {
+                        put("path", path.toString())
+                        put("name", identity.name)
+                        put("publisher", identity.publisher)
+                        put("version", identity.version)
+                        put("architecture", identity.processorArchitecture)
+                    }
+                }))
+            }.toString())
+            execOperations.exec { spec ->
+                spec.commandLine(buildList {
+                    add(powerShellExecutable.get()); add("-NoProfile"); add("-ExecutionPolicy"); add("Bypass")
+                    add("-File"); add(script.toString()); add("-Manifest"); add(output.resolve("AppxManifest.xml").toString())
+                    add("-Configuration"); add(configuration.toString())
+                    if (noLaunch.get()) add("-NoLaunch")
+                    if (detach.get()) add("-Detach")
+                })
+            }
+            return
         }
         val cli = WinAppCliSupport(
             configuredExecutable = winAppCliExecutable.get(),

@@ -7,15 +7,19 @@ import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
@@ -33,6 +37,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
+import javax.inject.Inject
 
 internal const val WINDOWS_APP_SDK_STARTUP_PROPERTIES: String =
     "windows-app-sdk.properties"
@@ -45,7 +50,12 @@ private val windowsAppSdkRuntimeVersionRegex =
     Regex("""#define\s+WINDOWSAPPSDK_RUNTIME_VERSION_UINT64\s+(0x[0-9A-Fa-f]+)u""")
 
 @CacheableTask
-abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
+abstract class StageWindowsPackageRuntimeAssetsTask @Inject constructor(
+    private val objects: ObjectFactory,
+) : DefaultTask() {
+    @get:Input
+    abstract val xamlFramework: Property<XamlFramework>
+
     @get:Internal
     abstract val applicationCompilationTasks: SetProperty<String>
 
@@ -62,6 +72,36 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val runtimeAssetFiles: ConfigurableFileCollection
+
+    /** Compiler WinMD references also describe providers when the package keeps its
+     * metadata in lib/uap10.0 rather than its copy-local runtime payload. */
+    @get:Internal
+    abstract val xamlMetadataFiles: ConfigurableFileCollection
+
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val xamlPreparedMetadataManifest: RegularFileProperty
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val xamlReferenceManifests: ConfigurableFileCollection
+
+    // Keep producer outputs in task state, not a stored collection that reads them
+    // while the configuration cache serializes the graph. Expand after producers run.
+    // Check only whether the optional path is configured, never whether its file exists.
+    // An orElse on the mapped contents runs that mapper during dependency discovery.
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    val inputXamlMetadataFiles get() = objects.fileCollection().apply {
+        from(xamlMetadataFiles)
+        if (xamlPreparedMetadataManifest.isPresent) {
+            from(xamlPreparedMetadataManifest.map { readPreparedMetadataCache(it.asFile.toPath()).files })
+        }
+        from(xamlReferenceManifests.elements.map { manifests ->
+            manifests.flatMap { it.asFile.readLines().filter(String::isNotBlank).map { path -> java.io.File(path) } }
+        })
+    }
 
     @get:InputFiles
     @get:Optional
@@ -224,6 +264,7 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
     abstract val includeJvmAuthoringArtifacts: Property<Boolean>
 
     init {
+        xamlFramework.convention(XamlFramework.WinUi)
         applicationCompilationTasks.convention(emptySet())
         generateProjectPri.convention(true)
         projectPriIndexName.convention("")
@@ -611,19 +652,25 @@ abstract class StageWindowsPackageRuntimeAssetsTask : DefaultTask() {
     }
 
     private fun stageXamlMetadataProviderManifest(outputRoot: Path) {
-        val namespaces = Files.walk(outputRoot).use { stream ->
+        val stagedMetadata = Files.walk(outputRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() && it.name.endsWith(".winmd", ignoreCase = true) }
-                .flatMap { winmd ->
-                    runCatching { WinRTMetadataLoader.load(winmd).namespaces }.getOrElse { error ->
-                        logger.warn("Skipping XAML metadata provider discovery for ${winmd.fileName}: ${error.message}")
-                        emptyList()
-                    }.asSequence()
-                }
                 .toList()
         }
-        val providers = WinRTMetadataModel(namespaces).winUiXamlMetadataProviderTypes()
-            .filterNot { it == "Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider" }
+        val namespaces = (stagedMetadata + inputXamlMetadataFiles.files.map { it.toPath() })
+            .filter { it.isRegularFile() && it.name.endsWith(".winmd", ignoreCase = true) }
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .flatMap { winmd ->
+                runCatching { WinRTMetadataLoader.load(winmd).namespaces }.getOrElse { error ->
+                    logger.warn("Skipping XAML metadata provider discovery for ${winmd.fileName}: ${error.message}")
+                    emptyList()
+                }
+            }
+        val providers = WinRTMetadataModel(namespaces).winUiXamlMetadataProviderTypes(xamlFramework.get())
+            // WinUI 3's bootstrap owns this provider; WinUI 2 exposes the same
+            // class name through the UWP provider ABI and needs ordinary discovery.
+            .filterNot { xamlFramework.get() == XamlFramework.WinUi &&
+                it == "Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider" }
         if (providers.isEmpty()) {
             return
         }

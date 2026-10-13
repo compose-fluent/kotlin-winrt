@@ -1,6 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.runtime.WinAppHostConfiguration
+import io.github.composefluent.winrt.runtime.XamlFramework
 import io.github.composefluent.winrt.runtime.WinAppPackageIdentity
 import io.github.composefluent.winrt.runtime.WindowsAppSdkDeploymentMode
 import org.gradle.api.DefaultTask
@@ -33,6 +34,8 @@ import kotlin.streams.asSequence
 
 @CacheableTask
 abstract class StageWinAppPackageTask : DefaultTask() {
+    @get:Input abstract val applicationModel: Property<WindowsApplicationModel>
+    @get:Input abstract val xamlFramework: Property<XamlFramework>
     @get:Input
     abstract val packageIdentity: Property<WinAppPackageIdentity>
 
@@ -225,6 +228,8 @@ abstract class StageWinAppPackageTask : DefaultTask() {
     init {
         packageIdentity.convention(WinAppPackageIdentity.Packaged)
         windowsAppSdkDeployment.convention(WindowsAppSdkDeploymentMode.None)
+        applicationModel.convention(WindowsApplicationModel.Desktop)
+        xamlFramework.convention(XamlFramework.WinUi)
         jvmRuntimeJavaMajor.convention(25)
         generateProjectPri.convention(true)
         developmentIdentity.convention(false)
@@ -257,6 +262,9 @@ abstract class StageWinAppPackageTask : DefaultTask() {
 
     @TaskAction
     fun stage() {
+        validateWindowsApplicationModel(applicationModel.get(),
+            if (packageIdentity.get() == WinAppPackageIdentity.Packaged) WindowsPackageType.Packaged else WindowsPackageType.None,
+            WindowsAppSdkDeployment.valueOf(windowsAppSdkDeployment.get().name), xamlFramework.get())
         val runtimeAssetsRoot = runtimeAssetsDirectory.get().asFile.toPath()
         val outputRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         val runtimeImage = jvmRuntimeImageDirectory.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
@@ -295,6 +303,16 @@ abstract class StageWinAppPackageTask : DefaultTask() {
                 GradleFileOperations.copyFile(decision.source, outputRoot.resolve(decision.target))
             }
         stageAppxManifest(outputRoot)
+        AppxManifestPackageSupport.applyApplicationModel(outputRoot.resolve("AppxManifest.xml"), applicationModel.get())
+        if (applicationModel.get() == WindowsApplicationModel.Uwp && jvmLauncherExecutable.isPresent) {
+            // LoadPackagedLibrary resolves dependencies through the manifest's package search
+            // paths. Keep the root and the directories present in the bundled JVM layout.
+            AppxManifestPackageSupport.mergeLoaderSearchPaths(
+                outputRoot.resolve("AppxManifest.xml"),
+                listOf("") + listOf("runtime/bin", "runtime/bin/server", "runtime/jre/bin", "runtime/jre/bin/server")
+                    .filter { outputRoot.resolve(it).isDirectory() },
+            )
+        }
         if (rewriteApplicationExecutable.get()) {
             AppxManifestPackageSupport.useApplicationExecutable(
                 outputRoot.resolve("AppxManifest.xml"), "${executableBaseName.get()}.exe",
@@ -370,7 +388,8 @@ abstract class StageWinAppPackageTask : DefaultTask() {
         validateStagedManifestPayload(outputRoot)
         Files.writeString(
             outputRoot.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME),
-            WinAppHostConfiguration(packageIdentity.get(), windowsAppSdkDeployment.get()).toStagedProperties(),
+            WinAppHostConfiguration(packageIdentity.get(), windowsAppSdkDeployment.get(),
+                applicationModel = applicationModel.get(), xamlFramework = xamlFramework.get()).toStagedProperties(),
         )
     }
 

@@ -31,6 +31,79 @@ internal object AppxManifestPackageSupport {
     private const val ACTIVATABLE_CLASS_NAME = "ActivatableClass"
     private const val PACKAGE_DEPENDENCY_CATEGORY = "windows.activatableClass.inProcessServer"
 
+    /** UWP is an activation and trust model, not a synonym for an AppX package. */
+    fun applyApplicationModel(manifest: Path, model: WindowsApplicationModel) {
+        if (model != WindowsApplicationModel.Uwp) return
+        require(manifest.isRegularFile()) { "A UWP application requires an AppxManifest.xml." }
+        val document = requireNotNull(readXml(manifest)) { "Cannot read AppX manifest: $manifest" }
+        val namespace = "http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+        val root = document.documentElement
+        val applications = root.childElements("Applications").flatMap { it.childElements("Application") }
+        require(applications.isNotEmpty()) { "A UWP manifest requires an Application." }
+        applications.forEach { application ->
+            val entryPoint = application.getAttribute("EntryPoint")
+            require(entryPoint.isNotBlank() && entryPoint != "Windows.FullTrustApplication") {
+                "UWP Application EntryPoint must name its application class, not Windows.FullTrustApplication."
+            }
+            for ((name, expected) in listOf("RuntimeBehavior" to "windowsApp", "TrustLevel" to "appContainer")) {
+                val declared = application.getAttributeNS(namespace, name)
+                require(declared.isBlank() || declared == expected) { "UWP Application $name must be '$expected', found '$declared'." }
+                application.setAttributeNS(namespace, "uap10:$name", expected)
+            }
+        }
+        val capabilities = root.childElements("Capabilities").flatMap { it.childElements("Capability") }
+        require(capabilities.none { it.getAttribute("Name") == "runFullTrust" }) { "A UWP AppContainer manifest must not request runFullTrust." }
+        root.setAttributeNS(XMLConstants.XMLNS_ATTRIBUTE_NS_URI, "xmlns:uap10", namespace)
+        root.setAttribute("IgnorableNamespaces", (root.getAttribute("IgnorableNamespaces").split(' ').filter(String::isNotBlank) + "uap10").distinct().joinToString(" "))
+        writeXml(manifest, document)
+    }
+
+    /** The package loader override replaces the default root search path; callers must include it. */
+    fun mergeLoaderSearchPaths(manifest: Path, requiredFolders: Iterable<String>) {
+        val document = requireNotNull(readXml(manifest)) { "Cannot read AppX manifest: $manifest" }
+        val namespace = "http://schemas.microsoft.com/appx/manifest/uap/windows10/6"
+        val root = document.documentElement
+        val overrides = document.getElementsByTagNameNS(namespace, "LoaderSearchPathOverride")
+        require(overrides.length <= 1) { "AppX permits only one LoaderSearchPathOverride per package: $manifest" }
+        val existingOverride = overrides.item(0) as? Element
+        val existingEntries = existingOverride?.childElements("LoaderSearchPathEntry").orEmpty()
+        val folders = linkedMapOf<String, String>()
+        fun addFolder(folder: String) {
+            val normalized = folder.replace('\\', '/')
+            require(normalized.isEmpty() || (!normalized.startsWith('/') && !normalized.endsWith('/') &&
+                ':' !in normalized && normalized.split('/').none { it.isEmpty() || it == "." || it == ".." })) {
+                "LoaderSearchPathEntry must name a folder relative to the package root, without leading or trailing separators: '$folder'."
+            }
+            folders.putIfAbsent(normalized.lowercase(), folder)
+        }
+        existingEntries.forEach { entry ->
+            require(entry.hasAttribute("FolderPath")) { "LoaderSearchPathEntry requires FolderPath in $manifest." }
+            addFolder(entry.getAttribute("FolderPath"))
+        }
+        requiredFolders.forEach(::addFolder)
+        require(folders.size <= 5) {
+            "AppX LoaderSearchPathOverride supports at most 5 folders; ${folders.size} are required in $manifest: ${folders.values}."
+        }
+        val override = existingOverride ?: run {
+            val extensions = root.childElements("Extensions").firstOrNull()
+                ?: document.createElementNS(APPX_NAMESPACE, "Extensions").also(root::appendChild)
+            val extension = document.createElementNS(namespace, "uap6:Extension").apply {
+                setAttribute("Category", "windows.loaderSearchPathOverride")
+            }.also(extensions::appendChild)
+            document.createElementNS(namespace, "uap6:LoaderSearchPathOverride").also(extension::appendChild)
+        }
+        existingEntries.forEach(override::removeChild)
+        folders.values.forEach { folder ->
+            override.appendChild(document.createElementNS(namespace, "uap6:LoaderSearchPathEntry").apply {
+                setAttribute("FolderPath", folder)
+            })
+        }
+        root.setAttributeNS(XMLConstants.XMLNS_ATTRIBUTE_NS_URI, "xmlns:uap6", namespace)
+        root.setAttribute("IgnorableNamespaces", (root.getAttribute("IgnorableNamespaces")
+            .split(Regex("\\s+")).filter(String::isNotBlank) + "uap6").distinct().joinToString(" "))
+        writeXml(manifest, document)
+    }
+
     /** Build output naming also owns AppX Executable references, including COM notification servers. */
     fun useApplicationExecutable(manifest: Path, executableName: String) {
         if (!manifest.isRegularFile()) return
@@ -235,8 +308,27 @@ internal object AppxManifestPackageSupport {
         applicationPackage: Path,
         candidateArchives: Iterable<Path>,
         runtimeIdentifier: String,
+    ): List<Path> = selectFrameworkPackageArchives(
+        readPackageDependencies(applicationPackage), candidateArchives, runtimeIdentifier,
+    )
+
+    /** Loose development layouts must select exactly the same dependencies as packaged installs. */
+    internal fun selectFrameworkPackageArchivesForManifest(
+        applicationManifest: Path,
+        candidateArchives: Iterable<Path>,
+        runtimeIdentifier: String,
+    ): List<Path> = selectFrameworkPackageArchives(
+        readPackageDependencies(
+            secureDocumentBuilderFactory().newDocumentBuilder().parse(applicationManifest.toFile()),
+            applicationManifest,
+        ), candidateArchives, runtimeIdentifier,
+    )
+
+    private fun selectFrameworkPackageArchives(
+        requirements: List<RequiredPackageDependency>,
+        candidateArchives: Iterable<Path>,
+        runtimeIdentifier: String,
     ): List<Path> {
-        val requirements = readPackageDependencies(applicationPackage)
         if (requirements.isEmpty()) return emptyList()
 
         val candidates = candidateArchives
@@ -388,6 +480,10 @@ internal object AppxManifestPackageSupport {
             if (error is IllegalArgumentException) throw error
             throw IllegalArgumentException("Cannot read application manifest from $applicationPackage: ${error.message}", error)
         }
+        return readPackageDependencies(document, applicationPackage)
+    }
+
+    private fun readPackageDependencies(document: Document, applicationPackage: Path): List<RequiredPackageDependency> {
         val dependencyElements = document.documentElement
             ?.childElements("Dependencies")
             ?.flatMap { dependencies -> dependencies.childElements(PACKAGE_DEPENDENCY_NAME) }

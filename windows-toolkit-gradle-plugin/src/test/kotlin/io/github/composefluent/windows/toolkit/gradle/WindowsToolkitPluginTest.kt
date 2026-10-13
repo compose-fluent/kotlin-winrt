@@ -5261,7 +5261,7 @@ class WindowsToolkitPluginTest {
         assertTrue(source.contains("JNI_CreateJavaVM"))
         assertTrue(source.contains("FindClass(env, kotlin_winrt_preview_requested ?"))
         assertTrue(source.contains(": \"sample/MainKt\");"))
-        assertTrue(source.contains("WindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("WinAppLauncherSupport"))
         assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
         assertFalse(source.contains("NewStringUTF(env, \"Unpackaged\")"))
         assertFalse(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
@@ -5359,7 +5359,7 @@ class WindowsToolkitPluginTest {
         }
 
         val source = Files.readString(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_application_host.c"))
-        assertTrue(source.contains("WindowsAppSdkLauncherSupport"))
+        assertTrue(source.contains("WinAppLauncherSupport"))
         assertTrue(source.contains("initializeApplicationHost\", \"(Ljava/lang/String;)Ljava/lang/AutoCloseable;\""))
         assertFalse(source.contains("NewStringUTF(env, \"Packaged\")"))
         assertFalse(source.contains("NewStringUTF(env, \"FrameworkDependent\")"))
@@ -5398,13 +5398,13 @@ class WindowsToolkitPluginTest {
         val relativeSource = Path.of("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt")
         val unpackagedSource = Files.readString(unpackagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
         val packagedSource = Files.readString(packagedTask.outputDirectory.get().asFile.toPath().resolve(relativeSource))
-        assertTrue(unpackagedSource.contains("WindowsAppSdkBootstrap.initializeApplicationHost(WinAppHostConfiguration.fromStagedRuntimeAssets("))
+        assertTrue(unpackagedSource.contains("WinAppHostScope.initialize(WinAppHostConfiguration.fromStagedRuntimeAssets("))
         assertFalse(unpackagedSource.contains("WinAppPackageIdentity."))
         assertFalse(unpackagedSource.contains("WindowsAppSdkDeploymentMode."))
-        assertTrue(unpackagedSource.contains("WindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
-        assertTrue(packagedSource.contains("WindowsAppSdkBootstrap.initializeApplicationHost(WinAppHostConfiguration.fromStagedRuntimeAssets("))
+        assertFalse(unpackagedSource.contains("WindowsAppSdkDeployment"))
+        assertTrue(packagedSource.contains("WinAppHostScope.initialize(WinAppHostConfiguration.fromStagedRuntimeAssets("))
         assertEquals(unpackagedSource, packagedSource)
-        assertTrue(packagedSource.contains("WindowsAppSdkDeployment.discoverRuntimeAssetsRoot()"))
+        assertTrue(packagedSource.contains("WinAppHostConfiguration.fromStagedRuntimeAssets()"))
         assertFalse(unpackagedSource.contains("WindowsAppSdkBootstrap.initialize()"))
         assertFalse(packagedSource.contains("WindowsAppSdkBootstrap.initialize()"))
     }
@@ -10507,14 +10507,11 @@ class WindowsToolkitPluginTest {
                 val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             ) {
                 companion object {
-                    fun fromStagedRuntimeAssets(runtimeAssetsRoot: Any?) = WinAppHostConfiguration(WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None)
+                    fun fromStagedRuntimeAssets(runtimeAssetsRoot: Any? = null) = WinAppHostConfiguration(WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None)
                 }
             }
-            object WindowsAppSdkDeployment {
-                fun discoverRuntimeAssetsRoot(): Any? = null
-            }
-            object WindowsAppSdkBootstrap {
-                fun initializeApplicationHost(configuration: WinAppHostConfiguration): AutoCloseable =
+            object WinAppHostScope {
+                fun initialize(configuration: WinAppHostConfiguration): AutoCloseable =
                     AutoCloseable {
                     }
             }
@@ -14095,14 +14092,11 @@ class WindowsToolkitPluginTest {
                 val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             ) {
                 companion object {
-                    fun fromStagedRuntimeAssets(runtimeAssetsRoot: Any?) = WinAppHostConfiguration(WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None)
+                    fun fromStagedRuntimeAssets(runtimeAssetsRoot: Any? = null) = WinAppHostConfiguration(WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None)
                 }
             }
-            object WindowsAppSdkDeployment {
-                fun discoverRuntimeAssetsRoot(): Any? = null
-            }
-            object WindowsAppSdkBootstrap {
-                fun initializeApplicationHost(configuration: WinAppHostConfiguration): AutoCloseable =
+            object WinAppHostScope {
+                fun initialize(configuration: WinAppHostConfiguration): AutoCloseable =
                     AutoCloseable {
                     }
             }

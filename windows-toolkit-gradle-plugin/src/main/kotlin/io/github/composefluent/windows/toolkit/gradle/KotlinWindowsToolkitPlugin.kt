@@ -905,7 +905,7 @@ private fun configureWinAppTasks(
     val resolvedWindowsAppSdkDeployment = project.provider {
         val packageSpecs = allNuGetPackageSpecs(extension.packageReferences) +
             dependencyIdentityFiles.files.flatMap(::readNuGetPackages)
-        resolveWindowsAppSdkDeployment(
+        val deployment = resolveWindowsAppSdkDeployment(
             requested = options.windowsAppSdkDeployment.get(),
             packageSpecs = packageSpecs,
             frameworkDependentAvailable = frameworkDependentDeploymentAvailable(
@@ -913,6 +913,9 @@ private fun configureWinAppTasks(
                 explicitRuntimeAssets = extension.runtimeAssets.get().map { project.file(it).toPath() },
             ),
         )
+        validateWindowsApplicationModel(options.applicationModel.get(), options.packageType.get(),
+            deployment, extension.xaml.framework.get(), options.jvmRuntimeMode.get())
+        deployment
     }
     project.tasks.named("generateWinAppConfiguration", GenerateWinAppConfigurationTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(projectionIdentityFiles)
@@ -1040,6 +1043,7 @@ private fun configureWinAppTasks(
         taskName("stageWindowsPackageRuntimeAssets" + format?.name.orEmpty()),
         StageWindowsPackageRuntimeAssetsTask::class.java,
         Action<StageWindowsPackageRuntimeAssetsTask> { task ->
+            task.xamlFramework.set(extension.xaml.framework)
             task.group = "windows-package"
             task.applicationCompilationTasks.set(selectedVariant.map { it.compilationTaskNames(project) })
             task.description = "Stages WinRT NuGet runtime and resource assets for application execution."
@@ -1246,6 +1250,8 @@ private fun configureWinAppTasks(
             task.windowsAppSdkDeployment.set(project.provider {
                 WindowsAppSdkDeploymentMode.valueOf((format?.deployment ?: resolvedWindowsAppSdkDeployment.get()).name)
             })
+            task.applicationModel.set(options.applicationModel)
+            task.xamlFramework.set(extension.xaml.framework)
             task.outputDirectory.set(
                 project.provider {
                     project.layout.buildDirectory
@@ -1347,10 +1353,12 @@ private fun configureWinAppTasks(
             task.windowsSdkRegistryRoots.set(windowsSdkRegistryRoots)
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.includeFrameworkPackageDependencies.set(project.provider {
-                // Match Windows App SDK AppXReference: the package graph must declare
-                // its runtime framework regardless of which tool registers/packages it.
+                // UWP component frameworks (for example WinUI 2's Microsoft.UI.Xaml.2.8)
+                // belong to the AppX package graph even though UWP uses no Windows App SDK.
+                // Desktop Windows App SDK frameworks still follow its deployment selection.
                 (format?.packageType ?: options.packageType.get()) == WindowsPackageType.Packaged &&
-                    (format?.deployment ?: resolvedWindowsAppSdkDeployment.get()) == WindowsAppSdkDeployment.FrameworkDependent
+                    (options.applicationModel.get() == WindowsApplicationModel.Uwp ||
+                        (format?.deployment ?: resolvedWindowsAppSdkDeployment.get()) == WindowsAppSdkDeployment.FrameworkDependent)
             })
             task.executableBaseName.set(executableBaseName)
             task.rewriteApplicationExecutable.set(true)
@@ -1399,6 +1407,7 @@ private fun configureWinAppTasks(
         options.console,
         launcherIconTask,
         executableBaseName,
+        options.applicationModel,
     )
     val launcherCompileTask = project.tasks.register(
         taskName("compileWinAppLauncher"),
@@ -1407,6 +1416,10 @@ private fun configureWinAppTasks(
             task.group = "windows-package"
             task.description = "Compiles the native Kotlin/WinRT JVM application launcher independently from staging."
             task.launcherOnly.set(true)
+            task.applicationModel.set(options.applicationModel)
+            task.xamlFramework.set(extension.xaml.framework)
+            task.packageType.set(options.packageType.map { it.name })
+            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
             task.launcherIconResource.set(options.launcherIcon.flatMap {
                 launcherIconTask.flatMap { icon -> icon.outputFile }
             })
@@ -1484,6 +1497,8 @@ private fun configureWinAppTasks(
             )
             task.packageType.set(project.provider { options.packageType.get().name })
             task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
+            task.applicationModel.set(options.applicationModel)
+            task.xamlFramework.set(extension.xaml.framework)
             task.console.set(options.console)
             task.executableBaseName.set(executableBaseName)
             task.javaHome.set(configuredJvmToolchainHome(project, options))
@@ -1599,6 +1614,12 @@ private fun configureWinAppTasks(
         Action<RunWinAppPackageTask> { task ->
             task.group = "windows-package"
             task.description = "Registers and runs this variant as a packaged development application through WinApp CLI."
+            task.applicationModel.set(options.applicationModel)
+            task.powerShellExecutable.set(options.installPowerShellExecutable)
+            task.dependencyPackageFiles.from(options.dependencyPackageFiles)
+            task.dependencyLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
+            task.dependencyPackageSpecs.set(project.provider { allNuGetPackageSpecs(extension.packageReferences) })
+            task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
             task.packageDirectory.set(developmentPackageTask.flatMap { it.outputDirectory })
             task.deploymentDirectory.set(
                 project.layout.buildDirectory.dir(
@@ -1617,7 +1638,7 @@ private fun configureWinAppTasks(
                 packageType == WindowsPackageType.Packaged && variant.kind == WinAppVariantKind.Jvm
             }.zip(options.windowsAppSdkDeployment) { jvmPackage, deployment ->
                 jvmPackage && deployment != WindowsAppSdkDeployment.SelfContained
-            })
+            }.zip(options.applicationModel) { enabled, model -> enabled && model == WindowsApplicationModel.Desktop })
             task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
             task.previewHostExecutable.set(project.layout.buildDirectory.dir(
                 selectedVariant.map { "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/AppX" }
@@ -1803,7 +1824,8 @@ private fun configureWinAppTasks(
                 task.installPackage.set(options.installPackage)
                 task.packageType.set(packageType.map { it.name })
                 task.includeRestoredFrameworkDependencies.set(project.provider {
-                    deployment.get() == WindowsAppSdkDeployment.FrameworkDependent
+                    options.applicationModel.get() == WindowsApplicationModel.Uwp ||
+                        deployment.get() == WindowsAppSdkDeployment.FrameworkDependent
                 })
                 task.powerShellExecutable.set(options.installPowerShellExecutable)
                 task.forceApplicationShutdown.set(options.installForceApplicationShutdown)
@@ -2044,6 +2066,7 @@ private fun configureMingwApplicationEntry(
     console: Provider<Boolean>,
     launcherIconTask: TaskProvider<CompileWinAppIconTask>,
     executableBaseName: Provider<String>,
+    applicationModel: Provider<WindowsApplicationModel>,
 ) {
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     val applicationLayoutDirectory = project.layout.buildDirectory.dir(
@@ -2067,6 +2090,7 @@ private fun configureMingwApplicationEntry(
             executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
         }
         executable.linkerOpts(if (console.get()) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
+        if (applicationModel.get() == WindowsApplicationModel.Uwp) executable.linkerOpts("-Wl,/APPCONTAINER")
         if (launcherIconTask.get().launcherIcon.isPresent) {
             val resource = launcherIconTask.flatMap { it.outputFile }
             executable.linkerOpts(resource.get().asFile.absolutePath)
@@ -2395,6 +2419,7 @@ private fun configureWinRTGeneration(
         task.authoringTypeDetailsOutputDirectory.set(authoringTypeDetailsOutputDirectory)
         task.metadataInputs.set(extension.metadataInputs)
         task.metadataInputFiles.from(project.provider { explicitMetadataInputFiles(extension.metadataInputs.get()) })
+        task.xamlFramework.set(extension.xaml.framework)
         task.windowsSdkMetadataFiles.from(
             project.provider {
                 windowsSdkMetadataInputFiles(
@@ -2463,6 +2488,7 @@ private fun configureWinRTGeneration(
         Action<GenerateWinRTAuthoringCandidatesTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Scans Kotlin declarations for WinRT authored runtime classes."
+            task.xamlFramework.set(extension.xaml.framework)
             task.metadataIndex.set(
                 prepareMetadataTask.flatMap { prepared ->
                     prepared.outputDirectory.file("kotlin-winrt-authoring/metadata-index.tsv")
@@ -2572,6 +2598,7 @@ private fun configureWinRTGeneration(
         "mergeWinRTCompilerSupport",
         MergeWinRTCompilerSupportTask::class.java,
         Action<MergeWinRTCompilerSupportTask> { task ->
+            task.xamlFramework.set(extension.xaml.framework)
             task.group = "kotlin-winrt"
             task.description = "Merges Kotlin WinRT compiler support tables from this project and WinRT dependencies."
             task.localCompilerSupportManifest.set(
@@ -5207,6 +5234,7 @@ private fun addWinRTCompilerPluginOptions(
 ) {
     val options = project.provider {
             val authoringOptions = listOf(
+                "xamlFramework=${project.extensions.getByType(WindowsExtension::class.java).xaml.framework.get().name.lowercase()}",
                 "metadataIndex=${metadataIndex.get().asFile.absolutePath}",
                 "typeIndexOutput=${outputs.typeIndex.get().asFile.absolutePath}",
                 "authoredCandidatesOutput=${outputs.authoredCandidates.get().asFile.absolutePath}",

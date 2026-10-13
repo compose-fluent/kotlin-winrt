@@ -378,14 +378,11 @@ class NamedWinAppsTest {
                 val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             ) {
                 companion object {
-                    fun fromStagedRuntimeAssets(runtimeAssetsRoot: Any?) = WinAppHostConfiguration(WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None)
+                    fun fromStagedRuntimeAssets(runtimeAssetsRoot: Any? = null) = WinAppHostConfiguration(WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None)
                 }
             }
-            object WindowsAppSdkDeployment {
-                fun discoverRuntimeAssetsRoot(): Any? = null
-            }
-            object WindowsAppSdkBootstrap {
-                fun initializeApplicationHost(configuration: WinAppHostConfiguration): AutoCloseable {
+            object WinAppHostScope {
+                fun initialize(configuration: WinAppHostConfiguration): AutoCloseable {
                     val unpackaged = configuration.packageIdentity == WinAppPackageIdentity.Unpackaged
                     println("bootstrap=${'$'}unpackaged")
                     return AutoCloseable { }

@@ -164,6 +164,7 @@ internal class WinUiXamlPageCache(private val root: Path) {
             require(outputs.isNotEmpty())
             val indexes = outputs.map { WinUiXamlDeclarations.parse(it.getValue("KotlinDeclarations").toString()) }
             require(indexes.map { it.schemaVersion }.distinct().size == 1)
+            require(indexes.map { it.framework }.distinct().size == 1) { "Cannot merge XAML resources from different UI frameworks." }
             val plan = indexes.first().copy(resources = indexes.flatMap { it.resources }.distinct().sorted(),
                 pages = indexes.flatMap { it.pages }.sortedBy { it.className })
             val declarations = Json.parseToJsonElement(WinUiXamlDeclarations.canonicalText(plan))

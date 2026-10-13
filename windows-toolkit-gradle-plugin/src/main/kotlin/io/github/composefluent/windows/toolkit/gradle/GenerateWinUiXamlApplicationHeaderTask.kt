@@ -1,6 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.metadata.WinUiXamlNamespaces
+import io.github.composefluent.winrt.runtime.XamlFramework
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -23,6 +24,7 @@ abstract class GenerateWinUiXamlApplicationHeaderTask @Inject constructor(
     private val fileSystem: FileSystemOperations,
     private val objects: ObjectFactory,
 ) : DefaultTask() {
+    @get:Input abstract val xamlFramework: Property<XamlFramework>
     @get:Internal
     abstract val sourceRoots: ConfigurableFileCollection
 
@@ -38,7 +40,7 @@ abstract class GenerateWinUiXamlApplicationHeaderTask @Inject constructor(
     val inputXamlTypeReferences get() = sourceRoots.files.filter { it.isDirectory &&
         !isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it.toPath()) }
         .flatMap { root -> root.walkTopDown().filter { it.isFile && it.extension.equals("xaml", true) }.toList() }
-        .associate { it.absolutePath to WinUiXamlNamespaces.typeReferences(it.toPath()) }.toSortedMap()
+        .associate { it.absolutePath to WinUiXamlNamespaces.typeReferences(it.toPath(), xamlFramework.get()) }.toSortedMap()
 
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val metadataIndex: RegularFileProperty
@@ -65,8 +67,10 @@ abstract class GenerateWinUiXamlApplicationHeaderTask @Inject constructor(
     @get:Input abstract val assemblyName: Property<String>
     @get:OutputFile abstract val outputFile: RegularFileProperty
     @get:OutputDirectory abstract val sourceOutputDirectory: DirectoryProperty
+    @get:Internal val applicationItemsFile get() = sourceOutputDirectory.file("applications.txt")
 
     init {
+        xamlFramework.convention(XamlFramework.WinUi)
         scannerJvmArgs.convention(emptyList())
         sourceRootOwners.convention(emptyMap())
         emitSources.convention(true)
@@ -95,6 +99,7 @@ abstract class GenerateWinUiXamlApplicationHeaderTask @Inject constructor(
             spec.workingDir(output.parent.toFile())
             spec.jvmArgs(scannerJvmArgs.get() + "-Djava.io.tmpdir=${output.parent}")
             spec.args(buildList {
+                add("--xaml-framework"); add(xamlFramework.get().name.lowercase())
                 add("--xaml-header")
                 if (previewHost.get()) {
                     add("--xaml-preview-host")
@@ -105,6 +110,7 @@ abstract class GenerateWinUiXamlApplicationHeaderTask @Inject constructor(
                 add("--xaml-assembly-name"); add(assemblyName.get())
                 add("--metadata-index"); add(metadataIndex.get().asFile.absolutePath)
                 add("--output"); add(output.toString())
+                add("--xaml-application-items"); add(applicationItemsFile.get().asFile.absolutePath)
                 if (emitSources.get()) { add("--xaml-header-sources"); add(sourceOutput.absolutePath) }
                 sourceRootOwners.get().toSortedMap().forEach { (root, owner) ->
                     add("--source-root-owner"); add(root); add(owner)
@@ -120,5 +126,6 @@ abstract class GenerateWinUiXamlApplicationHeaderTask @Inject constructor(
             })
         }
         check(Files.isRegularFile(output)) { "Kotlin XAML application header was not produced: $output" }
+        check(applicationItemsFile.get().asFile.isFile) { "Kotlin XAML application items were not produced." }
     }
 }

@@ -1,6 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.runtime.WinAppHostConfiguration
+import io.github.composefluent.winrt.runtime.XamlFramework
 import io.github.composefluent.winrt.runtime.WindowsAppSdkDeploymentMode
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -42,6 +43,8 @@ abstract class BuildWinAppHostTask : DefaultTask() {
     }
 
     init {
+        applicationModel.convention(WindowsApplicationModel.Desktop)
+        xamlFramework.convention(XamlFramework.WinUi)
         packageType.convention(WindowsPackageType.Packaged.name)
         applicationVariant.convention("jvm:main")
         jvmRuntimeMode.convention(WinAppJvmRuntimeMode.Bundled.name)
@@ -100,6 +103,9 @@ abstract class BuildWinAppHostTask : DefaultTask() {
     @get:Input
     abstract val windowsAppSdkDeployment: Property<WindowsAppSdkDeployment>
 
+    @get:Input abstract val applicationModel: Property<WindowsApplicationModel>
+    @get:Input abstract val xamlFramework: Property<XamlFramework>
+
     @get:Input
     abstract val console: Property<Boolean>
 
@@ -136,6 +142,8 @@ abstract class BuildWinAppHostTask : DefaultTask() {
 
     @TaskAction
     fun build() {
+        validateWindowsApplicationModel(applicationModel.get(), WindowsPackageType.valueOf(packageType.get()),
+            windowsAppSdkDeployment.get(), xamlFramework.get(), WinAppJvmRuntimeMode.valueOf(jvmRuntimeMode.get()))
         val outputRoot = outputDirectory.get().asFile.toPath()
         val sourceRoot = generatedSourceDirectory.get().asFile.toPath()
         val mainClassValue = mainClass.orNull?.takeIf(String::isNotBlank)
@@ -176,6 +184,7 @@ abstract class BuildWinAppHostTask : DefaultTask() {
                     runtimeMode = runtimeMode,
                     externalJvmHome = externalHome,
                     windowsAppSdkDeployment = windowsAppSdkDeployment.get(),
+                    applicationModel = applicationModel.get(),
                 ),
             )
             if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
@@ -207,6 +216,7 @@ abstract class BuildWinAppHostTask : DefaultTask() {
                 runtimeMode = runtimeMode,
                 externalJvmHome = externalHome,
                 windowsAppSdkDeployment = windowsAppSdkDeployment.get(),
+                applicationModel = applicationModel.get(),
             ),
         )
         stageWinAppJvmRuntimeClasspath(runtimeClasspath.files, outputRoot)
@@ -216,6 +226,8 @@ abstract class BuildWinAppHostTask : DefaultTask() {
             WinAppHostConfiguration(
                 WindowsPackageType.valueOf(packageType.get()).hostPackageIdentity(),
                 WindowsAppSdkDeploymentMode.valueOf(windowsAppSdkDeployment.get().name),
+                applicationModel = applicationModel.get(),
+                xamlFramework = xamlFramework.get(),
             ).toStagedProperties(),
         )
         WinAppManifestGenerator.writeApplicationManifest(
@@ -339,6 +351,8 @@ abstract class BuildWinAppHostTask : DefaultTask() {
                 add("/SUBSYSTEM:WINDOWS")
                 add("/ENTRY:wmainCRTStartup")
             }
+            // CsWinRT's UWP stub sets this bit even though recent Windows can infer it from the manifest.
+            if (applicationModel.get() == WindowsApplicationModel.Uwp) add("/APPCONTAINER")
             addAll(
                 listOf(
                     "/LIBPATH:${sdk.libRoot.resolve("um").resolve(architecture)}",
@@ -432,6 +446,7 @@ internal fun applicationHostSource(
     runtimeMode: String,
     externalJvmHome: String,
     windowsAppSdkDeployment: WindowsAppSdkDeployment = WindowsAppSdkDeployment.FrameworkDependent,
+    applicationModel: WindowsApplicationModel = WindowsApplicationModel.Desktop,
 ): String {
     val mainClassPath = mainClass.replace('.', '/')
     val externalJvmHomePath = externalJvmHome
@@ -439,6 +454,103 @@ internal fun applicationHostSource(
         .replace("\"", "\\\"")
     val bundledRuntime = runtimeMode == WinAppJvmRuntimeMode.Bundled.name
     val bundledRuntimeCondition = if (bundledRuntime) "1" else "0"
+    val uwp = applicationModel == WindowsApplicationModel.Uwp
+    val jvmLibraryLoader = if (uwp) """
+    // UWP's package graph owns DLL search paths. StageWinAppPackageTask declares
+    // LoaderSearchPathOverride for the bundled runtime; LoadPackagedLibrary takes
+    // package-relative paths and resolves imported DLLs through that same graph.
+    static HMODULE kotlin_winrt_load_jvm_module(void) {
+        HMODULE module = LoadPackagedLibrary(L"runtime\\bin\\server\\jvm.dll", 0);
+        if (module == NULL) {
+            module = LoadPackagedLibrary(L"runtime\\jre\\bin\\server\\jvm.dll", 0);
+        }
+        if (module == NULL) {
+            module = LoadPackagedLibrary(L"runtime\\bin\\jvm.dll", 0);
+        }
+        return module;
+    }
+    """.trimIndent() else """
+    static void kotlin_winrt_remove_last_path_component(wchar_t *path) {
+        for (int i = lstrlenW(path); i > 0; --i) {
+            if (path[i - 1] == L'\\' || path[i - 1] == L'/') {
+                path[i - 1] = L'\0';
+                return;
+            }
+        }
+        path[0] = L'\0';
+    }
+
+    // The libraries of a Java runtime import each other by name: zip.dll needs java.dll.
+    // java.exe finds them because they are next to it. This host is not, and the default
+    // search continues on PATH, where the java.dll of another JDK answers for the one that
+    // belongs to this jvm.dll. Search the runtime's own bin directory first, as java.exe does.
+    static int kotlin_winrt_use_runtime_library_directory(const wchar_t *jvm_path) {
+        wchar_t directory[MAX_PATH * 4];
+        int length;
+        lstrcpynW(directory, jvm_path, ARRAYSIZE(directory));
+        // <home>\bin\server\jvm.dll and <home>\bin\jvm.dll both belong to <home>\bin.
+        kotlin_winrt_remove_last_path_component(directory);
+        length = lstrlenW(directory);
+        if (length > 7 && (directory[length - 7] == L'\\' || directory[length - 7] == L'/') &&
+            lstrcmpiW(directory + length - 6, L"server") == 0) {
+            directory[length - 7] = L'\0';
+        }
+        if (directory[0] != L'\0') {
+            SetDllDirectoryW(directory);
+        }
+        return 1;
+    }
+
+    static HMODULE kotlin_winrt_load_jvm_at(const wchar_t *home, const wchar_t *suffix) {
+        wchar_t path[MAX_PATH * 4];
+        if (home == NULL || home[0] == L'\0') {
+            return NULL;
+        }
+        lstrcpynW(path, home, ARRAYSIZE(path));
+        kotlin_winrt_append_wide(path, ARRAYSIZE(path), suffix);
+        if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
+            return NULL;
+        }
+        kotlin_winrt_use_runtime_library_directory(path);
+        return LoadLibraryW(path);
+    }
+
+    static HMODULE kotlin_winrt_load_jvm_module(void) {
+        wchar_t host_directory[MAX_PATH * 4];
+        kotlin_winrt_host_directory(host_directory, ARRAYSIZE(host_directory));
+        HMODULE module = NULL;
+        if ($bundledRuntimeCondition) {
+            module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\bin\\server\\jvm.dll");
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\jre\\bin\\server\\jvm.dll");
+            }
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\bin\\jvm.dll");
+            }
+        } else {
+            module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\bin\\server\\jvm.dll");
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\jre\\bin\\server\\jvm.dll");
+            }
+            if (module == NULL) {
+                module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\bin\\jvm.dll");
+            }
+            wchar_t configured_home[MAX_PATH * 4];
+            DWORD length = GetEnvironmentVariableW(L"KOTLIN_WINRT_JAVA_HOME", configured_home, ARRAYSIZE(configured_home));
+            if (module == NULL && length > 0 && length < ARRAYSIZE(configured_home)) {
+                module = kotlin_winrt_load_jvm_at(configured_home, L"\\bin\\server\\jvm.dll");
+            }
+            length = GetEnvironmentVariableW(L"JAVA_HOME", configured_home, ARRAYSIZE(configured_home));
+            if (module == NULL && length > 0 && length < ARRAYSIZE(configured_home)) {
+                module = kotlin_winrt_load_jvm_at(configured_home, L"\\bin\\server\\jvm.dll");
+            }
+            if (module == NULL) {
+                module = LoadLibraryW(L"jvm.dll");
+            }
+        }
+        return module;
+    }
+    """.trimIndent()
     return """
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
@@ -522,85 +634,7 @@ internal fun applicationHostSource(
         }
     }
 
-    static void kotlin_winrt_remove_last_path_component(wchar_t *path) {
-        for (int i = lstrlenW(path); i > 0; --i) {
-            if (path[i - 1] == L'\\' || path[i - 1] == L'/') {
-                path[i - 1] = L'\0';
-                return;
-            }
-        }
-        path[0] = L'\0';
-    }
-
-    // The libraries of a Java runtime import each other by name: zip.dll needs java.dll.
-    // java.exe finds them because they are next to it. This host is not, and the default
-    // search continues on PATH, where the java.dll of another JDK answers for the one that
-    // belongs to this jvm.dll. Search the runtime's own bin directory first, as java.exe does.
-    static void kotlin_winrt_use_runtime_library_directory(const wchar_t *jvm_path) {
-        wchar_t directory[MAX_PATH * 4];
-        int length;
-        lstrcpynW(directory, jvm_path, ARRAYSIZE(directory));
-        // <home>\bin\server\jvm.dll and <home>\bin\jvm.dll both belong to <home>\bin.
-        kotlin_winrt_remove_last_path_component(directory);
-        length = lstrlenW(directory);
-        if (length > 7 && (directory[length - 7] == L'\\' || directory[length - 7] == L'/') &&
-            lstrcmpiW(directory + length - 6, L"server") == 0) {
-            directory[length - 7] = L'\0';
-        }
-        if (directory[0] != L'\0') {
-            SetDllDirectoryW(directory);
-        }
-    }
-
-    static HMODULE kotlin_winrt_load_jvm_at(const wchar_t *home, const wchar_t *suffix) {
-        wchar_t path[MAX_PATH * 4];
-        if (home == NULL || home[0] == L'\0') {
-            return NULL;
-        }
-        lstrcpynW(path, home, ARRAYSIZE(path));
-        kotlin_winrt_append_wide(path, ARRAYSIZE(path), suffix);
-        if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
-            return NULL;
-        }
-        kotlin_winrt_use_runtime_library_directory(path);
-        return LoadLibraryW(path);
-    }
-
-    static HMODULE kotlin_winrt_load_jvm_module(void) {
-        wchar_t host_directory[MAX_PATH * 4];
-        kotlin_winrt_host_directory(host_directory, ARRAYSIZE(host_directory));
-        HMODULE module = NULL;
-        if ($bundledRuntimeCondition) {
-            module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\bin\\server\\jvm.dll");
-            if (module == NULL) {
-                module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\jre\\bin\\server\\jvm.dll");
-            }
-            if (module == NULL) {
-                module = kotlin_winrt_load_jvm_at(host_directory, L"\\runtime\\bin\\jvm.dll");
-            }
-        } else {
-            module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\bin\\server\\jvm.dll");
-            if (module == NULL) {
-                module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\jre\\bin\\server\\jvm.dll");
-            }
-            if (module == NULL) {
-                module = kotlin_winrt_load_jvm_at(L"$externalJvmHomePath", L"\\bin\\jvm.dll");
-            }
-            wchar_t configured_home[MAX_PATH * 4];
-            DWORD length = GetEnvironmentVariableW(L"KOTLIN_WINRT_JAVA_HOME", configured_home, ARRAYSIZE(configured_home));
-            if (module == NULL && length > 0 && length < ARRAYSIZE(configured_home)) {
-                module = kotlin_winrt_load_jvm_at(configured_home, L"\\bin\\server\\jvm.dll");
-            }
-            length = GetEnvironmentVariableW(L"JAVA_HOME", configured_home, ARRAYSIZE(configured_home));
-            if (module == NULL && length > 0 && length < ARRAYSIZE(configured_home)) {
-                module = kotlin_winrt_load_jvm_at(configured_home, L"\\bin\\server\\jvm.dll");
-            }
-            if (module == NULL) {
-                module = LoadLibraryW(L"jvm.dll");
-            }
-        }
-        return module;
-    }
+    $jvmLibraryLoader
 
     static int kotlin_winrt_add_environment_options(JavaVMOption *options, int option_count, int option_capacity, char *environment_options, DWORD environment_options_count) {
         DWORD length = GetEnvironmentVariableA("KOTLIN_WINRT_JVM_OPTIONS", environment_options, environment_options_count);
@@ -669,17 +703,111 @@ internal fun applicationHostSource(
         return 0;
     }
 
+    // Package activation need not provide stderr. Keep JNI's normal exception output,
+    // and give the debugger the same Throwable stack through Windows' Unicode channel.
+    static void kotlin_winrt_debug_exception(JNIEnv *env, jthrowable exception) {
+        jclass writer_class = NULL;
+        jclass print_writer_class = NULL;
+        jclass exception_class = NULL;
+        jobject writer = NULL;
+        jobject print_writer = NULL;
+        jstring stack_trace = NULL;
+        const jchar *characters = NULL;
+        wchar_t *message = NULL;
+        jmethodID constructor;
+        jmethodID print_stack_trace;
+        jmethodID to_string;
+        jsize length;
+        int reported = 0;
+        if (exception == NULL) {
+            goto cleanup;
+        }
+        writer_class = (*env)->FindClass(env, "java/io/StringWriter");
+        if (writer_class == NULL) {
+            goto cleanup;
+        }
+        constructor = (*env)->GetMethodID(env, writer_class, "<init>", "()V");
+        if (constructor == NULL) {
+            goto cleanup;
+        }
+        writer = (*env)->NewObject(env, writer_class, constructor);
+        if (writer == NULL) {
+            goto cleanup;
+        }
+        print_writer_class = (*env)->FindClass(env, "java/io/PrintWriter");
+        if (print_writer_class == NULL) {
+            goto cleanup;
+        }
+        constructor = (*env)->GetMethodID(env, print_writer_class, "<init>", "(Ljava/io/Writer;)V");
+        if (constructor == NULL) {
+            goto cleanup;
+        }
+        print_writer = (*env)->NewObject(env, print_writer_class, constructor, writer);
+        if (print_writer == NULL) {
+            goto cleanup;
+        }
+        exception_class = (*env)->GetObjectClass(env, exception);
+        if (exception_class == NULL) {
+            goto cleanup;
+        }
+        print_stack_trace = (*env)->GetMethodID(env, exception_class, "printStackTrace", "(Ljava/io/PrintWriter;)V");
+        if (print_stack_trace == NULL) {
+            goto cleanup;
+        }
+        (*env)->CallVoidMethod(env, exception, print_stack_trace, print_writer);
+        if ((*env)->ExceptionCheck(env)) {
+            goto cleanup;
+        }
+        to_string = (*env)->GetMethodID(env, writer_class, "toString", "()Ljava/lang/String;");
+        if (to_string == NULL) {
+            goto cleanup;
+        }
+        stack_trace = (jstring)(*env)->CallObjectMethod(env, writer, to_string);
+        if (stack_trace == NULL || (*env)->ExceptionCheck(env)) {
+            goto cleanup;
+        }
+        length = (*env)->GetStringLength(env, stack_trace);
+        characters = (*env)->GetStringChars(env, stack_trace, NULL);
+        if (characters == NULL) {
+            goto cleanup;
+        }
+        // JNI strings are UTF-16, but GetStringChars does not promise a trailing NUL.
+        message = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, ((SIZE_T)length + 1) * sizeof(wchar_t));
+        if (message == NULL) {
+            goto cleanup;
+        }
+        CopyMemory(message, characters, (SIZE_T)length * sizeof(wchar_t));
+        message[length] = L'\0';
+        OutputDebugStringW(message);
+        reported = 1;
+    cleanup:
+        if (message != NULL) HeapFree(GetProcessHeap(), 0, message);
+        if (characters != NULL) (*env)->ReleaseStringChars(env, stack_trace, characters);
+        if (stack_trace != NULL) (*env)->DeleteLocalRef(env, stack_trace);
+        if (exception_class != NULL) (*env)->DeleteLocalRef(env, exception_class);
+        if (print_writer != NULL) (*env)->DeleteLocalRef(env, print_writer);
+        if (print_writer_class != NULL) (*env)->DeleteLocalRef(env, print_writer_class);
+        if (writer != NULL) (*env)->DeleteLocalRef(env, writer);
+        if (writer_class != NULL) (*env)->DeleteLocalRef(env, writer_class);
+        // Diagnostics must not replace the original failure with a new pending exception.
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        if (!reported) OutputDebugStringW(L"Kotlin/WinRT application host failed (Java stack trace unavailable).");
+    }
+
     static int kotlin_winrt_handle_pending_exception(JNIEnv *env) {
         if (!(*env)->ExceptionCheck(env)) {
             return 0;
         }
+        jthrowable exception = (*env)->ExceptionOccurred(env);
         (*env)->ExceptionDescribe(env);
         (*env)->ExceptionClear(env);
+        kotlin_winrt_debug_exception(env, exception);
+        if (exception != NULL) (*env)->DeleteLocalRef(env, exception);
         return 1;
     }
 
     static jobject kotlin_winrt_initialize_application_host(JNIEnv *env) {
-        jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WindowsAppSdkLauncherSupport");
+        jclass support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinAppLauncherSupport");
         jmethodID initialize;
         jstring runtime_assets_root;
         wchar_t host_directory[MAX_PATH * 4];
@@ -715,7 +843,7 @@ internal fun applicationHostSource(
             return 0;
         }
         failed |= kotlin_winrt_handle_pending_exception(env);
-        support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WindowsAppSdkLauncherSupport");
+        support_class = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinAppLauncherSupport");
         if (support_class == NULL) {
             failed |= kotlin_winrt_handle_pending_exception(env);
             return 1;

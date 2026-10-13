@@ -24,17 +24,28 @@ abstract class ResolveWinUiXamlCompilerTask : DefaultTask() {
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 
     @TaskAction fun resolve() {
+        val version = compilerVersion.orNull?.trim().orEmpty()
+        require(version.isNotEmpty()) {
+            "No default UWP XamlCompiler release is bundled. Configure windows.xaml.compilerDirectory " +
+                "with a local UWP compiler package, or set windows.xaml.compilerVersion and " +
+                "windows.xaml.archiveSha256 for a published UWP package " +
+                "(-PkotlinWinRT.xaml.version and -PkotlinWinRT.xaml.sha256)."
+        }
+        val hash = archiveSha256.orNull?.trim()?.lowercase().orEmpty()
+        require(hash.matches(Regex("[0-9a-f]{64}"))) {
+            "A pinned XamlCompiler SHA-256 for the selected framework and version is required. " +
+                "Set windows.xaml.archiveSha256 (-PkotlinWinRT.xaml.sha256), or configure " +
+                "windows.xaml.compilerDirectory with a local compiler package."
+        }
         require(System.getProperty("os.name").startsWith("Windows") &&
             System.getProperty("os.arch").lowercase() in setOf("amd64", "x86_64")) {
             "Kotlin XamlCompiler currently requires a Windows x64 build host."
         }
-        val hash = archiveSha256.get().lowercase()
-        require(hash.matches(Regex("[0-9a-f]{64}"))) { "A pinned XamlCompiler SHA-256 is required." }
         val cache = cacheDirectory.get().asFile.toPath().resolve(hash)
         withWinRTCacheLock(cache.resolve("download.lock")) {
             val archive = cache.resolve("compiler.zip")
             if (!Files.isRegularFile(archive) || xamlSha256(archive) != hash) {
-                check(!offline.get()) { "Kotlin XamlCompiler ${compilerVersion.get()} is not cached; Gradle is offline." }
+                check(!offline.get()) { "Kotlin XamlCompiler $version is not cached; Gradle is offline." }
                 val uri = URI(archiveUrl.get())
                 require(uri.scheme == "https") { "XamlCompiler download requires HTTPS." }
                 val temporary = cache.resolve("download.part")
@@ -45,7 +56,7 @@ abstract class ResolveWinUiXamlCompilerTask : DefaultTask() {
                     Files.move(temporary, archive, StandardCopyOption.REPLACE_EXISTING)
                 } finally { Files.deleteIfExists(temporary) }
             }
-            extractXamlCompiler(archive, outputDirectory.get().asFile.toPath(), compilerVersion.get())
+            extractXamlCompiler(archive, outputDirectory.get().asFile.toPath(), version)
         }
     }
 }

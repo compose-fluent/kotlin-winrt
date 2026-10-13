@@ -9,7 +9,7 @@ import io.github.composefluent.winrt.compiler.authoring.authoringTypeDetailsRegi
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndexRows as parseAuthoringMetadataIndexRows
 import io.github.composefluent.winrt.compiler.authoring.writeAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
-import io.github.composefluent.winrt.metadata.winUiXamlResourceDictionaryTypes
+import io.github.composefluent.winrt.metadata.xamlComponentResourceDictionaryTypes
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTNamespace
 import io.github.composefluent.winrt.metadata.WinRTMetadataSource
@@ -65,7 +65,11 @@ private const val PREPARED_METADATA_MANIFEST_RELATIVE_PATH = "kotlin-winrt-metad
 
 @CacheableTask
 abstract class GenerateWinRTProjectionsTask : DefaultTask() {
+    @get:Input
+    abstract val xamlFramework: Property<io.github.composefluent.winrt.runtime.XamlFramework>
+
     init {
+        xamlFramework.convention(io.github.composefluent.winrt.runtime.XamlFramework.WinUi)
         windowsSdkDeclared.convention(false)
     }
 
@@ -234,6 +238,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             spec.forkOptions.environment(workerEnvironment.get())
             spec.forkOptions.jvmArgs(generatorWorkerJvmArgs.get())
         }.submit(GenerateWinRTProjectionsWorkAction::class.java) { parameters ->
+            parameters.xamlFramework.set(xamlFramework)
             parameters.outputDirectory.set(outputDirectory)
             parameters.authoringTypeDetailsOutputDirectory.set(authoringTypeDetailsOutputDirectory)
             parameters.xamlRegistrars.set(xamlRegistrars)
@@ -274,6 +279,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
 }
 
 internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
+    val xamlFramework: Property<io.github.composefluent.winrt.runtime.XamlFramework>
     val outputDirectory: DirectoryProperty
     val authoringTypeDetailsOutputDirectory: DirectoryProperty
     val xamlRegistrars: RegularFileProperty
@@ -457,6 +463,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
             .filterTo(mutableSetOf(), String::isNotBlank)
         val projectionContext = WinRTMetadataProjectionContext(
+            xamlFramework = parameters.xamlFramework.get(),
             sources = sources,
             include = parameters.includeNamespaces.get().toSet() +
                 effectiveIncludeTypes.toSet() +
@@ -879,11 +886,7 @@ internal fun automaticXamlComponentResourceDictionaryTypes(
     model: WinRTMetadataModel,
     includeTypes: Set<String>,
 ): List<String> {
-    return if ("Microsoft.UI.Xaml.ResourceDictionary" in includeTypes) {
-        model.winUiXamlResourceDictionaryTypes()
-    } else {
-        emptyList()
-    }
+    return model.xamlComponentResourceDictionaryTypes(includeTypes)
 }
 
 internal fun authoringCandidateMetadataRootNames(candidates: List<KotlinWinRTAuthoredTypeCandidate>): List<String> =
