@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" IgnorableNamespaces="uap">
+  <Identity Name="ComposeFluent.KotlinWinUI2Gallery" Publisher="CN=ComposeFluent" Version="1.0.0.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Kotlin WinUI 2 Gallery</DisplayName>
+    <PublisherDisplayName>Compose Fluent</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Resources><Resource Language="en-US" /></Resources>
+  <Dependencies><TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
+  <Applications>
+    <Application Id="App" Executable="kotlin-winui2-gallery.exe" EntryPoint="io.github.composefluent.winrt.gallery.GalleryApplication">
+      <uap:VisualElements DisplayName="Kotlin WinUI 2 Gallery" Description="Kotlin/WinRT controls for UWP and WinUI 2"
+                          BackgroundColor="transparent" Square150x150Logo="Assets\MedTile.png" Square44x44Logo="Assets\AppList.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\WideTile.png" Square71x71Logo="Assets\SmallTile.png" Square310x310Logo="Assets\LargeTile.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+  <Capabilities><Capability Name="codeGeneration" /><Capability Name="internetClient" /></Capabilities>
+</Package>

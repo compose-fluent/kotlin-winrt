@@ -1,5 +1,46 @@
 # Kotlin WinUI Gallery
 
+## Selecting WinUI 2 or WinUI 3
+
+The same module supports two **build-time** variants. The default remains WinUI 3;
+pass `-PkotlinWinRT.gallery.winuiVersion=2` for the UWP / WinUI 2.8.7 Gallery.
+Gradle selects the Kotlin/XAML roots, SDK dependencies, manifest, and application
+model together. This is source selection, not a Kotlin preprocessor or a runtime
+check around unavailable SDK types. The UWP variant builds into `build/winui2`,
+with a separate package identity, so it can coexist with the desktop Gallery.
+
+```powershell
+.\gradlew.bat :winui-gallery:runWinAppPackageMingwX64MainReleaseExecutable --detach `
+    '-PkotlinWinRT.gallery.winuiVersion=2' `
+    '-PkotlinWinRT.xaml.compilerDirectory=<UWP kotlin-xamlc package directory>'
+```
+
+The UWP compiler package is required; see [UWP support](../docs/UWP.md). Native is
+the runnable UWP target. The JVM source/compilation path is also maintained, but
+the OpenJDK AppContainer startup limitation documented there still applies.
+Use `--args=NumberBox` to open a particular page, or `--args=--validate-controls`
+to construct and lay out all catalog pages after the shell loads. Validation
+results and event output are written to the package's `LocalState/gallery.log`.
+This smoke path checks activation/layout; it does not replace manual input tests.
+
+`src/winui2Main/kotlin` owns the UWP Application and Gallery shell; target-specific
+logging lives in `src/winui2JvmMain` and `src/winui2MingwX64Main`. Existing target
+identity declarations and the Gallery's AppX image/icon assets are shared.
+The UWP application uses `Windows.UI.Xaml` with `Microsoft.UI.Xaml.Controls`
+extensions, following the SDK's UWP activation contract (`Window.Current`).
+The WinUI 3 application follows `.cswinrt/src/Samples/WinUIDesktopSample` and
+retains its desktop activation/windowing contract and KSP source viewer.
+
+The WinUI 2 catalog currently contains Home and 22 control pages, including
+NumberBox, RadioButtons, RatingControl, DropDownButton, ToggleSplitButton,
+ColorPicker, Expander, InfoBar, ProgressRing, TreeView, TeachingTip, and system
+XAML input/date/list controls. It includes navigation, search, theme selection,
+live event output, and Kotlin snippets. It is **not** a port of all 122 desktop
+routes: the WinUI 3-only controls, WASDK integrations, and existing page layouts
+are not compiled into this variant. No projection namespace is aliased to a
+different framework, and the Gallery introduces no ABI/runtime compatibility
+shim. The remaining sections describe the existing WinUI 3 Gallery.
+
 The Gallery uses adjacent XAML and Kotlin code-behind files. It preserves the
 122 existing routes, including Home, and ports the static layouts, resources,
 styles and templates from official WinUI Gallery `v2.9.3`, commit

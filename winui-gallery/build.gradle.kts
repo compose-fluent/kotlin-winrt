@@ -1,10 +1,22 @@
 import java.security.MessageDigest
+import io.github.composefluent.windows.toolkit.gradle.WindowsApplicationModel
+import io.github.composefluent.windows.toolkit.gradle.WindowsAppSdkDeployment
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     id("io.github.compose-fluent.windows-toolkit")
     id("com.google.devtools.ksp") version "2.3.10"
 }
+
+val galleryWinUiVersion = providers.gradleProperty("kotlinWinRT.gallery.winuiVersion").orElse("3").get()
+require(galleryWinUiVersion in setOf("2", "3")) { "kotlinWinRT.gallery.winuiVersion must be 2 or 3" }
+val galleryUsesWinUi2 = galleryWinUiVersion == "2"
+// Select at build time: UWP and desktop XAML have different base classes and
+// activation contracts. A runtime Boolean cannot hide unavailable SDK symbols.
+if (galleryUsesWinUi2) layout.buildDirectory.set(layout.projectDirectory.dir("build/winui2"))
+val gallerySourceRoot = layout.projectDirectory.dir(
+    if (galleryUsesWinUi2) "src/winui2Main/kotlin" else "src/winuiMain/kotlin",
+)
 
 // KSP owns the source viewer, while XamlCompiler owns compilation. Include markup
 // bytes in processor options so a XAML-only edit also invalidates KSP's own cache.
@@ -30,7 +42,7 @@ abstract class GalleryXamlSourceArguments : org.gradle.process.CommandLineArgume
 }
 
 val galleryXamlSourceArguments = objects.newInstance(GalleryXamlSourceArguments::class.java).apply {
-    sourceRoot.set(layout.projectDirectory.dir("src/winuiMain/kotlin"))
+    sourceRoot.set(gallerySourceRoot)
     sources.from(sourceRoot.map { it.asFileTree.matching { include("**/*.xaml", "**/SampleDefinitions/**/*.txt") } })
 }
 
@@ -40,10 +52,10 @@ val gallerySigningCertificateThumbprint =
 // Navigation output contains data and factory calls, never authored WinRT classes.
 // Keep authoring/projection scans on authored source so they do not depend on KSP.
 tasks.named<io.github.composefluent.windows.toolkit.gradle.GenerateWinRTAuthoringCandidatesTask>("generateWinRTAuthoringCandidates") {
-    sourceRoots.setFrom(layout.projectDirectory.dir("src/winuiMain/kotlin"))
+    sourceRoots.setFrom(gallerySourceRoot)
 }
 tasks.named<io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask>("generateWinRTProjections") {
-    sourceRoots.setFrom(layout.projectDirectory.dir("src/winuiMain/kotlin"))
+    sourceRoots.setFrom(gallerySourceRoot)
 }
 
 ksp {
@@ -65,10 +77,17 @@ kotlin {
     }
     mingwX64 { binaries { executable { entryPoint = "io.github.composefluent.winrt.gallery.main" } } }
     sourceSets {
+        getByName("winuiMain").kotlin.setSrcDirs(listOf(gallerySourceRoot))
         getByName("winuiMain").dependencies {
-            implementation(project(":winui-gallery:code-document"))
-            implementation(project(":winui-gallery:models"))
-            implementation(project(":winui-gallery:resources"))
+            if (!galleryUsesWinUi2) {
+                implementation(project(":winui-gallery:code-document"))
+                implementation(project(":winui-gallery:models"))
+                implementation(project(":winui-gallery:resources"))
+            }
+        }
+        if (galleryUsesWinUi2) {
+            getByName("winuiJvmMain").kotlin.srcDir("src/winui2JvmMain/kotlin")
+            getByName("mingwX64Main").kotlin.srcDir("src/winui2MingwX64Main/kotlin")
         }
         commonTest.dependencies { implementation(kotlin("test")) }
     }
@@ -82,8 +101,10 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEa
 }
 
 dependencies {
+    if (!galleryUsesWinUi2) {
     add("kspWinuiJvm", project(":winui-gallery:processor"))
     add("kspMingwX64", project(":winui-gallery:processor"))
+    }
 }
 
 // Resolve semantic colors in the same K2 session as the application, on both targets.
@@ -101,10 +122,10 @@ dependencies {
 // application processor out of the SDK projection boundary (as with the separate
 // projection ProjectReferences in .cswinrt/src/Samples/WinUIDesktopSample).
 tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>("compileKotlinWinuiJvm") {
-    pluginClasspath.from(galleryHighlightingPlugin)
+    if (!galleryUsesWinUi2) pluginClasspath.from(galleryHighlightingPlugin)
 }
 tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>("compileKotlinMingwX64") {
-    compilerPluginClasspath = files(compilerPluginClasspath, galleryHighlightingPlugin)
+    if (!galleryUsesWinUi2) compilerPluginClasspath = files(compilerPluginClasspath, galleryHighlightingPlugin)
 }
 tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlinWinuiJvm") {
     // Preview and original file must share a FIR session, including rebuilds after
@@ -125,9 +146,37 @@ windows {
         packagePayload("licenses/JetBrains-Apache-2.0.txt", "licenses/JetBrains-Apache-2.0.txt")
         packagePayload("licenses/WinUI-Essential-LICENSE.txt", "licenses/WinUI-Essential-LICENSE.txt")
         packagePayload("THIRD-PARTY-NOTICES.md", "THIRD-PARTY-NOTICES.md")
+        if (galleryUsesWinUi2) {
+            applicationModel.set(WindowsApplicationModel.Uwp)
+            windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
+            executableBaseName.set("kotlin-winui2-gallery")
+            appxManifest(layout.projectDirectory.file("src/winui2Main/AppxManifest.xml"))
+        }
     }
     packageReferences {
         windowsSdk("10.0.26100.0", includeExtensions = false, generateProjection = true)
+        if (galleryUsesWinUi2) {
+            nugetPackage("Microsoft.UI.Xaml", "2.8.7")
+            // Project the actual catalog and its metadata dependency closure.
+            // Do not pull unrelated SDK namespaces (Maps, WebView2, etc.) into
+            // this small UWP application merely because they share a prefix.
+            listOf(
+                "Application", "Window", "ElementTheme", "HorizontalAlignment", "TextWrapping",
+            ).forEach { type("Windows.UI.Xaml.$it") }
+            listOf(
+                "Page", "StackPanel", "Grid", "TextBlock", "Border", "ScrollViewer",
+                "ComboBox", "ComboBoxItem", "AutoSuggestBox", "Button", "HyperlinkButton", "CheckBox",
+                "ToggleSwitch", "Slider", "TextBox", "PasswordBox", "MenuFlyout", "MenuFlyoutItem",
+                "ProgressBar", "CalendarDatePicker", "DatePicker", "TimePicker", "ListView",
+            ).forEach { type("Windows.UI.Xaml.Controls.$it") }
+            listOf(
+                "XamlControlsResources", "NavigationView", "NavigationViewItem", "ColorPicker", "Expander",
+                "InfoBar", "NumberBox", "ProgressRing", "RadioButtons", "RatingControl", "ToggleSplitButton",
+                "DropDownButton", "TeachingTip", "TreeView", "TreeViewNode",
+            ).forEach { type("Microsoft.UI.Xaml.Controls.$it") }
+            type("Windows.Storage.ApplicationData")
+            type("Windows.UI.ViewManagement.ApplicationView")
+        } else {
         // Match the installed WinUI 3 Gallery's Windows App SDK 2.5 runtime.
         nugetPackage("Microsoft.WindowsAppSDK", "2.5.1")
         nugetPackage("Microsoft.Graphics.Win2D", "1.4.0")
@@ -190,5 +239,6 @@ windows {
             "WinUI3Package.MicaBackdropWithFallback", "WinUI3Package.ModernStandardWindowContextMenu",
             "WinUI3Package.WindowCaptionButtonThemeWorkaround", "WinUI3Package.ModernWindowCaptionButtonToolTip",
         ).forEach(::type)
+        }
     }
 }
