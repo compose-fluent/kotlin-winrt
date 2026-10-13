@@ -51,11 +51,12 @@ internal class WinRTValueAdapter<T : Any>(
     }
 
     fun createTransferredArray(elements: Array<*>): Pair<Int, RawAddress> {
-        val owned = PlatformAbi.allocateBytesOwned(
-            sizeBytes = abiLayout.byteSize * elements.size.toLong(),
-            alignmentBytes = abiLayout.byteAlignment,
-        )
-        val data = owned.pointer
+        // WinRT array out parameters transfer a COM task-allocator buffer to the caller.
+        // A private allocation registry cannot be consulted by a C++/CsWinRT consumer.
+        val sizeBytes = abiLayout.byteSize * elements.size.toLong()
+        val data = WinRTPlatformApi.coTaskMemAllocRaw(maxOf(sizeBytes, 1L))
+        if (PlatformAbi.isNull(data)) throw OutOfMemoryError("Unable to allocate WinRT array ABI buffer.")
+        PlatformAbi.zeroBytes(data, sizeBytes)
         return try {
             elements.forEachIndexed { index, element ->
                 val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
@@ -65,20 +66,13 @@ internal class WinRTValueAdapter<T : Any>(
                     PlatformAbi.zeroBytes(slice, abiLayout.byteSize)
                 }
             }
-            TransferredArrayOwnership.transfer(data) {
-                elements.indices.forEach { index ->
-                    val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
-                    disposeTransferredValue(slice)
-                }
-                owned.close()
-            }
             elements.size to data
         } catch (error: Throwable) {
-            elements.indices.forEach { index ->
-                val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
-                disposeTransferredValue(slice)
+            try {
+                disposeOwnedArray(elements.size, data)
+            } catch (cleanupError: Throwable) {
+                error.addSuppressed(cleanupError)
             }
-            owned.close()
             throw error
         }
     }
@@ -93,23 +87,17 @@ internal class WinRTValueAdapter<T : Any>(
 
     fun disposeOwnedArray(length: Int, data: RawAddress) {
         if (PlatformAbi.isNull(data)) return
-        if (TransferredArrayOwnership.release(data)) return
-        repeat(length) { index ->
-            val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
-            disposeTransferredValue(slice)
+        // Mirrors CsWinRT Marshalers.DisposeAbiArray: release elements, then the buffer,
+        // including buffers originating from external WinRT components.
+        try {
+            repeat(length) { index ->
+                val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
+                disposeTransferredValue(slice)
+            }
+        } finally {
+            WinRTPlatformApi.coTaskMemFreeRaw(data)
         }
     }
-}
-
-private object TransferredArrayOwnership {
-    private val cleanups = ConcurrentCacheMap<Long, () -> Unit>()
-
-    fun transfer(pointer: RawAddress, cleanup: () -> Unit) {
-        cleanups[PlatformAbi.pointerKey(pointer)] = cleanup
-    }
-
-    fun release(pointer: RawAddress): Boolean =
-        cleanups.remove(PlatformAbi.pointerKey(pointer))?.let { it(); true } ?: false
 }
 
 internal fun <T : Any> directValueAdapter(

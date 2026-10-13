@@ -11,6 +11,40 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 class ValueBoxingTest {
+    @Test
+    fun transferred_boxed_arrays_can_be_released_by_a_foreign_abi_consumer() {
+        // CsWinRT Marshalers.DisposeAbiArray releases HSTRING elements and then
+        // calls Marshal.FreeCoTaskMem, with no Kotlin allocation registry involved.
+        val adapter = checkNotNull(ValueBoxingInterop.adapterForReferenceArrayInterface(IID.IReferenceArrayOfString))
+        for (values in listOf(emptyArray<String>(), arrayOf("alpha", "\u6c49\u5b57\u0000tail"))) {
+            val (length, data) = adapter.createTransferredArray(values)
+            try {
+                assertEquals(values.size, length)
+                repeat(length) { index ->
+                    val hstring = PlatformAbi.readPointerAt(data, index)
+                    assertEquals(values[index], NativeStringMarshaller.fromAbi(hstring))
+                    WinRTPlatformApi.windowsDeleteStringRaw(hstring)
+                }
+            } finally {
+                WinRTPlatformApi.coTaskMemFreeRaw(data)
+            }
+        }
+    }
+
+    @Test
+    fun foreign_boxed_array_buffers_are_read_and_disposed_with_the_com_allocator() {
+        val adapter = checkNotNull(ValueBoxingInterop.adapterForReferenceArrayInterface(IID.IReferenceArrayOfInt32))
+        val data = WinRTPlatformApi.coTaskMemAllocRaw(2L * Int.SIZE_BYTES)
+        check(!PlatformAbi.isNull(data))
+        PlatformAbi.writeInt32(data, 7)
+        PlatformAbi.writeInt32(PlatformAbi.slice(data, 4L, 4L), 11)
+        try {
+            assertEquals(listOf(7, 11), adapter.readOwnedArray(2, data)?.toList())
+        } finally {
+            adapter.disposeOwnedArray(2, data)
+        }
+    }
+
     private val boxedReferenceGenericInterface = "61C17706-2D65-11E0-9AE8-D48564015472"
 
     @Test
