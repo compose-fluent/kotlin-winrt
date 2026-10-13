@@ -138,8 +138,8 @@ object KotlinWinRTAuthoringScannerCli {
             }
             type.copy(schemaBaseName = base)
         }
-        val pageNames = sources.filter { Files.isRegularFile(it.resolveSibling("${it.name.removeSuffix(".kt")}.xaml")) }
-            .mapTo(mutableSetOf()) { path ->
+        val pageSources = sources.filter { Files.isRegularFile(it.resolveSibling("${it.name.removeSuffix(".kt")}.xaml")) }
+            .associate { path ->
                 val simpleName = path.name.removeSuffix(".kt")
                 val source = parseSource(path)
                 val name = listOf(source.packageName(), simpleName).filter(String::isNotBlank).joinToString(".")
@@ -147,8 +147,9 @@ object KotlinWinRTAuthoringScannerCli {
                 require(type.candidate?.winRTBaseClassName != null) {
                     "XAML $name requires a WinRT base"
                 }
-                name
+                name to path.resolveSibling("${simpleName}.xaml").toAbsolutePath().normalize()
             }
+        val pageNames = pageSources.keys
         val selected = (pageNames + referencedXamlTypes(options.sourceRoots, classes.keys, options.xamlFramework)).toMutableSet()
         // Dependency application schemas retain Kotlin names; they are not projected
         // SDK types and must never enter component authoring/projection generation.
@@ -231,6 +232,15 @@ object KotlinWinRTAuthoringScannerCli {
                 .mapTo(mutableSetOf()) { it.qualifiedName },
             framework = options.xamlFramework,
         )
+        options.xamlApplicationItems?.let { output ->
+            // XAMLC SourceFileManager assigns IsApplication from XamlApplications, not
+            // the root element. Reuse Kotlin's resolved SDK base to classify its input
+            // items before either native pass; Gradle does not interpret XAML syntax.
+            Files.createDirectories(output.toAbsolutePath().parent)
+            Files.writeString(output, pageSources.filterKeys { name ->
+                classes.getValue(name).candidate?.winRTBaseClassName == options.xamlFramework.xamlTypeName("Application")
+            }.values.map(Path::toString).sorted().joinToString("\n"))
+        }
         options.xamlHeaderSources?.let { writeXamlRegistrationSources(it, applicationClasses, schemas, superInterfaces, options.xamlAssemblyName,
             options.references, referencedXamlTypes(options.sourceRoots, index.keys, options.xamlFramework), options.xamlPreviewHost, options.xamlPreviewRegistrars, options.xamlFramework) }
     }
@@ -701,6 +711,7 @@ object KotlinWinRTAuthoringScannerCli {
         val xamlHeader: Boolean,
         val references: List<Path>,
         val xamlHeaderSources: Path?,
+        val xamlApplicationItems: Path?,
         val sourceRootOwners: Map<Path, String>,
         val xamlAssemblyName: String?,
         val xamlPreviewHost: Boolean,
@@ -720,6 +731,7 @@ object KotlinWinRTAuthoringScannerCli {
                 val xamlPreviewRegistrars = mutableListOf<String>()
                 val references = mutableListOf<Path>()
                 var xamlHeaderSources: Path? = null
+                var xamlApplicationItems: Path? = null
                 val sourceRoots = mutableListOf<Path>()
                 var index = 0
                 while (index < args.size) {
@@ -758,6 +770,7 @@ object KotlinWinRTAuthoringScannerCli {
                         "--xaml-assembly-name" -> { xamlAssemblyName = argumentValue(args, index); index += 2 }
                         "--reference" -> { references.add(Path.of(argumentValue(args, index))); index += 2 }
                         "--xaml-header-sources" -> { xamlHeaderSources = Path.of(argumentValue(args, index)); index += 2 }
+                        "--xaml-application-items" -> { xamlApplicationItems = Path.of(argumentValue(args, index)); index += 2 }
                         else -> error("Unknown kotlin-winrt authoring scanner argument: ${args[index]}")
                     }
                 }
@@ -769,6 +782,7 @@ object KotlinWinRTAuthoringScannerCli {
                     xamlHeader = xamlHeader,
                     references = references,
                     xamlHeaderSources = xamlHeaderSources,
+                    xamlApplicationItems = xamlApplicationItems,
                     sourceRootOwners = sourceRootOwners,
                     xamlAssemblyName = xamlAssemblyName,
                     xamlPreviewHost = xamlPreviewHost,

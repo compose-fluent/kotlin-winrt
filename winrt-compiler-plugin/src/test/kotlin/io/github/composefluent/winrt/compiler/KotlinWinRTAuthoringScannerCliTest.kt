@@ -4,6 +4,9 @@ import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeC
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringCandidateFile
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTAuthoredRuntimeClassDescriptor
+import io.github.composefluent.winrt.metadata.WinRTPortableExecutableInterfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter
 import io.github.composefluent.winrt.runtime.XamlFramework
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -15,6 +18,50 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 class KotlinWinRTAuthoringScannerCliTest {
+    @Test
+    fun xaml_application_items_follow_resolved_sdk_inheritance_for_both_frameworks() {
+        // XAMLC SourceFileManager sets IsApplication from XamlApplications. The Kotlin
+        // header scanner supplies that MSBuild item classification, including local bases.
+        for ((framework, namespace) in listOf("uwp" to "Windows.UI.Xaml", "winui" to "Microsoft.UI.Xaml")) {
+            val root = Files.createTempDirectory("kotlin-winrt-$framework-application-items-")
+            val kotlinNamespace = namespace.lowercase()
+            root.resolve("ApplicationBase.kt").writeText("package sample\nopen class ApplicationBase : $kotlinNamespace.Application()")
+            root.resolve("CustomApplication.kt").writeText("package sample\nclass CustomApplication : ApplicationBase()")
+            root.resolve("App.kt").writeText("package sample\nclass App : $kotlinNamespace.controls.Page()")
+            root.resolve("ProgrammaticApplication.kt").writeText("package sample\nclass ProgrammaticApplication : $kotlinNamespace.Application()")
+            for ((name, type) in listOf("CustomApplication" to "Application", "App" to "Page")) {
+                root.resolve("$name.xaml").writeText("""<$type xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.$name"/>""")
+            }
+            val index = root.resolve("index.tsv")
+            index.writeText("$namespace.Application\tRuntimeClass\t$namespace.IApplicationOverrides\n" +
+                "$namespace.IApplicationOverrides\tInterface\t\n" +
+                "$namespace.Controls.Page\tRuntimeClass\t$namespace.Controls.IPageOverrides\n" +
+                "$namespace.Controls.IPageOverrides\tInterface\t\n")
+            val sdk = root.resolve("XamlFramework.winmd")
+            // Header generation resolves declaring assemblies from WinMD references,
+            // independently of the compact authoring index used to find SDK bases.
+            val interfaces = listOf("IApplicationOverrides", "Controls.IPageOverrides", "Markup.IComponentConnector") +
+                if (framework == "uwp") listOf("Markup.IComponentConnector2") else emptyList()
+            WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd("XamlFramework",
+                interfaces = interfaces.map { relative ->
+                    val name = "$namespace.$relative"
+                    WinRTPortableExecutableInterfaceDescriptor(name, java.util.UUID.nameUUIDFromBytes(name.toByteArray()).toString())
+                }, runtimeClasses = listOf("Application" to "IApplicationOverrides", "Controls.Page" to "Controls.IPageOverrides").map { (type, contract) ->
+                    WinRTAuthoredRuntimeClassDescriptor("$namespace.$type", interfaceNames = listOf("$namespace.$contract"))
+                }, outputFile = sdk)
+            val output = root.resolve("KotlinXaml.winmd")
+            val items = root.resolve("applications.txt")
+            val args = arrayOf("--xaml-header", "--xaml-framework", framework,
+                "--metadata-index", index.toString(), "--source-root", root.toString(),
+                "--output", output.toString(), "--xaml-application-items", items.toString(), "--reference", sdk.toString())
+            KotlinWinRTAuthoringScannerCli.main(args)
+            assertEquals(listOf(root.resolve("CustomApplication.xaml").toString()), Files.readAllLines(items))
+            Files.delete(root.resolve("CustomApplication.xaml"))
+            KotlinWinRTAuthoringScannerCli.main(args)
+            assertEquals("", items.readText())
+        }
+    }
+
     @Test
     fun uwp_xaml_pages_export_both_versioned_component_connector_interfaces() {
         // Windows SDK markup.h owns IComponentConnector.Connect and IComponentConnector2.GetBindingConnector.
