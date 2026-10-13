@@ -99,6 +99,9 @@ internal object FeatureSwitches {
             testOverrides[propertyName] = booleanState(value)
         }
         cachedResults.remove(propertyName)
+        if (propertyName == UseWindowsUIXamlProjectionsPropertyName) {
+            XamlProjectionConfiguration.clearForTests()
+        }
         if (propertyName == TraceCcwPropertyName) {
             traceCcwState.store(0)
         }
@@ -112,6 +115,7 @@ internal object FeatureSwitches {
 
     @OptIn(ExperimentalAtomicApi::class)
     internal fun clearForTests() {
+        XamlProjectionConfiguration.clearForTests()
         cachedResults.clear()
         testOverrides.clear()
         traceCcwState.store(0)

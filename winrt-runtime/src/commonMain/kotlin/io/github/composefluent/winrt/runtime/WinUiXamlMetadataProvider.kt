@@ -1,9 +1,14 @@
 package io.github.composefluent.winrt.runtime
 
+open class XamlTypeReference(
+    pointer: RawAddress,
+    interfaceId: Guid = XamlInterfaceIds.IXamlType,
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId)
+
 class WinUiXamlTypeReference(
     pointer: RawAddress,
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlType,
-) : IUnknownReference(pointer.asRawComPtr(), interfaceId)
+) : XamlTypeReference(pointer, interfaceId)
 
 internal data class WinUiXamlXmlnsDefinition(
     val xmlNamespace: String,
@@ -15,11 +20,17 @@ internal data class WinUiXamlXmlnsDefinitionsResult(
     val definitions: List<WinUiXamlXmlnsDefinition>,
 )
 
-class WinUiXamlMetadataProviderReference(
+open class XamlMetadataProviderReference(
     pointer: RawAddress,
-    interfaceId: Guid = WinUiXamlInterfaceIds.IXamlMetadataProvider,
+    interfaceId: Guid = XamlInterfaceIds.IXamlMetadataProvider,
+    private val xamlTypeInterfaceId: Guid = XamlInterfaceIds.IXamlType,
 ) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
-    fun getXamlTypeByFullName(fullName: String): WinUiXamlTypeReference =
+    open fun getXamlTypeByFullName(fullName: String): XamlTypeReference? =
+        getXamlTypePointer(fullName).takeUnless(PlatformAbi::isNull)?.let { pointer ->
+            XamlTypeReference(pointer, xamlTypeInterfaceId)
+        }
+
+    protected fun getXamlTypePointer(fullName: String): RawAddress =
         HString.create(fullName).use { hString ->
             PlatformAbi.confinedScope().use { scope ->
                 val resultOut = PlatformAbi.allocatePointerSlot(scope)
@@ -31,9 +42,7 @@ class WinUiXamlMetadataProviderReference(
                         resultOut,
                     )
                 HResult(hr).requireSuccess()
-                IUnknownReference(PlatformAbi.readPointer(resultOut).asRawComPtr()).use { reference ->
-                    WinUiXamlTypeReference(reference.getRefPointer().asRawAddress(), WinUiXamlInterfaceIds.IXamlType)
-                }
+                PlatformAbi.readPointer(resultOut)
             }
         }
 
@@ -66,6 +75,15 @@ class WinUiXamlMetadataProviderReference(
                 definitionCount = definitionCount,
             )
         }
+}
+
+/** Compatibility surface that always uses WinUI identities, regardless of the host selection. */
+class WinUiXamlMetadataProviderReference(
+    pointer: RawAddress,
+    interfaceId: Guid = WinUiXamlInterfaceIds.IXamlMetadataProvider,
+) : XamlMetadataProviderReference(pointer, interfaceId, WinUiXamlInterfaceIds.IXamlType) {
+    override fun getXamlTypeByFullName(fullName: String): WinUiXamlTypeReference =
+        WinUiXamlTypeReference(getXamlTypePointer(fullName))
 }
 
 internal const val winUiXamlXmlnsDefinitionSizeBytes = 16L
@@ -178,6 +196,37 @@ object WinUiXamlMetadataProvider {
             initialized = true
         }
     }
+}
+
+/** Activates a component metadata provider using the selected XAML ABI. */
+object XamlMetadataProvider {
+    fun create(runtimeClassName: String): XamlMetadataProviderReference {
+        val abi = XamlProjectionConfiguration.abi
+        if (!XamlProjectionConfiguration.useWindowsUiXamlProjections) {
+            return WinUiXamlMetadataProvider.create(runtimeClassName)
+        }
+        return ActivationFactory.get(runtimeClassName).use { factory ->
+            factory.activateInstance().use { instance ->
+                instance.queryInterface(abi.metadataProvider).getOrThrow().use { reference ->
+                    XamlMetadataProviderReference(reference.getRefPointer().asRawAddress(), abi.metadataProvider, abi.type)
+                }
+            }
+        }
+    }
+
+    fun tryCreate(runtimeClassName: String): XamlMetadataProviderReference? =
+        runCatching { create(runtimeClassName) }.getOrNull()
+}
+
+/** Shared component-provider registrations; existing WinUI registrations use the same registry. */
+object XamlMetadataProviderRegistry {
+    fun register(runtimeClassName: String) = WinUiXamlMetadataProviderRegistry.register(runtimeClassName)
+
+    fun registeredRuntimeClassNames(): List<String> = WinUiXamlMetadataProviderRegistry.registeredRuntimeClassNames()
+
+    internal fun providerRuntimeClassNames(): List<String> =
+        listOfNotNull(XamlProjectionConfiguration.abi.defaultMetadataProviderRuntimeClassName) +
+            registeredRuntimeClassNames()
 }
 
 object WinUiXamlMetadataProviderRegistry {

@@ -1,9 +1,41 @@
-# WinUI XAML runtime contract
+# XAML runtime contract
 
-WinUI XAML support uses `WinUiXaml` names, including compiler-owned lifecycle
-interfaces that have no WinRT ABI identity. Generic ABI, projection and marshaling
-support retains `WinRT` names. Windows App SDK deployment and Appx packaging are
-separate responsibilities. This contract does not imply UWP XAML support.
+The shared metadata and managed lifecycle contracts serve WinUI and UWP XAML.
+Existing `WinUiXaml` lifecycle/model names remain compatible; neutral
+`XamlTypeDefinition` and `registerXamlTypeDefinition` names use the same implementation.
+Generic ABI, projection and marshaling support retains `WinRT` names. Windows App
+SDK deployment and Appx packaging are separate responsibilities.
+
+Hosts call `XamlRuntime.initialize(XamlFramework.WinUi)` or
+`XamlRuntime.initialize(XamlFramework.Uwp)` before registering projections or invoking
+user code. Repeating the same selection is allowed; changing it after explicit
+initialization or first projection use fails. Without explicit initialization,
+`KOTLIN_WINRT_USE_WINDOWS_UI_XAML_PROJECTIONS` supplies the existing process default.
+This follows CsWinRT's `Configuration/FeatureSwitches.cs` and `Projections.cs` mapping
+boundary. Shared XAML ABI helpers use `XamlInterfaceIds`; existing `WinUiXamlInterfaceIds`
+and `WinUiXamlMetadataProvider` retain their fixed WinUI behavior.
+
+The Windows SDK's UWP `IXamlType` omits WinUI's inline `BoxedType` member and exposes
+it on `IXamlType2` instead. `XamlTypeAbi` adapts the shared method bodies at the ABI
+boundary, including inherited calls. Application CCWs expose the selected
+`IXamlMetadataProvider`, and their member/type results use that framework's IIDs.
+UWP consults registered component providers without activating the Windows App SDK
+controls provider. No external providers yields an empty namespace array; unknown
+type lookup yields a null result with success. `UwpXamlRuntimeTest` verifies the
+real SDK interface identities and slots on synthetic COM objects. This runtime
+coverage does not establish packaged UWP application or AppContainer compatibility.
+
+Executable callback memory follows Windows SDK `memoryapi.h`'s APP wrapper at
+the final platform boundary. Both targets use `VirtualAllocFromApp` and
+`VirtualProtectFromApp` from the SDK's `api-ms-win-core-memory-l1-1-3.dll` import
+contract; these functions also support desktop processes. The shared path writes
+RW memory, changes it to RX, flushes the instruction cache and frees allocation
+failures. AppContainer requires the
+`codeGeneration` capability for RX, so a development tool's AppContainer sandbox
+without that capability cannot substitute for desktop or packaged UWP validation.
+Desktop executable-memory smoke covers allocation, protection and invocation;
+packaged UWP smoke must additionally exercise the capability and the bundled JVM's
+own executable memory, which is outside the Kotlin callback allocator.
 
 Generated sources and compiler/runtime artifacts must be rebuilt together after
 the `WinRTXaml` to `WinUiXaml` symbol rename. Existing Gradle task/configuration

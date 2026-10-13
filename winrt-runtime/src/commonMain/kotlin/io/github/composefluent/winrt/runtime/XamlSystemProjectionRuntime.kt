@@ -138,11 +138,11 @@ internal object XamlSystemProjectionRuntimeHooks {
     internal fun augmentInspectableDefinition(
         definition: WinRTCcwDefinition,
     ): WinRTCcwDefinition {
-        if (!FeatureSwitches.enableDefaultCustomTypeMappings || !shouldExposeWinUiXamlMetadataProvider(definition)) {
+        if (!FeatureSwitches.enableDefaultCustomTypeMappings || !shouldExposeXamlMetadataProvider(definition)) {
             return definition
         }
         return definition.copy(
-            interfaceDefinitions = definition.interfaceDefinitions + winUiXamlMetadataProviderInterfaceDefinition,
+            interfaceDefinitions = definition.interfaceDefinitions + metadataProviderInterfaceDefinition(),
         )
     }
 
@@ -179,38 +179,42 @@ internal object XamlSystemProjectionRuntimeHooks {
         return createCustomPropertyProviderDefinition().interfaceDefinitions.singleOrNull()
     }
 
-    private fun shouldExposeWinUiXamlMetadataProvider(definition: WinRTCcwDefinition): Boolean =
-        XamlProjectionConfiguration.supportsWinUiOnlyTypes &&
-            definition.interfaceDefinitions.any { it.interfaceId == WinUiXamlInterfaceIds.IApplicationOverrides } &&
-            definition.interfaceDefinitions.none { it.interfaceId == WinUiXamlInterfaceIds.IXamlMetadataProvider }
+    private fun shouldExposeXamlMetadataProvider(definition: WinRTCcwDefinition): Boolean =
+        definition.interfaceDefinitions.any { it.interfaceId == XamlInterfaceIds.IApplicationOverrides } &&
+            definition.interfaceDefinitions.none { it.interfaceId == XamlInterfaceIds.IXamlMetadataProvider }
 
-    private val winUiXamlMetadataProviderInterfaceDefinition =
-        WinRTInspectableInterfaceDefinition(
-            interfaceId = WinUiXamlInterfaceIds.IXamlMetadataProvider,
-            methods = listOf(
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
-                    forwardWinUiXamlMetadataProviderCall(
-                        slot = WinUiXamlMetadataProviderSlots.GetXamlType,
-                        arg0 = rawArgs[0] as RawAddress,
-                        arg1 = rawArgs[1] as RawAddress,
-                    )
-                },
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
-                    forwardWinUiXamlMetadataProviderCall(
-                        slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
-                        arg0 = rawArgs[0] as RawAddress,
-                        arg1 = rawArgs[1] as RawAddress,
-                    )
-                },
-                WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
-                    forwardWinUiXamlMetadataProviderCall(
-                        slot = WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions,
-                        arg0 = rawArgs[0] as RawAddress,
-                        arg1 = rawArgs[1] as RawAddress,
-                    )
-                },
-            ),
-        )
+    private val metadataProviderInterfaceDefinitions =
+        ConcurrentCacheMap<Guid, WinRTInspectableInterfaceDefinition>()
+
+    private fun metadataProviderInterfaceDefinition(): WinRTInspectableInterfaceDefinition =
+        metadataProviderInterfaceDefinitions.computeIfAbsent(XamlInterfaceIds.IXamlMetadataProvider) { interfaceId ->
+            WinRTInspectableInterfaceDefinition(
+                interfaceId = interfaceId,
+                methods = listOf(
+                    WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
+                        forwardWinUiXamlMetadataProviderCall(
+                            slot = WinUiXamlMetadataProviderSlots.GetXamlType,
+                            arg0 = rawArgs[0] as RawAddress,
+                            arg1 = rawArgs[1] as RawAddress,
+                        )
+                    },
+                    WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
+                        forwardWinUiXamlMetadataProviderCall(
+                            slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
+                            arg0 = rawArgs[0] as RawAddress,
+                            arg1 = rawArgs[1] as RawAddress,
+                        )
+                    },
+                    WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
+                        forwardWinUiXamlMetadataProviderCall(
+                            slot = WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions,
+                            arg0 = rawArgs[0] as RawAddress,
+                            arg1 = rawArgs[1] as RawAddress,
+                        )
+                    },
+                ),
+            )
+        }
 
     private fun forwardWinUiXamlMetadataProviderCall(
         slot: Int,
@@ -238,17 +242,10 @@ internal object XamlSystemProjectionRuntimeHooks {
             println("winrt-xaml-metadata: forward slot=$slot")
         }
         val providers = WinUiXamlMetadataProviderCache.getOrCreateAll()
-        if (providers.isEmpty() && typeName == null) {
-            return KnownHResults.E_NOINTERFACE.value.also {
-                if (FeatureSwitches.traceCcw) {
-                    println("winrt-xaml-metadata: provider unavailable hr=$it")
-                }
-            }
-        }
         if (slot == WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions) {
             return forwardXmlnsDefinitions(providers, arg0, arg1)
         }
-        var lastHr = KnownHResults.E_NOINTERFACE.value
+        var lastHr = KnownHResults.S_OK.value
         for (provider in providers) {
             PlatformAbi.writePointer(arg1, PlatformAbi.nullPointer)
             val hr = ComVtableInvoker.invokeArgs(
@@ -297,12 +294,15 @@ internal object XamlSystemProjectionRuntimeHooks {
         }
 
     private fun forwardXmlnsDefinitions(
-        providers: List<WinUiXamlMetadataProviderReference>,
+        providers: List<XamlMetadataProviderReference>,
         countOut: RawAddress,
         definitionsOut: RawAddress,
     ): Int {
         PlatformAbi.writeInt32(countOut, 0)
         PlatformAbi.writePointer(definitionsOut, PlatformAbi.nullPointer)
+        // An application with only its own generated types has no external providers.
+        // XamlCompiler's metadata-provider contract returns an empty definition array.
+        if (providers.isEmpty()) return KnownHResults.S_OK.value
 
         var lastHr = KnownHResults.E_NOINTERFACE.value
         var successfulProvider = false
@@ -388,11 +388,10 @@ internal object XamlSystemProjectionRuntimeHooks {
     private object WinUiXamlMetadataProviderCache {
         private val lock = PlatformLock()
         private var cacheKey: List<String> = emptyList()
-        private var providers: List<WinUiXamlMetadataProviderReference> = emptyList()
+        private var providers: List<XamlMetadataProviderReference> = emptyList()
 
-        fun getOrCreateAll(): List<WinUiXamlMetadataProviderReference> {
-            val runtimeClassNames = listOf(WinUiXamlMetadataProvider.providerRuntimeClassName) +
-                WinUiXamlMetadataProviderRegistry.registeredRuntimeClassNames()
+        fun getOrCreateAll(): List<XamlMetadataProviderReference> {
+            val runtimeClassNames = XamlMetadataProviderRegistry.providerRuntimeClassNames()
             if (runtimeClassNames == cacheKey) {
                 return providers
             }
@@ -402,7 +401,7 @@ internal object XamlSystemProjectionRuntimeHooks {
                 }
                 providers.forEach { it.close() }
                 providers = runtimeClassNames.mapNotNull { runtimeClassName ->
-                    WinUiXamlMetadataProvider.tryCreate(runtimeClassName).also { provider ->
+                    XamlMetadataProvider.tryCreate(runtimeClassName).also { provider ->
                         if (FeatureSwitches.traceCcw) {
                             println("winrt-xaml-metadata: provider $runtimeClassName available=${provider != null}")
                         }

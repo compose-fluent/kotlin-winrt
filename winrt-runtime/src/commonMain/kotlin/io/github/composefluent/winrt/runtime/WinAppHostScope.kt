@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 /**
- * Owns the process-level WinUI application environment and its UI apartment.
+ * Owns the process-level Windows application environment and its UI apartment.
  *
  * An application host is intentionally unique per process because its close operation drains
  * global projection state. Ordinary [RuntimeScope] instances remain nestable and independent.
@@ -57,6 +57,9 @@ object WinAppHostScope {
         var deployment: WindowsAppSdkDeployment.Scope? = null
         var runtime: RuntimeScope? = null
         try {
+            // Corresponds to CsWinRT's host-selected UseWindowsUIXamlProjections switch.
+            // Select before any projection initializer can publish framework-specific IIDs.
+            XamlRuntime.initialize(configuration.xamlFramework)
             deployment = WindowsAppSdkDeployment.initialize(
                 WindowsAppSdkDeploymentConfiguration(
                     mode = configuration.windowsAppSdkDeployment,

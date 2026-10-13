@@ -7,6 +7,12 @@ enum class WinAppPackageIdentity {
     Unpackaged,
 }
 
+/** Application activation/lifetime model, independent of the package format. */
+enum class WinAppApplicationModel {
+    Desktop,
+    Uwp,
+}
+
 internal val WinAppPackageIdentity.mddBootstrapInitializeOptions: Int
     get() = if (this == WinAppPackageIdentity.Packaged) {
         mddBootstrapInitializeOptionsOnPackageIdentityNoop
@@ -45,10 +51,27 @@ data class WinAppHostConfiguration(
     val windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
     val runtimeAssetsRoot: Path? = null,
     val windowsAppSdkVersion: WindowsAppSdkVersion? = null,
+    val applicationModel: WinAppApplicationModel = WinAppApplicationModel.Desktop,
+    val xamlFramework: XamlFramework = XamlFramework.WinUi,
 ) {
+    init {
+        if (applicationModel == WinAppApplicationModel.Uwp) {
+            require(packageIdentity == WinAppPackageIdentity.Packaged) {
+                "UWP applications require package identity and AppContainer activation."
+            }
+            require(windowsAppSdkDeployment == WindowsAppSdkDeploymentMode.None) {
+                "UWP applications use system XAML and must not bootstrap the Windows App SDK."
+            }
+            require(xamlFramework == XamlFramework.Uwp) {
+                "UWP applications require the Windows.UI.Xaml projection framework."
+            }
+        }
+    }
+
     /** Deployment metadata, kept outside the executable so packaging can reuse a linked host. */
     fun toStagedProperties(): String =
-        "schemaVersion=1\npackageIdentity=${packageIdentity.name}\nwindowsAppSdkDeployment=${windowsAppSdkDeployment.name}\n"
+        "schemaVersion=1\npackageIdentity=${packageIdentity.name}\nwindowsAppSdkDeployment=${windowsAppSdkDeployment.name}\n" +
+            "applicationModel=${applicationModel.name}\nxamlFramework=${xamlFramework.name}\n"
 
     companion object {
         const val STAGED_CONFIGURATION_FILE_NAME: String = "kotlin-winrt-host.properties"
@@ -73,6 +96,9 @@ data class WinAppHostConfiguration(
                 windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.valueOf(values["windowsAppSdkDeployment"]
                     ?: error("Missing windowsAppSdkDeployment in $properties.")),
                 runtimeAssetsRoot = root,
+                applicationModel = values["applicationModel"]?.let(WinAppApplicationModel::valueOf)
+                    ?: WinAppApplicationModel.Desktop,
+                xamlFramework = values["xamlFramework"]?.let(XamlFramework::valueOf) ?: XamlFramework.WinUi,
             )
         }
 
@@ -85,11 +111,16 @@ data class WinAppHostConfiguration(
             packageIdentity: WinAppPackageIdentity,
             windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             runtimeAssetsRoot: Path? = null,
+            applicationModel: WinAppApplicationModel = WinAppApplicationModel.Desktop,
+            xamlFramework: XamlFramework = XamlFramework.WinUi,
         ): WinAppHostConfiguration {
             if (!windowsAppSdkDeployment.requiresRuntimeAssets) {
                 return WinAppHostConfiguration(
                     packageIdentity = packageIdentity,
                     windowsAppSdkDeployment = windowsAppSdkDeployment,
+                    runtimeAssetsRoot = runtimeAssetsRoot,
+                    applicationModel = applicationModel,
+                    xamlFramework = xamlFramework,
                 )
             }
 
@@ -107,6 +138,8 @@ data class WinAppHostConfiguration(
                         WindowsAppSdkDeployment.readStagedVersion(root)
                     else -> null
                 },
+                applicationModel = applicationModel,
+                xamlFramework = xamlFramework,
             )
         }
     }

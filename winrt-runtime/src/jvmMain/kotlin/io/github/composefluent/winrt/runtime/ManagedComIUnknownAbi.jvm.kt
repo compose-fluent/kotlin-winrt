@@ -19,10 +19,10 @@ internal actual fun allocateWin64ExecutableCode(
         memCommit or memReserve,
         pageReadWrite,
     ) as MemorySegment
-    check(memory != MemorySegment.NULL) { "VirtualAlloc failed for $description." }
-    memory.reinterpret(code.size.toLong()).copyFrom(MemorySegment.ofArray(code))
+    check(memory != MemorySegment.NULL) { "VirtualAllocFromApp failed for $description." }
 
     try {
+        memory.reinterpret(code.size.toLong()).copyFrom(MemorySegment.ofArray(code))
         Arena.ofConfined().use { arena ->
             val oldProtect = arena.allocate(ValueLayout.JAVA_INT)
             check(
@@ -32,7 +32,7 @@ internal actual fun allocateWin64ExecutableCode(
                     pageExecuteRead,
                     oldProtect,
                 ) as Int) != 0,
-            ) { "VirtualProtect failed for $description." }
+            ) { "VirtualProtectFromApp failed for $description. AppContainer hosts require the codeGeneration capability." }
         }
         val process = win64ExecutableCodeSupport.getCurrentProcess() as MemorySegment
         check(
@@ -52,9 +52,12 @@ internal actual fun allocateWin64ExecutableCode(
 private object win64ExecutableCodeSupport {
     private val linker = Linker.nativeLinker()
     private val kernel32 = SymbolLookup.libraryLookup("kernel32", Arena.global())
+    // WindowsApp.lib imports these functions from this API set, not kernel32's exports.
+    // FromApp also supports desktop; AppContainer RX requires the codeGeneration capability.
+    private val appMemory = SymbolLookup.libraryLookup("api-ms-win-core-memory-l1-1-3.dll", Arena.global())
 
     val virtualAlloc: MethodHandle = downcall(
-        "VirtualAlloc",
+        "VirtualAllocFromApp",
         FunctionDescriptor.of(
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
@@ -62,9 +65,10 @@ private object win64ExecutableCodeSupport {
             ValueLayout.JAVA_INT,
             ValueLayout.JAVA_INT,
         ),
+        appMemory,
     )
     val virtualProtect: MethodHandle = downcall(
-        "VirtualProtect",
+        "VirtualProtectFromApp",
         FunctionDescriptor.of(
             ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS,
@@ -72,6 +76,7 @@ private object win64ExecutableCodeSupport {
             ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS,
         ),
+        appMemory,
     )
     val flushInstructionCache: MethodHandle = downcall(
         "FlushInstructionCache",
@@ -96,8 +101,14 @@ private object win64ExecutableCodeSupport {
         ),
     )
 
-    private fun downcall(name: String, descriptor: FunctionDescriptor): MethodHandle =
-        linker.downcallHandle(kernel32.find(name).orElseThrow(), descriptor)
+    private fun downcall(
+        name: String,
+        descriptor: FunctionDescriptor,
+        library: SymbolLookup = kernel32,
+    ): MethodHandle = linker.downcallHandle(
+        library.find(name).orElseThrow { UnsatisfiedLinkError("Missing Windows executable-memory entry point: $name") },
+        descriptor,
+    )
 }
 
 private const val memCommit = 0x00001000

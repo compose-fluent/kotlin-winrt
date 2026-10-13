@@ -38,14 +38,14 @@ import platform.windows.FlsAlloc
 import platform.windows.FlsSetValue
 import platform.windows.FlushInstructionCache
 import platform.windows.GetCurrentProcess
+import platform.windows.GetProcAddress
+import platform.windows.LoadLibraryExW
 import platform.windows.MEM_COMMIT
 import platform.windows.MEM_RELEASE
 import platform.windows.MEM_RESERVE
 import platform.windows.PAGE_EXECUTE_READ
 import platform.windows.PAGE_READWRITE
-import platform.windows.VirtualAlloc
 import platform.windows.VirtualFree
-import platform.windows.VirtualProtect
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.native.internal.GCUnsafeCall
@@ -54,26 +54,39 @@ internal actual fun allocateWin64ExecutableCode(
     code: ByteArray,
     description: String,
 ): RawAddress {
-    val memory = VirtualAlloc(
+    val memory = Win64ExecutableMemory.allocate(
         null,
         code.size.toULong(),
         MEM_COMMIT.toUInt() or MEM_RESERVE.toUInt(),
         PAGE_READWRITE.toUInt(),
-    ) ?: error("VirtualAlloc failed for $description.")
-    val bytes = memory.reinterpret<ByteVar>()
-    code.forEachIndexed { index, value -> bytes[index] = value }
-    memScoped {
-        val oldProtect = alloc<UIntVar>()
-        if (VirtualProtect(memory, code.size.toULong(), PAGE_EXECUTE_READ.toUInt(), oldProtect.ptr) == 0) {
-            VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-            error("VirtualProtect failed for $description.")
+    ) ?: error("VirtualAllocFromApp failed for $description.")
+    try {
+        val bytes = memory.reinterpret<ByteVar>()
+        code.forEachIndexed { index, value -> bytes[index] = value }
+        memScoped {
+            val oldProtect = alloc<UIntVar>()
+            check(Win64ExecutableMemory.protect(memory, code.size.toULong(), PAGE_EXECUTE_READ.toUInt(), oldProtect.ptr) != 0) {
+                "VirtualProtectFromApp failed for $description. AppContainer hosts require the codeGeneration capability."
+            }
+            check(FlushInstructionCache(GetCurrentProcess(), memory, code.size.toULong()) != 0) {
+                "FlushInstructionCache failed for $description."
+            }
         }
-        if (FlushInstructionCache(GetCurrentProcess(), memory, code.size.toULong()) == 0) {
-            VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-            error("FlushInstructionCache failed for $description.")
-        }
+    } catch (failure: Throwable) {
+        VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
+        throw failure
     }
     return memory.asRawAddress()
+}
+
+private object Win64ExecutableMemory {
+    // WindowsApp.lib imports these functions from this API set, not kernel32's exports.
+    // FromApp also supports desktop; AppContainer RX requires the codeGeneration capability.
+    private val appMemory = checkNotNull(LoadLibraryExW("api-ms-win-core-memory-l1-1-3.dll", null, 0u))
+    val allocate: CPointer<CFunction<(COpaquePointer?, ULong, UInt, UInt) -> COpaquePointer?>> =
+        checkNotNull(GetProcAddress(appMemory, "VirtualAllocFromApp")).reinterpret()
+    val protect: CPointer<CFunction<(COpaquePointer, ULong, UInt, CPointer<UIntVar>) -> Int>> =
+        checkNotNull(GetProcAddress(appMemory, "VirtualProtectFromApp")).reinterpret()
 }
 
 actual object ComVtableInvoker {
@@ -525,35 +538,10 @@ private class Win64ComCallbackTrampoline private constructor(
             parameterKinds: List<ComAbiValueKind>,
             callbackAddress: Long,
         ): Win64ComCallbackTrampoline {
-            val code = buildCode(callbackContext, parameterKinds, callbackAddress)
-            val memory = VirtualAlloc(
-                null,
-                code.size.toULong(),
-                MEM_COMMIT.toUInt() or MEM_RESERVE.toUInt(),
-                PAGE_READWRITE.toUInt(),
-            ) ?: error("VirtualAlloc failed for mingw COM callback trampoline.")
-            val bytes = memory.reinterpret<ByteVar>()
-            code.forEachIndexed { index, value -> bytes[index] = value }
-            protectExecutable(memory, code.size.toULong())
-            return Win64ComCallbackTrampoline(memory.asRawAddress())
-        }
-
-        private fun protectExecutable(
-            memory: COpaquePointer,
-            size: ULong,
-        ) {
-            memScoped {
-                val oldProtect = alloc<UIntVar>()
-                val protected = VirtualProtect(memory, size, PAGE_EXECUTE_READ.toUInt(), oldProtect.ptr)
-                if (protected == 0) {
-                    VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-                    error("VirtualProtect failed for mingw COM callback trampoline.")
-                }
-                if (FlushInstructionCache(GetCurrentProcess(), memory, size) == 0) {
-                    VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-                    error("FlushInstructionCache failed for mingw COM callback trampoline.")
-                }
-            }
+            return Win64ComCallbackTrampoline(allocateWin64ExecutableCode(
+                buildCode(callbackContext, parameterKinds, callbackAddress),
+                "mingw COM callback trampoline",
+            ))
         }
 
         private fun buildCode(
@@ -961,29 +949,8 @@ private object Win64ComHResultDispatcher {
         return method.invoke(target, arg0, arg1, arg2, arg3, arg4, arg5, arg6)
     }
 
-    private fun allocate(): RawAddress {
-        val code = buildCode()
-        val memory = VirtualAlloc(
-            null,
-            code.size.toULong(),
-            MEM_COMMIT.toUInt() or MEM_RESERVE.toUInt(),
-            PAGE_READWRITE.toUInt(),
-        ) ?: error("VirtualAlloc failed for mingw COM HRESULT dispatcher.")
-        val bytes = memory.reinterpret<ByteVar>()
-        code.forEachIndexed { index, value -> bytes[index] = value }
-        memScoped {
-            val oldProtect = alloc<UIntVar>()
-            if (VirtualProtect(memory, code.size.toULong(), PAGE_EXECUTE_READ.toUInt(), oldProtect.ptr) == 0) {
-                VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-                error("VirtualProtect failed for mingw COM HRESULT dispatcher.")
-            }
-            if (FlushInstructionCache(GetCurrentProcess(), memory, code.size.toULong()) == 0) {
-                VirtualFree(memory, 0u, MEM_RELEASE.toUInt())
-                error("FlushInstructionCache failed for mingw COM HRESULT dispatcher.")
-            }
-        }
-        return memory.asRawAddress()
-    }
+    private fun allocate(): RawAddress =
+        allocateWin64ExecutableCode(buildCode(), "mingw COM HRESULT dispatcher")
 
     private fun buildCode(): ByteArray {
         // Windows x64 ABI only: ARM64 must provide its own dispatcher in an ARM64 source set.

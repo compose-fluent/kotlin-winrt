@@ -10,6 +10,31 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class WindowsAppSdkDeploymentJvmTest {
+    @Test
+    fun staged_uwp_host_preserves_framework_and_assets_without_windows_app_sdk() {
+        val root = Files.createTempDirectory("kotlin-winrt-uwp-host-")
+        try {
+            val rootPath = kotlinx.io.files.Path(root.toString())
+            val expected = WinAppHostConfiguration(
+                packageIdentity = WinAppPackageIdentity.Packaged,
+                windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.None,
+                runtimeAssetsRoot = rootPath,
+                applicationModel = WinAppApplicationModel.Uwp,
+                xamlFramework = XamlFramework.Uwp,
+            )
+            Files.writeString(root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME), expected.toStagedProperties())
+            assertEquals(expected, WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath))
+            Files.writeString(root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME),
+                "schemaVersion=1\npackageIdentity=Packaged\nwindowsAppSdkDeployment=None\n")
+            val legacy = WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath)
+            assertEquals(WinAppApplicationModel.Desktop, legacy.applicationModel)
+            assertEquals(XamlFramework.WinUi, legacy.xamlFramework)
+        } finally {
+            Files.deleteIfExists(root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME))
+            Files.delete(root)
+        }
+    }
+
     // Windows App SDK bootstrap and self-contained deployment are selected at the host boundary,
     // independently of the Kotlin compilation, as in CsWinRT's WinUI desktop sample.
     @Test
