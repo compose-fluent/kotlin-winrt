@@ -3149,6 +3149,10 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
         }
         project.afterEvaluate {
             if (!kotlinWinRTLocalGenerationRequired(project).get()) return@afterEvaluate
+            // Metadata-only model/resource libraries have no projection KLIB.
+            // Keep their authoring/XAML pipeline, but do not publish or depend on
+            // the nonexistent output of the NO-SOURCE projection compilation.
+            if (!generateTask.get().emitProjectionSources.get()) return@afterEvaluate
             project.configurations.getByName(projection.defaultSourceSet.implementationConfigurationName)
                 .withDependencies { dependencies ->
                     val seen = linkedSetOf<String>()
