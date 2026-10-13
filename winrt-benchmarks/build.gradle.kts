@@ -2,6 +2,7 @@ import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.testing.Test
+import groovy.json.JsonOutput
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -351,6 +352,10 @@ val benchmarkCatalogParity by tasks.registering(Exec::class) {
     )
 }
 
+// Catalog tasks also build reference executables; their external source inputs are not Gradle inputs.
+benchmarkCsWinRTCatalog { outputs.upToDateWhen { false } }
+benchmarkCppWinRTCatalog { outputs.upToDateWhen { false } }
+
 benchmarkCppWinRT {
     mustRunAfter("compileKotlinJvm", "linkReleaseExecutableMingwX64")
 }
@@ -389,6 +394,53 @@ tasks.register("benchmarkAll") {
     group = "benchmark"
     description = "Runs Kotlin/JVM, Kotlin/Native, CsWinRT, and C++/WinRT and generates a comparison report."
     dependsOn(benchmarkReport)
+}
+
+// Build once, then measure saved binaries without Gradle/compiler activity in the timed run.
+tasks.register("benchmarkSnapshot") {
+    group = "benchmark"
+    description = "Saves all four runners and their catalogs for isolated, repeatable performance comparisons."
+    dependsOn(benchmarkCatalogParity)
+    notCompatibleWithConfigurationCache("Copies resolved runner launch configuration into a standalone snapshot")
+    doLast {
+        val destination = file(providers.gradleProperty("kotlinWinRT.benchmarks.snapshot")
+            .getOrElse(layout.buildDirectory.dir("benchmark-snapshot").get().asFile.absolutePath))
+        check(!destination.exists()) { "Use a new snapshot directory: $destination" }
+        destination.mkdirs()
+        fun copyTree(source: File, name: String): File = destination.resolve(name).also { target ->
+            check(source.exists()) { "Missing snapshot input: $source" }
+            source.copyRecursively(target, overwrite = false)
+        }
+        val assets = copyTree(referenceBenchmarkComponentDirectory.get().asFile, "assets")
+        val jvm = benchmarkKotlinJvm.get()
+        val jars = jvm.classpath.files.mapIndexed { index, source ->
+            copyTree(source, "jvm/${index.toString().padStart(3, '0')}-${source.name}").absolutePath
+        }
+        val native = copyTree(layout.buildDirectory.file("bin/mingwX64/releaseExecutable/winrt-benchmarks.exe").get().asFile,
+            "native/winrt-benchmarks.exe")
+        val cpp = copyTree(file("cppwinrt/bin/x64/Release"), "cppwinrt")
+        val cs = copyTree(file("cswinrt/bin/Release/net8.0-windows10.0.19041.0/win-x64"), "cswinrt")
+        copyTree(benchmarkCatalogDirectory.get().asFile, "catalogs")
+        val properties = jvm.systemProperties + ("kotlin.winrt.runtimeAssetsRoot" to assets.absolutePath)
+        val runners = listOf(
+            mapOf("name" to "kotlin-native", "executable" to native.absolutePath, "arguments" to emptyList<String>(),
+                "environment" to mapOf("KOTLIN_WINRT_RUNTIME_ASSETS_ROOT" to assets.absolutePath), "managedMemory" to true),
+            mapOf("name" to "cppwinrt", "executable" to cpp.resolve("cppwinrt-benchmark.exe").absolutePath,
+                "arguments" to emptyList<String>(), "environment" to emptyMap<String, String>(), "managedMemory" to false),
+            mapOf("name" to "cswinrt", "executable" to cs.resolve("CsWinRTBenchmark.exe").absolutePath,
+                "arguments" to emptyList<String>(), "environment" to emptyMap<String, String>(), "managedMemory" to true),
+            mapOf("name" to "kotlin-jvm", "executable" to jvm.javaLauncher.get().executablePath.asFile.absolutePath,
+                "arguments" to (jvm.jvmArgs + properties.map { (key, value) -> "-D$key=$value" } +
+                    listOf("-cp", jars.joinToString(File.pathSeparator), jvm.mainClass.get())),
+                "environment" to emptyMap<String, String>(), "managedMemory" to true),
+        )
+        val revision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.get().trim()
+        val status = providers.exec { commandLine("git", "status", "--porcelain", "--untracked-files=no") }
+            .standardOutput.asText.get().trim()
+        destination.resolve("snapshot.json").writeText(JsonOutput.prettyPrint(JsonOutput.toJson(
+            mapOf("schemaVersion" to 1, "revision" to revision, "trackedChanges" to status, "runners" to runners))))
+        logger.lifecycle("Benchmark snapshot: ${destination.absolutePath}")
+    }
 }
 
 windows {

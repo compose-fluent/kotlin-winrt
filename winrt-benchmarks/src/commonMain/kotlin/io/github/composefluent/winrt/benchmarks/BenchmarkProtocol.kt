@@ -23,6 +23,7 @@ internal data class BenchmarkOptions(
     val outputPath: String? = null,
     val filter: Set<String> = emptySet(),
     val listScenarios: Boolean = false,
+    val memory: Boolean = false,
 )
 
 internal data class BenchmarkScenario(
@@ -53,6 +54,7 @@ internal data class BenchmarkResult(
     val p95NsPerOp: Double,
     val checksum: Long,
     val samplesNsPerOp: List<Double>,
+    val memory: BenchmarkMemoryResult? = null,
 )
 
 internal expect object BenchmarkPlatform {
@@ -69,6 +71,7 @@ internal fun parseBenchmarkOptions(args: Array<String>): BenchmarkOptions {
     var outputPath: String? = null
     var filter = emptySet<String>()
     var listScenarios = false
+    var memory = false
     var index = 0
 
     fun nextValue(option: String): String {
@@ -91,6 +94,7 @@ internal fun parseBenchmarkOptions(args: Array<String>): BenchmarkOptions {
                 .toSet()
                 .also { require(it.isNotEmpty()) { "$option must select at least one scenario." } }
             "--list-scenarios" -> listScenarios = true
+            "--memory" -> memory = true
             else -> error("Unknown benchmark option '$option'.")
         }
         index += 1
@@ -103,6 +107,7 @@ internal fun parseBenchmarkOptions(args: Array<String>): BenchmarkOptions {
         outputPath = outputPath,
         filter = filter,
         listScenarios = listScenarios,
+        memory = memory,
     )
 }
 
@@ -210,6 +215,7 @@ private fun runScenario(
         p95NsPerOp = nearestRankPercentile(sortedSamples, 0.95),
         checksum = expectedSingleChecksum,
         samplesNsPerOp = samples,
+        memory = if (options.memory) measureBenchmarkMemory(prepared, iterations, expectedChecksum) else null,
     )
 }
 
@@ -359,7 +365,9 @@ private fun BenchmarkResult.toJson(): String = buildString {
     append(checksum)
     append(",\"samplesNsPerOp\":[")
     samplesNsPerOp.joinTo(this, separator = ",")
-    append("]}")
+    append("]")
+    memory?.let { append(",\"memory\":").append(it.toJson()) }
+    append("}")
 }
 
 private fun String.escapeJson(): String = buildString(length) {

@@ -5,6 +5,7 @@ namespace KotlinWinRT.Benchmarks.CsWinRT;
 internal static class ReferenceScenarios
 {
     private static object? objectResultSink;
+    internal static void ClearResultSink() => Volatile.Write(ref objectResultSink, null);
 
     internal const int ExpectedScenarioCount = 97;
 

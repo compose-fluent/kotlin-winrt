@@ -156,7 +156,32 @@ internal static class Program
             Median(sortedSamples),
             NearestRankPercentile(sortedSamples, 0.95),
             expectedSingleChecksum,
-            samples);
+            samples,
+            options.Memory ? MeasureMemory(scenario, iterations, expectedChecksum) : null);
+    }
+
+    // Companion to the reference [MemoryDiagnoser], outside timed samples. The allocation
+    // counter covers this thread's managed heap, not worker threads or native COM allocations.
+    private static object MeasureMemory(PreparedBenchmarkScenario scenario, int iterations, long expected)
+    {
+        static long CollectedHeap()
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            return GC.GetTotalMemory(forceFullCollection: true);
+        }
+        ReferenceScenarios.ClearResultSink();
+        long heapBefore = CollectedHeap();
+        _ = GC.GetAllocatedBytesForCurrentThread();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        long checksum = scenario.RunBatch(iterations);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        if (checksum != expected) throw new InvalidOperationException("Memory diagnostic checksum mismatch.");
+        ReferenceScenarios.ClearResultSink();
+        long heapAfter = CollectedHeap();
+        return new { operations = iterations, allocatedBytes = allocated,
+            allocationScope = "current-thread-managed-only", heapBeforeBytes = heapBefore,
+            heapAfterBytes = heapAfter, retainedHeapDeltaBytes = heapAfter - heapBefore };
     }
 
     private static WarmupResult WarmUp(
@@ -237,6 +262,7 @@ internal static class Program
         string? outputPath = null;
         var filter = new HashSet<string>(StringComparer.Ordinal);
         bool listScenarios = false;
+        bool memory = false;
 
         string NextValue(ref int index, string option)
         {
@@ -280,12 +306,15 @@ internal static class Program
                 case "--list-scenarios":
                     listScenarios = true;
                     break;
+                case "--memory":
+                    memory = true;
+                    break;
                 default:
                     throw new InvalidOperationException($"Unknown benchmark option '{option}'.");
             }
         }
 
-        return new BenchmarkOptions(warmupRounds, measurementRounds, iterations, outputPath, filter, listScenarios);
+        return new BenchmarkOptions(warmupRounds, measurementRounds, iterations, outputPath, filter, listScenarios, memory);
     }
 
     private static int ParseNonNegativeInt(string value, string option) =>
@@ -304,7 +333,8 @@ internal static class Program
         int Iterations,
         string? OutputPath,
         HashSet<string> Filter,
-        bool ListScenarios);
+        bool ListScenarios,
+        bool Memory);
 
     private sealed record BenchmarkResult(
         int SchemaVersion,
@@ -321,7 +351,8 @@ internal static class Program
         double MedianNsPerOp,
         double P95NsPerOp,
         long Checksum,
-        double[] SamplesNsPerOp);
+        double[] SamplesNsPerOp,
+        object? Memory);
 
     private readonly record struct WarmupResult(int Rounds, long Operations);
 

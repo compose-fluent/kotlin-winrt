@@ -76,3 +76,40 @@ Use Gradle properties to tune a run without changing the shared protocol. `warmu
 Results are written under `winrt-benchmarks/build/results/benchmarks`; the comparison report is written under `winrt-benchmarks/build/reports/benchmarks`.
 
 For stable numbers, close unrelated workloads, use a fixed power mode, and compare repeated full runs. The benchmark reports ratios but intentionally does not enforce a pass/fail threshold until a repository baseline and accepted noise budget are established.
+
+## Saved binaries, independent forks, and memory
+
+Build a new, immutable snapshot before changing runtime code (use a different directory after the change):
+
+```powershell
+.\gradlew.bat :winrt-benchmarks:benchmarkSnapshot '-PkotlinWinRT.benchmarks.snapshot=E:/bench-results/before'
+pwsh -File winrt-benchmarks/scripts/Measure-BenchmarkSnapshot.ps1 -Snapshot E:/bench-results/before -OutputDirectory E:/bench-results/before-timing
+pwsh -File winrt-benchmarks/scripts/Measure-BenchmarkSnapshot.ps1 -Snapshot E:/bench-results/before -OutputDirectory E:/bench-results/before-memory -Memory
+```
+
+The script runs all 97 scenarios on all four runners, with three fresh process forks per scenario by default. Builds finish before measurement. Each fork uses eight minimum warmup rounds and 25 timing samples; runner order reverses on alternate forks. A timeout fails the run instead of silently omitting a scenario. `-Runners`, `-Scenarios`, and `-Forks` narrow diagnostic runs; use the unfiltered matrix for validation. Snapshots record revision, tracked working-tree changes, launch arguments, binaries, reference assets, and catalogs. Keep the snapshot at its original absolute path, and retain the configured JVM/.NET installations.
+
+Compare completed runs with `Compare-BenchmarkSnapshots.ps1 -Before <before-results> -After <after-results> -OutputPath <comparison.json>`. It rejects incomplete matrices, duplicate forks, protocol/checksum mismatches, and mixing timing with memory mode. It reports medians across forks plus the individual fork values; overlapping ranges require more runs before claiming a gain or regression.
+
+`measurements.jsonl` contains timings and 50 ms samples of process working set and private bytes. These include process startup, runtime, native COM allocations, and allocator reserve; they are not live object size. In `-Memory` mode a separate, checksum-validated batch after timing records:
+
+* JVM and CsWinRT: current-thread managed allocated bytes and operation count. Divide to obtain B/op; worker-thread and native allocations are excluded.
+* JVM, Native and CsWinRT: managed heap occupancy before and after that batch, with two collection requests and the result sink cleared. Scenario setup stays alive. Deltas may be negative and are not proof of a leak or a per-operation allocation count.
+* Native: cumulative allocated bytes are explicitly `null`/`unavailable`; the public `GC.lastGCInfo` API provides occupancy, not a cumulative allocation counter. C++ has no managed heap metrics. Both still have process memory samples.
+
+Run memory diagnostics separately from timing comparisons because forced collections change subsequent execution. Per-scenario process isolation prevents previous scenarios from retaining objects or filling caches. Native collections are synchronous; JVM collection requests rely on the standard JVM configuration (do not disable explicit GC). Native memory excludes COM/native heaps; use the process measurements alongside it.
+
+The 97 scenarios match reference *operations*, not necessarily equal projection work. For example, `ExecuteMarshalingForExistingArray` and `ExecuteMarshalingForExistingNullable` return `IInspectable` in C++, whereas CsWinRT/Kotlin project boxed values into language values. These ratios include unboxing/projection costs and must not be described as pure ABI-call overhead. Keep the original catalog unchanged for continuity.
+
+## Compilation performance
+
+Measure compilation independently, without runtime benchmarks competing for CPU:
+
+```powershell
+pwsh -File winrt-benchmarks/scripts/Measure-Compilation.ps1 `
+  -BuildTask :winrt-runtime:compileKotlinMingwX64 -CleanTask :winrt-runtime:clean `
+  -ProbeFile E:/repo/kotlin-winrt/winrt-runtime/src/commonMain/kotlin/CompilationBenchmarkProbe.kt `
+  -OutputDirectory E:/bench-results/native-compile
+```
+
+Use `:winrt-runtime:compileKotlinJvm` for JVM, or specify a sample's build/link and clean tasks to measure the full projection/application pipeline. The probe must be a new `.kt` file in a compiled source set. The script preserves existing files, changes the probe's function body, and removes it in `finally`. Three rounds measure selected-module clean builds, unchanged builds, and single-file body edits; cleaning is outside the timed build. Build cache and configuration cache are disabled, dependency caches are retained, and Gradle daemon startup can affect the first round. Each result includes task outcomes and a Gradle profile for inspecting compile/link costs. Compare identical tasks, toolchain, arguments, and machine conditions; this is not a cold dependency-download benchmark. `-GradleArguments` passes machine-specific settings or init scripts without changing repository configuration.

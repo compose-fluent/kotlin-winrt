@@ -8,6 +8,21 @@ import kotlin.test.assertTrue
 
 class BenchmarkProtocolTest {
     @Test
+    fun memoryDiagnosticsValidateWorkAndKeepUnavailableAllocationExplicit() {
+        assertTrue(parseBenchmarkOptions(arrayOf("--memory")).memory)
+        var operations = 0
+        val prepared = PreparedBenchmarkScenario(runBatch = { count -> operations += count; count * 7L })
+        val measured = measureBenchmarkMemory(prepared, 10, 70)
+        assertEquals(10, operations)
+        assertEquals(10, measured.operations)
+        assertTrue(measured.heapBeforeBytes >= 0)
+        assertTrue(measured.heapAfterBytes >= 0)
+        assertFailsWith<IllegalStateException> { measureBenchmarkMemory(prepared, 1, 99) }
+        assertTrue(BenchmarkMemoryResult(1, null, "unavailable", 20, 10).toJson()
+            .contains("\"allocatedBytes\":null"))
+    }
+
+    @Test
     fun parsesSharedRunnerOptions() {
         assertEquals(
             BenchmarkOptions(
