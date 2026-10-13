@@ -12,8 +12,11 @@ internal class WinRTDelegateComObject(
     // common path as a nullable callback instead of allocating a synchronized SnapshotList for
     // every delegate instance. If another owner ever needs a second hook, compose it here without
     // changing the host/lifetime contract.
-    private val callbackReference = PlatformManagedWeakReference(callback)
-    private val targetReference = PlatformManagedWeakReference(managedTarget)
+    // CsWinRT EventHandler.Do_Abi_Invoke recovers its delegate from the CCW's
+    // managed binding. Reuse that lifetime state when the callback is the target;
+    // only a distinct compatibility callback needs its own weak reference.
+    private val callbackReference = callback.takeUnless { it === managedTarget }
+        ?.let(::PlatformManagedWeakReference)
     private val cleanupState = CleanupState()
     private val host = createHost(managedTarget, callback)
 
@@ -22,12 +25,17 @@ internal class WinRTDelegateComObject(
             ?: throw WinRTObjectDisposedException("Delegate COM host is already closed.")
 
     fun tryCreateReference(knownManagedValue: Any? = null): WinRTDelegateReference? =
-        host.tryCreateReference(descriptor.interfaceId, knownManagedValue ?: targetReference.get())?.let { reference ->
+        host.tryCreateReference(descriptor.interfaceId, knownManagedValue ?: host.managedValue)?.let { reference ->
             WinRTDelegateReference(reference.comPtr, descriptor)
         }
 
     internal fun tryAcquireMarshalingReference(knownManagedValue: Any? = null): RawAddress? =
-        (knownManagedValue ?: targetReference.get())?.let { host.tryAcquireReference(descriptor.interfaceId, it) }
+        (knownManagedValue ?: host.managedValue)?.let { host.tryAcquireReference(descriptor.interfaceId, it) }
+
+    @Suppress("UNCHECKED_CAST")
+    internal fun callback(): (List<Any?>) -> Any? =
+        (if (callbackReference == null) host.managedValue as? ((List<Any?>) -> Any?) else callbackReference.get())
+            ?: throw WinRTObjectDisposedException("Delegate target was collected.")
 
     fun releaseManagedReference() {
         if (host.state.borrowReady) host.releaseInitialReference() else host.releaseManagedReference()
@@ -48,7 +56,7 @@ internal class WinRTDelegateComObject(
     private fun invoke(rawArguments: List<Any?>): Int =
         WinRTDelegateInvocationSupport.invoke(
             descriptor,
-            callbackReference.get() ?: throw WinRTObjectDisposedException("Delegate target was collected."),
+            callback(),
             rawArguments,
         )
 

@@ -15,10 +15,7 @@ class WinRTDelegateHandle internal constructor(
     private val managedReferenceReleased = AtomicInt(0)
     private var ownedCallback: ((List<Any?>) -> Any?)? = callback
     private var ownedTarget: Any? = managedTarget
-    private val callbackReference = PlatformManagedWeakReference(callback)
-
-    private fun callback(): (List<Any?>) -> Any? = ownedCallback ?: callbackReference.get()
-        ?: throw WinRTObjectDisposedException("Delegate callback was collected.")
+    private fun callback(): (List<Any?>) -> Any? = ownedCallback ?: comObject.callback()
 
     fun invokeForTesting(arguments: List<Any?>): Any? {
         check(closed.load() == 0) { "Delegate handle is already closed." }

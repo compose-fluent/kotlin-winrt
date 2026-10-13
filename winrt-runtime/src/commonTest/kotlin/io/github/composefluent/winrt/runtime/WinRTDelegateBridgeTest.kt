@@ -40,6 +40,55 @@ private fun invokeStaticLongDelegate(
 
 class WinRTDelegateBridgeTest {
     @Test
+    fun delegate_callback_survives_native_ownership_through_the_shared_binding() {
+        // CsWinRT EventHandler.Do_Abi_Invoke retrieves the delegate from its CCW;
+        // the native reference, rather than redundant weak wrappers, pins the target.
+        var cleanupCalls = 0
+        fun createCapturedDelegate(): WinRTDelegateHandle {
+            val value = intArrayOf(37)
+            return WinRTDelegateBridge.createDelegate(
+                iid = Guid("ed4220ca-a86f-49d6-a33f-f466dff3fa54"),
+                parameterKinds = emptyList(), returnKind = WinRTDelegateValueKind.INT32,
+            ) { value.single() }
+        }
+        val handle = createCapturedDelegate()
+        handle.addCleanupAction { cleanupCalls++ }
+        handle.createReference().use { reference ->
+            handle.releaseManagedReferenceForNativeOwnership()
+            PlatformFinalization.drain()
+            assertEquals(37, reference.invoke(emptyList()))
+            assertEquals(37, handle.invokeForTesting(emptyList()))
+            handle.createReference().use { assertEquals(reference.pointer, it.pointer) }
+            assertEquals(0, cleanupCalls)
+        }
+        assertEquals(1, cleanupCalls)
+        handle.close()
+        assertEquals(1, cleanupCalls)
+    }
+
+    @Test
+    fun distinct_compatibility_callback_is_not_replaced_by_the_managed_target() {
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("447d2501-64c8-4acf-b746-5f41f978bd20"),
+            parameterKinds = emptyList(), returnKind = WinRTDelegateValueKind.INT32,
+        )
+        val callback: (List<Any?>) -> Any? = { 17 }
+        val target: (List<Any?>) -> Any? = { 99 }
+        val comObject = WinRTDelegateComObject(descriptor, callback, target)
+        val handle = WinRTDelegateHandle(descriptor, callback, target, comObject, comObject::releaseManagedReference)
+        try {
+            handle.createReference().use { reference ->
+                handle.releaseManagedReferenceForNativeOwnership()
+                assertEquals(17, handle.invokeForTesting(emptyList()))
+                assertEquals(17, reference.invoke(emptyList()))
+                assertSame(callback, comObject.callback())
+            }
+        } finally {
+            handle.close()
+        }
+    }
+
+    @Test
     fun delegate_callback_projects_borrowed_pointer_using_its_declared_type() {
         // CsWinRT ComWrappersSupport.GetRuntimeClassForTypeCreation uses the static
         // parameter type when the native runtime class is unavailable or differs.
