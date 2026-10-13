@@ -317,17 +317,19 @@ internal object AppxManifestPackageSupport {
         applicationManifest: Path,
         candidateArchives: Iterable<Path>,
         runtimeIdentifier: String,
+        installedFrameworks: List<PackageDependency> = emptyList(),
     ): List<Path> = selectFrameworkPackageArchives(
         readPackageDependencies(
             secureDocumentBuilderFactory().newDocumentBuilder().parse(applicationManifest.toFile()),
             applicationManifest,
-        ), candidateArchives, runtimeIdentifier,
+        ), candidateArchives, runtimeIdentifier, installedFrameworks,
     )
 
     private fun selectFrameworkPackageArchives(
         requirements: List<RequiredPackageDependency>,
         candidateArchives: Iterable<Path>,
         runtimeIdentifier: String,
+        installedFrameworks: List<PackageDependency> = emptyList(),
     ): List<Path> {
         if (requirements.isEmpty()) return emptyList()
 
@@ -339,6 +341,16 @@ internal object AppxManifestPackageSupport {
             .distinctBy { (archive, _) -> archive.toString().lowercase() }
         val selected = linkedMapOf<String, Path>()
         requirements.forEach { requirement ->
+            // Development registration can use an already installed framework, just as
+            // Add-AppxPackage does. Packaged/distributable selection still requires archives.
+            if (installedFrameworks.any { installed ->
+                installed.name.equals(requirement.name, true) &&
+                    installed.publisher.equals(requirement.publisher, true) &&
+                    compareVersions(installed.version, requirement.minVersion) >= 0 &&
+                    architectureMatchesRuntime(installed.processorArchitecture, runtimeIdentifier) &&
+                    (requirement.processorArchitecture == null ||
+                        architectureMatchesRuntime(requirement.processorArchitecture, runtimeIdentifier))
+            }) return@forEach
             val match = candidates
                 .asSequence()
                 .filter { (_, dependency) ->

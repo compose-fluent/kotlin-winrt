@@ -25,6 +25,10 @@ import java.nio.file.StandardCopyOption
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.io.ByteArrayOutputStream
 
 /** Package-aware development launch, corresponding to CsWinRT's MsixPackage launch profiles. */
 @DisableCachingByDefault(because = "Registers and launches a development package in the local Windows user profile.")
@@ -140,6 +144,34 @@ abstract class RunWinAppPackageTask @Inject constructor(
         outputs.upToDateWhen { false }
     }
 
+    private fun installedFrameworks(): List<AppxManifestPackageSupport.PackageDependency> {
+        val output = ByteArrayOutputStream()
+        execOperations.exec { spec ->
+            spec.commandLine(powerShellExecutable.get(), "-NoProfile", "-Command", """
+                ${'$'}ErrorActionPreference = 'Stop'
+                [Console]::OutputEncoding = [Text.UTF8Encoding]::new(${'$'}false)
+                Get-AppxPackage -PackageTypeFilter Framework | ForEach-Object {
+                    @{ name=${'$'}_.Name; publisher=${'$'}_.Publisher;
+                       version=${'$'}_.Version.ToString(); architecture=${'$'}_.Architecture.ToString() }
+                } | ConvertTo-Json -Compress
+            """.trimIndent())
+            spec.standardOutput = output
+        }
+        val text = output.toString(Charsets.UTF_8).trim()
+        if (text.isEmpty()) return emptyList()
+        val json = Json.parseToJsonElement(text)
+        val entries = if (json is JsonArray) json.toList() else listOf(json)
+        return entries.map { entry ->
+            val item = entry.jsonObject
+            AppxManifestPackageSupport.PackageDependency(
+                name = item.getValue("name").jsonPrimitive.content,
+                version = item.getValue("version").jsonPrimitive.content,
+                publisher = item.getValue("publisher").jsonPrimitive.content,
+                processorArchitecture = item.getValue("architecture").jsonPrimitive.content,
+            )
+        }
+    }
+
     @TaskAction
     fun run() {
         if (!isWindowsHost()) {
@@ -187,6 +219,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
                     restoredRoots, runtimeIdentifier.get(),
                 ),
                 runtimeIdentifier = runtimeIdentifier.get(),
+                installedFrameworks = installedFrameworks(),
             )
             val script = temporaryDir.toPath().resolve("run-uwp.ps1")
             val configuration = temporaryDir.toPath().resolve("run-uwp.json")

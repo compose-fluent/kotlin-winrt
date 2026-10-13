@@ -358,6 +358,29 @@ class AppxManifestPackageSupportTest {
     }
 
     @Test
+    fun development_registration_accepts_only_matching_installed_frameworks() {
+        // UWP development registration follows Add-AppxPackage's framework identity
+        // contract; an installed dependency need not have a local installer archive.
+        val manifest = Files.createTempFile("installed-framework-", ".xml")
+        Files.writeString(manifest, """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Dependencies><PackageDependency Name="Framework" MinVersion="3.0.0.0"
+                Publisher="CN=Framework" ProcessorArchitecture="x64" /></Dependencies>
+            </Package>
+        """.trimIndent())
+        val installed = AppxManifestPackageSupport.PackageDependency("Framework", "3.1.0.0", "CN=Framework", "x64")
+        fun select(dependency: AppxManifestPackageSupport.PackageDependency) =
+            AppxManifestPackageSupport.selectFrameworkPackageArchivesForManifest(
+                manifest, emptyList(), "win-x64", listOf(dependency),
+            )
+        assertTrue(select(installed).isEmpty())
+        listOf(
+            installed.copy(name = "Other"), installed.copy(publisher = "CN=Other"),
+            installed.copy(version = "2.9.0.0"), installed.copy(processorArchitecture = "x86"),
+        ).forEach { mismatch -> assertTrue(runCatching { select(mismatch) }.exceptionOrNull() is IllegalArgumentException) }
+    }
+
+    @Test
     fun reports_the_manifest_identity_when_no_framework_archive_satisfies_it() {
         val root = Files.createTempDirectory("kotlin-winrt-framework-selection-missing-")
         val application = root.resolve("application.msix")
