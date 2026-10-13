@@ -1,10 +1,12 @@
 <Page x:Class="io.github.composefluent.winrt.samples.uwp.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
     <StackPanel Margin="32" Spacing="16">
         <TextBlock Text="{x:Bind greeting}" FontSize="28" Foreground="{StaticResource SampleAccent}" />
         <TextBlock Text="Windows.UI.Xaml · AppContainer · JVM and Kotlin/Native" />
         <Button x:Name="incrementButton" Content="Increment" Click="onIncrement" />
         <TextBlock x:Name="resultText" Text="Ready" />
+        <muxc:NumberBox Header="WinUI 2 NumberBox" Value="2" SpinButtonPlacementMode="Inline" ValueChanged="onNumberChanged" />
     </StackPanel>
 </Page>

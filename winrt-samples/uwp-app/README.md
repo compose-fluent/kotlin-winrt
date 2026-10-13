@@ -1,8 +1,9 @@
 # UWP XAML 示例
 
-本模块使用 Windows 自带的 `Windows.UI.Xaml`，同时声明 Kotlin/JVM 和
+本模块使用 Windows 自带的 `Windows.UI.Xaml` 及 WinUI 2 的 `NumberBox`，同时声明 Kotlin/JVM 和
 Kotlin/Native `mingwX64` 目标。页面包含应用资源、`x:Bind`、具名控件和按钮事件，
-用于检查投影、XAML 加载及托管对象回调的完整链路。
+用于检查投影、XAML 加载及托管对象回调的完整链路。WinUI 2 来自固定版本
+`Microsoft.UI.Xaml` NuGet 包 `2.8.7`，通过应用资源字典加载控件样式。
 
 ## 应用模型与源代码
 
@@ -53,6 +54,9 @@ Windows C/C++ 构建工具和编译器包声明所需的 .NET Framework。示例
 UWP 必须使用配套 `kotlin-winrt-xamlc` 仓库 `codex/uwp-support` 分支构建的 UWP
 编译器包。该分支已有本地构建包；本模块通过 `compilerDirectory` 指向解包后的目录。
 插件默认下载的 WinUI 编译器包不能用于 UWP。
+
+本地验证使用 `0.1.0-uwp.3` UWP 编译器包。较早的开发包没有完整匹配 SDK 的
+私有 XBF COM 接口，可能通过内建控件编译，却在 WinUI 2 等组件属性上失败。
 
 编译器目录必须包含 `kotlin-xamlc.json`、`XamlCompiler.exe` 和清单列出的依赖文件。
 清单需声明 `compatibility.frameworks` 包含 `uwp`、`genXbfHost` 为 `win-x64`，并在
@@ -123,3 +127,6 @@ JDK 加载包内 `conf/security/java.security` 时，`WindowsPath.toRealPath()`
 
 Native Debug 和 Release 均已通过实际包激活，进程令牌确认 `TokenIsAppContainer=1`，并完成
 应用资源画刷、标题 `x:Bind`、具名控件、按钮回调及计数文本更新的实机验证。
+WinUI 2 `NumberBox` 已在 Native Debug 中验证显示和加减交互，在 Native Release
+中验证 `ValueChanged` 的类型化参数进入 Kotlin；日志包含 `WinUI 2 NumberBox changed: 2.0`。
+Debug/Release 重新部署保留了既有应用数据日志。

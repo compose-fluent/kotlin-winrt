@@ -22,6 +22,9 @@ windows {
     }
     packageReferences {
         windowsSdk("10.0.26100.0", includeExtensions = false)
+        nugetPackage("Microsoft.UI.Xaml", "2.8.7")
+        type("Microsoft.UI.Xaml.Controls.XamlControlsResources")
+        type("Microsoft.UI.Xaml.Controls.NumberBox")
         type("Windows.UI.Xaml.Application")
         type("Windows.UI.Xaml.Window")
         type("Windows.UI.Xaml.Controls.Page")
