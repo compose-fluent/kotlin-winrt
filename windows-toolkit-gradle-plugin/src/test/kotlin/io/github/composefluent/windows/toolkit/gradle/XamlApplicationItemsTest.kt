@@ -1,6 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.metadata.WinUiXamlDeclarations
+import io.github.composefluent.winrt.runtime.XamlFramework
 import kotlinx.serialization.json.*
 import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Assert.*
@@ -56,6 +57,10 @@ class XamlApplicationItemsTest {
             it.sourceOutputDirectory.set(project.layout.buildDirectory.dir("header"))
         }
         val compile = project.tasks.create("compileMarkup", CompileWinUiXamlTask::class.java)
+        compile.outputDirectory.set(project.layout.buildDirectory.dir("markup"))
+        assertEquals(project.file("build/markup/compiled"), compile.packageResourcesDirectory.get().asFile)
+        compile.xamlFramework.set(XamlFramework.Uwp)
+        assertEquals(project.file("build/markup/resources"), compile.packageResourcesDirectory.get().asFile)
         compile.applicationItemsFile.set(header.flatMap { it.applicationItemsFile })
         assertTrue(project.files(compile.applicationItemsFile).buildDependencies.getDependencies(compile).contains(header.get()))
 

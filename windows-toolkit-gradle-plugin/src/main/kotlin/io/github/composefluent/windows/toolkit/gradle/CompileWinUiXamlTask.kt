@@ -96,7 +96,9 @@ abstract class CompileWinUiXamlTask @Inject constructor(
     /** XAMLC's type/binding contract, without the IDE/runtime source-content fingerprint. */
     @get:Internal val semanticDeclarationsFile get() = outputDirectory.file("semantic-declarations.json")
     @get:Internal val implementationFile get() = outputDirectory.file("output.json")
-    @get:Internal val packageResourcesDirectory get() = outputDirectory.dir("resources")
+    @get:Internal val packageResourcesDirectory get() = xamlFramework.flatMap { framework ->
+        outputDirectory.dir(if (framework == XamlFramework.Uwp) "resources" else "compiled")
+    }
 
     init {
         xamlFramework.convention(XamlFramework.WinUi)
@@ -278,7 +280,7 @@ abstract class CompileWinUiXamlTask @Inject constructor(
             freshPlan.pages.forEach { page -> cache.write(keys.getValue(page.resourcePath), page.resourcePath, nativeOutput, compiled) }
         }
         cache.retain(if (WinUiXamlPageCache.canIsolate(plan)) keys.values.toSet() else emptySet())
-        if (finalPass) {
+        if (finalPass && plan.framework == XamlFramework.Uwp) {
             val resourceRoot = packageResourcesDirectory.get().asFile
             fileSystem.delete { it.delete(resourceRoot) }
             xamlPackageResources(compiled.toFile(), plan).forEach { (source, target) ->
