@@ -554,12 +554,12 @@ actual object WinRTPlatformApi {
 
     actual fun coTaskMemAllocRaw(sizeBytes: Long): RawAddress {
         ensureWindows()
-        return (coTaskMemAllocHandle.invokeWithArguments(sizeBytes) as MemorySegment).asRawAddress()
+        return (coTaskMemAllocHandle.invokeExact(sizeBytes) as MemorySegment).asRawAddress()
     }
 
     actual fun coTaskMemFreeRaw(pointer: RawAddress) {
         ensureWindows()
-        coTaskMemFreeHandle.invokeWithArguments(pointer.asMemorySegment())
+        coTaskMemFreeHandle.invoke(pointer.asMemorySegment())
     }
 
     actual fun windowsCreateStringRaw(
