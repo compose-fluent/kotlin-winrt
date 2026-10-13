@@ -24,6 +24,40 @@ data class WinUiXamlDocument(val path: String, val text: String, val revision: L
 
 /** Uses XamlCompiler's DOM/harvester and KotlinXamlDeclarationWriter, just like CompileWinUiXamlTask. */
 internal object WinUiXamlDocumentCompiler {
+    /** Preserve the native application's item kind when applying unsaved documents. */
+    fun snapshotInput(input: JsonObject, documents: List<WinUiXamlDocument>, directory: Path,
+        sourceMapping: MutableMap<String, String>): JsonObject {
+        val edits = documents.associateBy { WinUiXamlSnapshotService.key(it.path) }
+        val preparedPaths = mutableSetOf<String>()
+        var ordinal = 0
+        val sourceItems = listOf("XamlPages", "XamlApplications").associateWith { name ->
+            JsonArray(input[name]?.jsonArray.orEmpty().mapNotNull { item ->
+                val data = item.jsonObject
+                val source = data["FullPath"]?.jsonPrimitive?.content ?: data.getValue("ItemSpec").jsonPrimitive.content
+                preparedPaths += WinUiXamlSnapshotService.key(source)
+                if (!Files.isRegularFile(Path.of(source))) return@mapNotNull null
+                val edit = edits[WinUiXamlSnapshotService.key(source)] ?: return@mapNotNull item
+                val resource = data["MSBuild_Link"]?.jsonPrimitive?.content ?: Path.of(source).fileName.toString()
+                require(directory.resolve("sources").resolve(resource).normalize().startsWith(directory.resolve("sources"))) {
+                    "XAML resource escapes the snapshot directory."
+                }
+                // XAMLC's .NET Framework host has MAX_PATH-sensitive code. Keep a short,
+                // unique path across both item kinds; MSBuild_Link retains package identity.
+                val target = directory.resolve("sources/${ordinal++}.xaml")
+                Files.createDirectories(target.parent)
+                Files.writeString(target, edit.text)
+                sourceMapping[target.toString()] = source
+                JsonObject(data + mapOf("FullPath" to JsonPrimitive(target.toString()), "ItemSpec" to JsonPrimitive(target.toString())))
+            })
+        }
+        require(edits.keys.all { it in preparedPaths }) { "New XAML files require Gradle synchronization and Prepare XAML analysis." }
+        return JsonObject(input + sourceItems + mapOf(
+            "ProjectPath" to JsonPrimitive(directory.resolve("snapshot.proj").toString()),
+            "OutputPath" to JsonPrimitive(directory.resolve("compiled").toString()),
+            "SavedStateFile" to JsonPrimitive(directory.resolve("state.xml").toString()),
+        ))
+    }
+
     /** .NET Framework XAMLC still requires short working/output paths on Windows.
      * A distribution's sandbox or a long project name can exceed that budget even
      * when each copied source has a short name. Keep a stable user-owned cache and
@@ -55,36 +89,7 @@ internal object WinUiXamlDocumentCompiler {
             var process: OSProcessHandler? = null
             val sourceMapping = mutableMapOf<String, String>()
             try {
-                val edits = documents.associateBy { WinUiXamlSnapshotService.key(it.path) }
-                val sources = input.getValue("XamlPages").jsonArray.mapIndexedNotNull { ordinal, item ->
-                    val data = item.jsonObject
-                    val source = data["FullPath"]?.jsonPrimitive?.content ?: data.getValue("ItemSpec").jsonPrimitive.content
-                    if (!Files.isRegularFile(Path.of(source))) return@mapIndexedNotNull null
-                    val edit = edits[WinUiXamlSnapshotService.key(source)] ?: return@mapIndexedNotNull item
-                    val resource = data["MSBuild_Link"]?.jsonPrimitive?.content ?: Path.of(source).fileName.toString()
-                    require(directory.resolve("sources").resolve(resource).normalize().startsWith(directory.resolve("sources"))) {
-                        "XAML resource escapes the snapshot directory."
-                    }
-                    // XAMLC's .NET Framework host still has MAX_PATH-sensitive code.
-                    // MSBuild_Link retains the package identity independently of this
-                    // short physical path; copying the package hierarchy here can
-                    // exceed that limit under an IDE sandbox's system directory.
-                    val target = directory.resolve("sources/$ordinal.xaml")
-                    Files.createDirectories(target.parent)
-                    Files.writeString(target, edit.text)
-                    sourceMapping[target.toString()] = source
-                    JsonObject(data + mapOf("FullPath" to JsonPrimitive(target.toString()), "ItemSpec" to JsonPrimitive(target.toString())))
-                }
-                val preparedPaths = input.getValue("XamlPages").jsonArray.map {
-                    WinUiXamlSnapshotService.key(it.jsonObject.getValue("FullPath").jsonPrimitive.content)
-                }.toSet()
-                require(edits.keys.all { it in preparedPaths }) { "New XAML files require Gradle synchronization and Prepare XAML analysis." }
-                val snapshotInput = JsonObject(input + mapOf(
-                    "ProjectPath" to JsonPrimitive(directory.resolve("snapshot.proj").toString()),
-                    "OutputPath" to JsonPrimitive(directory.resolve("compiled").toString()),
-                    "SavedStateFile" to JsonPrimitive(directory.resolve("state.xml").toString()),
-                    "XamlPages" to JsonArray(sources),
-                ))
+                val snapshotInput = snapshotInput(input, documents, directory, sourceMapping)
                 val inputFile = directory.resolve("input.json")
                 val outputFile = directory.resolve("output.json")
                 Files.writeString(inputFile, snapshotInput.toString())

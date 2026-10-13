@@ -140,12 +140,18 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
                     put("FullPath", kotlinx.serialization.json.JsonPrimitive(dictionary.virtualFile.path)); put("MSBuild_Link", kotlinx.serialization.json.JsonPrimitive("Logical/Theme.xaml"))
                 })
             })
+            put("XamlApplications", kotlinx.serialization.json.buildJsonArray {
+                add(kotlinx.serialization.json.buildJsonObject {
+                    put("FullPath", kotlinx.serialization.json.JsonPrimitive(app.virtualFile.path)); put("MSBuild_Link", kotlinx.serialization.json.JsonPrimitive("Logical/CustomApplication.xaml"))
+                })
+            })
         }.toString())
         val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Page.Resources><ResourceDictionary><StaticResource x:Key="Alias" ResourceKey="SolidBackgroundFillColorBaseBrush"/></ResourceDictionary></Page.Resources><TextBlock Style="{StaticResource TitleTextBlockStyle}" Foreground="{ThemeResource SystemColorWindowColor}" Tag="{StaticResource LinkedAccent}"/></Page>""")
         val projects = project.service<WinRTProjectService>()
         val module = projects.modules.value.single().let { original -> original.copy(xamlCompilations = original.xamlCompilations.map { it.copy(inputFile = input.virtualFile.path) }) }
         val index = project.service<WinRTResourceIndex>()
         val lookup = index.read(module, listOf(module))
+        assertTrue(lookup.entries.any { it.target == "Logical/CustomApplication.xaml" && it.source == app.virtualFile.path })
         assertEquals(setOf(generic.virtualFile.path, system.virtualFile.path), lookup.frameworkDictionaries.map { it.replace('\\', '/') }.toSet())
         projects.replaceBuildModels(module.projectDirectory, listOf(module))
         PlatformTestUtil.waitWithEventsDispatching("Framework dictionaries indexed", {

@@ -27,5 +27,6 @@ includeBuild("../../windows-toolkit-gradle-plugin") {
     name = "winrt-toolchain"
     dependencySubstitution {
         substitute(module("io.github.compose-fluent:winrt-metadata")).using(project(":winrt-metadata"))
+        substitute(module("io.github.compose-fluent:winrt-runtime")).using(project(":winrt-runtime"))
     }
 }

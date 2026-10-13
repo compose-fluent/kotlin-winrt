@@ -12,6 +12,8 @@ repositories {
 
 dependencies {
     implementation("io.github.compose-fluent:winrt-metadata:0.1.0-SNAPSHOT")
+    // FIR rules consume the shared XAML framework contract directly.
+    implementation("io.github.compose-fluent:winrt-runtime:0.1.0-SNAPSHOT")
     intellijPlatform {
         val localIde = providers.gradleProperty("kotlinWinRT.ide.path")
         val sdkVersion = providers.gradleProperty("kotlinWinRT.ide.sdkVersion")

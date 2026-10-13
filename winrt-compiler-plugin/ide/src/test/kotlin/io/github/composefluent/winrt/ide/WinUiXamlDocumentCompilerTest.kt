@@ -37,6 +37,41 @@ import java.util.concurrent.TimeUnit
 /** Optional Windows integration fixture from a prepared declaration pass; never edits its source or outputs. */
 @OptIn(KaExperimentalApi::class, KaAllowAnalysisOnEdt::class)
 class WinUiXamlDocumentCompilerTest : BasePlatformTestCase() {
+    fun testUnsavedApplicationAndPageKeepTheirCompilerItemKindsAndDistinctSnapshotPaths() {
+        val root = Files.createTempDirectory("winrt-ide-application-snapshot-")
+        try {
+            val application = root.resolve("CustomApplication.xaml")
+            val page = root.resolve("MainPage.xaml")
+            Files.writeString(application, "<Application/>")
+            Files.writeString(page, "<Page/>")
+            fun item(path: Path) = buildJsonObject {
+                put("FullPath", path.toString())
+                put("ItemSpec", path.toString())
+                put("MSBuild_Link", "views/${path.fileName}")
+            }
+            val input = buildJsonObject {
+                put("XamlApplications", JsonArray(listOf(item(application))))
+                put("XamlPages", JsonArray(listOf(item(page))))
+            }
+            val documents = listOf(WinUiXamlDocument(application.toString(), "<Application><!--unsaved--></Application>", 1),
+                WinUiXamlDocument(page.toString(), "<Page><!--unsaved--></Page>", 2))
+            val mapping = mutableMapOf<String, String>()
+            val snapshot = WinUiXamlDocumentCompiler.snapshotInput(input, documents, root.resolve("snapshot"), mapping)
+            val paths = listOf("XamlApplications", "XamlPages").map { name ->
+                val value = snapshot.getValue(name).jsonArray.single().jsonObject
+                assertTrue(value.getValue("MSBuild_Link").jsonPrimitive.content.startsWith("views/"))
+                Path.of(value.getValue("FullPath").jsonPrimitive.content)
+            }
+            assertEquals(2, paths.distinct().size)
+            assertEquals(documents.map { it.text }, paths.map(Files::readString))
+            assertEquals(listOf(application.toString(), page.toString()), paths.map { mapping.getValue(it.toString()) })
+            assertEquals("<Application/>", Files.readString(application))
+            assertEquals("<Page/>", Files.readString(page))
+        } finally {
+            FileUtil.delete(root.toFile())
+        }
+    }
+
     fun testCancellingLiveXamlCompilationTerminatesTheOwnedProcessAndRemovesItsSnapshot() {
         val prepared = Path.of(requireNotNull(System.getProperty("winrt.ide.xamlInput")))
         val compilerDirectory = requireNotNull(System.getProperty("winrt.ide.xamlCompiler"))
@@ -122,7 +157,8 @@ class WinUiXamlDocumentCompilerTest : BasePlatformTestCase() {
             Files.writeString(source, original)
             val inputFile = root.resolve("input.json")
             val item = JsonObject(candidate.first.jsonObject + mapOf("FullPath" to JsonPrimitive(source.toString()), "ItemSpec" to JsonPrimitive(source.toString())))
-            Files.writeString(inputFile, JsonObject(input + ("XamlPages" to JsonArray(listOf(item)))).toString())
+            Files.writeString(inputFile, JsonObject(input + mapOf("XamlPages" to JsonArray(listOf(item)),
+                "XamlApplications" to JsonArray(emptyList()))).toString())
             val declarations = root.resolve("declarations.json")
             val initialIndex = index.copy(pages = index.pages.filter { it.resourcePath == candidate.first.jsonObject.getValue("MSBuild_Link").jsonPrimitive.content }, resources = emptyList())
             Files.writeString(declarations, WinUiXamlDeclarations.canonicalText(initialIndex))

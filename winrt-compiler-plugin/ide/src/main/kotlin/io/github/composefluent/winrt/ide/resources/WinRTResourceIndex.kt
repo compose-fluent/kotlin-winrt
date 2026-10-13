@@ -71,7 +71,7 @@ class WinRTResourceIndex(private val project: Project, scope: CoroutineScope) : 
         }.getOrNull() }
         // XAMLC owns package-relative XAML paths (MSBuild_Link), including
         // dictionaries outside a Kotlin source root and referenced libraries.
-        val markup = inputs.flatMap { input -> listOf("XamlPages", "XamlApplication", "XamlResources").flatMap { name ->
+        val markup = inputs.flatMap { input -> listOf("XamlPages", "XamlApplications", "XamlResources").flatMap { name ->
             input[name]?.jsonArray.orEmpty().mapNotNull { item ->
                 val source = item.jsonObject["FullPath"]?.jsonPrimitive?.content ?: return@mapNotNull null
                 val target = item.jsonObject["MSBuild_Link"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
