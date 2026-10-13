@@ -10,11 +10,13 @@ import kotlinx.io.writeString
 
 /** Returns true if this path resolves to a regular file. */
 internal fun Path.isRegularFile(): Boolean =
-    SystemFileSystem.metadataOrNull(this)?.isRegularFile == true
+    platformFileMetadataOrNull(this)?.isRegularFile == true
 
 /** Returns true if this path resolves to a directory. */
 internal fun Path.isDirectory(): Boolean =
-    SystemFileSystem.metadataOrNull(this)?.isDirectory == true
+    platformFileMetadataOrNull(this)?.isDirectory == true
+
+internal expect fun platformFileMetadataOrNull(path: Path): FileMetadata?
 
 /** Returns the file name component of this path (the last segment). */
 internal val Path.fileName: String get() = name
@@ -51,7 +53,7 @@ internal fun Path.readBytes(): ByteArray =
  * Returns an empty list for anything else.
  */
 internal fun Path.walkFiles(): List<Path> {
-    val meta: FileMetadata = SystemFileSystem.metadataOrNull(this) ?: return emptyList()
+    val meta: FileMetadata = platformFileMetadataOrNull(this) ?: return emptyList()
     if (meta.isRegularFile) return listOf(this)
     if (!meta.isDirectory) return emptyList()
     val result = mutableListOf<Path>()
@@ -60,7 +62,7 @@ internal fun Path.walkFiles(): List<Path> {
     while (queue.isNotEmpty()) {
         val dir = queue.removeFirst()
         for (child in SystemFileSystem.list(dir)) {
-            val childMeta = SystemFileSystem.metadataOrNull(child) ?: continue
+            val childMeta = platformFileMetadataOrNull(child) ?: continue
             when {
                 childMeta.isRegularFile -> result.add(child)
                 childMeta.isDirectory -> queue.add(child)

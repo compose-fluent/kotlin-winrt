@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 /**
- * Owns the process-level Windows application environment and its UI apartment.
+ * Owns the process-level Windows application environment and its entry-thread apartment.
  *
  * An application host is intentionally unique per process because its close operation drains
  * global projection state. Ordinary [RuntimeScope] instances remain nestable and independent.
@@ -68,7 +68,13 @@ object WinAppHostScope {
                     windowsAppSdkVersion = configuration.windowsAppSdkVersion,
                 ),
             )
-            val acquiredRuntime = RuntimeScope.initializeSingleThreaded()
+            // Microsoft's XamlCompiler CppWinRT_AppPass2 initializes desktop entries as
+            // STA and UWP entries as MTA; UWP Application.Start owns the view's UI thread.
+            // Select by application model: a desktop XAML island may also use system XAML.
+            val acquiredRuntime = when (configuration.applicationModel) {
+                WinAppApplicationModel.Desktop -> RuntimeScope.initializeSingleThreaded()
+                WinAppApplicationModel.Uwp -> RuntimeScope.initializeMultithreaded()
+            }
             runtime = acquiredRuntime
             val scope = Scope(
                 runtime = acquiredRuntime,

@@ -11,6 +11,12 @@ import kotlin.test.assertSame
 
 class RuntimeScopeJvmTest {
     @Test
+    fun application_model_selects_the_entry_apartment_and_preserves_conflicts() {
+        if (!PlatformRuntime.isWindows) return
+        runOnFreshPlatformThread(::verifyApplicationHostApartments)
+    }
+
+    @Test
     fun application_cleanup_preserves_later_failures_as_suppressed_on_jvm() {
         val first = IllegalStateException("first cleanup failure")
         val second = IllegalArgumentException("second cleanup failure")
