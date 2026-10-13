@@ -1,5 +1,9 @@
 # WinUI quick start
 
+This guide selects WinUI 3 and the desktop application model. For the source-tree
+UWP AppContainer path, its local compiler requirement and current validation
+limits, use the [UWP guide](UWP.md).
+
 Create a Windows application with shared Kotlin/XAML sources for **mingwX64 + JVM**, using Windows App SDK **2.5.1**. Prepare the [Windows build tools and JDK](../README.md#requirements), and use the Gradle **9.4.0** wrapper.
 
 The project has this layout:

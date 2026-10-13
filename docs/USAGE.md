@@ -1,6 +1,6 @@
 # Kotlin/WinRT usage reference
 
-For installation and Gallery downloads, start with the [README](../README.md). To create a shared Native/JVM XAML application, follow the [WinUI quick start](QUICKSTART.md). This reference covers projection selection, packaging and custom hosts.
+For installation and Gallery downloads, start with the [README](../README.md). To create a shared Native/JVM XAML application, follow the [WinUI quick start](QUICKSTART.md) or the source-tree [UWP guide](UWP.md). This reference covers projection selection, packaging and custom hosts.
 
 ## Targets
 
@@ -10,6 +10,21 @@ Current supported validation targets are:
 - `mingwX64`: supports runtime calls, generated projections, native executables, and native authored WinRT component exports for the implemented surface.
 
 WinUI validation runs through both the generated JVM application host and the `mingwX64` executable path.
+
+The application model, XAML framework, package identity and Windows App SDK deployment
+are separate settings:
+
+| Application | `applicationModel` | `windows.xaml.framework` | Package and deployment |
+| --- | --- | --- | --- |
+| WinUI 3 | `Desktop` (default) | `WinUi` (default) | Packaged or unpackaged; Windows App SDK deployment selected independently |
+| UWP system XAML, including WinUI 2 controls | `Uwp` | `Uwp` (inferred from the application model) | `Packaged` and Windows App SDK deployment `None`; bundled JVM when targeting JVM |
+
+WinUI 2's `Microsoft.UI.Xaml` namespace does not select WinUI 3: its controls extend
+`Windows.UI.Xaml`. XAML libraries must set their framework explicitly because they
+have no application model. UWP builds currently require a matching local compiler
+package or an explicitly configured UWP compiler release and checksum; see the
+[UWP guide](UWP.md#supply-the-uwp-compiler). UWP packaged execution remains under
+integration validation, separate from the existing WinUI validation.
 
 The Windows toolkit supports Kotlin **2.4.0** and **2.4.20**. It selects compiler plugin artifacts for the project's exact Kotlin Gradle Plugin version, for both JVM and `mingwX64`; no version override is required. Other compiler versions fail with a supported-version diagnostic before loading the IR plugin. Runtime, metadata, and generated projection libraries share the same publication version across these compiler targets.
 
@@ -115,7 +130,7 @@ fun readProfile(json: String): String =
 
 ## Prebuilt Projections
 
-For the default Windows SDK and one XAML family, prefer the prebuilt projection artifacts. Applications select the Windows SDK coordinate independently, then choose either the legacy `Windows.UI.Xaml` family or the Windows App SDK / WinUI family:
+For the default Windows SDK and one XAML family, prefer the prebuilt projection artifacts. Applications select the Windows SDK coordinate independently, then choose either the UWP `Windows.UI.Xaml` family or the Windows App SDK / WinUI 3 family:
 
 ```kotlin
 dependencies {
@@ -146,7 +161,7 @@ windows {
 }
 ```
 
-Do not consume `winrt-projections-windows-ui-xaml` and `winrt-projections-windows-app-sdk` together. The App SDK artifact exposes WebView2 Core transitively; add `winrt-projections-windows-webview2` directly only when using the standalone WebView2 projection without the App SDK family.
+Do not consume `winrt-projections-windows-ui-xaml` and `winrt-projections-windows-app-sdk` together. UWP applications and their projection modules also set `windows.xaml.framework` to `XamlFramework.Uwp`; selecting a projection dependency alone does not configure the application model or compiler backend. The App SDK artifact exposes WebView2 Core transitively; add `winrt-projections-windows-webview2` directly only when using the standalone WebView2 projection without the App SDK family.
 
 ```kotlin
 dependencies {
@@ -217,7 +232,7 @@ JVM native EXE and authoring DLL hosts automatically discover installed Visual S
 
 WinApp CLI `0.6.0` performs its normal C++/WinRT workspace setup during restore and may check or install Windows App SDK runtime packages. That release does not expose a switch that limits `restore` to NuGet download and lockfile generation, and WinApp itself has no `--offline` option. When Gradle runs with `--offline`, the plugin does not invoke `winapp restore`: it reuses the verified `.winapp` lock/cache and fails if the lock, package contents, or restore context is missing or stale. Without Gradle offline, a normal restore may use the configured NuGet sources and CLI behavior. Set `packageReferences { restoreNuGetPackages = false }` to retain the legacy NuGet cache/CLI resolution path.
 
-The plugin creates one package task graph per matching Kotlin target variant. `application.packageType` and `application.windowsAppSdkDeployment` select the default used by `packageWinApp<TargetVariant>`; the unsuffixed `packageWinApp` aggregates those default tasks. Applications are packaged by default. Set `application { packageType = WindowsPackageType.None }` for a default loose unpackaged layout. A `mingwX64` executable remains its variant's package entry payload; JVM variants package the generated host, runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. Each concrete `verifyWinAppPackage<TargetVariant>` task unpacks its result through `winapp tool makeappx` and validates its manifest, payload, and resource-resolution report. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override.
+The plugin creates one package task graph per matching Kotlin target variant. `application.packageType` and `application.windowsAppSdkDeployment` select the default used by `packageWinApp<TargetVariant>`; the unsuffixed `packageWinApp` aggregates those default tasks. Applications are packaged by default. Desktop applications can set `application { packageType = WindowsPackageType.None }` for a default loose unpackaged layout; UWP requires packaged identity. A `mingwX64` executable remains its variant's package entry payload; JVM variants package the generated host, runtime classpath, and the same staged WinRT resources. `.msix` outputs use `winapp package`, while an explicitly configured `.appx` output uses `winapp tool makeappx pack`. Each concrete `verifyWinAppPackage<TargetVariant>` task unpacks its result through `winapp tool makeappx` and validates its manifest, payload, and resource-resolution report. Existing builds can keep an explicit Windows SDK MakeAppx path as a legacy override.
 
 Windows App SDK applications also expose four explicit packaging formats. Append the usual Kotlin target variant suffix, or a named application suffix, to any of these tasks:
 
@@ -284,6 +299,12 @@ windows {
 ```
 
 ## WinUI Applications
+
+This section describes desktop WinUI 3, including WinApp CLI development launches.
+UWP uses package activation and a separate development runner; follow
+[UWP build and activation](UWP.md#build-and-activate-each-target) for its manifest,
+framework dependencies and launch options. UWP designer, Hot Reload and
+`--debug-output` are not implemented.
 
 Start with a `mingwX64` + JVM application and use the packaged AppX development runs (`runWinAppPackage...`) by default, as shown in the [README](../README.md#get-started). Direct host and executable commands below describe advanced launch options.
 

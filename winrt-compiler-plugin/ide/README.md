@@ -1,5 +1,11 @@
 # Kotlin WinRT IntelliJ integration
 
+The application templates, designer and Hot Reload workflows described here target
+WinUI 3. UWP designer/preview, Hot Reload and packaged `--debug-output` capture are
+not implemented. Use the Gradle configuration and package activation steps in the
+[UWP guide](../../docs/UWP.md); selecting UWP in the build does not enable those IDE
+workflows.
+
 This is a standalone IDE build beneath the compiler tooling owner. It does not
 add IntelliJ dependencies to the WinRT runtime, metadata, generator or main
 application build. The shared Kotlin/JVM 17 Tooling API contract is imported from

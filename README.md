@@ -9,6 +9,8 @@
 
 Kotlin/WinRT projects Windows Runtime APIs into Kotlin. Share application code and XAML between **Kotlin/Native `mingwX64` and Kotlin/JVM**, and use Gradle to generate API bindings, compile XAML and package your app. The project uses **Windows App SDK 2.5.1**.
 
+The source tree also includes a [UWP `Windows.UI.Xaml` application path](docs/UWP.md), with separate AppContainer hosting and Windows SDK XAML compilation. It is under integration validation and currently requires a local UWP compiler package; the WinUI setup below retains its existing defaults.
+
 ![Kotlin WinUI Gallery home running on Windows](docs/Assets/winui-gallery.jpg)
 
 *The Kotlin WinUI Gallery runs the same Kotlin/XAML application on both targets. [See examples and downloads](#gallery-and-downloads).*
@@ -153,8 +155,8 @@ The IDE plugin adds completion, navigation, diagnostics, project templates and r
 | `as-261` | Android Studio Quail 4 / 2026.1.4.7 |
 | `as-canary-262` | Android Studio Rabbit 2 Canary 2 / 2026.2.2.2 |
 
-IDE Run/Debug and Hot Reload currently target JVM. XAML Preview is temporarily disabled. See [IDE setup](winrt-compiler-plugin/ide/README.md) and [Hot Reload](winrt-runtime/HOT_RELOAD.md) for supported edits and current limitations.
+IDE Run/Debug and Hot Reload currently target JVM WinUI applications. XAML Preview is temporarily disabled. UWP designer, Hot Reload and packaged `--debug-output` are not implemented. See [IDE setup](winrt-compiler-plugin/ide/README.md) and [Hot Reload](winrt-runtime/HOT_RELOAD.md) for supported edits and current limitations.
 
 ## Further reading
 
-[WinUI quick start](docs/QUICKSTART.md) · [Usage and packaging](docs/USAGE.md) · [Gallery](winui-gallery/README.md) · [Compiler](winrt-compiler-plugin/README.md) · [Release procedure](docs/RELEASING.md) · [Benchmarks](winrt-benchmarks/README.md)
+[WinUI quick start](docs/QUICKSTART.md) · [UWP applications](docs/UWP.md) · [Usage and packaging](docs/USAGE.md) · [Gallery](winui-gallery/README.md) · [Compiler](winrt-compiler-plugin/README.md) · [Release procedure](docs/RELEASING.md) · [Benchmarks](winrt-benchmarks/README.md)

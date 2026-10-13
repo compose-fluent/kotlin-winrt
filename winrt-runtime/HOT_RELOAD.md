@@ -1,5 +1,10 @@
 # XAML development updates
 
+The development transport documented here applies to JVM WinUI applications.
+UWP AppContainer Hot Reload is not implemented; the shared metadata/property
+engine does not by itself provide a UWP development session. See the
+[UWP guide](../docs/UWP.md) for supported build configuration and remaining checks.
+
 The common property engine uses the compiler's existing XAML type/member
 registrations. Property discovery reuses `WinUiAuthoredTypeMetadata.customProperty`,
 corresponding to CsWinRT's generated `ICustomProperty` implementation in
