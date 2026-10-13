@@ -28,6 +28,22 @@ function Median([double[]]$Values) {
     if ($sorted.Count % 2) { return $sorted[$middle] }
     return ($sorted[$middle - 1] + $sorted[$middle]) / 2
 }
+function Memory-Summary($Records) {
+    $memory = @($Records | ForEach-Object {
+        if ($_.result.PSObject.Properties['memory']) { $_.result.memory }
+    } | Where-Object { $null -ne $_ })
+    if ($memory.Count -eq 0) { return $null }
+    $allocations = @($memory | Where-Object { $null -ne $_.allocatedBytes } |
+        ForEach-Object { $_.allocatedBytes / $_.operations })
+    return [pscustomobject]@{
+        allocationScopes = @($memory.allocationScope | Select-Object -Unique)
+        allocatedBytesPerOp = if ($allocations.Count -eq $memory.Count) { Median $allocations } else { $null }
+        allocatedBytesPerOpByFork = $allocations
+        heapBeforeBytes = Median @($memory.heapBeforeBytes)
+        heapAfterBytes = Median @($memory.heapAfterBytes)
+        retainedHeapDeltaBytes = Median @($memory.retainedHeapDeltaBytes)
+    }
+}
 $left = Read-Run $Before
 $right = Read-Run $After
 if ($left.run.mode -ne $right.run.mode) { throw 'Do not compare timing runs with memory diagnostic runs.' }
@@ -47,7 +63,9 @@ $rows = foreach ($key in ($left.groups.Keys | Sort-Object)) {
         beforePeakWorkingSetBytes = Median @($a.sampledPeakWorkingSetBytes)
         afterPeakWorkingSetBytes = Median @($b.sampledPeakWorkingSetBytes)
         beforePeakPrivateBytes = Median @($a.sampledPeakPrivateBytes)
-        afterPeakPrivateBytes = Median @($b.sampledPeakPrivateBytes) }
+        afterPeakPrivateBytes = Median @($b.sampledPeakPrivateBytes)
+        beforeManagedMemory = Memory-Summary $a
+        afterManagedMemory = Memory-Summary $b }
 }
 [pscustomobject]@{ schemaVersion = 1; before = $left.run; after = $right.run; results = @($rows) } |
     ConvertTo-Json -Depth 15 | Set-Content -LiteralPath $OutputPath

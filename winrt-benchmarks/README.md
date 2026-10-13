@@ -99,6 +99,8 @@ Compare completed runs with `Compare-BenchmarkSnapshots.ps1 -Before <before-resu
 
 Run memory diagnostics separately from timing comparisons because forced collections change subsequent execution. Per-scenario process isolation prevents previous scenarios from retaining objects or filling caches. Native collections are synchronous; JVM collection requests rely on the standard JVM configuration (do not disable explicit GC). Native memory excludes COM/native heaps; use the process measurements alongside it.
 
+The comparison includes managed-memory medians and individual allocation samples where available. Allocation batches run immediately after collection: weak-reference cleanup and cache repopulation can contribute to their allocation counts, so these are post-collection diagnostics, not guaranteed steady-state B/op. Large differences between forks require investigation rather than averaging them away.
+
 The 97 scenarios match reference *operations*, not necessarily equal projection work. For example, `ExecuteMarshalingForExistingArray` and `ExecuteMarshalingForExistingNullable` return `IInspectable` in C++, whereas CsWinRT/Kotlin project boxed values into language values. These ratios include unboxing/projection costs and must not be described as pure ABI-call overhead. Keep the original catalog unchanged for continuity.
 
 ## Compilation performance
