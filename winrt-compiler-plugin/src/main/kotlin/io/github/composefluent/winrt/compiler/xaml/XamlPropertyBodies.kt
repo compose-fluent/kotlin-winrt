@@ -2,6 +2,8 @@ package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.WinUiXamlPageDeclaration
 import io.github.composefluent.winrt.metadata.WinUiXamlPropertyDeclaration
+import io.github.composefluent.winrt.metadata.xamlTypeName
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.ir.builders.*
@@ -18,7 +20,7 @@ import org.jetbrains.kotlin.name.*
 
 /** Ordinary x:Property fields and per-property events mirror CSharpPagePass1/2.tt. */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
-internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, private val classes: Map<String?, IrClass>) {
+internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, private val classes: Map<String?, IrClass>, private val framework: XamlFramework = XamlFramework.WinUi) {
     fun generate(klass: IrClass, page: WinUiXamlPageDeclaration, properties: Map<String, IrProperty>) {
         val eventClass = requireNotNull(pluginContext.referenceClass(xamlPropertyEventId)).owner
         for (declaration in page.properties) {
@@ -85,7 +87,7 @@ internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, pr
                 declaration.defaultValueMarkup != null -> {
                     // Upstream InitializeXProperties uses XamlReader.Load only
                     // for the explicit complex default's source fragment.
-                    val metadata = requireNotNull(pluginContext.referenceClass(xamlProjectionClassId("Microsoft.UI.Xaml.Markup.XamlReader")))
+                    val metadata = requireNotNull(pluginContext.referenceClass(xamlProjectionClassId(framework.xamlTypeName("Markup.XamlReader"))))
                         .owner.companionObject()!!
                     val load = metadata.functions.single { it.name.asString() == "load" &&
                         it.parameters.count { p -> p.kind == IrParameterKind.Regular } == 1 }

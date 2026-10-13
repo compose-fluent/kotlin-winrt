@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRTTypeB
 import io.github.composefluent.winrt.compiler.authoring.requiresComponentAuthoring
 import io.github.composefluent.winrt.compiler.authoring.WINRT_AUTHORED_RUNTIME_CLASS_ANNOTATION
 import io.github.composefluent.winrt.metadata.*
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.descriptors.ClassKind
@@ -33,6 +34,7 @@ internal class XamlLibraryRegistrationsIr(
     private val types: Map<String, IndexedWinRTType>,
     private val names: Set<String>,
     private val members: Map<String, WinUiXamlApplicationTypeMembers>,
+    private val framework: XamlFramework = XamlFramework.WinUi,
 ) {
     private val knownTypes = mutableMapOf<String, IrType>()
     private val runtimePackage = FqName("io.github.composefluent.winrt.runtime")
@@ -115,9 +117,9 @@ internal class XamlLibraryRegistrationsIr(
     private fun findFunction(klass: IrClass, method: WinUiXamlApplicationMethod): IrSimpleFunction =
         publicFunctions(klass).single { function -> function.name.asString() == method.name &&
             (function.parentClassOrNull?.kind == ClassKind.OBJECT) == method.isStatic &&
-            runCatching { xamlApplicationTypeReference(function.returnType, types, names) == method.returnType &&
+            runCatching { xamlApplicationTypeReference(function.returnType, types, names, framework) == method.returnType &&
                 function.parameters.filter { it.kind == IrParameterKind.Regular }
-                    .map { xamlApplicationTypeReference(it.type, types, names) } == method.parameterTypes }.getOrDefault(false) }
+                    .map { xamlApplicationTypeReference(it.type, types, names, framework) } == method.parameterTypes }.getOrDefault(false) }
 
     private fun IrBuilderWithScope.valueDefinitions(type: WinRTTypeRef, kotlinType: IrType): List<IrExpression> {
         remember(kotlinType)
@@ -193,7 +195,7 @@ internal class XamlLibraryRegistrationsIr(
             val args = linkedMapOf("name" to irString(name), "typeName" to irString(getter.returnType.xamlStandardTypeName()),
                 "type" to classLiteral(get.returnType), "isAttachable" to irTrue(),
                 "isDependencyProperty" to irBoolean(schema.properties.any { it.isStatic && it.name == "${name}Property" &&
-                    it.type.qualifiedName == "Microsoft.UI.Xaml.DependencyProperty" }),
+                    isXamlTypeName(it.type.qualifiedName, "DependencyProperty") }),
                 "targetTypeName" to irString(getter.parameterTypes.single().xamlStandardTypeName()), "targetType" to classLiteral(targetType),
                 "get" to lambda(listOf(pluginContext.irBuiltIns.anyType), pluginContext.irBuiltIns.anyNType) { p ->
                     staticCall(get, listOf(irAs(irGet(p[0]), targetType)))
@@ -229,10 +231,10 @@ internal class XamlLibraryRegistrationsIr(
                     }
                 } else {
                     val base = klass.superTypes.firstOrNull { type -> type.classFqName?.asString() == descriptor.baseRuntimeClassName ||
-                        resolveIndexedWinRTTypeByProjectedName(type.classFqName?.asString().orEmpty(), types)?.qualifiedName == descriptor.baseRuntimeClassName }
+                        resolveIndexedWinRTTypeByProjectedName(type.classFqName?.asString().orEmpty(), types, framework)?.qualifiedName == descriptor.baseRuntimeClassName }
                     fun componentTypes(type: IrClass, seen: MutableSet<IrClass> = mutableSetOf()): List<IndexedWinRTType> =
                         if (!seen.add(type)) emptyList() else type.superTypes.flatMap { superType ->
-                            listOfNotNull(resolveIndexedWinRTTypeByProjectedName(superType.classFqName?.asString().orEmpty(), types)) +
+                            listOfNotNull(resolveIndexedWinRTTypeByProjectedName(superType.classFqName?.asString().orEmpty(), types, framework)) +
                                 (superType.classOrNull?.owner?.let { componentTypes(it, seen) } ?: emptyList())
                         }
                     val args = linkedMapOf("type" to classLiteral(klass.defaultType), "name" to irString(name),

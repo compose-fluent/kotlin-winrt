@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.compiler.KotlinWinRTCommandLineProcessor
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRTTypeByProjectedName
 import io.github.composefluent.winrt.metadata.*
+import io.github.composefluent.winrt.runtime.XamlFramework
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
@@ -26,7 +27,7 @@ import java.nio.file.Path
 /** Private handlers remain private in application schema, never in the public component ABI. */
 @OptIn(ExperimentalCompilerApi::class)
 internal object XamlSemanticOptions {
-    private val keys = listOf("xamlDeclarations", "xamlSemanticOutput", "xamlReferences", "xamlReferencesFile", "xamlApplicationHeader", "xamlImplementation", "xamlCompile")
+    private val keys = listOf("xamlDeclarations", "xamlSemanticOutput", "xamlReferences", "xamlReferencesFile", "xamlApplicationHeader", "xamlImplementation", "xamlCompile", "xamlFramework")
         .associateWith { CompilerConfigurationKey<String>(it) }
     val options = keys.keys.map { CliOption(it, "<path>", "Kotlin XAML semantic compilation $it", false) }
 
@@ -36,11 +37,17 @@ internal object XamlSemanticOptions {
         return true
     }
 
+    fun framework(configuration: CompilerConfiguration): XamlFramework =
+        configuration.get(keys.getValue("xamlFramework"))?.let(::parseXamlFramework) ?: XamlFramework.WinUi
+
     fun compilation(configuration: CompilerConfiguration): XamlCompilation? {
         fun value(name: String) = configuration.get(keys.getValue(name))
-        if (keys.keys.all { value(it) == null }) return null
+        if (keys.keys.filterNot { it == "xamlFramework" }.all { value(it) == null }) return null
         val declarationPath = Path.of(requireNotNull(value("xamlDeclarations")))
         val declarations = WinUiXamlDeclarations.parse(Files.readString(declarationPath))
+        value("xamlFramework")?.let { require(parseXamlFramework(it) == declarations.framework) {
+            "XAML framework option does not match the declaration index"
+        } }
         val finalPath = value("xamlImplementation")
         if (finalPath != null) {
             require(value("xamlSemanticOutput") == null) { "XAML final and semantic modes are mutually exclusive" }
@@ -142,7 +149,7 @@ private class XamlSemanticExport(
                 "XAML ${page.className}: requires same-directory, same-basename .kt and .xaml files"
             }
             require(klass.superTypes.any { type -> type.classFqName?.asString()?.let {
-                if (it in applicationTypes) it else resolveIndexedWinRTTypeByProjectedName(it, types)?.qualifiedName
+                if (it in applicationTypes) it else resolveIndexedWinRTTypeByProjectedName(it, types, declarations.framework)?.qualifiedName
             } == page.baseTypeName }) { "XAML ${page.className}: expected direct base ${page.baseTypeName}" }
             val isActivatable = klass.declarations.filterIsInstance<IrConstructor>().any { constructor ->
                 constructor.visibility == org.jetbrains.kotlin.descriptors.DescriptorVisibilities.PUBLIC &&
@@ -151,9 +158,9 @@ private class XamlSemanticExport(
             // LoadComponent fills this already constructed root. A no-argument
             // constructor is needed only if IXamlType activates it from markup.
             authored += WinUiXamlApplicationTypeDescriptor(page.className, page.baseTypeName,
-                listOf("Microsoft.UI.Xaml.Markup.IComponentConnector"), isActivatable = isActivatable)
+                declarations.framework.xamlComponentInterfaceNames, isActivatable = isActivatable)
             applicationMembers[page.className] = xamlApplicationProperties(klass, types, applicationTypes,
-                xamlProperties = page.properties)
+                xamlProperties = page.properties, framework = declarations.framework)
             val handlers = page.connections.flatMap { it.events }.map { it.handlerName }.distinct().sorted().map { name ->
                 val handler = requireNotNull(xamlIrFunctions(klass, name).singleOrNull()) {
                     "XAML ${page.className}: missing or overloaded handler $name"
@@ -168,7 +175,7 @@ private class XamlSemanticExport(
                     require(parameter.varargElementType == null) { "XAML handler parameters cannot be vararg" }
                     val kotlinName = requireNotNull(parameter.type.classFqName?.asString()) { "Unresolved XAML handler parameter" }
                     if (kotlinName == "kotlin.Any") "System.Object" else
-                        requireNotNull(resolveIndexedWinRTTypeByProjectedName(kotlinName, types)?.qualifiedName) {
+                        requireNotNull(resolveIndexedWinRTTypeByProjectedName(kotlinName, types, declarations.framework)?.qualifiedName) {
                             "XAML ${page.className}.$name: unsupported parameter type $kotlinName"
                         }
                 }
@@ -189,7 +196,7 @@ private class XamlSemanticExport(
                     isSealed = klass.modality == org.jetbrains.kotlin.descriptors.Modality.FINAL,
                     enumEntries = if (klass.kind == org.jetbrains.kotlin.descriptors.ClassKind.ENUM_CLASS)
                         klass.declarations.filterIsInstance<IrEnumEntry>().map { it.name.asString() } else null)
-                applicationMembers[type.qualifiedName] = xamlApplicationProperties(klass, types, applicationTypes)
+                applicationMembers[type.qualifiedName] = xamlApplicationProperties(klass, types, applicationTypes, framework = declarations.framework)
             }
         val symbols = buildJsonObject {
             put("SchemaVersion", declarations.schemaVersion)
@@ -204,6 +211,7 @@ private class XamlSemanticExport(
             loadXamlReferenceTypeAssemblyNames(references),
             types.values.filter { it.kind == WinRTTypeKind.Enum.name || it.kind == WinRTTypeKind.Struct.name }
                 .mapTo(mutableSetOf()) { it.qualifiedName },
+            framework = declarations.framework,
         )
         Files.writeString(output, symbols.toString())
         // This isolated compilation owns only schema/symbol outputs. Keep full frontend

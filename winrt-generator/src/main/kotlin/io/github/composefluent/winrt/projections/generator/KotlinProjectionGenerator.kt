@@ -1917,8 +1917,7 @@ class KotlinProjectionGenerator(
             }
         }
 
-    private fun KotlinTypeProjectionPlan.requiresWinUiXamlTypeRedirects(): Boolean =
-        type.qualifiedName.startsWith("Microsoft.UI.")
+    private fun KotlinTypeProjectionPlan.requiresWinUiXamlTypeRedirects(): Boolean = useWinUiXamlTypeRedirects
 
     private fun List<KotlinTypeProjectionPlan>.kotlinDurationAliasPackages(): Set<String> =
         asSequence()

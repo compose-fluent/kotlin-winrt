@@ -1,13 +1,14 @@
 package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.*
+import io.github.composefluent.winrt.runtime.XamlFramework
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
 
 /** The SDK owns literal conversion for both project and SDK designer accessors. */
-internal fun writeXamlMemberConversionSource(root: Path) {
+internal fun writeXamlMemberConversionSource(root: Path, framework: XamlFramework = XamlFramework.WinUi) {
     val file = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlMemberValue.kt")
     Files.createDirectories(file.parent)
     file.writeText("""
@@ -15,7 +16,7 @@ internal fun writeXamlMemberConversionSource(root: Path) {
         internal inline fun <reified T> kotlinWinUiXamlMemberValue(value: Any?): T {
           if (value is T || value !is String) return value as T
           return io.github.composefluent.winrt.runtime.convertWinUiXamlLiteral(T::class, value) { type, text ->
-            microsoft.ui.xaml.markup.XamlBindingHelper.convertValue(type, text)
+            ${framework.xamlKotlinNamespace}.markup.XamlBindingHelper.convertValue(type, text)
           } as T
         }
     """.trimIndent() + "\n")
@@ -30,19 +31,20 @@ internal fun writeXamlProjectedTypeRegistrationSource(
     references: List<Path>,
     names: Set<String>,
     assemblyName: String?,
+    framework: XamlFramework = XamlFramework.WinUi,
 ): String? {
     if (names.isEmpty()) return null
     val model = WinRTMetadataLoader.loadSources(references.map(WinRTMetadataSource::path))
-    return writeXamlProjectedTypeRegistrationSource(root, model, names, assemblyName)
+    return writeXamlProjectedTypeRegistrationSource(root, model, names, assemblyName, framework)
 }
 
 internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMetadataModel,
-    names: Set<String>, assemblyName: String?): String? {
+    names: Set<String>, assemblyName: String?, framework: XamlFramework = XamlFramework.WinUi): String? {
     if (names.isEmpty()) return null
     val semantics = model.semanticHelpers()
     val specialTypes = model.specialTypeResolver()
     val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
-    val sdkNamespaces = WinUiXamlNamespaces.namespaces(WinUiXamlNamespaces.PRESENTATION).toSet()
+    val sdkNamespaces = WinUiXamlNamespaces.namespaces(WinUiXamlNamespaces.PRESENTATION, framework).toSet()
     fun sdk(type: WinRTTypeDefinition) = type.qualifiedName.substringBeforeLast('.') in sdkNamespaces
     val requested = names.toMutableSet()
     names.mapNotNull(definitions::get).filter(::sdk).forEach { original ->

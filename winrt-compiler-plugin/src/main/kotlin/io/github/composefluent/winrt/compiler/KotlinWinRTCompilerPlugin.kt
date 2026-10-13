@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.runtime.XamlFramework
 import io.github.composefluent.winrt.compiler.xaml.XamlSemanticOptions
 import io.github.composefluent.winrt.compiler.xaml.XamlFirRegistrar
 import io.github.composefluent.winrt.compiler.xaml.XamlPageBodies
@@ -270,7 +271,9 @@ class KotlinWinRTCompilerPluginRegistrar : CompilerPluginRegistrar() {
             IrGenerationExtension.registerExtension(it)
             if (!XamlLibraryOptions.compileLibrary(configuration)) return
         }
+        var xamlFramework = XamlSemanticOptions.framework(configuration)
         XamlSemanticOptions.compilation(configuration)?.let { xaml ->
+            xamlFramework = xaml.declarations.framework
             FirExtensionRegistrarAdapter.registerExtension(XamlFirRegistrar(xaml.declarations))
             val xamlRegistrars = if (!xaml.semanticOnly) readCompilerSupportManifestIfConfigured(
                 configuration.get(KotlinWinRTCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY))
@@ -300,6 +303,7 @@ class KotlinWinRTCompilerPluginRegistrar : CompilerPluginRegistrar() {
                 compilerSupportManifestPath = configuration.get(KotlinWinRTCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY),
                 compilerSupportClassOutputDirectoryPath = configuration.get(KotlinWinRTCommandLineProcessor.COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY),
                 projectionSupportMode = configuration.get(KotlinWinRTCommandLineProcessor.PROJECTION_SUPPORT_MODE_KEY),
+                xamlFramework = xamlFramework,
             ),
         )
         IrGenerationExtension.registerExtension(XamlConstruction())
@@ -319,6 +323,7 @@ class KotlinWinRTIrGenerationExtension(
     private val compilerSupportManifestPath: String?,
     private val compilerSupportClassOutputDirectoryPath: String?,
     private val projectionSupportMode: String?,
+    private val xamlFramework: XamlFramework = XamlFramework.WinUi,
 ) : IrGenerationExtension {
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     override fun generate(
@@ -742,7 +747,7 @@ class KotlinWinRTIrGenerationExtension(
     ): List<IndexedWinRTType> =
         klass.superTypes.flatMap { type ->
             val superTypeName = type.classFqName?.asString() ?: return@flatMap emptyList()
-            resolveIndexedWinRTTypeByProjectedName(superTypeName, winRTTypes)?.let { return@flatMap listOf(it) }
+            resolveIndexedWinRTTypeByProjectedName(superTypeName, winRTTypes, xamlFramework)?.let { return@flatMap listOf(it) }
             val superClass = type.classOrNull?.owner ?: return@flatMap emptyList()
             val sourceTypeName = superClass.fqNameWhenAvailable?.asString() ?: return@flatMap emptyList()
             if (!visitedSourceTypes.add(sourceTypeName)) {
@@ -767,7 +772,7 @@ class KotlinWinRTIrGenerationExtension(
         val resolvedBase = baseClassName
             .takeIf(String::isNotBlank)
             ?.let { typeName ->
-                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes)) {
+                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes, xamlFramework)) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $baseClassName."
                 }.also { type ->
                     require(type.kind == "RuntimeClass") {
@@ -777,7 +782,7 @@ class KotlinWinRTIrGenerationExtension(
             }
         val resolvedInterfaces = interfaceNames
             .map { typeName ->
-                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes)) {
+                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes, xamlFramework)) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
                 }.also { type ->
                     require(type.kind == "Interface") {
@@ -787,7 +792,7 @@ class KotlinWinRTIrGenerationExtension(
             }
         val resolvedOverridableInterfaces = overridableInterfaceNames
             .map { typeName ->
-                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes)) {
+                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes, xamlFramework)) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
                 }.also { type ->
                     require(type.kind == "Interface") {
@@ -799,7 +804,7 @@ class KotlinWinRTIrGenerationExtension(
         val resolvedActivatableFactoryInterface = activatableFactoryInterfaceName
             .takeIf(String::isNotBlank)
             ?.let { typeName ->
-                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes)) {
+                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes, xamlFramework)) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
                 }.also { type ->
                     require(type.kind == "Interface") {
@@ -809,7 +814,7 @@ class KotlinWinRTIrGenerationExtension(
             }
         val resolvedStaticFactoryInterfaces = staticFactoryInterfaceNames
             .map { typeName ->
-                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes)) {
+                requireNotNull(resolveIndexedWinRTTypeByProjectedName(typeName, winRTTypes, xamlFramework)) {
                     "WinRT authored type ${klass.fqNameWhenAvailable?.asString()} annotation references unknown WinRT metadata type $typeName."
                 }.also { type ->
                     require(type.kind == "Interface") {
@@ -919,7 +924,7 @@ class KotlinWinRTIrGenerationExtension(
             return function.overriddenSymbols.any { symbol ->
                 val method = symbol.owner
                 val ownerName = (method.parent as? IrClass)?.fqNameWhenAvailable?.asString()
-                val metadata = ownerName?.let { resolveIndexedWinRTTypeByProjectedName(it, winRTTypes) }
+                val metadata = ownerName?.let { resolveIndexedWinRTTypeByProjectedName(it, winRTTypes, xamlFramework) }
                 metadata?.kind == "Interface" || implementsProjectedInterface(method, visited)
             }
         }

@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.compiler.authoring
 
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
+import io.github.composefluent.winrt.metadata.xamlMappedTypeName
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.isWinRTObjectTypeName
 import io.github.composefluent.winrt.metadata.winRTMappedTypeForKotlinName
@@ -342,11 +343,14 @@ fun resolveIndexedWinRTType(
 fun resolveIndexedWinRTTypeByProjectedName(
     typeName: String,
     winRTTypes: Map<String, IndexedWinRTType>,
+    xamlFramework: io.github.composefluent.winrt.runtime.XamlFramework? = null,
 ): IndexedWinRTType? {
-    winRTTypes[typeName]?.let { return it }
-    val projectedName = winRTMappedTypeForKotlinName(typeName)?.abiQualifiedName
+    if (xamlFramework == null) winRTTypes[typeName]?.let { return it }
+    val metadataName = winRTMappedTypeForKotlinName(typeName)?.abiQualifiedName
         ?: projectionPackageToMetadataName(typeName)
+    val projectedName = xamlFramework?.xamlMappedTypeName(metadataName) ?: metadataName
     winRTTypes[projectedName]?.let { return it }
+    if (projectedName != metadataName) return null
     return if (winRTTypes is AuthoringMetadataIndex) {
         winRTTypes.findIgnoringCase(typeName, projectedName)
     } else {

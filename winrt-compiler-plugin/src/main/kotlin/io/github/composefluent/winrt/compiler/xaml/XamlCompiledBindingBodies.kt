@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.*
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.ir.builders.*
@@ -25,6 +26,7 @@ internal class XamlCompiledBindingBodies(
     private val pluginContext: IrPluginContext,
     private val classes: Map<String?, IrClass>,
     private val pages: Map<String, WinUiXamlPageDeclaration> = emptyMap(),
+    private val framework: XamlFramework = XamlFramework.WinUi,
 ) {
     private fun projection(name: String): IrClass = if (name == "System.Object") pluginContext.irBuiltIns.anyClass.owner
         else classes[name] ?: requireNotNull(pluginContext.referenceClass(
@@ -167,7 +169,7 @@ internal class XamlCompiledBindingBodies(
                         "attached" -> dependencyProperty(projection(requireNotNull(expression.typeName)), requireNotNull(expression.name))
                         else -> null
                     }
-                    val notifier = projection("Microsoft.UI.Xaml.Data.INotifyPropertyChanged")
+                    val notifier = projection(framework.xamlTypeName("Data.INotifyPropertyChanged"))
                     val changedEvent = pages[sourceClass.fqNameWhenAvailable?.asString()]?.properties
                         ?.singleOrNull { it.name == expression.name }?.changedHandler
                     val subscribe = irBlock {
@@ -180,7 +182,7 @@ internal class XamlCompiledBindingBodies(
                         // steps, preferring observable vectors/maps over mapped INCC.
                         val vector = pluginContext.referenceClass(xamlProjectionClassId("Windows.Foundation.Collections.IObservableVector"))?.owner
                         val map = pluginContext.referenceClass(xamlProjectionClassId("Windows.Foundation.Collections.IObservableMap"))?.owner
-                        val collection = projection("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged")
+                        val collection = projection(framework.xamlTypeName("Interop.INotifyCollectionChanged"))
                         val event = when {
                             vector != null && watched.type.isSubtypeOfClass(vector.symbol) -> vector to "VectorChanged"
                             map != null && watched.type.isSubtypeOfClass(map.symbol) -> map to "MapChanged"
@@ -199,7 +201,7 @@ internal class XamlCompiledBindingBodies(
                     val targetObject = irTemporary(target())
                     val dp = dependencyProperty(owner, binding.name)
                     if (binding.updateSourceTrigger == "LostFocus") +subscribeEvent(this, observerClass, observer(),
-                        state(), irGet(targetObject), projection("Microsoft.UI.Xaml.UIElement"), "LostFocus", back ?: changed, backDelegate)
+                        state(), irGet(targetObject), projection(framework.xamlTypeName("UIElement")), "LostFocus", back ?: changed, backDelegate)
                     else {
                         requireNotNull(dp) { "$location: TwoWay target ${binding.name} requires a dependency property or LostFocus trigger" }
                         +subscribeProperty(this, observerClass, observer(), state(), irGet(targetObject), dp, back ?: changed, backDelegate)
@@ -424,12 +426,12 @@ internal class XamlCompiledBindingBodies(
     private fun loadElement(builder: IrBuilderWithScope, connection: WinUiXamlConnectionDeclaration,
         value: IrExpression, root: () -> IrExpression, current: () -> IrExpression,
         disconnect: (IrStatementsBuilder<*>) -> Unit): IrExpression = with(builder) {
-        val framework = projection("Microsoft.UI.Xaml.FrameworkElement")
-        val helper = requireNotNull(projection("Microsoft.UI.Xaml.Markup.XamlMarkupHelper").companionObject())
-        val dependencyObject = projection("Microsoft.UI.Xaml.DependencyObject")
+        val frameworkElement = projection(framework.xamlTypeName("FrameworkElement"))
+        val helper = requireNotNull(projection(framework.xamlTypeName("Markup.XamlMarkupHelper")).companionObject())
+        val dependencyObject = projection(framework.xamlTypeName("DependencyObject"))
         irIfThenElse(pluginContext.irBuiltIns.unitType, value,
             irBlock {
-                +irCall(framework.functions.single { it.name.asString() == "findName" }).apply {
+                +irCall(frameworkElement.functions.single { it.name.asString() == "findName" }).apply {
                     dispatchReceiver = root(); arguments[1] = irString(requireNotNull(connection.elementName))
                 }
                 +irUnit()
@@ -447,8 +449,8 @@ internal class XamlCompiledBindingBodies(
 
     fun lifecycleSubscription(builder: IrBuilderWithScope, klass: IrClass, page: WinUiXamlPageDeclaration,
         callback: IrSimpleFunction, receiver: IrExpression, loading: Boolean): IrExpression = with(builder) {
-        val window = klass.defaultType.isSubtypeOfClass(projection("Microsoft.UI.Xaml.Window").symbol)
-        if (!window && !klass.defaultType.isSubtypeOfClass(projection("Microsoft.UI.Xaml.FrameworkElement").symbol)) {
+        val window = klass.defaultType.isSubtypeOfClass(projection(framework.xamlTypeName("Window")).symbol)
+        if (!window && !klass.defaultType.isSubtypeOfClass(projection(framework.xamlTypeName("FrameworkElement")).symbol)) {
             // CSharpPagePass2 attaches Loading to binding file roots only.
             // Dictionary templates use IDataTemplateComponent on their own
             // realized FrameworkElement; the dictionary has no UI lifecycle.
@@ -457,7 +459,7 @@ internal class XamlCompiledBindingBodies(
             }
             return@with irUnit()
         }
-        val owner = projection(if (window) "Microsoft.UI.Xaml.Window" else "Microsoft.UI.Xaml.FrameworkElement")
+        val owner = projection(if (window) framework.xamlTypeName("Window") else framework.xamlTypeName("FrameworkElement"))
         val event = if (window) { if (loading) "Activated" else "Closed" } else { if (loading) "Loading" else "Unloaded" }
         val add = owner.functions.single { it.name.asString() == "add$event" }
         irCall(add.symbol).apply {
@@ -490,8 +492,8 @@ internal class XamlCompiledBindingBodies(
         state: IrExpression, source: IrExpression, property: IrSimpleFunction,
         changed: IrSimpleFunction = method(klass, xamlBindingsChangedName),
         callback: ((IrBuilderWithScope, IrType) -> IrExpression)? = null): IrExpression = with(builder) {
-        val dependencyObject = projection("Microsoft.UI.Xaml.DependencyObject")
-        val dependencyProperty = projection("Microsoft.UI.Xaml.DependencyProperty")
+        val dependencyObject = projection(framework.xamlTypeName("DependencyObject"))
+        val dependencyProperty = projection(framework.xamlTypeName("DependencyProperty"))
         val register = dependencyObject.functions.single { it.name.asString() == "registerPropertyChangedCallback" }
         val unregister = dependencyObject.functions.single { it.name.asString() == "unregisterPropertyChangedCallback" }
         val stateClass = requireNotNull(pluginContext.referenceClass(xamlBindingStateId)).owner
@@ -608,15 +610,15 @@ internal class XamlCompiledBindingBodies(
     private fun converter(builder: IrBuilderWithScope, klass: IrClass, receiver: IrExpression,
         binding: WinUiXamlBindingDeclaration, value: IrExpression, targetType: IrType,
         back: Boolean = false): IrExpression = with(builder) {
-        val dictionary = projection("Microsoft.UI.Xaml.ResourceDictionary")
-        val applicationType = projection("Microsoft.UI.Xaml.Application")
+        val dictionary = projection(framework.xamlTypeName("ResourceDictionary"))
+        val applicationType = projection(framework.xamlTypeName("Application"))
         // CSharpPagePass2.SetConverterLookupRoot takes a ResourceDictionary
         // directly for dictionary files; UI/application roots expose Resources.
         // Use the actual root's accessor so a dictionary template never calls
         // FrameworkElement.get_Resources on a ResourceDictionary instance.
         val resources = if (receiver.type.isSubtypeOfClass(dictionary.symbol)) receiver else {
             val owner = if (receiver.type.isSubtypeOfClass(applicationType.symbol)) applicationType
-                else projection("Microsoft.UI.Xaml.FrameworkElement")
+                else projection(framework.xamlTypeName("FrameworkElement"))
             require(receiver.type.isSubtypeOfClass(owner.symbol)) {
                 "${binding.location.line}:${binding.location.column}: compiled XAML converter lookup requires a ResourceDictionary or a root with Resources"
             }
@@ -627,7 +629,7 @@ internal class XamlCompiledBindingBodies(
         // IDictionary mapping. Its Kotlin surface uses get/containsKey.
         val lookup = dictionary.functions.single { it.name.asString() == "get" }
         val hasKey = dictionary.functions.single { it.name.asString() == "containsKey" }
-        val converters = projection("Microsoft.UI.Xaml.Data.IValueConverter")
+        val converters = projection(framework.xamlTypeName("Data.IValueConverter"))
         val call = converters.functions.single { it.name.asString() == if (back) "convertBack" else "convert" }
         irBlock(resultType = call.returnType) {
             val local = irTemporary(resources)
@@ -873,7 +875,7 @@ internal class XamlCompiledBindingBodies(
             return irAs(value, expected)
         }
         if (expected.classOrNull?.let { value.type.isSubtypeOfClass(it) } == true) return irImplicitCast(value, expected)
-        val helper = requireNotNull(projection("Microsoft.UI.Xaml.Markup.XamlBindingHelper").companionObject())
+        val helper = requireNotNull(projection(framework.xamlTypeName("Markup.XamlBindingHelper")).companionObject())
         val convertValue = helper.functions.single { it.name.asString() == "convertValue" }
         irAs(irCall(convertValue.symbol).apply {
             dispatchReceiver = irGetObject(helper.symbol)

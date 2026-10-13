@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import io.github.composefluent.winrt.runtime.XamlFramework
 
 object WinRTPortableExecutableMetadataWriter {
     /** Application-only XAML schema; never used as the exported component WinMD. */
@@ -14,11 +15,12 @@ object WinRTPortableExecutableMetadataWriter {
         outputFile: Path,
         externalTypeAssemblies: Map<String, String>,
         valueTypeNames: Set<String> = emptySet(),
+        framework: XamlFramework = XamlFramework.WinUi,
     ) {
         writeXamlSchemaWinmd(assemblyName, runtimeClasses.map {
             WinUiXamlApplicationTypeDescriptor(it.runtimeClassName, it.baseRuntimeClassName,
                 it.interfaceNames, it.isActivatable, it.isSealed)
-        }, members, outputFile, externalTypeAssemblies, valueTypeNames)
+        }, members, outputFile, externalTypeAssemblies, valueTypeNames, framework)
     }
 
     /** Plain Kotlin data models participate in XAML schema without becoming exported WinRT components. */
@@ -29,6 +31,7 @@ object WinRTPortableExecutableMetadataWriter {
         outputFile: Path,
         externalTypeAssemblies: Map<String, String>,
         valueTypeNames: Set<String> = emptySet(),
+        framework: XamlFramework = XamlFramework.WinUi,
     ) {
         require(members.keys.all { name -> runtimeClasses.any { it.runtimeClassName == name } })
         Files.createDirectories(outputFile.parent)
@@ -38,7 +41,7 @@ object WinRTPortableExecutableMetadataWriter {
             WinmdClass(it.runtimeClassName, if (it.enumEntries != null) "System.Enum" else it.baseRuntimeClassName, it.interfaceNames,
                 isActivatable = it.enumEntries == null && it.isActivatable, isSealed = it.enumEntries != null || it.isSealed, enumEntries = it.enumEntries)
         },
-            externalTypeAssemblies = externalTypeAssemblies, applicationMembers = members, isApplicationSchema = true,
+            externalTypeAssemblies = externalTypeAssemblies, applicationMembers = members, isApplicationSchema = true, framework = framework,
             valueTypeNames = valueTypeNames + runtimeClasses.filter { it.enumEntries != null }.map { it.runtimeClassName }).build())
     }
 
@@ -115,7 +118,9 @@ private class WinmdBuilder(
     private val applicationMembers: Map<String, WinUiXamlApplicationTypeMembers> = emptyMap(),
     private val valueTypeNames: Set<String> = emptySet(),
     private val isApplicationSchema: Boolean = false,
+    framework: XamlFramework = XamlFramework.WinUi,
 ) {
+    private val XAML_CONTENT_PROPERTY = framework.xamlTypeName("Markup.ContentPropertyAttribute")
     // WinRTTypeWriter.VisitEnumDeclaration owns value__, literal FieldDefs and constants.
     private val fields = runtimeClasses.flatMap { type ->
         type.enumEntries?.let { entries ->
@@ -918,7 +923,6 @@ private class WinmdBuilder(
         const val EVENT_REGISTRATION_TOKEN = "Windows.Foundation.EventRegistrationToken"
         const val TABLE_PROPERTY = 23
         const val TABLE_METHOD_SEMANTICS = 24
-        const val XAML_CONTENT_PROPERTY = "Microsoft.UI.Xaml.Markup.ContentPropertyAttribute"
         // XamlCompiler.Core/KnownStrings.cs resolves this Windows metadata attribute.
         const val XAML_CREATE_FROM_STRING = "Windows.Foundation.Metadata.CreateFromStringAttribute"
         const val TABLE_INTERFACE_IMPL = 9

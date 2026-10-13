@@ -3,8 +3,19 @@ package io.github.composefluent.winrt.metadata
 import java.nio.file.Files
 import org.junit.Assert.*
 import org.junit.Test
+import io.github.composefluent.winrt.runtime.XamlFramework
 
 class WinUiXamlNamespacesTest {
+    @Test fun shared_xaml_aliases_choose_the_declared_framework_without_redirecting_sdk_classes() {
+        // CsWinRT Projections.cs chooses WUX or MUX for the same managed system type.
+        assertEquals("Windows.UI.Xaml.Data.PropertyChangedEventArgs",
+            XamlFramework.Uwp.xamlMappedTypeName("Microsoft.UI.Xaml.Data.PropertyChangedEventArgs"))
+        assertEquals("Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
+            XamlFramework.WinUi.xamlMappedTypeName("Windows.UI.Xaml.Data.INotifyPropertyChanged"))
+        assertEquals("Microsoft.UI.Xaml.Controls.Button", XamlFramework.Uwp.xamlMappedTypeName("Microsoft.UI.Xaml.Controls.Button"))
+        assertEquals("Sample.Model", XamlFramework.Uwp.xamlMappedTypeName("Sample.Model"))
+    }
+
     @Test fun header_discovers_attached_and_binding_types_in_conditional_namespaces() {
         // XAMLC DirectUISchemaContext.DirectUI2010Paths is the namespace owner; this is
         // only the same application-header discovery previously owned by the source scanner.
@@ -20,6 +31,10 @@ class WinUiXamlNamespacesTest {
         assertTrue(listOf("sample.Model") in references)
         assertTrue(listOf("sample.Feature") in references)
         assertTrue(references.any { "Microsoft.UI.Xaml.Controls.Page" in it })
+        val uwpReferences = WinUiXamlNamespaces.typeReferences(source, XamlFramework.Uwp)
+        assertTrue(uwpReferences.any { "Windows.UI.Xaml.Controls.Page" in it })
+        assertFalse(uwpReferences.flatten().any { it.startsWith("Microsoft.UI.Xaml") })
+        assertTrue(listOf("sample.Owner") in uwpReferences)
         Files.writeString(source, Files.readString(source).replace("Before", "After"))
         assertEquals(references, WinUiXamlNamespaces.typeReferences(source))
         Files.writeString(source, "<Page invalid")

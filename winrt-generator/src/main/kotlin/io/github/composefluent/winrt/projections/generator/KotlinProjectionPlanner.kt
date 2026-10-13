@@ -144,7 +144,8 @@ class KotlinProjectionPlanner(
             normalized.namespaces.flatMap {
                 val namespacePlanner = KotlinProjectionPlanner(
                     validator = validator,
-                    useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects || it.requiresWinUiXamlTypeRedirects(),
+                    useWinUiXamlTypeRedirects = projectionContext.xamlFramework == io.github.composefluent.winrt.runtime.XamlFramework.WinUi &&
+                        (useWinUiXamlTypeRedirects || it.requiresWinUiXamlTypeRedirects()),
                     guidSignatureHelpers = semanticHelpers,
                 )
                 namespacePlanner.planNamespace(
@@ -349,6 +350,7 @@ class KotlinProjectionPlanner(
             },
             projectedAttributes = semanticHelpers.projectedAttributes(type).normalizeApiContractProjectedAttributes(type),
             companionKinds = planCompanions(type),
+            useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects,
         )
     }
 

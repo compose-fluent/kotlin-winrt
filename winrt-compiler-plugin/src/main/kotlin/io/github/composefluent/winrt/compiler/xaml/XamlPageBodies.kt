@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.WinUiXamlDeclarationIndex
+import io.github.composefluent.winrt.metadata.xamlTypeName
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
@@ -66,7 +67,7 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                         +irCall(error).apply { arguments[0] = irString("XAML semantic-only artifact must not be executed") }
                     }
                 }
-                if (page.hasCompiledBindings()) XamlCompiledBindingBodies(pluginContext, classes, pages).generate(klass, page, properties)
+                if (page.hasCompiledBindings()) XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework).generate(klass, page, properties)
                 continue
             }
             fun runtime(name: String) = pluginContext.referenceFunctions(
@@ -75,7 +76,7 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                 "XAML requires generated projection $name"
             }.owner
             val requireElement = runtime("requireXamlNamedElement")
-            val propertyBodies = XamlPropertyBodies(pluginContext, classes)
+            val propertyBodies = XamlPropertyBodies(pluginContext, classes, index.framework)
             propertyBodies.generate(klass, page, properties)
             for (connection in page.connections.filter { it.storageName() != null }) {
                 val property = properties.getValue(connection.storageName()!!)
@@ -104,7 +105,7 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                 getter.body = DeclarationIrBuilder(pluginContext, getter.symbol).irBlockBody {
                     +irReturn(irGetField(irGet(requireNotNull(getter.dispatchReceiverParameter)), bindingField))
                 }
-                XamlCompiledBindingBodies(pluginContext, classes, pages).generate(klass, page, properties)
+                XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework).generate(klass, page, properties)
             }
             val state = requireNotNull(properties.getValue(xamlStateName.asString()).backingField)
             val stateClass = requireNotNull(pluginContext.referenceClass(xamlStateId)).owner
@@ -131,7 +132,7 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                 pluginContext.referenceClass(ClassId.topLevel(FqName(it)))?.owner
             }).distinctBy { it.fqNameWhenAvailable }.sortedBy { it.fqNameWhenAvailable?.asString() }
             check(applicationDefinitions.isNotEmpty()) { "XAML application definitions were not generated before Kotlin compilation" }
-            val applicationMetadata = requireNotNull(projection("Microsoft.UI.Xaml.Application").companionObject())
+            val applicationMetadata = requireNotNull(projection(index.framework.xamlTypeName("Application")).companionObject())
             val loadComponent = applicationMetadata.functions.single { it.name.asString() == "loadComponent" &&
                 it.parameters.count { p -> p.kind == IrParameterKind.Regular } == 2 }
             val uri = projection("Windows.Foundation.Uri").constructors.single {
@@ -156,7 +157,7 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                     }
                 }
                 if (page.hasCompiledBindings()) {
-                    val bindings = XamlCompiledBindingBodies(pluginContext, classes, pages)
+                    val bindings = XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework)
                     +bindings.lifecycleSubscription(this, klass, page, function(xamlBindingsLoadingName), irGet(requireNotNull(load.dispatchReceiverParameter)), true)
                     +bindings.lifecycleSubscription(this, klass, page, function(xamlBindingsUnloadedName), irGet(requireNotNull(load.dispatchReceiverParameter)), false)
                 }
@@ -266,7 +267,7 @@ internal class XamlPageBodies(private val index: WinUiXamlDeclarationIndex, priv
                                     }
                                 }
                                 for (event in connection.bindings.filter { bindingOnly && it.isEvent }) {
-                                    +XamlCompiledBindingBodies(pluginContext, classes, pages).eventSubscription(this, klass, event,
+                                    +XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework).eventSubscription(this, klass, event,
                                         irGet(requireNotNull(connect.dispatchReceiverParameter)), irGet(target))
                                 }
                                 if (bindingOnly && connection.canBeInstantiatedLater) {

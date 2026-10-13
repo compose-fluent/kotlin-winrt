@@ -85,7 +85,7 @@ internal fun xamlAttachedRegistrationSources(
     buildString {
         appendLine("${runtimePackage}WinUiXamlMemberDefinition(")
         appendLine("  name = ${literal(name)}, typeName = ${literal(getter.method.returnType.xamlStandardTypeName())}, type = ${classLiteral(getter.returnType)},")
-        appendLine("  isAttachable = true, isDependencyProperty = ${members.properties.any { it.isStatic && it.name == "${name}Property" && it.type.qualifiedName == "Microsoft.UI.Xaml.DependencyProperty" }},")
+        appendLine("  isAttachable = true, isDependencyProperty = ${members.properties.any { it.isStatic && it.name == "${name}Property" && isXamlTypeName(it.type.qualifiedName, "DependencyProperty") }},")
         appendLine("  targetTypeName = ${literal(getter.method.parameterTypes.single().xamlStandardTypeName())}, targetType = ${classLiteral(getter.parameterTypes.single())},")
         appendLine("  get = { $owner.`${getter.method.name}`(it as ${getter.parameterTypes.single()}) },")
         if (setter != null) appendLine("  set = { instance, value -> $owner.`${setter.method.name}`(instance as ${setter.parameterTypes[0]}, ${convert("value", setter.parameterTypes[1])}) },")

@@ -1,11 +1,33 @@
 package io.github.composefluent.winrt.compiler.xaml
 
+import io.github.composefluent.winrt.runtime.XamlFramework
+import io.github.composefluent.winrt.metadata.xamlKotlinNamespace
+import io.github.composefluent.winrt.metadata.xamlBindingConnectorTypeName
+import io.github.composefluent.winrt.metadata.xamlComponentInterfaceNames
+import io.github.composefluent.winrt.metadata.xamlTypeName
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
 
+/** SDK roots referenced by emitted page/template and inspection code, independently of
+ * the application's selected controls. XAMLC CSharpPagePass2/TypeInfoPass2 own these
+ * references; the usual WinMD dependency closure supplies their signatures and bases.
+ */
+fun xamlCompilerSupportTypeNames(framework: XamlFramework, previewHost: Boolean = false): List<String> =
+    framework.xamlComponentInterfaceNames + listOf(
+        "Application", "Window", "DataTemplate", "Markup.IDataTemplateComponent", "Markup.IDataTemplateExtension",
+        "Markup.XamlBindingHelper", "Markup.XamlMarkupHelper", "Markup.XamlReader",
+        "Media.VisualTreeHelper", "Media.Imaging.RenderTargetBitmap",
+    ).map(framework::xamlTypeName) + when (framework) {
+        XamlFramework.Uwp -> listOf("Windows.System.DispatcherQueue", "Windows.UI.ViewManagement.ApplicationView")
+        XamlFramework.WinUi -> listOf("Microsoft.UI.Dispatching.DispatcherQueue") +
+            if (previewHost) listOf("Controls.Grid", "Controls.XamlControlsResources").map(framework::xamlTypeName) else emptyList()
+    }
+
 /** The three projected interfaces match CSharpPagePass2's generated template binding class. */
-internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = null) {
+internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = null, framework: XamlFramework = XamlFramework.WinUi) {
+    val connectorInterfaces = framework.xamlComponentInterfaceNames.joinToString(", ") { it.substringAfterLast('.') }
+    val bindingConnector = framework.xamlBindingConnectorTypeName.substringAfterLast('.')
     val suffix = assemblyName?.replace(Regex("[^A-Za-z0-9_]"), "_")?.let { "_$it" }.orEmpty()
     val className = "KotlinXamlBindingScopeConnector$suffix"
     val file = root.resolve("io/github/composefluent/winrt/generated/xaml/$className.kt")
@@ -15,34 +37,34 @@ internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = n
         package io.github.composefluent.winrt.generated.xaml
 
         import io.github.composefluent.winrt.runtime.*
-        import microsoft.ui.xaml.markup.IComponentConnector
+        import ${framework.xamlKotlinNamespace}.markup.*
 
         // The SDK invokes ordinary Connect and binding Connect independently.
         // Kotlin's native composition owner retains the live page. Forward
         // weakly, as template scopes do, to avoid a COM/managed ownership cycle.
-        internal class $pageClassName(owner: WinUiXamlPageBindingOwner) : IComponentConnector {
+        internal class $pageClassName(owner: WinUiXamlPageBindingOwner) : $connectorInterfaces {
             private val owner = WeakReference(owner)
             override fun connect(connectionId: Int, target: Any?) {
                 owner.tryGetTarget()?._kotlinXamlConnectBindings(connectionId, target)
             }
             override fun getBindingConnector(connectionId: Int, target: Any?): IComponentConnector? =
-                owner.tryGetTarget()?.asWinRT<IComponentConnector>()?.getBindingConnector(connectionId, target)
+                owner.tryGetTarget()?.asWinRT<$bindingConnector>()?.getBindingConnector(connectionId, target)
         }
     """.trimIndent() + "\n")
     file.writeText("""
         package io.github.composefluent.winrt.generated.xaml
 
         import io.github.composefluent.winrt.runtime.*
-        import microsoft.ui.xaml.*
-        import microsoft.ui.xaml.controls.ContainerContentChangingEventArgs
-        import microsoft.ui.xaml.markup.*
+        import ${framework.xamlKotlinNamespace}.*
+        import ${framework.xamlKotlinNamespace}.controls.ContainerContentChangingEventArgs
+        import ${framework.xamlKotlinNamespace}.markup.*
 
         internal class $className(
             owner: WinUiXamlBindingScopeOwner,
             scopeId: Int,
             target: Any?,
             controlTemplate: Boolean,
-        ) : IComponentConnector, IDataTemplateComponent, IDataTemplateExtension {
+        ) : $connectorInterfaces, IDataTemplateComponent, IDataTemplateExtension {
             private val scope = WinUiXamlBindingScope(owner, scopeId)
             private val root = requireNotNull(target).asWinRT<FrameworkElement>()
             private val isControlTemplate = controlTemplate

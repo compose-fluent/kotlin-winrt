@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeC
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringCandidateFile
 import io.github.composefluent.winrt.compiler.authoring.readAuthoringMetadataIndex
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -14,6 +15,41 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 class KotlinWinRTAuthoringScannerCliTest {
+    @Test
+    fun uwp_xaml_pages_export_both_versioned_component_connector_interfaces() {
+        // Windows SDK markup.h owns IComponentConnector.Connect and IComponentConnector2.GetBindingConnector.
+        val root = Files.createTempDirectory("kotlin-winrt-uwp-authoring-")
+        root.resolve("MainPage.kt").writeText("package sample\nclass MainPage : windows.ui.xaml.controls.Page()")
+        val index = root.resolve("index.tsv")
+        index.writeText("Windows.UI.Xaml.Controls.Page\tRuntimeClass\tWindows.UI.Xaml.Controls.IPageOverrides\n" +
+            "Windows.UI.Xaml.Controls.IPageOverrides\tInterface\t\n" +
+            "Windows.UI.Xaml.Markup.IComponentConnector\tInterface\t\n" +
+            "Windows.UI.Xaml.Markup.IComponentConnector2\tInterface\t\n")
+        val declarations = root.resolve("declarations.json")
+        declarations.writeText("""{"SchemaVersion":1,"Pages":[{"ClassName":"sample.MainPage","ResourcePath":"MainPage.xaml","BaseTypeName":"Windows.UI.Xaml.Controls.Page","IsApplication":false,"Features":[],"Connections":[]}],"Resources":[],"Framework":"uwp"}""")
+        val output = root.resolve("candidates.tsv")
+        KotlinWinRTAuthoringScannerCli.main(arrayOf("--metadata-index", index.toString(), "--source-root", root.toString(),
+            "--output", output.toString(), "--xaml-declarations", declarations.toString(), "--xaml-framework", "uwp"))
+        val candidate = KotlinWinRTAuthoringCandidateFile.read(output).single()
+        assertTrue("Windows.UI.Xaml.Markup.IComponentConnector" in candidate.winRTInterfaceNames)
+        assertTrue("Windows.UI.Xaml.Markup.IComponentConnector2" in candidate.winRTInterfaceNames)
+        assertTrue(candidate.winRTInterfaceNames.none { it.startsWith("Microsoft.UI.Xaml") })
+    }
+
+    @Test
+    fun uwp_development_sources_use_core_window_and_the_system_dispatcher() {
+        val root = Files.createTempDirectory("kotlin-winrt-uwp-inspector-")
+        io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.Uwp)
+        val host = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinUiXamlPreviewHost.kt").readText()
+        val inspector = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_preview.kt").readText()
+        assertTrue(host.contains("requireNotNull(Window.current)"))
+        assertTrue(host.contains("XamlRuntime.initialize(XamlFramework.Uwp)"))
+        assertTrue(host.contains("windows.applicationmodel.activation.LaunchActivatedEventArgs"))
+        assertTrue(inspector.contains("windows.system.DispatcherQueue.getForCurrentThread()"))
+        assertTrue(inspector.contains("windows.ui.viewmanagement.ApplicationView.getForCurrentView()"))
+        assertTrue((host + inspector).let { !it.contains("microsoft.ui.") && !it.contains("XamlControlsResources") && !it.contains("window.appWindow") })
+    }
+
     @Test
     fun generated_preview_application_participates_in_application_override_authoring() {
         // Like CsWinRT's Application subclass, the generated design host needs

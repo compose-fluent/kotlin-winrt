@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.*
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.jetbrains.kotlin.GeneratedDeclarationKey
 import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.FirSession
@@ -13,7 +14,7 @@ import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.name.*
 
 internal object XamlDeclarationKey : GeneratedDeclarationKey()
-internal val xamlConnectorId = ClassId.topLevel(FqName("microsoft.ui.xaml.markup.IComponentConnector"))
+internal fun xamlConnectorId(framework: XamlFramework) = xamlProjectionClassId(framework.xamlTypeName("Markup.IComponentConnector"))
 internal val xamlStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlLoadState"))
 internal val xamlComponentId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUiXamlComponent"))
 internal val xamlStateName = Name.identifier("_kotlinXamlState")
@@ -46,7 +47,7 @@ internal val xamlScopeCreateName = Name.identifier("_kotlinXamlCreateScopeConnec
 internal val xamlScopeNames = setOf(xamlScopeUpdateName, xamlScopeConnectName, xamlScopeWriteBackName, xamlScopeCreateName)
 internal fun WinUiXamlPageDeclaration.hasTemplateScopes() = connections.any { it.isTemplateChild && it.isScopeRoot }
 internal fun WinUiXamlConnectionDeclaration.isControlTemplateScope() =
-    isScopeRoot && isTemplateChild && typeName == "Microsoft.UI.Xaml.Controls.ControlTemplate"
+    isScopeRoot && isTemplateChild && isXamlTypeName(typeName, "Controls.ControlTemplate")
 
 internal fun WinUiXamlPageDeclaration.hasCompiledBindings() = connections.any { it.bindings.isNotEmpty() }
 internal fun WinUiXamlPageDeclaration.bindBackNames(): Set<Name> = connections.flatMap { connection ->
@@ -62,16 +63,16 @@ internal fun xamlProjectionClassId(name: String): ClassId = ClassId(
     FqName(name.substringBeforeLast('.', "").lowercase()), Name.identifier(name.substringAfterLast('.')),
 )
 
-internal class XamlFirRegistrar(index: WinUiXamlDeclarationIndex) : FirExtensionRegistrar() {
+internal class XamlFirRegistrar(private val index: WinUiXamlDeclarationIndex) : FirExtensionRegistrar() {
     private val pages = index.pages.associateBy { ClassId.topLevel(FqName(it.className)) }
     override fun ExtensionRegistrarContext.configurePlugin() {
-        +FirDeclarationGenerationExtension.Factory { XamlDeclarations(it, pages) }
-        +FirSupertypeGenerationExtension.Factory { XamlSupertypes(it, pages) }
+        +FirDeclarationGenerationExtension.Factory { XamlDeclarations(it, pages, index.framework) }
+        +FirSupertypeGenerationExtension.Factory { XamlSupertypes(it, pages, index.framework) }
         +org.jetbrains.kotlin.fir.analysis.extensions.FirAdditionalCheckersExtension.Factory { XamlNameCheckers(it, pages) }
     }
 }
 
-private class XamlDeclarations(session: FirSession, private val pages: Map<ClassId, WinUiXamlPageDeclaration>) :
+private class XamlDeclarations(session: FirSession, private val pages: Map<ClassId, WinUiXamlPageDeclaration>, private val framework: XamlFramework) :
     FirDeclarationGenerationExtension(session) {
     override fun getCallableNamesForClass(classSymbol: FirClassSymbol<*>, context: MemberGenerationContext): Set<Name> {
         val page = pages[classSymbol.classId] ?: return emptySet()
@@ -118,7 +119,7 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
         if (page.properties.any { name in it.eventFunctions() }) {
             // PropertyChangedEventHandler is a typealias to EventHandler<Args?>,
             // so FIR must construct the expanded delegate type.
-            val args = ClassId.topLevel(FqName("microsoft.ui.xaml.data.PropertyChangedEventArgs"))
+            val args = xamlProjectionClassId(framework.xamlTypeName("Data.PropertyChangedEventArgs"))
                 .createConeType(session, nullable = true)
             val handler = ClassId.topLevel(FqName("windows.foundation.EventHandler"))
                 .createConeType(session, typeArguments = arrayOf(args))
@@ -139,7 +140,7 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
         val bindingMethod = page.hasCompiledBindings() && name in setOf(xamlUpdateBindingsName, xamlBindingsChangedName,
             xamlBindingsLoadingName, xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlPageBindingConnectName) + page.bindBackNames()
         if (!bindingMethod && name !in setOf(xamlLoadName, xamlInitializeName, xamlConstructionName, xamlConnectName, xamlBindingName)) return emptyList()
-        val result = if (name == xamlBindingName) xamlConnectorId.createConeType(session, nullable = true)
+        val result = if (name == xamlBindingName) xamlConnectorId(framework).createConeType(session, nullable = true)
             else session.builtinTypes.unitType.coneType
         return listOf(createMemberFunction(owner, XamlDeclarationKey, name, result) {
             if (name == xamlLoadName || (bindingMethod && name !in setOf(xamlRefreshBindingsName, xamlPageBindingConnectName))) visibility = Visibilities.Private
@@ -158,11 +159,11 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
     }
 }
 
-private class XamlSupertypes(session: FirSession, private val pages: Map<ClassId, WinUiXamlPageDeclaration>) : FirSupertypeGenerationExtension(session) {
+private class XamlSupertypes(session: FirSession, private val pages: Map<ClassId, WinUiXamlPageDeclaration>, private val framework: XamlFramework) : FirSupertypeGenerationExtension(session) {
     override fun needTransformSupertypes(declaration: FirClassLikeDeclaration) = declaration.symbol.classId in pages
     override fun computeAdditionalSupertypes(classLikeDeclaration: FirClassLikeDeclaration,
         resolvedSupertypes: List<FirResolvedTypeRef>, typeResolver: TypeResolveService): List<ConeKotlinType> =
-        (listOf(xamlConnectorId, xamlComponentId) +
+        (framework.xamlComponentInterfaceNames.map(::xamlProjectionClassId) + listOf(xamlComponentId) +
             (if (pages[classLikeDeclaration.symbol.classId]?.hasCompiledBindings() == true) listOf(xamlPageBindingOwnerId) else emptyList()) +
             (if (pages[classLikeDeclaration.symbol.classId]?.hasTemplateScopes() == true) listOf(xamlBindingScopeOwnerId) else emptyList()))
             .filterNot { id -> resolvedSupertypes.any { it.coneType.classId == id } }

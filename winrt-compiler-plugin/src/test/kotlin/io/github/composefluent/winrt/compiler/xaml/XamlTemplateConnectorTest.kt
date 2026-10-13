@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.runtime.WinUiXamlBindingScope
+import io.github.composefluent.winrt.runtime.XamlFramework
 import io.github.composefluent.winrt.metadata.*
 import kotlinx.serialization.json.*
 import org.jetbrains.kotlin.cli.common.ExitCode
@@ -14,11 +15,16 @@ import java.net.URLClassLoader
 
 class XamlTemplateConnectorTest {
     @Test
-    fun generated_connectors_wait_for_template_children_and_use_the_sdk_data_root() {
+    fun generated_connectors_wait_for_template_children_and_use_the_sdk_data_root() = exerciseConnectors(XamlFramework.WinUi)
+
+    @Test
+    fun uwp_connectors_preserve_the_separate_binding_interface_and_template_lifecycle() = exerciseConnectors(XamlFramework.Uwp)
+
+    private fun exerciseConnectors(framework: XamlFramework) {
         // CSharpPagePass2.GetBindingConnector sets the source; Connect initializes
         // ControlTemplate only after its children, and ProcessBindings initializes DataTemplate.
-        val root = File("build/xaml-template-connector").absoluteFile.apply { mkdirs() }
-        writeXamlBindingSupportSource(root.toPath())
+        val root = File(if (framework == XamlFramework.WinUi) "build/xaml-template-connector" else "build/xaml-template-connector-uwp").absoluteFile.apply { mkdirs() }
+        writeXamlBindingSupportSource(root.toPath(), framework = framework)
         File(root, "UI.kt").writeText("""
             package microsoft.ui.xaml
             class DependencyProperty
@@ -227,7 +233,7 @@ class XamlTemplateConnectorTest {
         val location = WinUiXamlSourceLocation(1, 1)
         // The Controls namespace and scope shape are exported by XamlCompiler's
         // actual ControlTemplate harvester; the data root is TargetType (Button).
-        val index = WinUiXamlDeclarationIndex(3, listOf(WinUiXamlPageDeclaration(
+        val fixtureIndex = WinUiXamlDeclarationIndex(3, listOf(WinUiXamlPageDeclaration(
             "probe.MainPage", "MainPage.xaml", "Microsoft.UI.Xaml.Controls.Page", false,
             listOf("templates", "compiled-bindings", "deferred-elements", "named-elements", "events"), listOf(
                 WinUiXamlConnectionDeclaration(1, "Microsoft.UI.Xaml.Controls.Page", null, location, emptyList(),
@@ -255,6 +261,23 @@ class XamlTemplateConnectorTest {
                             WinUiXamlBindingExpression("member", "BoundClick", receiver = WinUiXamlBindingExpression("root")), location,
                             isEvent = true))),
             ))), emptyList())
+        // Windows SDK IComponentConnector2 owns GetBindingConnector; a namespace-only
+        // substitution would compile WinUI yet produce the wrong UWP ABI contract.
+        if (framework == XamlFramework.Uwp) {
+            root.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { source ->
+                source.writeText(source.readText().replace("microsoft.ui.xaml", "windows.ui.xaml"))
+            }
+            val markup = File(root, "Markup.kt")
+            markup.writeText(markup.readText().replace(
+                "fun connect(connectionId: Int, target: Any?)\n    fun getBindingConnector",
+                "fun connect(connectionId: Int, target: Any?)\n}\ninterface IComponentConnector2 {\n    fun getBindingConnector"))
+            val ui = File(root, "UI.kt")
+            ui.writeText(ui.readText()
+                .replace("component.getBindingConnector", "(component as windows.ui.xaml.markup.IComponentConnector2).getBindingConnector")
+                .replace("fileBinding.getBindingConnector", "(fileBinding as windows.ui.xaml.markup.IComponentConnector2).getBindingConnector"))
+        }
+        val index = WinUiXamlDeclarations.parse(WinUiXamlDeclarations.canonicalText(fixtureIndex)
+            .replace("Microsoft.UI.Xaml", framework.xamlNamespace)).copy(framework = framework)
         val declarations = File(root, "declarations.json").apply { writeText(WinUiXamlDeclarations.canonicalText(index)) }
         val implementation = File(root, "implementation.json").apply { writeText(buildJsonObject {
             put("KotlinDeclarations", Json.parseToJsonElement(declarations.readText()))

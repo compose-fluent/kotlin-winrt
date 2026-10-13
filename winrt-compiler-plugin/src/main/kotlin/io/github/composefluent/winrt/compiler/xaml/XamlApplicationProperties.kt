@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.compiler.xaml
 import io.github.composefluent.winrt.compiler.authoring.IndexedWinRTType
 import io.github.composefluent.winrt.compiler.authoring.resolveIndexedWinRTTypeByProjectedName
 import io.github.composefluent.winrt.metadata.*
+import io.github.composefluent.winrt.runtime.XamlFramework
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
@@ -15,16 +16,16 @@ import org.jetbrains.kotlin.ir.expressions.IrConst
 
 /** One metadata mapping for property signatures, attached accessors and collection bases. */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
-internal fun xamlApplicationTypeReference(type: IrType, types: Map<String, IndexedWinRTType>, applicationTypes: Set<String>): WinRTTypeRef {
+internal fun xamlApplicationTypeReference(type: IrType, types: Map<String, IndexedWinRTType>, applicationTypes: Set<String>, framework: XamlFramework = XamlFramework.WinUi): WinRTTypeRef {
     val name = requireNotNull(type.classFqName?.asString()) { "XAML property requires a concrete type: $type" }
     if (isWinRTVoidTypeName(name.removePrefix("kotlin."))) return WinRTTypeRef.named("System.Void")
     val arguments = (type as? IrSimpleType)?.arguments.orEmpty().map {
-        xamlApplicationTypeReference(requireNotNull(it.typeOrNull) { "XAML property cannot use a star-projected type: $type" }, types, applicationTypes)
+        xamlApplicationTypeReference(requireNotNull(it.typeOrNull) { "XAML property cannot use a star-projected type: $type" }, types, applicationTypes, framework)
     }
     if (name == "kotlin.Array") return WinRTTypeRef.array(arguments.single())
     winRTArrayElementForKotlinType(name)?.let { return WinRTTypeRef.array(WinRTTypeRef.named(it.toKotlinProjectionTypeName())) }
     val primitive = winRTFundamentalTypeForName(name.removePrefix("kotlin."))
-    val indexed = resolveIndexedWinRTTypeByProjectedName(name, types)
+    val indexed = resolveIndexedWinRTTypeByProjectedName(name, types, framework)
     val collection = winRTCollectionAbiNameForKotlinType(name)
     val mapped = winRTMappedTypeForKotlinName(name)
     val metadataName = when {
@@ -57,6 +58,7 @@ internal fun xamlApplicationProperties(
     includeInternal: Boolean = true,
     accessible: (IrDeclaration) -> Boolean = { true },
     xamlProperties: List<WinUiXamlPropertyDeclaration> = emptyList(),
+    framework: XamlFramework = XamlFramework.WinUi,
 ): WinUiXamlApplicationTypeMembers {
     if (klass.kind == org.jetbrains.kotlin.descriptors.ClassKind.ENUM_CLASS) return WinUiXamlApplicationTypeMembers()
     fun visible(function: IrSimpleFunction?) = function != null && accessible(function) &&
@@ -67,7 +69,7 @@ internal fun xamlApplicationProperties(
             (type.classOrNull?.owner?.let(accessible) != false) &&
                 (type as? IrSimpleType)?.arguments.orEmpty().all { it.typeOrNull?.let(::available) != false }
         require(available(type)) { "XAML signature refers to an unavailable Kotlin type: $type" }
-        return xamlApplicationTypeReference(type, types, applicationTypes)
+        return xamlApplicationTypeReference(type, types, applicationTypes, framework)
     }
 
     val owners = (listOf(klass) + listOfNotNull(klass.companionObject())).filter(accessible)
@@ -76,7 +78,7 @@ internal fun xamlApplicationProperties(
     val dependencyPropertyNames = owners.filter { it.kind == org.jetbrains.kotlin.descriptors.ClassKind.OBJECT }
         .flatMap { it.declarations.filterIsInstance<IrProperty>() }
         .filter { accessible(it) && it.getter?.let(accessible) == true &&
-            it.getter?.returnType?.classFqName?.asString() == "microsoft.ui.xaml.DependencyProperty" }
+            XamlFramework.entries.any { framework -> it.getter?.returnType?.classFqName?.asString() == framework.xamlKotlinTypeName("DependencyProperty") } }
         .mapTo(mutableSetOf()) { it.name.asString() }
     val properties = owners.flatMap { owner -> owner.declarations.filterIsInstance<IrProperty>().map { owner to it } }
         .filter { (_, property) -> accessible(property) && property.getter?.let(accessible) == true &&
@@ -103,7 +105,7 @@ internal fun xamlApplicationProperties(
     // infer only source events here, preserving the XAML declaration's named
     // delegate instead of exporting the generated pair a second time.
     val declaredEvents = xamlProperties.mapNotNull { property -> property.changedHandler?.let {
-        WinUiXamlApplicationEvent(it, WinRTTypeRef.named("Microsoft.UI.Xaml.Data.PropertyChangedEventHandler"))
+        WinUiXamlApplicationEvent(it, WinRTTypeRef.named(framework.xamlTypeName("Data.PropertyChangedEventHandler")))
     } }
     val declaredEventNames = declaredEvents.mapTo(mutableSetOf()) { it.name }
     val events = klass.declarations.filterIsInstance<IrSimpleFunction>()

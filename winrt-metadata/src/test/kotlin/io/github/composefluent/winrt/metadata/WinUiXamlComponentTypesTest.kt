@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.metadata
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import io.github.composefluent.winrt.runtime.XamlFramework
 
 class WinUiXamlComponentTypesTest {
     // CsWinRT helpers.h / code_writers.h walk metadata inheritance and required interfaces.
@@ -25,6 +26,8 @@ class WinUiXamlComponentTypesTest {
         val model = WinRTMetadataModel(types.groupBy { it.namespace }.map { (name, definitions) -> WinRTNamespace(name, definitions) })
         assertEquals(listOf("Example.ProviderBase", "Windows.Custom.Provider"), model.winUiXamlMetadataProviderTypes())
         assertEquals(listOf("Microsoft.Custom.Resources", "Windows.Custom.DerivedResources"), model.winUiXamlResourceDictionaryTypes())
+        assertEquals(listOf("Example.LegacyProvider"), model.winUiXamlMetadataProviderTypes(XamlFramework.Uwp))
+        assertEquals(listOf("Example.LegacyResources"), model.winUiXamlResourceDictionaryTypes(XamlFramework.Uwp))
     }
 
     private fun type(

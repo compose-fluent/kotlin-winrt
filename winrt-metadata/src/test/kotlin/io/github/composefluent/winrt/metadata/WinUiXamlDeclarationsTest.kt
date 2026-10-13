@@ -3,9 +3,20 @@ package io.github.composefluent.winrt.metadata
 import org.junit.Assert.*
 import org.junit.Test
 import java.nio.file.Files
+import io.github.composefluent.winrt.runtime.XamlFramework
 
 class WinUiXamlDeclarationsTest {
     private fun fixture() = javaClass.getResource("/xaml/declarations-v1.json")!!.readText().removePrefix("\uFEFF")
+
+    @Test
+    fun framework_is_part_of_the_semantic_fingerprint_and_legacy_indexes_default_to_winui() {
+        val legacy = WinUiXamlDeclarations.parse(fixture())
+        assertEquals(XamlFramework.WinUi, legacy.framework)
+        val uwp = legacy.copy(framework = XamlFramework.Uwp)
+        assertNotEquals(WinUiXamlDeclarations.fingerprint(legacy), WinUiXamlDeclarations.fingerprint(uwp))
+        assertEquals(XamlFramework.Uwp, WinUiXamlDeclarations.parse(WinUiXamlDeclarations.canonicalText(uwp)).framework)
+        assertThrows(IllegalArgumentException::class.java) { parseXamlFramework("automatic") }
+    }
 
     @Test
     fun source_fingerprint_survives_document_normalization_and_index_round_trips() {

@@ -1,6 +1,8 @@
 package io.github.composefluent.winrt.metadata
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.EncodeDefault
+import io.github.composefluent.winrt.runtime.XamlFramework
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
@@ -10,10 +12,14 @@ import java.security.MessageDigest
 
 /** Versioned view of XamlCompiler's DOM/harvester, before Kotlin semantic analysis. */
 @Serializable
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 data class WinUiXamlDeclarationIndex(
     @SerialName("SchemaVersion") val schemaVersion: Int,
     @SerialName("Pages") val pages: List<WinUiXamlPageDeclaration>,
     @SerialName("Resources") val resources: List<String>,
+    @SerialName("Framework") @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @Serializable(with = XamlFrameworkSerializer::class)
+    val framework: XamlFramework = XamlFramework.WinUi,
 )
 
 @Serializable
