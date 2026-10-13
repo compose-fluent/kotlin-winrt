@@ -103,6 +103,8 @@ The comparison includes managed-memory medians and individual allocation samples
 
 The 97 scenarios match reference *operations*, not necessarily equal projection work. For example, `ExecuteMarshalingForExistingArray` and `ExecuteMarshalingForExistingNullable` return `IInspectable` in C++, whereas CsWinRT/Kotlin project boxed values into language values. These ratios include unboxing/projection costs and must not be described as pure ABI-call overhead. Keep the original catalog unchanged for continuity.
 
+Dictionary lookup comparisons also include projection semantics: the C++ scenario uses `Lookup`, while CsWinRT/Kotlin's `TryGetValue` path checks `HasKey` before `Lookup`. The extra check follows CsWinRT's handling of dictionaries with nonstandard missing-key errors. Do not remove it just to equalize ABI call counts. Exact Native allocation counts and supplemental microbenchmarks with equal ABI work remain coverage gaps.
+
 ## Compilation performance
 
 Measure compilation independently, without runtime benchmarks competing for CPU:
