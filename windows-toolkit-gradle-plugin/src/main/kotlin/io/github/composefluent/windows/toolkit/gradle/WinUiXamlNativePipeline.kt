@@ -20,13 +20,14 @@ internal fun configureWinUiXamlNativePipeline(
     compilationInputs: (String, Provider<List<File>>) -> WinUiXamlCompilationInputs,
 ) {
     val kotlin = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    val extension = project.extensions.getByType(WindowsExtension::class.java)
     kotlin.targets.withType(KotlinNativeTarget::class.java)
         .filter { it.konanTarget.name == "mingw_x64" }.forEach { target ->
             target.compilations.toList().filter { it.name == "main" }.forEach { compilation ->
                 val business = compilation.compileTaskProvider.get()
                 val suffix = business.name.removePrefix("compileKotlin")
                 val sourceRoots = project.provider { winUiXamlCompilationSourceRoots(project, compilation) }
-                if (sourceRoots.get().none { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }) return@forEach
+                if (extension.xaml.enabled.orNull != true && sourceRoots.get().none { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }) return@forEach
                 val (applicationHeader, declarations) = compilationInputs(suffix, sourceRoots)
                 val semanticRoot = project.layout.buildDirectory.dir("intermediates/kotlin-winrt/xaml/$suffix/semantic")
                 val symbols = semanticRoot.map { it.file("symbols.json") }

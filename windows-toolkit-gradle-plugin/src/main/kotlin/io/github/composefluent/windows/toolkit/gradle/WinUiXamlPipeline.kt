@@ -40,9 +40,9 @@ internal fun configureWinUiXamlPipeline(
             project.extensions.findByType(SourceSetContainer::class.java)?.findByName("main")?.resources?.srcDirs.orEmpty() +
                 project.file("src/main/appxResources") else emptyList()).distinctBy { it.toPath().toAbsolutePath().normalize() }
     }
-    val hasXaml = project.provider {
+    val hasXaml = extension.xaml.enabled.orElse(project.provider {
         xamlSourceRoots.get().any { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }
-    }
+    })
     // Generated connectors and template/inspection helpers have SDK dependencies
     // which do not occur in the selected page's inheritance or method signatures.
     // Keep them in the same root selection used by metadata, local projection
@@ -238,7 +238,7 @@ internal fun configureWinUiXamlPipeline(
             val compilation = kmp?.targets?.withType(KotlinJvmTarget::class.java)?.flatMap { it.compilations }
                 ?.singleOrNull { it.compileTaskProvider.name == business.name }
             val roots = if (compilation != null) project.provider { winUiXamlCompilationSourceRoots(project, compilation) } else xamlSourceRoots
-            if (roots.get().none { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }) return@forEach
+            if (extension.xaml.enabled.orNull != true && roots.get().none { root -> root.isDirectory && root.walkTopDown().any { it.isFile && it.extension.equals("xaml", true) } }) return@forEach
             val (header, declarations) = compilationInputs(suffix, roots)
             val semanticRoot = project.layout.buildDirectory.dir("intermediates/kotlin-winrt/xaml/$suffix/semantic")
             val symbols = semanticRoot.map { it.file("symbols.json") }

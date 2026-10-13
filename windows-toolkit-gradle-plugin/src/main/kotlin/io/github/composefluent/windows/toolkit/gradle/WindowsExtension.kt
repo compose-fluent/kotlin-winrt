@@ -257,6 +257,8 @@ abstract class WindowsExtension @Inject constructor(
 }
 
 abstract class WinUiXamlConfiguration @Inject constructor(objects: ObjectFactory) {
+    /** Overrides source discovery, e.g. when a task generates XAML after configuration. */
+    val enabled: Property<Boolean> = objects.property(Boolean::class.java)
     /** UI framework used by the XAML schema and compiler; independent of AppX packaging. */
     val framework: Property<io.github.composefluent.winrt.runtime.XamlFramework> =
         objects.property(io.github.composefluent.winrt.runtime.XamlFramework::class.java)

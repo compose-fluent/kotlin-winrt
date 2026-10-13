@@ -924,6 +924,25 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun generated_xaml_registers_compilation_before_sources_exist() {
+        // XAML generation is a build producer, like the reference MSBuild Page pipeline;
+        // configuration must not require its output to exist on a clean checkout.
+        val root = Files.createTempDirectory("kotlin-winrt-generated-xaml-")
+        val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).apply {
+            jvm("winuiJvm")
+            mingwX64()
+        }
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(WindowsExtension::class.java).xaml.enabled.set(true)
+        (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+        assertTrue(project.tasks.names.contains("compileWinRTXamlWinuiJvm"))
+        assertTrue(project.tasks.names.contains("compileWinRTXamlMingwX64"))
+        assertEquals(true, (project.extensions.extraProperties.get("kotlinWinRTXamlSourcesPresent") as org.gradle.api.provider.Provider<*>).get())
+    }
+
+    @Test
     fun metadata_only_xaml_compilation_reads_fragment_and_dependency_registrars() {
         val root = Files.createTempDirectory("kotlin-winrt-xaml-consumer-")
         val page = root.resolve("src/winuiMain/kotlin/sample/Page.xaml")
