@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- #if WINUI3 -->
 <winui:WindowEx
+<!-- #else -->
+<UserControl
+<!-- #endif -->
     x:Class="io.github.composefluent.winrt.gallery.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -8,12 +12,17 @@
     xmlns:winui="using:WinUI3Package"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:pages="using:io.github.composefluent.winrt.gallery.pages"
+<!-- #if WINUI3 -->
     Title="Kotlin WinUI Gallery"
     ContextMenu="{x:Bind WindowMenu}"
+<!-- #else -->
+    BackdropMaterial.ApplyToRootOrPageBackground="True"
+<!-- #endif -->
     mc:Ignorable="d">
     <x:Properties>
         <x:Property Name="GalleryTitle" Type="x:String" DefaultValue="Kotlin WinUI Gallery" />
     </x:Properties>
+<!-- #if WINUI3 -->
     <winui:WindowEx.SystemBackdrop>
         <winui:MicaBackdropWithFallback>
             <winui:MicaBackdropWithFallback.Fallback>
@@ -21,14 +30,18 @@
             </winui:MicaBackdropWithFallback.Fallback>
         </winui:MicaBackdropWithFallback>
     </winui:WindowEx.SystemBackdrop>
+<!-- #endif -->
     <Grid x:Name="RootGrid">
+<!-- #if WINUI3 -->
         <Grid.Resources>
             <winui:ModernStandardWindowContextMenu x:Name="WindowMenu" Window="{x:Bind Window}" />
         </Grid.Resources>
+<!-- #endif -->
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+<!-- #if WINUI3 -->
         <winui:WindowCaptionButtonThemeWorkaround Window="{x:Bind Window}" />
         <winui:ModernWindowCaptionButtonToolTip Window="{x:Bind Window}" />
         <TitleBar
@@ -40,9 +53,22 @@
                 <ImageIconSource ImageSource="/Assets/Tiles/GalleryIcon.ico" />
             </TitleBar.IconSource>
             <TitleBar.Content>
+<!-- #else -->
+        <Grid x:Name="UwpTitleBarHost" MinHeight="48">
+            <Grid x:Name="UwpTitleBarDragRegion" Background="Transparent">
+                <StackPanel x:Name="UwpTitleBarBrand" Margin="16,0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Image Source="/Assets/AppList.png" Width="20" Height="20" />
+                    <TextBlock Text="{x:Bind GalleryTitle}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+            <!-- Interactive content is a sibling above the SetTitleBar drag region. -->
+            <Grid x:Name="UwpTitleBarInteractive" Margin="240,8,16,8">
+<!-- #endif -->
                 <AutoSuggestBox
                     x:Name="controlsSearchBox"
+<!-- #if WINUI3 -->
                     Width="320"
+<!-- #endif -->
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Center"
                     x:FieldModifier="public"
@@ -55,17 +81,30 @@
                             Modifiers="Control" />
                     </AutoSuggestBox.KeyboardAccelerators>
                 </AutoSuggestBox>
+<!-- #if WINUI3 -->
             </TitleBar.Content>
         </TitleBar>
+<!-- #else -->
+            </Grid>
+        </Grid>
+<!-- #endif -->
         <NavigationView
             x:Name="NavigationViewControl"
             Grid.Row="1"
             Canvas.ZIndex="0"
             IsBackButtonVisible="Collapsed"
+<!-- #if WINUI3 -->
             IsPaneToggleButtonVisible="False"
+<!-- #else -->
+            IsPaneToggleButtonVisible="True"
+<!-- #endif -->
             IsTabStop="False">
             <Frame HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" IsNavigationStackEnabled="False"
                 x:Name="rootFrame" />
         </NavigationView>
     </Grid>
+<!-- #if WINUI3 -->
 </winui:WindowEx>
+<!-- #else -->
+</UserControl>
+<!-- #endif -->

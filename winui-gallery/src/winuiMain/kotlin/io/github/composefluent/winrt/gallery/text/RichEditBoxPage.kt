@@ -17,7 +17,9 @@ internal class RichEditBoxPage : Page() {
     override fun initializeComponent() {
         super.initializeComponent(); ready = true
         checkNotNull(MathEditor.textDocument).setMathMode(microsoft.ui.text.RichEditMathMode.MathOnly)
+// #if WINUI3
         checkNotNull(mathEditor2.textDocument).setMathMode(microsoft.ui.text.RichEditMathMode.MathOnly)
+// #endif
     }
     private fun Menu_Opening(sender: microsoft.ui.xaml.controls.primitives.FlyoutBase?, args: Any?) { requireNotNull(sender);
         val flyout = sender.asWinRT<CommandBarFlyout>()
@@ -26,21 +28,45 @@ internal class RichEditBoxPage : Page() {
     private fun REBCustom_Loaded(sender: Any?, args: RoutedEventArgs?) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.add(menuOpeningHandler) } }
     private fun REBCustom_Unloaded(sender: Any?, args: RoutedEventArgs?) { listOfNotNull(REBCustom.selectionFlyout, REBCustom.contextFlyout).forEach { it.opening.remove(menuOpeningHandler) } }
     private fun OpenButton_Click(sender: Any?, args: RoutedEventArgs?) { tasks.launch {
+// #if WINUI3
         val picker = microsoft.windows.storage.pickers.FileOpenPicker(checkNotNull(checkNotNull(checkNotNull(sender).asWinRT<FrameworkElement>().xamlRoot).contentIslandEnvironment).appWindowId).apply {
+// #else
+        val picker = windows.storage.pickers.FileOpenPicker().apply {
+// #endif
+// #if WINUI3
             suggestedStartLocation = microsoft.windows.storage.pickers.PickerLocationId.DocumentsLibrary; fileTypeFilter!!.add(".rtf")
+// #else
+            suggestedStartLocation = windows.storage.pickers.PickerLocationId.DocumentsLibrary; fileTypeFilter!!.add(".rtf")
+// #endif
         }
         val result = picker.pickSingleFileAsync()!!.await() ?: return@launch
+// #if WINUI3
         val file = windows.storage.StorageFile.getFileFromPathAsync(result.path)!!.await()
+// #else
+        val file = result
+// #endif
         file!!.openAsync(windows.storage.FileAccessMode.Read)!!.await().use { checkNotNull(editor.document).loadFromStream(microsoft.ui.text.TextSetOptions.FormatRtf, it) }
     } }
     private fun SaveButton_Click(sender: Any?, args: RoutedEventArgs?) { tasks.launch {
+// #if WINUI3
         val picker = microsoft.windows.storage.pickers.FileSavePicker(checkNotNull(checkNotNull(checkNotNull(sender).asWinRT<FrameworkElement>().xamlRoot).contentIslandEnvironment).appWindowId).apply {
+// #else
+        val picker = windows.storage.pickers.FileSavePicker().apply {
+// #endif
+// #if WINUI3
             suggestedStartLocation = microsoft.windows.storage.pickers.PickerLocationId.DocumentsLibrary; suggestedFileName = "New Document"; fileTypeChoices!!["Rich Text"] = mutableListOf(".rtf")
+// #else
+            suggestedStartLocation = windows.storage.pickers.PickerLocationId.DocumentsLibrary; suggestedFileName = "New Document"; fileTypeChoices!!["Rich Text"] = mutableListOf(".rtf")
+// #endif
         }
         val result = picker.pickSaveFileAsync()!!.await() ?: return@launch
+// #if WINUI3
         val split = result.path.lastIndexOf('\\')
         val folder = windows.storage.StorageFolder.getFolderFromPathAsync(result.path.substring(0, split))!!.await()
         val file = folder!!.createFileAsync(result.path.substring(split + 1), windows.storage.CreationCollisionOption.ReplaceExisting)!!.await()
+// #else
+        val file = result
+// #endif
         windows.storage.CachedFileManager.deferUpdates(file)
         var status: windows.storage.provider.FileUpdateStatus? = null
         try { file!!.openAsync(windows.storage.FileAccessMode.ReadWrite)!!.await().use { it!!.size = 0uL; checkNotNull(editor.document).saveToStream(microsoft.ui.text.TextGetOptions.FormatRtf, it) } }
@@ -80,6 +106,7 @@ internal class RichEditBoxPage : Page() {
         val format = checkNotNull(checkNotNull(checkNotNull(editor.document).selection).characterFormat)
         if (format.foregroundColor != currentColor) format.foregroundColor = currentColor
     }
+// #if WINUI3
     private fun mathEditor2_TextChanged(sender: Any?, args: RoutedEventArgs?) {
         if (!ready) return
         val mathML = WinRTOut<String>(); checkNotNull(mathEditor2.document).getMathML(mathML)
@@ -99,4 +126,5 @@ internal class RichEditBoxPage : Page() {
             line
         }
     }.getOrDefault(source)
+// #endif
 }

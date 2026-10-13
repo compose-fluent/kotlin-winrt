@@ -28,7 +28,7 @@
                     <TextBlock x:Name="PickedSingleFileTextBlock" Text="No file picked"/>
                 </StackPanel>
             </controls:ControlExample.Example>
-            
+
             <controls:ControlExample.Options>
                 <StackPanel Spacing="8">
                     <ComboBox x:Name="FileTypeComboBox1" Header="File type" Width="200">
@@ -41,8 +41,8 @@
                     <ComboBox x:Name="PickerViewModeComboBox1" Header="View mode" Width="200" ItemsSource="{x:Bind pickerViewModes}" SelectedIndex="0"/>
                 </StackPanel>
             </controls:ControlExample.Options>
-            
-            
+
+
             <controls:ControlExample.Substitutions>
                 <controls:ControlExampleSubstitution Key="FileType" Value="{x:Bind ComboBoxItemToFileFilter(FileTypeComboBox1.SelectedItem), Mode=OneWay}" />
                 <controls:ControlExampleSubstitution Key="CommitButtonText" Value="{x:Bind CommitButtonTextTextBox.Text, Mode=OneWay}" />
@@ -72,7 +72,7 @@
                 </StackPanel>
             </controls:ControlExample.Options>
 
-            
+
 
             <controls:ControlExample.Substitutions>
                 <controls:ControlExampleSubstitution Key="FileType" Value="{x:Bind ComboBoxItemToFileFilter(FileTypeComboBox2.SelectedItem), Mode=OneWay}" />
@@ -106,6 +106,7 @@
                     <TextBox x:Name="SuggestedFileNameTextBox" Header="Suggested file name" Text="NewDocument" />
                     <TextBox x:Name="CommitButtonTextTextBox3" Header="Commit button text" PlaceholderText="Save" Text="Save File" />
                     <ComboBox x:Name="PickerLocationComboBox3" Header="Suggested start location" Width="200" ItemsSource="{x:Bind pickerLocationIds}" SelectedIndex="0" />
+<!-- #if WINUI3 -->
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -116,6 +117,7 @@
                             <FontIcon Glyph="&#xF89A;" />
                         </Button>
                     </Grid>
+<!-- #endif -->
                 </StackPanel>
             </controls:ControlExample.Options>
 
@@ -129,7 +131,9 @@
                 <controls:ControlExampleSubstitution Key="SuggestedFileName" Value="{x:Bind SuggestedFileNameTextBox.Text, Mode=OneWay}" />
                 <controls:ControlExampleSubstitution Key="CommitButtonText" Value="{x:Bind CommitButtonTextTextBox3.Text, Mode=OneWay}" />
                 <controls:ControlExampleSubstitution Key="SuggestedStartLocation" Value="{x:Bind PickerLocationComboBox3.SelectedItem, Mode=OneWay}" />
+<!-- #if WINUI3 -->
                 <controls:ControlExampleSubstitution Key="SuggestedFolder" Value="{x:Bind SuggestedFolderTextBox.Text, Mode=OneWay}" />
+<!-- #endif -->
             </controls:ControlExample.Substitutions>
         </controls:ControlExample>
 
@@ -150,8 +154,8 @@
                       ItemsSource="{x:Bind pickerViewModes}" SelectedIndex="0"/>
                 </StackPanel>
             </controls:ControlExample.Options>
-            
-            
+
+
 
             <controls:ControlExample.Substitutions>
                 <controls:ControlExampleSubstitution Key="CommitButtonText" Value="{x:Bind CommitButtonTextTextBox4.Text, Mode=OneWay}" />

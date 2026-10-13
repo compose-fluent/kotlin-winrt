@@ -85,7 +85,11 @@ internal class ControlExample : UserControl() {
             xaml?.let { XamlPresenter.SetDocument(it) }
             kotlin?.let { KotlinPresenter.SetDocument(it) }
         }
+// #if WINUI3
         fun showLanguage(item: SelectorBarItem, present: Boolean) {
+// #else
+        fun showLanguage(item: uwppackage.SegmentedItem, present: Boolean) {
+// #endif
             if (!present) SelectorBarControl.items!!.remove(item)
             else if (!SelectorBarControl.items!!.contains(item)) {
                 if (item == SelectorBarXamlItem) SelectorBarControl.items!!.add(0,item) else SelectorBarControl.items!!.add(item)
@@ -101,7 +105,11 @@ internal class ControlExample : UserControl() {
         XamlContentPresenter.visibility = if (SelectorBarControl.selectedItem == SelectorBarXamlItem) Visibility.Visible else Visibility.Collapsed
         KotlinContentPresenter.visibility = if (SelectorBarControl.selectedItem == SelectorBarKotlinItem) Visibility.Visible else Visibility.Collapsed
     }
+// #if WINUI3
     private fun SelectorBarControl_SelectionChanged(sender: SelectorBar?,args: SelectorBarSelectionChangedEventArgs?) { if (ready) UpdateLanguage() }
+// #else
+    private fun SelectorBarControl_SelectionChanged(sender: Any?,args: SelectionChangedEventArgs?) { if (ready) UpdateLanguage() }
+// #endif
     private fun SelectorBarItem_Loaded(sender: Any?,args: RoutedEventArgs?) { if (ready) RefreshSource() }
     companion object {
         val HeaderTextProperty: DependencyProperty = DependencyProperty.register("HeaderText",String::class,ControlExample::class,PropertyMetadata("", PropertyChangedCallback { sender,_ -> checkNotNull(sender).asWinRT<ControlExample>().UpdateHeader() }))!!

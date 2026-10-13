@@ -130,11 +130,15 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="{StaticResource OverlayCornerRadius}">
-                    <SystemBackdropElement CornerRadius="8">
+                    <!-- #if WINUI3 -->
+<SystemBackdropElement CornerRadius="8">
                         <SystemBackdropElement.SystemBackdrop>
                             <DesktopAcrylicBackdrop />
                         </SystemBackdropElement.SystemBackdrop>
                     </SystemBackdropElement>
+<!-- #else -->
+<Border CornerRadius="8" Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}" />
+<!-- #endif -->
                     <Grid
                         Width="90"
                         HorizontalAlignment="Right"
@@ -162,11 +166,15 @@
                 Background="{ThemeResource SolidBackgroundFillColorQuarternaryBrush}"
                 Description="Used for fills on Tab control.">
                 <Grid>
-                    <SystemBackdropElement CornerRadius="8">
+                    <!-- #if WINUI3 -->
+<SystemBackdropElement CornerRadius="8">
                         <SystemBackdropElement.SystemBackdrop>
                             <MicaBackdrop Kind="BaseAlt" />
                         </SystemBackdropElement.SystemBackdrop>
                     </SystemBackdropElement>
+<!-- #else -->
+<TextBlock Text="Mica requires WinUI 3" TextWrapping="Wrap" />
+<!-- #endif -->
 
                     <TabViewItem
                         Width="150"
@@ -323,11 +331,15 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="{StaticResource OverlayCornerRadius}">
-                    <SystemBackdropElement CornerRadius="8">
+                    <!-- #if WINUI3 -->
+<SystemBackdropElement CornerRadius="8">
                         <SystemBackdropElement.SystemBackdrop>
                             <MicaBackdrop Kind="Base" />
                         </SystemBackdropElement.SystemBackdrop>
                     </SystemBackdropElement>
+<!-- #else -->
+<TextBlock Text="Mica requires WinUI 3" TextWrapping="Wrap" />
+<!-- #endif -->
                 </Grid>
             </local:ColorPageExample>
             <Grid Style="{StaticResource GalleryTileGridStyle}">
@@ -341,8 +353,20 @@
                     ColorName="Mica Background / Base">
                     <local:ColorTile.Comment>
                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap">
-                            See <Hyperlink Click="SystemBackdropLink_Click">SystemBackdrop</Hyperlink>
-                            and <Hyperlink Click="SystemBackdropElementLink_Click">SystemBackdropElement</Hyperlink>
+                            See
+<!-- #if WINUI3 -->
+<Hyperlink Click="SystemBackdropLink_Click">SystemBackdrop</Hyperlink>
+<!-- #else -->
+<Run Text="SystemBackdrop (WinUI 3)" />
+<!-- #endif -->
+
+                            and
+<!-- #if WINUI3 -->
+<Hyperlink Click="SystemBackdropElementLink_Click">SystemBackdropElement</Hyperlink>
+<!-- #else -->
+<Run Text="SystemBackdropElement (WinUI 3)" />
+<!-- #endif -->
+
                         </TextBlock>
                     </local:ColorTile.Comment>
                 </local:ColorTile>
@@ -354,8 +378,20 @@
                     ShowSeparator="False">
                     <local:ColorTile.Comment>
                         <TextBlock Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap">
-                            See <Hyperlink Click="SystemBackdropLink_Click">SystemBackdrop</Hyperlink>
-                            and <Hyperlink Click="SystemBackdropElementLink_Click">SystemBackdropElement</Hyperlink>
+                            See
+<!-- #if WINUI3 -->
+<Hyperlink Click="SystemBackdropLink_Click">SystemBackdrop</Hyperlink>
+<!-- #else -->
+<Run Text="SystemBackdrop (WinUI 3)" />
+<!-- #endif -->
+
+                            and
+<!-- #if WINUI3 -->
+<Hyperlink Click="SystemBackdropElementLink_Click">SystemBackdropElement</Hyperlink>
+<!-- #else -->
+<Run Text="SystemBackdropElement (WinUI 3)" />
+<!-- #endif -->
+
                         </TextBlock>
                     </local:ColorTile.Comment>
                 </local:ColorTile>

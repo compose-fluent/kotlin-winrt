@@ -12,10 +12,18 @@
                 <Grid
                     MinWidth="400"
                     MinHeight="300"
-                    ColumnDefinitions="*,100"
+
                     ColumnSpacing="4"
-                    RowDefinitions="Auto,*"
+
                     RowSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="100" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
                     <TextBlock
                         x:Name="frameSourceName"
                         Grid.Row="0"

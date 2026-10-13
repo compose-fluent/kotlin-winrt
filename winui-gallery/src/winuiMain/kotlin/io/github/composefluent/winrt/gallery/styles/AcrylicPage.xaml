@@ -42,7 +42,13 @@
                 If you can't see the Acrylic effect, please refer to
                 <Hyperlink NavigateUri="https://learn.microsoft.com/windows/apps/design/style/acrylic#usability-and-adaptability">Acrylic brush adaptability documentation</Hyperlink>.
                 Acrylic Brush uses in-app acrylic. See
-                <Hyperlink Click="SystemBackdropLink_Click">SystemBackdrops (Mica/Acrylic)</Hyperlink> for background acrylic.
+
+<!-- #if WINUI3 -->
+<Hyperlink Click="SystemBackdropLink_Click">SystemBackdrops (Mica/Acrylic)</Hyperlink>
+<!-- #else -->
+<Run Text="SystemBackdrops (Mica/Acrylic) (WinUI 3)" />
+<!-- #endif -->
+ for background acrylic.
             </Paragraph>
         </RichTextBlock>
         <controls:ControlExample x:Name="Example1" SampleDefinition="Acrylic\DefaultAppAcrylicBrush.txt">

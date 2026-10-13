@@ -85,6 +85,7 @@
                 </Button.Flyout>
             </Button>
         </controls:ControlExample>
+<!-- #if WINUI3 -->
         <controls:ControlExample x:Name="Example3b" SampleDefinition="MenuFlyout\MenuflyoutSplitmenuflyoutitems.txt">
             <StackPanel x:Name="Control3b" Orientation="Horizontal">
                 <Button Content="File Options">
@@ -114,6 +115,7 @@
                 <TextBlock x:Name="Control3bOutput" Style="{StaticResource OutputTextBlockStyle}" />
             </StackPanel>
         </controls:ControlExample>
+<!-- #endif -->
         <controls:ControlExample x:Name="Example4" SampleDefinition="MenuFlyout\MenuflyoutIcons.txt">
             <Button x:Name="Control4" Content="Edit Options">
                 <Button.Flyout>

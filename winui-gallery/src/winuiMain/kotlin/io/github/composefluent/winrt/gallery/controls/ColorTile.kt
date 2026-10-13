@@ -5,7 +5,9 @@ import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.UserControl
 import microsoft.ui.xaml.media.*
+// #if WINUI3
 import microsoft.ui.composition.systembackdrops.MicaKind
+// #endif
 import windows.applicationmodel.datatransfer.*
 
 internal class ColorTile : UserControl() {
@@ -39,6 +41,7 @@ internal class ColorTile : UserControl() {
     }
     private fun ApplyBackdrop() {
         if (!ready) return
+// #if WINUI3
         BackdropHost.systemBackdrop = when (Backdrop) {
             ColorTileBackdropKind.None -> null
             ColorTileBackdropKind.Acrylic -> DesktopAcrylicBackdrop()
@@ -46,6 +49,9 @@ internal class ColorTile : UserControl() {
             ColorTileBackdropKind.MicaAlt -> MicaBackdrop().apply { kind = MicaKind.BaseAlt }
         }
         BackdropHost.visibility = if (Backdrop == ColorTileBackdropKind.None) Visibility.Collapsed else Visibility.Visible
+// #else
+        BackdropHost.visibility = if (Backdrop == ColorTileBackdropKind.Acrylic) Visibility.Visible else Visibility.Collapsed
+// #endif
     }
     private fun CopyBrushNameButton_Click(sender: Any?, args: RoutedEventArgs?) {
         Clipboard.setContent(DataPackage().apply { setText(ColorBrushName) })

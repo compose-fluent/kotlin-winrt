@@ -4,8 +4,16 @@ import io.github.composefluent.winrt.gallery.*
 import io.github.composefluent.winrt.runtime.*
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
+// #if WINUI3
 import microsoft.windows.storage.pickers.PickerLocationId
+// #else
+import windows.storage.pickers.PickerLocationId
+// #endif
+// #if WINUI3
 import microsoft.windows.storage.pickers.PickerViewMode
+// #else
+import windows.storage.pickers.PickerViewMode
+// #endif
 import windows.storage.fileproperties.ThumbnailMode
 
 @GalleryPage(route = "StoragePickers", title = "Storage pickers", group = "System", order = 2)
@@ -14,8 +22,15 @@ internal class StoragePickersPage : Page() {
     private val pickerLocationIds: List<PickerLocationId> = listOf(PickerLocationId.DocumentsLibrary, PickerLocationId.ComputerFolder, PickerLocationId.Desktop, PickerLocationId.Downloads, PickerLocationId.MusicLibrary, PickerLocationId.PicturesLibrary, PickerLocationId.VideosLibrary, PickerLocationId.Objects3D, PickerLocationId.Unspecified)
     private val pickerViewModes: List<PickerViewMode> = listOf(PickerViewMode.List, PickerViewMode.Thumbnail)
     private val thumbnailModes: List<ThumbnailMode> = listOf(ThumbnailMode.PicturesView, ThumbnailMode.VideosView, ThumbnailMode.MusicView, ThumbnailMode.DocumentsView, ThumbnailMode.ListView, ThumbnailMode.SingleItem)
+// #if WINUI3
+
     private fun WindowId(): microsoft.ui.WindowId = checkNotNull(checkNotNull(xamlRoot).contentIslandEnvironment).appWindowId
+// #endif
+// #if WINUI3
     private fun AddFilters(picker: microsoft.windows.storage.pickers.FileOpenPicker, combo: ComboBox) {
+// #else
+    private fun AddFilters(picker: windows.storage.pickers.FileOpenPicker, combo: ComboBox) {
+// #endif
         when (combo.selectedItem?.asWinRT<ComboBoxItem>()?.tag?.toString()) { ".txt" -> picker.fileTypeFilter!!.add(".txt"); "images" -> { picker.fileTypeFilter!!.add(".jpg"); picker.fileTypeFilter!!.add(".png") }; else -> picker.fileTypeFilter!!.add("*") }
     }
     private fun ComboBoxItemToFileFilter(value: Any?): String = when (value?.asWinRT<ComboBoxItem>()?.tag?.toString()) {
@@ -29,10 +44,22 @@ internal class StoragePickersPage : Page() {
     private fun PickSingleFileButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
         tasks.launch { try {
+// #if WINUI3
             val picker = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply {
+// #else
+            val picker = windows.storage.pickers.FileOpenPicker().apply {
+// #endif
                 AddFilters(this, FileTypeComboBox1); commitButtonText = CommitButtonTextTextBox.text
+// #if WINUI3
                 suggestedStartLocation = PickerLocationComboBox1.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+// #else
+                suggestedStartLocation = PickerLocationComboBox1.selectedItem as windows.storage.pickers.PickerLocationId
+// #endif
+// #if WINUI3
                 viewMode = PickerViewModeComboBox1.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
+// #else
+                viewMode = PickerViewModeComboBox1.selectedItem as windows.storage.pickers.PickerViewMode
+// #endif
             }
             PickedSingleFileTextBlock.text = picker.pickSingleFileAsync()!!.await()?.let { "Picked: ${it.path}" } ?: "No file selected."
             announce(button, PickedSingleFileTextBlock.text, "FilePickedNotificationId")
@@ -41,10 +68,22 @@ internal class StoragePickersPage : Page() {
     private fun PickMultipleFilesButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
         tasks.launch { try {
+// #if WINUI3
             val picker = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply {
+// #else
+            val picker = windows.storage.pickers.FileOpenPicker().apply {
+// #endif
                 AddFilters(this, FileTypeComboBox2); commitButtonText = CommitButtonTextTextBox2.text
+// #if WINUI3
                 suggestedStartLocation = PickerLocationComboBox2.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+// #else
+                suggestedStartLocation = PickerLocationComboBox2.selectedItem as windows.storage.pickers.PickerLocationId
+// #endif
+// #if WINUI3
                 viewMode = PickerViewModeComboBox2.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
+// #else
+                viewMode = PickerViewModeComboBox2.selectedItem as windows.storage.pickers.PickerViewMode
+// #endif
             }
             val files = picker.pickMultipleFilesAsync()!!.await()
             PickedMultipleFilesTextBlock.text = if (files!!.isEmpty()) "No files selected." else files.joinToString("\n") { "- Picked: ${it!!.path}" }
@@ -54,18 +93,34 @@ internal class StoragePickersPage : Page() {
     private fun SaveFileButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
         tasks.launch { try {
+// #if WINUI3
             val picker = microsoft.windows.storage.pickers.FileSavePicker(WindowId()).apply {
+// #else
+            val picker = windows.storage.pickers.FileSavePicker().apply {
+// #endif
                 if (TxtCheckBox.isChecked == true) fileTypeChoices!!["Text Files"] = mutableListOf(".txt")
                 if (JsonCheckBox.isChecked == true) fileTypeChoices!!["JSON Files"] = mutableListOf(".json")
                 if (XmlCheckBox.isChecked == true) fileTypeChoices!!["XML Files"] = mutableListOf(".xml")
                 defaultFileExtension = DefaultExtensionComboBox.selectedItem.toString(); suggestedFileName = SuggestedFileNameTextBox.text
+// #if WINUI3
                 commitButtonText = CommitButtonTextTextBox3.text; suggestedFolder = SuggestedFolderTextBox.text
+// #else
+                commitButtonText = CommitButtonTextTextBox3.text
+// #endif
+// #if WINUI3
                 suggestedStartLocation = PickerLocationComboBox3.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+// #else
+                suggestedStartLocation = PickerLocationComboBox3.selectedItem as windows.storage.pickers.PickerLocationId
+// #endif
             }
             val result = picker.pickSaveFileAsync()!!.await()
             if (result == null) SavedFileTextBlock.text = "File save canceled." else {
+// #if WINUI3
                 val directory = windows.storage.StorageFolder.getFolderFromPathAsync(result.path.substringBeforeLast('\\'))!!.await()
                 val file = directory!!.createFileAsync(result.path.substringAfterLast('\\'), windows.storage.CreationCollisionOption.ReplaceExisting)!!.await()
+// #else
+                val file = result
+// #endif
                 windows.storage.FileIO.writeTextAsync(file, FileContentTextBox.text)!!.await()
                 SavedFileTextBlock.text = "File saved to: ${result.path}"
             }
@@ -75,29 +130,55 @@ internal class StoragePickersPage : Page() {
     private fun PickFolderButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
         tasks.launch { try {
+// #if WINUI3
             val picker = microsoft.windows.storage.pickers.FolderPicker(WindowId()).apply {
+// #else
+            val picker = windows.storage.pickers.FolderPicker().apply { fileTypeFilter!!.add("*") }.apply {
+// #endif
                 commitButtonText = CommitButtonTextTextBox4.text
+// #if WINUI3
                 suggestedStartLocation = PickerLocationComboBox4.selectedItem as microsoft.windows.storage.pickers.PickerLocationId
+// #else
+                suggestedStartLocation = PickerLocationComboBox4.selectedItem as windows.storage.pickers.PickerLocationId
+// #endif
+// #if WINUI3
                 viewMode = PickerViewModeComboBox3.selectedItem as microsoft.windows.storage.pickers.PickerViewMode
+// #else
+                viewMode = PickerViewModeComboBox3.selectedItem as windows.storage.pickers.PickerViewMode
+// #endif
             }
             PickedFolderTextBlock.text = picker.pickSingleFolderAsync()!!.await()?.let { "Picked: ${it.path}" } ?: "No folder selected."
             announce(button, PickedFolderTextBlock.text, "FolderPickedNotificationId")
         } finally { button.isEnabled = true } }
     }
+// #if WINUI3
     private fun SelectSuggestedFolderButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
         tasks.launch { try {
+// #if WINUI3
             val folder = microsoft.windows.storage.pickers.FolderPicker(WindowId()).apply { commitButtonText = "Select folder" }.pickSingleFolderAsync()!!.await()
+// #else
+            val folder = windows.storage.pickers.FolderPicker().apply { fileTypeFilter!!.add("*") }.apply { commitButtonText = "Select folder" }.pickSingleFolderAsync()!!.await()
+// #endif
             if (folder != null) SuggestedFolderTextBox.text = folder.path
             announce(button, folder?.let { "Folder selected: ${it.path}" } ?: "No folder selected", "SuggestedFolderNotificationId")
         } finally { button.isEnabled = true } }
     }
+// #endif
     private fun PickFileForThumbnailButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val button = checkNotNull(sender).asWinRT<Button>(); button.isEnabled = false
         tasks.launch { try {
+// #if WINUI3
             val selected = microsoft.windows.storage.pickers.FileOpenPicker(WindowId()).apply { fileTypeFilter!!.add("*") }.pickSingleFileAsync()!!.await()
+// #else
+            val selected = windows.storage.pickers.FileOpenPicker().apply { fileTypeFilter!!.add("*") }.pickSingleFileAsync()!!.await()
+// #endif
             if (selected == null) { ThumbnailImage.source = null; ThumbnailDetailsTextBlock.text = "No file selected."; return@launch }
+// #if WINUI3
             val file = windows.storage.StorageFile.getFileFromPathAsync(selected.path)!!.await()
+// #else
+            val file = selected
+// #endif
             val mode = ThumbnailModeComboBox.selectedItem as windows.storage.fileproperties.ThumbnailMode
             val pixels = ThumbnailSizeNumberBox.value.takeIf { !it.isNaN() && it > 0 }?.toUInt() ?: 200u
             val thumbnail = file!!.getThumbnailAsync(mode, pixels, windows.storage.fileproperties.ThumbnailOptions.UseCurrentScale)!!.await()

@@ -3,8 +3,12 @@ package io.github.composefluent.winrt.gallery
 import io.github.composefluent.winrt.runtime.await
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.controls.ContentDialog
+// #if WINUI3
 import microsoft.windows.appnotifications.AppNotificationManager
+// #endif
+// #if WINUI3
 import microsoft.windows.appnotifications.AppNotificationActivatedEventArgs
+// #endif
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import windows.foundation.Uri
@@ -35,6 +39,7 @@ internal suspend fun updateGalleryJumpList() {
 }
 
 // Activation ordering: https://learn.microsoft.com/windows/apps/develop/notifications/app-notifications/app-notifications-quickstart
+// #if WINUI3
 internal class GalleryNotifications(private val window: Window, private val shell: MainWindow) {
     private val manager = checkNotNull(AppNotificationManager.default)
     private val tasks = GalleryPageTasks(shell.root)
@@ -45,7 +50,7 @@ internal class GalleryNotifications(private val window: Window, private val shel
     fun handle(args: AppNotificationActivatedEventArgs) {
         val arguments = args.argument
         val input = args.userInput!!.entries.joinToString("\n") { "${it.key}: ${it.value}" }
-        shell.root.dispatcherQueue?.tryEnqueue {
+        shell.root.galleryDispatcher?.tryEnqueue {
             window.activate()
             GalleryNavigationHost.navigate("AppNotification")
             pending += listOf(arguments, input).filter { it.isNotBlank() }.joinToString("\n").ifBlank { "You selected the notification." }
@@ -70,3 +75,5 @@ internal class GalleryNotifications(private val window: Window, private val shel
         pending.clear(); manager.unregister()
     }
 }
+
+// #endif

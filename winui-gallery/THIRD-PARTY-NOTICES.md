@@ -1,9 +1,17 @@
 # Third-party notices
 
-WinUI Essential 1.8.2 supplies SettingsCard, SettingsExpander, WindowEx and TenMica:
+WinUI Essential WinUI3 1.8.2 supplies SettingsCard, SettingsExpander, WindowEx and TenMica;
+WinUIEssential.UWP 1.3.3 supplies SettingsCard, SettingsExpander and Segmented:
 https://github.com/HO-COOH/WinUIEssentials
 Distributed under the MIT license. The complete copyright and permission notice
 is included in `licenses/WinUI-Essential-LICENSE.txt`.
+
+`GalleryUwpStyles.xaml` adapts typography and subtle-button resources from
+Microsoft.UI.Xaml `Themes/generic.xaml` (WinUI package 2.3.9):
+https://github.com/microsoft/microsoft-ui-xaml
+Copyright (c) Microsoft Corporation. All rights reserved. These resources use
+the MIT license; the same complete Microsoft MIT notice is reproduced in
+`licenses/WinUI-Gallery-LICENSE.txt`.
 
 The Kotlin code preview palette values are adapted from JetBrains IntelliJ IDEA's
 `platform/platform-resources/src/themes/expUI/expUI_lightScheme.xml` and

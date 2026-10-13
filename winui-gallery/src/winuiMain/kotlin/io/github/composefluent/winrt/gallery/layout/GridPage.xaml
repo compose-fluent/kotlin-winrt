@@ -24,10 +24,20 @@
                 Width="240"
                 Height="160"
                 Background="Gray"
-                ColumnDefinitions="50, 50, 50"
-                RowDefinitions="50, 50, 50"
+
+
                 ColumnSpacing="{x:Bind (x:Int32)ColumnSpacingSlider.Value, Mode=OneWay}"
                 RowSpacing="{x:Bind (x:Int32)RowSpacingSlider.Value, Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="50" />
+                    <ColumnDefinition Width="50" />
+                    <ColumnDefinition Width="50" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="50" />
+                    <RowDefinition Height="50" />
+                    <RowDefinition Height="50" />
+                </Grid.RowDefinitions>
                 <Grid.Resources>
                     <Style TargetType="Rectangle">
                         <Setter Property="Height" Value="40" />
@@ -61,10 +71,20 @@
 
             <controls:ControlExample.Options>
                 <Grid
-                    ColumnDefinitions="Auto,Auto"
-                    RowDefinitions="Auto,Auto,Auto,Auto"
+
+
                     ColumnSpacing="12"
                     RowSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <TextBlock
                         Grid.Column="0"
                         Grid.Row="0"

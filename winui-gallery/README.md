@@ -4,9 +4,9 @@
 
 The same module supports two **build-time** variants. The default remains WinUI 3;
 pass `-PkotlinWinRT.gallery.winuiVersion=2` for the UWP / WinUI 2.8.7 Gallery.
-Gradle selects the Kotlin/XAML roots, SDK dependencies, manifest, and application
-model together. This is source selection, not a Kotlin preprocessor or a runtime
-check around unavailable SDK types. The UWP variant builds into `build/winui2`,
+Gradle selects the Kotlin/XAML sources, SDK dependencies, manifest, and application
+model together. `prepareGallerySources` selects conditional source branches before
+KSP and XAML compilation. The UWP variant builds into `build/winui2`,
 with a separate package identity, so it can coexist with the desktop Gallery.
 
 ```powershell
@@ -23,26 +23,47 @@ to construct and lay out all catalog pages after the shell loads. Validation
 results and event output are written to the package's `LocalState/gallery.log`.
 This smoke path checks activation/layout; it does not replace manual input tests.
 
-`src/winui2Main/kotlin` owns the UWP Application and Gallery shell; target-specific
+Both variants use the layouts and pages in `src/winuiMain/kotlin`, including the
+navigation shell, Home, Settings, page headers, examples and source viewer.
+`src/winui2Main/kotlin` contains UWP startup/activation and compatibility resources; target-specific
 logging lives in `src/winui2JvmMain` and `src/winui2MingwX64Main`. Existing target
 identity declarations and the Gallery's AppX image/icon assets are shared.
 The UWP application uses `Windows.UI.Xaml` with `Microsoft.UI.Xaml.Controls`
 extensions, following the SDK's UWP activation contract (`Window.Current`).
 The WinUI 3 application follows `.cswinrt/src/Samples/WinUIDesktopSample` and
-retains its desktop activation/windowing contract and KSP source viewer.
+retains its desktop activation/windowing contract.
 
-The WinUI 2 catalog currently contains Home and 22 control pages, including
-NumberBox, RadioButtons, RatingControl, DropDownButton, ToggleSplitButton,
-ColorPicker, Expander, InfoBar, ProgressRing, TreeView, TeachingTip, and system
-XAML input/date/list controls. It includes navigation, search, theme selection,
-live event output, and Kotlin snippets. It is **not** a port of all 122 desktop
-routes: the WinUI 3-only controls, WASDK integrations, and existing page layouts
-are not compiled into this variant. No projection namespace is aliased to a
-different framework, and the Gallery introduces no ABI/runtime compatibility
-shim. The remaining sections describe the existing WinUI 3 Gallery.
+Unsupported pages and their dependent desktop helpers are listed with reasons in
+`winui2-exclusions.tsv`. KSP builds navigation from the selected pages, so an
+excluded page cannot remain as a broken navigation entry. A page with only one
+unsupported example keeps its other examples (for example TabView windowing and
+SplitMenuFlyoutItem). UWP uses `WinUIEssential.UWP` 1.3.3: SettingsCard and
+SettingsExpander retain the shared settings layout, and Segmented supplies the
+shell/source tabs where SelectorBar is unavailable. Their package resource
+dictionaries are merged into application resources.
+The UWP manifest declares `Microsoft.VCLibs.140.00` for the native runtime used
+by WinUIEssential; installing the VC desktop redistributable alone does not
+satisfy an AppContainer package dependency.
+The UWP shell applies WinUI 2 `BackdropMaterial` (Mica on supported Windows 11,
+solid fallback on Windows 10), extends into the system title bar and uses
+`Window.SetTitleBar` for dragging. Search remains interactive above that region;
+caption insets, theme colors and inactive appearance follow the UWP window APIs.
+`GalleryUwpStyles.xaml` ports the newer typography/subtle-button resources needed
+by the shared layouts; these are Gallery resources, not additional UWP SDK APIs.
 
-The Gallery uses adjacent XAML and Kotlin code-behind files. It preserves the
-122 existing routes, including Home, and ports the static layouts, resources,
+Use `// #if WINUI2`, `// #if WINUI3`, `// #else`, `// #endif` for Kotlin differences,
+and the same directives inside XML comments for XAML. Both builds compile the
+prepared sources in `build[/winui2]/generated/gallery-sources`; do not edit those
+outputs. Type names are resolved against the selected metadata: WinUI 2 extensions
+retain `Microsoft.UI.Xaml.Controls`, and platform controls use `Windows.UI.Xaml`.
+The Gallery sets `windows.xaml.enabled` explicitly so the XAML compilation tasks
+exist before source selection produces its output on a clean checkout.
+Explicit UWP namespaces are needed where the two frameworks expose distinct types
+with the same short name, such as an `IconSource` used by a system XamlUICommand.
+Runtime projection types and ABI identities are not aliased.
+
+The Gallery uses adjacent XAML and Kotlin code-behind files. WinUI 3 preserves all
+122 routes, including Home; WinUI 2 currently selects 107 of those routes. Both use the static layouts, resources,
 styles and templates from official WinUI Gallery `v2.9.3`, commit
 `14a4a1a2b8ddc527dc4a7d5f7e743d7c2bc97db7`.
 Windows App SDK remains **2.5.1**.

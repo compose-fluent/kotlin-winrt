@@ -4,10 +4,11 @@ import windows.storage.ApplicationData
 import windows.ui.xaml.Application
 
 private var application: GalleryApplication? = null
-internal expect val galleryTargetName: String
 internal expect fun appendGalleryLog(path: String, message: String)
+internal var processArguments: Array<String> = emptyArray()
 
 fun main(args: Array<String> = emptyArray()) {
+    processArguments = args
     galleryLog("Starting WinUI 2 Gallery ($galleryTargetName)")
     try {
         Application.start { application = GalleryApplication() }

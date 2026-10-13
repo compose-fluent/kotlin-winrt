@@ -10,7 +10,11 @@ import microsoft.ui.xaml.controls.StackPanel
 import microsoft.ui.xaml.controls.TextBlock
 import microsoft.ui.xaml.controls.Image
 import microsoft.ui.xaml.controls.Grid
+// #if WINUI3
 import microsoft.ui.xaml.controls.SelectorBar
+// #else
+import uwppackage.Segmented as SelectorBar
+// #endif
 
 internal fun validateButtonPage(page: ButtonPage) = with(page) {
     GalleryXamlValidation.onLoaded("Button", this, trigger = {
@@ -37,6 +41,10 @@ internal fun validateButtonPage(page: ButtonPage) = with(page) {
         check("onImageClick" !in checkNotNull(GalleryCodeCatalog.document("Button", "", 0)).source)
         stylesExample.sourcePresenter.isExpanded = true
         val tabs = checkNotNull(stylesExample.sourcePresenter.content).asWinRT<Grid>().children!![0]!!.asWinRT<SelectorBar>()
+// #if WINUI3
         check(tabs.items!!.size == 1 && tabs.items!![0]!!.text == "XAML")
+// #else
+        check(tabs.items!!.size == 1 && tabs.items!![0]!!.asWinRT<uwppackage.SegmentedItem>().content == "XAML")
+// #endif
     })
 }

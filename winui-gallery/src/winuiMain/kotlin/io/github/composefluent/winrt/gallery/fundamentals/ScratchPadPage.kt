@@ -75,7 +75,11 @@ internal class ScratchPadPage : Page() {
         var start = selection.startPosition
         var end = selection.endPosition
         val lineStart = text.take(start).lastIndexOfAny(charArrayOf('\r', '\n')) + 1
+// #if WINUI3
         val shift = microsoft.ui.input.InputKeyboardSource.getKeyStateForCurrentThread(VirtualKey.Shift).abiValue and windows.ui.core.CoreVirtualKeyStates.Down.abiValue != 0u
+// #else
+        val shift = checkNotNull(windows.ui.core.CoreWindow.getForCurrentThread()).getKeyState(VirtualKey.Shift).abiValue and windows.ui.core.CoreVirtualKeyStates.Down.abiValue != 0u
+// #endif
         document.beginUndoGroup()
         try {
             var range = document.getRange(lineStart, lineStart)

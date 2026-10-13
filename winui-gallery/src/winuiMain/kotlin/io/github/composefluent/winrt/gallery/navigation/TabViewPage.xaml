@@ -360,11 +360,13 @@
             </controls:ControlExample.Example>
         </controls:ControlExample>
 
+<!-- #if WINUI3 -->
         <controls:ControlExample x:Name="LaunchExample" SampleDefinition="TabView\CompleteTabviewWindowingSample.txt">
             <controls:ControlExample.Example>
                 <Button Click="TabViewWindowingButton_Click" Content="Click here to launch the sample" />
             </controls:ControlExample.Example>
         </controls:ControlExample>
+<!-- #endif -->
 
     </StackPanel>
 </Page>

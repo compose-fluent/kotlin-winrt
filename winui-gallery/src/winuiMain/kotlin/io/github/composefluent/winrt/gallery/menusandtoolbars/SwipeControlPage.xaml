@@ -30,8 +30,16 @@
                 <controls:ControlExample.Example>
                     <Border>
                         <Border.Resources>
-                            <FontIconSource x:Key="AcceptIcon" Glyph="&#xE8FB;" />
-                            <FontIconSource x:Key="FlagIcon" Glyph="&#xE7C1;" />
+                            <!-- #if WINUI3 -->
+<FontIconSource x:Key="AcceptIcon" Glyph="&#xE8FB;" />
+<!-- #else -->
+<uwp:FontIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" x:Key="AcceptIcon" Glyph="&#xE8FB;" />
+<!-- #endif -->
+                            <!-- #if WINUI3 -->
+<FontIconSource x:Key="FlagIcon" Glyph="&#xE7C1;" />
+<!-- #else -->
+<uwp:FontIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" x:Key="FlagIcon" Glyph="&#xE7C1;" />
+<!-- #endif -->
 
                             <SwipeItems x:Key="left" Mode="Reveal">
                                 <SwipeItem
@@ -69,7 +77,11 @@
                 <controls:ControlExample.Example>
                     <Border>
                         <Border.Resources>
-                            <FontIconSource x:Key="ArchiveIcon" Glyph="&#xE7B8;" />
+                            <!-- #if WINUI3 -->
+<FontIconSource x:Key="ArchiveIcon" Glyph="&#xE7B8;" />
+<!-- #else -->
+<uwp:FontIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" x:Key="ArchiveIcon" Glyph="&#xE7B8;" />
+<!-- #endif -->
                             <SwipeItems x:Key="right" Mode="Execute">
                                 <SwipeItem
                                     BehaviorOnInvoked="Close"
@@ -104,9 +116,21 @@
                         MinWidth="200"
                         Margin="12">
                         <ListView.Resources>
-                            <FontIconSource x:Key="ReplyAllIcon" Glyph="&#xE8C2;" />
-                            <FontIconSource x:Key="ReadIcon" Glyph="&#xE8C3;" />
-                            <FontIconSource x:Key="DeleteIcon" Glyph="&#xE74D;" />
+                            <!-- #if WINUI3 -->
+<FontIconSource x:Key="ReplyAllIcon" Glyph="&#xE8C2;" />
+<!-- #else -->
+<uwp:FontIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" x:Key="ReplyAllIcon" Glyph="&#xE8C2;" />
+<!-- #endif -->
+                            <!-- #if WINUI3 -->
+<FontIconSource x:Key="ReadIcon" Glyph="&#xE8C3;" />
+<!-- #else -->
+<uwp:FontIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" x:Key="ReadIcon" Glyph="&#xE8C3;" />
+<!-- #endif -->
+                            <!-- #if WINUI3 -->
+<FontIconSource x:Key="DeleteIcon" Glyph="&#xE74D;" />
+<!-- #else -->
+<uwp:FontIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" x:Key="DeleteIcon" Glyph="&#xE74D;" />
+<!-- #endif -->
 
                             <SwipeItems x:Key="left" Mode="Reveal">
                                 <SwipeItem
@@ -155,7 +179,11 @@
                 <controls:ControlExample.Example>
                     <Border>
                         <Border.Resources>
-                            <FontIconSource x:Key="LockIcon" Glyph="&#xE72E;" />
+                            <!-- #if WINUI3 -->
+<FontIconSource x:Key="LockIcon" Glyph="&#xE72E;" />
+<!-- #else -->
+<uwp:FontIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" x:Key="LockIcon" Glyph="&#xE72E;" />
+<!-- #endif -->
                             <LinearGradientBrush x:Key="PurpleGradient" StartPoint="0,0.5" EndPoint="1,0.5">
                                 <GradientStop Offset="0.0" Color="#ff8990f9" />
                                 <GradientStop Offset="0.5" Color="#ff5b66fb" />

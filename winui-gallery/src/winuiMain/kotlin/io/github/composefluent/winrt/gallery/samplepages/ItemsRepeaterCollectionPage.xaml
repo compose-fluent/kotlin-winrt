@@ -34,11 +34,16 @@
                         between items (XYFocusKeyboardNavigation above); Enter/Space and pointer
                         activate the focused item (handled in code-behind).
                     -->
+<!-- #if WINUI3 -->
                     <Grid
                         AutomationProperties.Name="{Binding Title}"
                         CornerRadius="4"
                         IsTabStop="True"
                         UseSystemFocusVisuals="True">
+<!-- #else -->
+                    <ContentControl AutomationProperties.Name="{Binding Title}" IsTabStop="True" UseSystemFocusVisuals="True" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                    <Grid CornerRadius="4">
+<!-- #endif -->
                         <Image
                             x:Name="connectedElement"
                             Source="{Binding ImageLocation}"
@@ -53,6 +58,9 @@
                                 Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </Border>
                     </Grid>
+<!-- #if WINUI2 -->
+                    </ContentControl>
+<!-- #endif -->
                 </DataTemplate>
             </ItemsRepeater.ItemTemplate>
         </ItemsRepeater>

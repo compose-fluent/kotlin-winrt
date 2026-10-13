@@ -10,27 +10,34 @@ import windows.system.VirtualKeyModifiers
 
 internal object GalleryWindows {
     private val windows = mutableListOf<Window>()
+// #if WINUI3
     private val nativeWindows = mutableListOf<microsoft.ui.windowing.AppWindow>()
     fun create(title: String, content: UIElement): Window = Window().also { window ->
         track(window)
         window.title = title; window.content = content
     }
     fun open(title: String, content: UIElement): Window = create(title, content).also { it.activate() }
+
+// #endif
     fun track(window: Window) {
         windows.add(window)
         window.closed.add { _, _ -> windows.remove(window) }
     }
+// #if WINUI3
     fun track(window: microsoft.ui.windowing.AppWindow) {
         nativeWindows.add(window)
         window.destroying.add { _, _ -> nativeWindows.remove(window) }
     }
+// #endif
     // WinUI Gallery WindowHelper.GetWindowForElement locates the containing XamlRoot.
     fun forElement(element: UIElement): Window? = windows.firstOrNull { window ->
         val content = window.content as? FrameworkElement
         content?.xamlRoot != null && content.xamlRoot == (element as? FrameworkElement)?.xamlRoot
     }
     fun closeAll() {
+// #if WINUI3
         nativeWindows.toList().forEach { it.destroy() }
+// #endif
         windows.toList().forEach { it.close() }
     }
 }

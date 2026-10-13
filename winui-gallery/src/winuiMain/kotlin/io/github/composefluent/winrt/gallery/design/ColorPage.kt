@@ -15,9 +15,13 @@ internal class ColorPage : Page() {
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true }
     private fun PageSelector_Loaded(sender: Any?, args: RoutedEventArgs?) { PageSelector.selectedItem = checkNotNull(PageSelector.items)[0] }
+// #if WINUI3
     private fun PageSelector_SelectionChanged(sender: SelectorBar?, args: SelectorBarSelectionChangedEventArgs?) { requireNotNull(sender);
+// #else
+    private fun PageSelector_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { requireNotNull(sender);
+// #endif
         if (!ready) return
-        val index = sender.items!!.indexOf(sender.selectedItem)
+        val index = PageSelector.items!!.indexOf(PageSelector.selectedItem)
         val types = listOf(io.github.composefluent.winrt.gallery.controls.colorsections.TextSection::class,
             io.github.composefluent.winrt.gallery.controls.colorsections.FillSection::class, io.github.composefluent.winrt.gallery.controls.colorsections.StrokeSection::class,
             io.github.composefluent.winrt.gallery.controls.colorsections.BackgroundSection::class, io.github.composefluent.winrt.gallery.controls.colorsections.SignalSection::class,

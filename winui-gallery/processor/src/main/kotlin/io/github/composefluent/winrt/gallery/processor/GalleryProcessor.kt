@@ -13,6 +13,7 @@ class GalleryProcessorProvider : SymbolProcessorProvider {
             environment.codeGenerator,
             environment.logger,
             requireNotNull(environment.options["gallery.repositoryRoot"]) { "Gallery KSP requires gallery.repositoryRoot" },
+            environment.options["gallery.xamlNamespace"] ?: "microsoft.ui.xaml",
         )
 }
 
@@ -20,6 +21,7 @@ private class GalleryProcessor(
     private val codeGenerator: CodeGenerator,
     private val logger: KSPLogger,
     private val repositoryRoot: String,
+    private val xamlNamespace: String,
 ) : SymbolProcessor {
     private val entries = linkedMapOf<String, Entry>()
     private val sources = linkedSetOf<KSFile>()
@@ -30,7 +32,7 @@ private class GalleryProcessor(
         val deferred = mutableListOf<KSAnnotated>()
         // Symbol is a projected value class, not a Kotlin enum. Resolve its
         // generated companion through KSP so JVM and Native need no reflection.
-        val symbolType = "microsoft.ui.xaml.controls.Symbol"
+        val symbolType = "$xamlNamespace.controls.Symbol"
         resolver.getClassDeclarationByName(resolver.getKSNameFromString(symbolType))?.let { symbol ->
             symbol.containingFile?.let(sources::add)
             symbol.declarations.filterIsInstance<KSClassDeclaration>().filter { it.isCompanionObject }.forEach { companion ->
@@ -69,7 +71,7 @@ private class GalleryProcessor(
                         it.parameters.isEmpty() && Modifier.PRIVATE !in it.modifiers && Modifier.PROTECTED !in it.modifiers
                     }
                     val isElement = page.getAllSuperTypes().any {
-                        it.declaration.qualifiedName?.asString() == "microsoft.ui.xaml.UIElement"
+                        it.declaration.qualifiedName?.asString() == "$xamlNamespace.UIElement"
                     }
                     if (page.classKind != ClassKind.CLASS || Modifier.ABSTRACT in page.modifiers ||
                         Modifier.SEALED in page.modifiers || Modifier.INNER in page.modifiers ||
@@ -92,7 +94,7 @@ private class GalleryProcessor(
                 val file = declaration.containingFile
                 entries["$kind:$name"] = Entry(
                     kind, arguments, name, file?.fileName.orEmpty(),
-                    if (kind == "GalleryPage") repositoryRelativePath(checkNotNull(file).filePath, repositoryRoot) else "",
+                    if (kind == "GalleryPage") galleryRepositorySourcePath(checkNotNull(file).filePath, repositoryRoot) else "",
                 )
                 file?.let(sources::add)
             }
@@ -105,7 +107,7 @@ private class GalleryProcessor(
         val descriptions = checkNotNull(javaClass.getResourceAsStream("/ControlInfoData.json"))
             .bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
         val output = try {
-            generate(entries.values.toList(), descriptions)
+            generate(entries.values.toList(), descriptions, xamlNamespace)
         } catch (exception: IllegalArgumentException) {
             logger.error(exception.message.orEmpty())
             return
@@ -124,8 +126,8 @@ private class GalleryProcessor(
             writer.appendLine("// Generated from WinUI Symbol companion properties by KSP.")
             writer.appendLine("package $galleryPackage")
             writer.appendLine("internal actual object GallerySymbols {")
-            writer.appendLine("  actual fun find(name: String): microsoft.ui.xaml.controls.Symbol? = when (name) {")
-            symbolNames.forEach { name -> writer.appendLine("    \"$name\" -> microsoft.ui.xaml.controls.Symbol.`$name`") }
+            writer.appendLine("  actual fun find(name: String): $xamlNamespace.controls.Symbol? = when (name) {")
+            symbolNames.forEach { name -> writer.appendLine("    \"$name\" -> $xamlNamespace.controls.Symbol.`$name`") }
             writer.appendLine("    else -> null")
             writer.appendLine("  }")
             writer.appendLine("}")

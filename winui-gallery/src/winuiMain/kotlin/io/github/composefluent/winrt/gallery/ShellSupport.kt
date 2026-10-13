@@ -4,10 +4,6 @@ package io.github.composefluent.winrt.gallery
 import io.github.composefluent.winrt.runtime.await
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
-import microsoft.windows.appnotifications.AppNotificationManager
-import microsoft.windows.appnotifications.builder.*
-import microsoft.windows.badgenotifications.BadgeNotificationGlyph
-import microsoft.windows.badgenotifications.BadgeNotificationManager
 import windows.foundation.Uri
 import windows.globalization.Calendar
 import windows.ui.startscreen.JumpList

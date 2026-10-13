@@ -69,7 +69,7 @@
                         Foreground="White"
                         Text="Scroll the rectangles to see parallaxing of image"
                         TextWrapping="WrapWholeWords" />
-                    <ScrollView
+                    <ScrollViewer
                         x:Name="scrollView"
                         Width="150"
                         HorizontalAlignment="Left">
@@ -94,7 +94,7 @@
                             <Rectangle Height="150" Fill="Crimson" />
                             <Rectangle Height="150" Fill="Cyan" />
                         </StackPanel>
-                    </ScrollView>
+                    </ScrollViewer>
                 </Grid>
             </controls:ControlExample.Example>
         </controls:ControlExample>

@@ -38,7 +38,7 @@ internal object GalleryXamlValidation {
             if (index == steps.lastIndex) {
                 println("Gallery XAML validation passed: $route")
             } else {
-                check(checkNotNull(element.dispatcherQueue).tryEnqueue { runStep(index + 1) })
+                check(checkNotNull(element.galleryDispatcher).tryEnqueue { runStep(index + 1) })
             }
         }
         element.loaded.add { _, _ ->

@@ -244,6 +244,7 @@
                 </StackPanel>
             </controls:ControlExample.Example>
         </controls:ControlExample>
+<!-- #if WINUI3 -->
         <controls:ControlExample SampleDefinition="RichEditBox\WorkingMathmlRicheditbox.txt"
                                  HorizontalContentAlignment="Stretch">
             <controls:ControlExample.Example>
@@ -317,5 +318,6 @@
                 </StackPanel>
             </controls:ControlExample.Options>
         </controls:ControlExample>
+<!-- #endif -->
     </StackPanel>
 </Page>

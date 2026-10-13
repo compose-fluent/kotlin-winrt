@@ -11,7 +11,11 @@ import windows.system.VirtualKey
 import windows.system.VirtualKeyModifiers
 
 /** XAML shell with the existing WindowEx hosting and Kotlin navigation contract. */
+// #if WINUI3
 internal class MainWindow : winui3package.WindowEx() {
+// #else
+internal class MainWindow : UserControl() {
+// #endif
     val root: Grid get() = RootGrid
     private val tasks by lazy { GalleryPageTasks(root) }
     private val navigation: NavigationView get() = NavigationViewControl
@@ -33,17 +37,27 @@ internal class MainWindow : winui3package.WindowEx() {
 
     override fun initializeComponent() {
         super.initializeComponent()
+// #if WINUI3
         GalleryWindows.track(checkNotNull(window))
         title = checkNotNull(GalleryTitle)
+// #endif
         GalleryNavigationHost.navigate = ::navigate
         // WindowEx is Window.Content; its theme also drives the system backdrop
         // and caption helpers, while RootGrid inherits the same theme.
         requestedTheme = theme
+// #if WINUI3
         GalleryTheme.attach(this, checkNotNull(window))
+// #else
+        GalleryTheme.attach(this, checkNotNull(Window.current))
+// #endif
         navigation.paneDisplayMode = if (GalleryPreferences.flag("TopNavigation")) NavigationViewPaneDisplayMode.Top else NavigationViewPaneDisplayMode.Auto
         ElementSoundPlayer.state = if (GalleryPreferences.flag("Sound")) ElementSoundPlayerState.On else ElementSoundPlayerState.Off
         ElementSoundPlayer.spatialAudioMode = if (GalleryPreferences.flag("SpatialAudio")) ElementSpatialAudioMode.On else ElementSpatialAudioMode.Off
+// #if WINUI3
         titleBar.isPaneToggleButtonVisible = !GalleryPreferences.flag("TopNavigation")
+// #else
+        navigation.isPaneToggleButtonVisible = !GalleryPreferences.flag("TopNavigation")
+// #endif
         GalleryCatalog.home.let { home ->
             navigation.menuItems!!.add(menu(home.id, home.title, home.glyph.ifBlank { null }))
         }
@@ -80,8 +94,12 @@ internal class MainWindow : winui3package.WindowEx() {
         navigation.itemInvoked.add { _, args ->
             if (!selecting) navigationRoute(args!!.invokedItemContainer, args.invokedItem)?.let(::navigate)
         }
+// #if WINUI3
         titleBar.paneToggleRequested.add { _, _ -> navigation.isPaneOpen = !navigation.isPaneOpen }
         titleBar.backRequested.add { _, _ -> if (history.isNotEmpty()) show(history.removeAt(history.lastIndex)) }
+// #else
+        navigation.backRequested.add { _, _ -> if (history.isNotEmpty()) show(history.removeAt(history.lastIndex)) }
+// #endif
         // The accelerator belongs to the page-wide Grid for key routing, but
         // its default placement would show an Alt+Left tooltip on empty content.
         root.keyboardAcceleratorPlacementMode = microsoft.ui.xaml.input.KeyboardAcceleratorPlacementMode.Hidden
@@ -103,12 +121,58 @@ internal class MainWindow : winui3package.WindowEx() {
             val page = GalleryCatalog.pages.firstOrNull { it.title == args!!.chosenSuggestion?.toString() }
             navigate(page?.id ?: "Search:${args!!.queryText}")
         }
+// #if WINUI3
         extendsContentIntoTitleBar = true
         setTitleBar(titleBar)
         appWindow?.setIcon("Assets/Tiles/GalleryIcon.ico")
+// #endif
         root.loaded.add { _, _ -> updateJumpList() }
         show("Home")
     }
+
+// #if WINUI2
+    // UWP owns caption buttons and drag handling; keep interactive controls above
+    // the hit-testable drag region, as in the Windows UWP title-bar sample.
+    internal fun configureUwpTitleBar() {
+        val window = checkNotNull(Window.current)
+        val coreTitleBar = checkNotNull(checkNotNull(windows.applicationmodel.core.CoreApplication.getCurrentView()).titleBar)
+        val caption = checkNotNull(checkNotNull(windows.ui.viewmanagement.ApplicationView.getForCurrentView()).titleBar)
+        coreTitleBar.extendViewIntoTitleBar = true
+        window.setTitleBar(UwpTitleBarDragRegion)
+        fun updateLayout() {
+            UwpTitleBarHost.padding = Thickness(coreTitleBar.systemOverlayLeftInset, 0.0, coreTitleBar.systemOverlayRightInset, 0.0)
+            UwpTitleBarHost.minHeight = maxOf(48.0, coreTitleBar.height)
+            UwpTitleBarHost.visibility = if (coreTitleBar.isVisible) Visibility.Visible else Visibility.Collapsed
+            val compact = actualWidth < 700.0
+            UwpTitleBarBrand.visibility = if (compact) Visibility.Collapsed else Visibility.Visible
+            UwpTitleBarInteractive.margin = Thickness(if (compact) 16.0 else 240.0, 8.0, 16.0, 8.0)
+        }
+        fun updateColors() {
+            fun color(name: String) = GalleryTheme.brush(name).asWinRT<microsoft.ui.xaml.media.SolidColorBrush>().color
+            caption.buttonBackgroundColor = windows.ui.Color(0u, 0u, 0u, 0u)
+            caption.buttonInactiveBackgroundColor = windows.ui.Color(0u, 0u, 0u, 0u)
+            caption.buttonForegroundColor = color("TextFillColorPrimaryBrush")
+            caption.buttonInactiveForegroundColor = color("TextFillColorDisabledBrush")
+            caption.buttonHoverForegroundColor = color("TextFillColorPrimaryBrush")
+            caption.buttonHoverBackgroundColor = color("SubtleFillColorSecondaryBrush")
+            caption.buttonPressedForegroundColor = color("TextFillColorSecondaryBrush")
+            caption.buttonPressedBackgroundColor = color("SubtleFillColorTertiaryBrush")
+        }
+        val metricsToken = coreTitleBar.layoutMetricsChanged.add { _, _ -> updateLayout() }
+        val visibleToken = coreTitleBar.isVisibleChanged.add { _, _ -> updateLayout() }
+        sizeChanged.add { _, _ -> updateLayout() }
+        window.activated.add { _, args ->
+            UwpTitleBarBrand.opacity = if (args?.windowActivationState == windows.ui.core.CoreWindowActivationState.Deactivated) 0.6 else 1.0
+        }
+        window.closed.add { _, _ ->
+            coreTitleBar.layoutMetricsChanged.remove(metricsToken)
+            coreTitleBar.isVisibleChanged.remove(visibleToken)
+        }
+        GalleryTheme.observe(this) { updateColors() }
+        updateLayout()
+        updateColors()
+    }
+// #endif
 
     private fun menu(id: String, title: String, icon: String? = null, expandable: Boolean = false) = NavigationViewItem().apply {
         tag = id
@@ -202,7 +266,11 @@ internal class MainWindow : winui3package.WindowEx() {
             show(canonical)
             if (GalleryCatalog.pages.any { it.id == canonical }) focusTargets[previous] = canonical
             history += previous
+// #if WINUI3
             titleBar.isBackButtonVisible = history.isNotEmpty()
+// #else
+            navigation.isBackButtonVisible = if (history.isNotEmpty()) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed
+// #endif
         } catch (error: Throwable) {
             println("Kotlin WinUI Gallery: navigation failed for $canonical\n${error.stackTraceToString()}")
             current = previous
@@ -223,7 +291,11 @@ internal class MainWindow : winui3package.WindowEx() {
         }
         (content as? io.github.composefluent.winrt.gallery.pages.ItemsPageBase)?.FocusItemId = focusTargets[route]
         current = route
+// #if WINUI3
         titleBar.isBackButtonVisible = history.isNotEmpty()
+// #else
+        navigation.isBackButtonVisible = if (history.isNotEmpty()) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed
+// #endif
         // The projected Frame navigation overload requires a generated Page
         // type and can leave the old Page visible when the parameter is a
         // code-only UIElement.  Assigning the projected content directly keeps
@@ -253,7 +325,11 @@ internal class MainWindow : winui3package.WindowEx() {
         },
         setTopNavigation = {
             navigation.paneDisplayMode = if (it) NavigationViewPaneDisplayMode.Top else NavigationViewPaneDisplayMode.Auto
+// #if WINUI3
             titleBar.isPaneToggleButtonVisible = !it
+// #else
+            navigation.isPaneToggleButtonVisible = !it
+// #endif
             GalleryPreferences.putFlag("TopNavigation", it)
         },
         clearRecents = { recent.clear(); GalleryPreferences.putRoutes("Recent", recent); updateJumpList() },

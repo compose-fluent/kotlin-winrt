@@ -14,7 +14,11 @@ internal class SettingsPage(private val root: FrameworkElement,private val theme
     private var ready = false
     val AboutTitle: String get() = "Kotlin WinUI Gallery ($galleryTargetName)"
     val Version: String get() = if (GalleryPreferences.packaged) checkNotNull(checkNotNull(Package.current).id).version.let { "${it.major}.${it.minor}.${it.build}.${it.revision}" } else ""
+// #if WINUI3
     val WinAppSdkRuntimeDetails: String = "Windows App SDK 2.5.1"
+// #else
+    val WinAppSdkRuntimeDetails: String = "WinUI 2.8 / UWP"
+// #endif
     override fun initializeComponent() {
         super.initializeComponent()
         themeMode.selectedIndex = when (theme) { ElementTheme.Light -> 0; ElementTheme.Dark -> 1; else -> 2 }

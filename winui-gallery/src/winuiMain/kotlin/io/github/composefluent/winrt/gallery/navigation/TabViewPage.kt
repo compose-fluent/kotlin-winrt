@@ -52,6 +52,7 @@ internal class TabViewPage : Page() {
     private fun TabCloseButtonOverlayModeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { requireNotNull(args);
         if (ready) TabView4.closeButtonOverlayMode = when (args.addedItems!!.firstOrNull()?.asWinRT<ComboBoxItem>()?.content?.toString()) { "Always" -> TabViewCloseButtonOverlayMode.Always; "OnHover" -> TabViewCloseButtonOverlayMode.OnPointerOver; else -> TabViewCloseButtonOverlayMode.Auto }
     }
+// #if WINUI3
     private fun TabViewWindowingButton_Click(sender: Any?, args: RoutedEventArgs?) {
         val page = TabViewWindowingSamplePage()
         GalleryWindows.create("TabView",page).apply {
@@ -59,6 +60,8 @@ internal class TabViewPage : Page() {
             appWindow?.setIcon("Assets/Tiles/GalleryIcon.ico"); page.LoadDemoData(); activate()
         }
     }
+
+// #endif
     private fun TabViewContextMenu_Opening(sender: Any?, args: Any?) {
         val flyout = checkNotNull(sender).asWinRT<MenuFlyout>(); flyout.items!!.clear()
         val tab = flyout.target?.asWinRT<TabViewItem>() ?: return

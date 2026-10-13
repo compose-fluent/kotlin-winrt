@@ -43,7 +43,7 @@ internal class ItemsRepeaterCollectionPage : Page() {
             animation.configuration = DirectConnectedAnimationConfiguration()
             container?.let { FindChildByName(it, "connectedElement") }?.let { animation.tryStart(it) }
         }
-        (container ?: repeater).focus(FocusState.Programmatic)
+        FocusManager.tryFocusAsync(container ?: repeater, FocusState.Programmatic)
     }
     private fun FindChildByName(parent: DependencyObject, name: String): UIElement? {
         for (index in 0 until VisualTreeHelper.getChildrenCount(parent)) {

@@ -19,7 +19,11 @@ internal class StandardUICommandPage : Page() {
     private fun ListView_Loaded(sender: Any?, args: RoutedEventArgs?) { checkNotNull(sender).asWinRT<ListView>().itemsSource = collection }
     private fun ListViewSwipeContainer_PointerEntered(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs?) { requireNotNull(args);
         val pointer = args.pointer ?: return
+// #if WINUI3
         if (pointer.pointerDeviceType == microsoft.ui.input.PointerDeviceType.Mouse || pointer.pointerDeviceType == microsoft.ui.input.PointerDeviceType.Pen) VisualStateManager.goToState(checkNotNull(sender).asWinRT<Control>(), "HoverButtonsShown", true)
+// #else
+        if (pointer.pointerDeviceType == windows.devices.input.PointerDeviceType.Mouse || pointer.pointerDeviceType == windows.devices.input.PointerDeviceType.Pen) VisualStateManager.goToState(checkNotNull(sender).asWinRT<Control>(), "HoverButtonsShown", true)
+// #endif
     }
     private fun ListViewSwipeContainer_PointerExited(sender: Any?, args: microsoft.ui.xaml.input.PointerRoutedEventArgs?) { VisualStateManager.goToState(checkNotNull(sender).asWinRT<Control>(), "HoverButtonsHidden", true) }
     private fun ControlExample_Loaded(sender: Any?, args: RoutedEventArgs?) {

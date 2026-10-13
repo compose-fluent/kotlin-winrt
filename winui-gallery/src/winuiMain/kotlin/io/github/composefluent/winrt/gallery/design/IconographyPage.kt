@@ -31,7 +31,11 @@ internal class IconographyPage : Page() {
             filtered = withContext(Dispatchers.Default) { icons }
             IconsItemsView.itemsSource = filtered
             SelectedItem = filtered.firstOrNull()
+// #if WINUI3
             if (filtered.isNotEmpty()) IconsItemsView.select(0)
+// #else
+            if (filtered.isNotEmpty()) IconsItemsView.selectedIndex = 0
+// #endif
             SidePanel.visibility = Visibility.Visible
         }
     }
@@ -57,16 +61,32 @@ internal class IconographyPage : Page() {
             if (generation != searchGeneration) return@launch
             filtered = result
             IconsItemsView.itemsSource = result
+// #if WINUI3
             if (result.isNotEmpty()) { SelectedItem = result.first(); IconsItemsView.select(0) }
+// #else
+            if (result.isNotEmpty()) { SelectedItem = result.first(); IconsItemsView.selectedIndex = 0 }
+// #endif
             announce(IconsAutoSuggestBox, when (result.size) { 0 -> "No icons found."; 1 -> "1 icon found."; else -> "${result.size} icons found." }, "AutoSuggestBoxNumberIconsFoundId")
         }
     }
+// #if WINUI3
     private fun IconsItemsView_SelectionChanged(sender: ItemsView?, args: ItemsViewSelectionChangedEventArgs?) { requireNotNull(sender);
         filtered.getOrNull(sender.currentItemIndex)?.let { SelectedItem = it }
     }
+// #else
+    private fun IconsItemsView_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) {
+        filtered.getOrNull(IconsItemsView.selectedIndex)?.let { SelectedItem = it }
+    }
+// #endif
+// #if WINUI3
     private fun TagsItemsView_ItemInvoked(sender: ItemsView?, args: ItemsViewItemInvokedEventArgs?) { requireNotNull(args);
         (args.invokedItem as? String)?.let { IconsAutoSuggestBox.text = it }
     }
+// #else
+    private fun TagsItemsView_ItemInvoked(sender: Any?, args: ItemClickEventArgs?) {
+        (args?.clickedItem as? String)?.let { IconsAutoSuggestBox.text = it }
+    }
+// #endif
     companion object {
         val SelectedItemProperty: DependencyProperty = DependencyProperty.register("SelectedItem", IconData::class, IconographyPage::class, PropertyMetadata(null))!!
     }

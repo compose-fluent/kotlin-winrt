@@ -109,7 +109,7 @@
             HorizontalContentAlignment="Stretch"
             SampleDefinition="Templates\TemplatesCustomizeItemscontrolItemspaneltemplate.txt">
             <controls:ControlExample.Example>
-                <ScrollView>
+                <ScrollViewer>
                     <ListView
                         x:Name="MyListView"
                         HorizontalAlignment="Stretch">
@@ -140,7 +140,7 @@
                         <ListViewItem>Item 19</ListViewItem>
                         <ListViewItem>Item 20</ListViewItem>
                     </ListView>
-                </ScrollView>
+                </ScrollViewer>
             </controls:ControlExample.Example>
             <controls:ControlExample.Options>
                 <RadioButtons SelectionChanged="LayoutSelector_SelectionChanged">

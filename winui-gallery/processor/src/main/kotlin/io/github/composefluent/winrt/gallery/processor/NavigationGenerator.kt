@@ -18,16 +18,24 @@ internal fun repositoryRelativePath(sourcePath: String, repositoryRoot: String):
     return root.relativize(source).toString().replace('\\', '/')
 }
 
-internal fun generate(entries: List<Entry>, descriptions: JsonObject): String {
-    val groups = entries.filter { it.kind == "GalleryGroupEntry" }.sortedWith(compareBy({ it.order }, { it.route }))
+// Display links point to checked-in sources; highlighting origins retain the selected compiler input.
+internal fun galleryRepositorySourcePath(sourcePath: String, repositoryRoot: String): String =
+    repositoryRelativePath(sourcePath, repositoryRoot).replace(
+        Regex("^winui-gallery/build/(?:winui2/)?generated/gallery-sources/"),
+        "winui-gallery/src/winuiMain/kotlin/",
+    )
+
+internal fun generate(entries: List<Entry>, descriptions: JsonObject, xamlNamespace: String = "microsoft.ui.xaml"): String {
+    val declaredGroups = entries.filter { it.kind == "GalleryGroupEntry" }.sortedWith(compareBy({ it.order }, { it.route }))
     val allPages = entries.filter { it.kind == "GalleryPage" }
     require(allPages.all { it.repositoryPath.isNotBlank() }) { "@GalleryPage requires a repository-relative source path" }
     val home = allPages.single { it.route == "Home" }
     val pages = allPages.filter { it.route != "Home" }.sortedWith(compareBy({ it.order }, { it.route }))
-    val routes = (groups + pages).map { it.route }
+    val groups = declaredGroups.filter { group -> pages.any { it.value("group") == group.route } }
+    val routes = (declaredGroups + pages).map { it.route }
     require(routes.distinct().size == routes.size) { "Duplicate navigation route" }
     require(routes.none { it in setOf("All", "Settings") }) { "Reserved navigation route" }
-    val groupRoutes = groups.map { it.route }.toSet()
+    val groupRoutes = declaredGroups.map { it.route }.toSet()
     require(pages.all { it.value("group") in groupRoutes }) { "Page references an unknown navigation group" }
     val catalogGroups = descriptions.getValue("Groups").jsonArray.map { it.jsonObject }
     val specialGroups = catalogGroups.filter { it["IsSpecialSection"]?.jsonPrimitive?.booleanOrNull == true }
@@ -56,13 +64,13 @@ internal fun generate(entries: List<Entry>, descriptions: JsonObject): String {
                 val docs = detail["Docs"]?.jsonArray.orEmpty().joinToString(", ", "listOf(", ")") { doc ->
                     "GalleryLink(${quote(doc.jsonObject.getValue("Title").jsonPrimitive.content)}, ${quote(doc.jsonObject.getValue("Uri").jsonPrimitive.content)})"
                 }
-                appendLine("    GalleryPageInfo(${quote(page.route)}, ${quote(page.value("title"))}, ${quote(field("Subtitle"))}, ${quote(field("Description"))}, ${quote(field("ImagePath"))}, ${quote(group.route)}, ${field("IsNew") == "true"}, ${field("IsUpdated") == "true"}, ${strings(detail["Tags"])}, $docs, ${strings(detail["RelatedControls"])}, ${quote(page.args["glyph"].orEmpty())}, ${quote(field("ApiNamespace"))}, ${strings(detail["BaseClasses"])}, ${quote(field("SourcePath"))}, ${field("IsExperimental") == "true"}, ${quote(page.repositoryPath)}),")
+                appendLine("    GalleryPageInfo(${quote(page.route)}, ${quote(page.value("title"))}, ${quote(field("Subtitle"))}, ${quote(field("Description"))}, ${quote(field("ImagePath"))}, ${quote(group.route)}, ${field("IsNew") == "true"}, ${field("IsUpdated") == "true"}, ${strings(detail["Tags"])}, $docs, ${strings(detail["RelatedControls"]?.jsonArray?.filter { related -> pages.any { it.route == related.jsonPrimitive.content } }?.let(::JsonArray))}, ${quote(page.args["glyph"].orEmpty())}, ${quote(field("ApiNamespace"))}, ${strings(detail["BaseClasses"])}, ${quote(field("SourcePath"))}, ${field("IsExperimental") == "true"}, ${quote(page.repositoryPath)}),")
             }
             appendLine("  ), isSpecialSection = ${group.route in specialGroups})")
         }
         appendLine("}")
         appendLine("internal actual object GalleryPageFactories {")
-        appendLine("  actual fun create(route: String): microsoft.ui.xaml.UIElement? = when (route) {")
+        appendLine("  actual fun create(route: String): $xamlNamespace.UIElement? = when (route) {")
         pages.forEach { appendLine("    ${quote(it.route)} -> ${it.symbol}()") }
         appendLine("    else -> null")
         appendLine("  }")

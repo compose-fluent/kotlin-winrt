@@ -1,7 +1,15 @@
 --- header
 A MediaCapture preview displayed via a MediaPlayerElement.
 --- xaml
-<Grid RowDefinitions="Auto,*" ColumnDefinitions="*,100"  MinWidth="400" MinHeight="300" RowSpacing="10" ColumnSpacing="4">
+<Grid    MinWidth="400" MinHeight="300" RowSpacing="10" ColumnSpacing="4">
+    <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="100" />
+    </Grid.ColumnDefinitions>
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
         <ComboBox x:Name="cameraSourceComboBox" Header="Camera source" DisplayMemberPath="DisplayName" SelectionChanged="CameraSourceComboBox_SelectionChanged" />
         <TextBlock x:Name="frameSourceName" VerticalAlignment="Center"/>

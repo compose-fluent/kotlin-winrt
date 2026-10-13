@@ -23,7 +23,11 @@
             ExecuteRequested="CustomXamlUICommand_ExecuteRequested"
             Label="Custom XamlUICommand">
             <XamlUICommand.IconSource>
-                <SymbolIconSource Symbol="Favorite" />
+                <!-- #if WINUI3 -->
+<SymbolIconSource Symbol="Favorite" />
+<!-- #else -->
+<uwp:SymbolIconSource xmlns:uwp="using:Windows.UI.Xaml.Controls" Symbol="Favorite" />
+<!-- #endif -->
             </XamlUICommand.IconSource>
             <XamlUICommand.KeyboardAccelerators>
                 <KeyboardAccelerator Key="D" Modifiers="Control" />

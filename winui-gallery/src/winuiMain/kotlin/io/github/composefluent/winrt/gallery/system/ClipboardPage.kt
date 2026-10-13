@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gallery.system
 import io.github.composefluent.winrt.gallery.GalleryPage
 import io.github.composefluent.winrt.gallery.GalleryPageTasks
 import io.github.composefluent.winrt.gallery.announce
+import io.github.composefluent.winrt.gallery.galleryDispatcher
 import io.github.composefluent.winrt.runtime.WinRTOut
 import io.github.composefluent.winrt.runtime.asWinRT
 import io.github.composefluent.winrt.runtime.await
@@ -17,7 +18,11 @@ import microsoft.ui.xaml.Visibility
 import microsoft.ui.xaml.VisualStateManager
 import microsoft.ui.xaml.controls.Page
 import microsoft.ui.xaml.media.imaging.BitmapImage
+// #if WINUI3
 import microsoft.windows.storage.pickers.FileOpenPicker
+// #else
+import windows.storage.pickers.FileOpenPicker
+// #endif
 import windows.applicationmodel.datatransfer.Clipboard
 import windows.applicationmodel.datatransfer.ClipboardContentOptions
 import windows.applicationmodel.datatransfer.DataPackage
@@ -110,12 +115,20 @@ internal class ClipboardPage : Page() {
 
     private fun CopyFiles_Click(sender: Any?, args: RoutedEventArgs?) {
         tasks.launch {
+// #if WINUI3
             val picker = FileOpenPicker(checkNotNull(checkNotNull(xamlRoot).contentIslandEnvironment).appWindowId)
+// #else
+            val picker = FileOpenPicker()
+// #endif
                 .apply { fileTypeFilter!!.add("*") }
             val files = picker.pickMultipleFilesAsync()!!.await()
             if (files!!.isEmpty()) return@launch
             val items = mutableListOf<IStorageItem>()
+// #if WINUI3
             for (file in files) items.add(checkNotNull(StorageFile.getFileFromPathAsync(file!!.path)!!.await()))
+// #else
+            for (file in files) items.add(checkNotNull(file).asWinRT<IStorageItem>())
+// #endif
             val packageContent = DataPackage().apply {
                 setStorageItems(items)
                 requestedOperation = DataPackageOperation.Copy
@@ -197,7 +210,7 @@ internal class ClipboardPage : Page() {
         stopMonitoring = null
         if (!ContentChangedToggle.isOn) return
         val subscription = Clipboard.contentChanged.add { _, _ ->
-            dispatcherQueue?.tryEnqueue {
+            galleryDispatcher?.tryEnqueue {
                 if (isLoaded && ContentChangedToggle.isOn) {
                     val formats = Clipboard.getContent()!!.availableFormats
                     OtherOperationsStatusText.text = if (formats!!.isEmpty()) "Clipboard is now empty."

@@ -9,6 +9,11 @@ kotlin {
     mingwX64()
 }
 
+// This library owns plain Gallery models, not SDK projection bindings.
+tasks.named<io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask>("generateWinRTProjections") {
+    emitProjectionSources.set(false)
+}
+
 windows {
     packageReferences {
         // Compiler schema maps Kotlin List to WinRT collection metadata. This

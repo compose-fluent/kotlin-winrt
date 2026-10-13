@@ -1,0 +1,32 @@
+# Paths/globs relative to shared sources; every exclusion has a platform reason.
+multiplewindows	These samples demonstrate Windows App SDK AppWindow and desktop multi-window APIs.
+samplepages/*Window*.kt	Dependent desktop window implementations for the excluded windowing samples.
+samplepages/*Window*.xaml	Dependent desktop window markup for the excluded windowing samples.
+samplepages/GalleryBackdropType.kt	Windows App SDK system backdrop sample model.
+styles/SystemBackdropsPage.kt	Windows App SDK system backdrop controllers.
+styles/SystemBackdropsPage.xaml	Windows App SDK system backdrop controllers.
+styles/SystemBackdropElementPage.kt	Windows App SDK SystemBackdropElement is unavailable in WinUI 2.8.
+styles/SystemBackdropElementPage.xaml	Windows App SDK SystemBackdropElement is unavailable in WinUI 2.8.
+media/MapControlPage.kt	This sample targets the WinUI 3 Azure Maps control, not the distinct UWP Bing Maps control.
+media/MapControlPage.xaml	This sample targets the WinUI 3 Azure Maps control, not the distinct UWP Bing Maps control.
+fundamentals/CustomXamlConditionalsPage.kt	Custom IXamlCondition is a WinUI 3 contract.
+fundamentals/CustomXamlConditionalsPage.xaml	Custom IXamlCondition is a WinUI 3 contract.
+fundamentals/FeatureFlagCondition.kt	Implementation of the excluded IXamlCondition sample.
+collections/ItemsViewPage.kt	ItemsView is unavailable in WinUI 2.8.
+collections/ItemsViewPage.xaml	ItemsView is unavailable in WinUI 2.8.
+navigation/SelectorBarPage.kt	SelectorBar is unavailable in WinUI 2.8.
+navigation/SelectorBarPage.xaml	SelectorBar is unavailable in WinUI 2.8.
+scrolling/ScrollViewPage.kt	ScrollView is unavailable in WinUI 2.8.
+scrolling/ScrollViewPage.xaml	ScrollView is unavailable in WinUI 2.8.
+scrolling/AnnotatedScrollBarPage.kt	AnnotatedScrollBar is unavailable in WinUI 2.8.
+scrolling/AnnotatedScrollBarPage.xaml	AnnotatedScrollBar is unavailable in WinUI 2.8.
+system/ContentIslandPage.kt	Windows App SDK ContentIsland hosting.
+system/ContentIslandPage.xaml	Windows App SDK ContentIsland hosting.
+shell/AppNotificationPage.kt	Windows App SDK AppNotificationManager.
+shell/AppNotificationPage.xaml	Windows App SDK AppNotificationManager.
+shell/BadgeNotificationManagerPage.kt	Windows App SDK BadgeNotificationManager.
+shell/BadgeNotificationManagerPage.xaml	Windows App SDK BadgeNotificationManager.
+TitleBarColorSupport.kt	Windows App SDK AppWindowTitleBar helper for excluded desktop samples.
+helpers/TitleBarHelper.kt	Windows App SDK AppWindowTitleBar helper for excluded desktop samples.
+controls/GallerySelectorBarStyles.xaml	Style for the unavailable SelectorBar control; shared navigation uses a supported selection control.
+GalleryTokenSelectorItem.kt	Custom SelectorBar item used only by the WinUI 3 token style; UWP tabs use SegmentedItem.

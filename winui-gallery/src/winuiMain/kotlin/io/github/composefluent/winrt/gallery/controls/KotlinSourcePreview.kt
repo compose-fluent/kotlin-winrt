@@ -12,7 +12,11 @@ internal class KotlinSourcePreview(private val kotlin: KotlinCodeDocument,privat
         Languages.selectedItem = if (XamlTab.visibility == Visibility.Visible) XamlTab else KotlinTab
         ShowDocument()
     }
+// #if WINUI3
     private fun Languages_SelectionChanged(sender: SelectorBar?,args: SelectorBarSelectionChangedEventArgs?) { if (ready) ShowDocument() }
+// #else
+    private fun Languages_SelectionChanged(sender: Any?,args: SelectionChangedEventArgs?) { if (ready) ShowDocument() }
+// #endif
     private fun ShowDocument() {
         val document = if (Languages.selectedItem == XamlTab) xaml ?: kotlin else kotlin
         Code.SampleType = if (document.fileName.endsWith(".xaml",true)) "XAML" else "Kotlin"

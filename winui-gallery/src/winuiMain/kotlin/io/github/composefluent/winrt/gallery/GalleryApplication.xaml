@@ -20,13 +20,21 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+<!-- #if WINUI2 -->
+                <ResourceDictionary Source="ms-appx:///UWPPackage/SettingsCard_Resource.xaml" />
+                <ResourceDictionary Source="ms-appx:///UWPPackage/SettingsExpander_Resource.xaml" />
+                <ResourceDictionary Source="ms-appx:///UWPPackage/Segmented_Resource.xaml" />
+                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUwpStyles.xaml" />
+<!-- #endif -->
                 <local:ItemTemplates />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryExampleResources.xaml" />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/controls/OpacityMaskViewStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/styles/GalleryGridStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/controls/GalleryGridViewItemStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/controls/GalleryTextBlockStyles.xaml" />
+<!-- #if WINUI3 -->
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/controls/GallerySelectorBarStyles.xaml" />
+<!-- #endif -->
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/fundamentals/controls/CounterControlStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/fundamentals/controls/ValidatedPasswordBoxStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>

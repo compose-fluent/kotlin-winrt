@@ -2,7 +2,9 @@ package io.github.composefluent.winrt.gallery
 
 import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.xaml.*
+// #if WINUI3
 import microsoft.ui.system.ThemeSettings
+// #endif
 import microsoft.ui.xaml.media.Brush
 import microsoft.ui.xaml.media.SolidColorBrush
 import microsoft.ui.xaml.media.AcrylicBrush
@@ -19,8 +21,12 @@ internal object GalleryTheme {
     private var root: FrameworkElement? = null
     private val accessibility = AccessibilitySettings()
     private val uiSettings = UISettings()
+// #if WINUI3
     private var themeSettings: ThemeSettings? = null
     val highContrast: Boolean get() = themeSettings?.highContrast ?: accessibility.highContrast
+// #else
+    val highContrast: Boolean get() = accessibility.highContrast
+// #endif
     private val changeListeners = linkedSetOf<() -> Unit>()
     private val brushes = mutableMapOf<String, Brush>()
     // WinUI 3 dropped the legacy SystemControl* brush keys used by a few
@@ -92,14 +98,25 @@ internal object GalleryTheme {
         // AccessibilitySettings.HighContrastChanged and UISettings.ColorValuesChanged
         // require UWP UI infrastructure. Desktop windows use the App SDK contract:
         // https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.system.themesettings
+// #if WINUI3
         val settings = ThemeSettings.createForWindowId(checkNotNull(window.appWindow).id)
         themeSettings = settings
-        val token = settings!!.changed.add { _, _ -> element.dispatcherQueue?.tryEnqueue { safeRefresh("ThemeSettings.changed") } }
+        val token = settings!!.changed.add { _, _ -> element.galleryDispatcher?.tryEnqueue { safeRefresh("ThemeSettings.changed") } }
         window.activated.add { _, _ -> safeRefresh("window.activated") }
         window.closed.add { _, _ ->
             settings.changed.remove(token)
             themeSettings = null; changeListeners.clear(); samples.clear(); root = null
         }
+
+// #else
+        val contrastToken = accessibility.highContrastChanged.add { _, _ -> element.galleryDispatcher.tryEnqueue { safeRefresh("highContrastChanged") } }
+        val colorToken = uiSettings.colorValuesChanged.add { _, _ -> element.galleryDispatcher.tryEnqueue { safeRefresh("colorValuesChanged") } }
+        window.closed.add { _, _ ->
+            accessibility.highContrastChanged.remove(contrastToken)
+            uiSettings.colorValuesChanged.remove(colorToken)
+            changeListeners.clear(); samples.clear(); root = null
+        }
+// #endif
     }
 
     fun resource(name: String, requestedTheme: ElementTheme? = null): Any {

@@ -8,7 +8,12 @@
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Resources><Resource Language="en-US" /></Resources>
-  <Dependencies><TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <!-- WinUIEssential.UWP links the VC AppContainer runtime (MSVCP140_APP / VCRUNTIME140_APP). -->
+    <PackageDependency Name="Microsoft.VCLibs.140.00" MinVersion="14.0.33519.0"
+                       Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
   <Applications>
     <Application Id="App" Executable="kotlin-winui2-gallery.exe" EntryPoint="io.github.composefluent.winrt.gallery.GalleryApplication">
       <uap:VisualElements DisplayName="Kotlin WinUI 2 Gallery" Description="Kotlin/WinRT controls for UWP and WinUI 2"
@@ -18,5 +23,9 @@
       </uap:VisualElements>
     </Application>
   </Applications>
-  <Capabilities><Capability Name="codeGeneration" /><Capability Name="internetClient" /></Capabilities>
+  <Capabilities>
+    <Capability Name="codeGeneration" />
+    <Capability Name="internetClient" />
+    <DeviceCapability Name="webcam" />
+  </Capabilities>
 </Package>

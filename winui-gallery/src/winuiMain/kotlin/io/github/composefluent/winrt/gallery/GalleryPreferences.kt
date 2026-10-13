@@ -1,7 +1,11 @@
 package io.github.composefluent.winrt.gallery
 
 import io.github.composefluent.winrt.runtime.WinRTRuntimeException
+// #if WINUI3
 import microsoft.windows.storage.ApplicationData
+// #else
+import windows.storage.ApplicationData
+// #endif
 import windows.graphics.SizeInt32
 import windows.applicationmodel.Package
 
@@ -17,8 +21,12 @@ internal object GalleryPreferences {
         }
     }
     private val data by lazy {
+// #if WINUI3
         if (packaged) ApplicationData.getDefault()
         else ApplicationData.getForUnpackaged("ComposeFluent", "KotlinWinUIGallery")
+// #else
+        ApplicationData.current
+// #endif
     }
     private val values get() = checkNotNull(checkNotNull(data!!.localSettings).values)
     fun text(key: String, fallback: String = ""): String =

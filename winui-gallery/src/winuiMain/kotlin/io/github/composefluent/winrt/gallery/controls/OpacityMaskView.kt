@@ -4,7 +4,6 @@ import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.controls.*
 import microsoft.ui.xaml.hosting.ElementCompositionPreview
-import microsoft.ui.xaml.media.CompositionTarget
 import microsoft.ui.composition.*
 import windows.foundation.numerics.Vector2
 
@@ -25,7 +24,7 @@ internal class OpacityMaskView : ContentControl() {
         val root = checkNotNull(getTemplateChild("PART_RootGrid")).asWinRT<Grid>()
         val mask = checkNotNull(getTemplateChild("PART_MaskContainer")).asWinRT<Border>()
         val presenter = checkNotNull(getTemplateChild("PART_ContentPresenter")).asWinRT<ContentPresenter>()
-        val compositor = CompositionTarget.getCompositorForCurrentThread()
+        val compositor = checkNotNull(ElementCompositionPreview.getElementVisual(root)).compositor
         val brush = compositor!!.createMaskBrush()!!.also { objects.add(it) }
         brush.source = visualBrush(presenter)
         captureBrush = visualBrush(mask)

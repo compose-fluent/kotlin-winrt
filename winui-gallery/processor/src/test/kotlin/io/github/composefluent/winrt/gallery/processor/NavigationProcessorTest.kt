@@ -67,5 +67,16 @@ class NavigationProcessorTest {
         assertFailsWith<IllegalArgumentException> {
             repositoryRelativePath(root.resolveSibling("other-project/ButtonPage.kt").toString(), root.toString())
         }
+        for (build in listOf("build", "build/winui2")) {
+            assertEquals("winui-gallery/src/winuiMain/kotlin/basicinput/ButtonPage.kt",
+                galleryRepositorySourcePath(root.resolve("winui-gallery/$build/generated/gallery-sources/basicinput/ButtonPage.kt").toString(), root.toString()))
+        }
+    }
+
+    @Test fun excluded_groups_do_not_produce_empty_navigation_items() {
+        val group = Entry("GalleryGroupEntry", mapOf("route" to "DesktopWindows", "title" to "Desktop windows", "glyph" to "x"), "DesktopWindows", "groups.kt")
+        val output = generate(listOf(group, home), Json.parseToJsonElement("""{"Groups":[]}""").jsonObject, "windows.ui.xaml")
+        assertFalse(output.contains("GalleryGroup(\"DesktopWindows\""))
+        assertContains(output, "fun create(route: String): windows.ui.xaml.UIElement?")
     }
 }

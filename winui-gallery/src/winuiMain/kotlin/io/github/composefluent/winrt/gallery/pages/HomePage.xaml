@@ -12,6 +12,7 @@
 <local:ItemsPageBase
     x:Class="io.github.composefluent.winrt.gallery.pages.HomePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:essential="using:UWPPackage"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:animations="using:io.github.composefluent.winrt.gallery.toolkit"
     xmlns:controls="using:io.github.composefluent.winrt.gallery.controls"
@@ -57,7 +58,8 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <controls:HomePageHeader />
-                <SelectorBar
+                <!-- #if WINUI3 -->
+<SelectorBar
                     x:Name="FilterBar"
                     Grid.Row="1"
                     Margin="36,24,0,16"
@@ -75,10 +77,32 @@
                         Tag="Favorites"
                         Text="Favorites" />
                 </SelectorBar>
+<!-- #else -->
+<essential:Segmented
+                    x:Name="FilterBar"
+                    Grid.Row="1"
+                    Margin="36,24,0,16"
+                    HorizontalAlignment="Center" SelectionMode="Single" SelectedValuePath="Tag" HorizontalContentAlignment="Stretch">
+
+                    <essential:SegmentedItem
+
+                        IsSelected="True"
+                        Tag="Recent"
+                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Clock" /><TextBlock Text="Recent" /></StackPanel></essential:SegmentedItem>
+                    <essential:SegmentedItem
+
+                        Tag="Favorites"
+                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Favorite" /><TextBlock Text="Favorites" /></StackPanel></essential:SegmentedItem>
+                </essential:Segmented>
+<!-- #endif -->
                 <toolkit:SwitchPresenter
                     Grid.Row="2"
                     Margin="36,0,36,36"
+<!-- #if WINUI3 -->
                     Value="{x:Bind FilterBar.SelectedItem.Tag, Mode=OneWay}">
+<!-- #else -->
+                    Value="{x:Bind FilterBar.SelectedValue, Mode=OneWay}">
+<!-- #endif -->
                     <toolkit:Case Value="Recent">
                         <StackPanel
                             x:Name="RecentSamplesPanel"

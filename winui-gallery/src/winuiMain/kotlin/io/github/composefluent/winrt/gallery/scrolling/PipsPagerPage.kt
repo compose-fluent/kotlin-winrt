@@ -21,5 +21,7 @@ internal class PipsPagerPage : Page() {
     private fun visibility(args: SelectionChangedEventArgs): PipsPagerButtonVisibility = when (args.addedItems!!.firstOrNull()?.toString()) { "Visible" -> PipsPagerButtonVisibility.Visible; "VisibleOnPointerOver" -> PipsPagerButtonVisibility.VisibleOnPointerOver; else -> PipsPagerButtonVisibility.Collapsed }
     private fun PrevButtonComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { requireNotNull(args);  if (ready) TestPipsPager2.previousButtonVisibility = visibility(args) }
     private fun NextButtonComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { requireNotNull(args);  if (ready) TestPipsPager2.nextButtonVisibility = visibility(args) }
+// #if WINUI3
     private fun WrapModeComboBox_SelectionChanged(sender: Any?, args: SelectionChangedEventArgs?) { requireNotNull(args);  if (ready) TestPipsPager2.wrapMode = if (args.addedItems!!.firstOrNull()?.toString() == "Wrap") PipsPagerWrapMode.Wrap else PipsPagerWrapMode.None }
+// #endif
 }

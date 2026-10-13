@@ -11,7 +11,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @GalleryPage(route = "XamlCompInterop", title = "Animation interop", group = "Motion", order = 0)
 internal class XamlCompInteropPage : Page() {
-    private val compositor = CompositionTarget.getCompositorForCurrentThread()
+    private val compositor get() = checkNotNull(microsoft.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(this)).compositor
     private var springAnimation: microsoft.ui.composition.SpringVector3NaturalMotionAnimation? = null
     private var ready = false
     override fun initializeComponent() { super.initializeComponent(); ready = true; unloaded.add { _, _ -> Popup.isOpen = false } }

@@ -12,8 +12,10 @@ internal class MenuFlyoutPage : Page() {
     private fun MenuFlyoutItem_Click(sender: Any?, args: RoutedEventArgs?) {
         Control1Output.text = "Sort by: ${checkNotNull(sender).asWinRT<MenuFlyoutItem>().tag}"
     }
+// #if WINUI3
     private fun SplitMenuFlyoutItem_Click(sender: Any?, args: RoutedEventArgs?) {
         Control3bOutput.text = "Clicked: ${checkNotNull(sender).asWinRT<MenuFlyoutItem>().text}"
     }
+// #endif
     private fun Example5_Loaded(sender: Any?, args: RoutedEventArgs?) {}
 }

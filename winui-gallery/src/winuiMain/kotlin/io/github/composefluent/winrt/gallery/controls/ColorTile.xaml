@@ -16,10 +16,14 @@
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
+<!-- #if WINUI3 -->
         <SystemBackdropElement
             x:Name="BackdropHost"
             Grid.ColumnSpan="2"
             Visibility="Collapsed" />
+<!-- #else -->
+        <Border x:Name="BackdropHost" Grid.ColumnSpan="2" Visibility="Collapsed" Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}" />
+<!-- #endif -->
 
         <Grid
             Padding="12"

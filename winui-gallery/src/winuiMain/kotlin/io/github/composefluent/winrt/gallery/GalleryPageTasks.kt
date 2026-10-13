@@ -8,7 +8,7 @@ import microsoft.ui.xaml.controls.ContentDialog
 
 /** UI work belongs to the page and is cancelled when the page leaves the visual tree. */
 internal class GalleryPageTasks(private val owner: FrameworkElement) {
-    private val queue = checkNotNull(owner.dispatcherQueue)
+    private val queue = checkNotNull(owner.galleryDispatcher)
     private val dispatcher = object : CoroutineDispatcher() {
         override fun isDispatchNeeded(context: CoroutineContext): Boolean = true
         override fun dispatch(context: CoroutineContext, block: Runnable) {
