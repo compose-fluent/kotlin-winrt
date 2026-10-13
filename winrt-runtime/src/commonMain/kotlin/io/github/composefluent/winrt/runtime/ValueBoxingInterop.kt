@@ -55,7 +55,9 @@ internal class WinRTValueAdapter<T : Any>(
         // A private allocation registry cannot be consulted by a C++/CsWinRT consumer.
         val sizeBytes = abiLayout.byteSize * elements.size.toLong()
         val data = WinRTPlatformApi.coTaskMemAllocRaw(maxOf(sizeBytes, 1L))
-        if (PlatformAbi.isNull(data)) throw OutOfMemoryError("Unable to allocate WinRT array ABI buffer.")
+        if (PlatformAbi.isNull(data)) throw WinRTOutOfMemoryException(
+            "Unable to allocate WinRT array ABI buffer.", KnownHResults.E_OUTOFMEMORY,
+        )
         PlatformAbi.zeroBytes(data, sizeBytes)
         return try {
             elements.forEachIndexed { index, element ->
