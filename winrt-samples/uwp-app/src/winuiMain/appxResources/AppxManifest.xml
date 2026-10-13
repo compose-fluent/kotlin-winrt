@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    IgnorableNamespaces="uap">
+    <Identity Name="io.github.composefluent.kotlinwinrt.uwp" Publisher="CN=KotlinWinRT Development"
+        Version="1.0.0.0" ProcessorArchitecture="x64" />
+    <Properties>
+        <DisplayName>Kotlin WinRT UWP</DisplayName>
+        <PublisherDisplayName>Kotlin WinRT Development</PublisherDisplayName>
+        <Logo>Assets\StoreLogo.png</Logo>
+    </Properties>
+    <Dependencies><TargetDeviceFamily Name="Windows.Universal" /></Dependencies>
+    <Resources><Resource Language="en-us" /></Resources>
+    <Applications>
+        <Application Id="App" Executable="kotlin-winrt-uwp.exe"
+            EntryPoint="io.github.composefluent.winrt.samples.uwp.UwpApplication">
+            <uap:VisualElements DisplayName="Kotlin WinRT UWP" Description="Kotlin/WinRT UWP sample"
+                BackgroundColor="#006C67" Square150x150Logo="Assets\Square150x150Logo.png"
+                Square44x44Logo="Assets\Square44x44Logo.png" />
+        </Application>
+    </Applications>
+    <Capabilities><Capability Name="codeGeneration" /></Capabilities>
+</Package>

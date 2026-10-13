@@ -1,0 +1,7 @@
+<Application x:Class="io.github.composefluent.winrt.samples.uwp.UwpApplication"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="SampleAccent" Color="#006C67" />
+    </Application.Resources>
+</Application>
