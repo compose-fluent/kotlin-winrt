@@ -70,8 +70,10 @@ completion event. Theme checks cover a saved dark theme on cold startup and
 switching back to the current system theme. Multiple-window creation, closing and
 reopening are exercised in the Gallery. Toast submission and badge update/clear
 calls succeed. Notification-center display and clicking a toast while the app is
-running have been verified; banner display and notification cold activation need
-separate verification. The system-event and Native component debug activations
+running have been verified. A separate notification click with no Gallery process
+and no pending background tasks cold-started a new process, entered toast activation,
+displayed the page, and remained running through suspension/resume. Banner display
+has not been conclusively observed. The system-event and Native component debug activations
 also passed completion and callback-receipt checks, including Windows loading the
 component in `backgroundTaskHost.exe`.
 The one-shot `TimeTrigger` also fired naturally after the foreground process was
