@@ -2075,12 +2075,25 @@ class ComWrappersSupportTest {
         )
         val innerReference = innerHost.createPrimaryReference()
         val innerPointer = PlatformAbi.fromRawComPtr(innerReference.pointer)
-        val outerHost = WinRTInspectableComObject(
+        val outerDefinition = WinRTCcwDefinition(
             interfaceDefinitions = listOf(
                 WinRTInspectableInterfaceDefinition(outerInterfaceId, methods = emptyList()),
             ),
             defaultInterfaceId = outerInterfaceId,
         )
+        // Updating the instance's forwarding target must also work with shared type entries.
+        val outerHost = WinRTInspectableComObject(
+            interfaceDefinitions = outerDefinition.interfaceDefinitions,
+            defaultInterfaceId = outerInterfaceId,
+            shapeCacheKey = outerDefinition,
+        )
+        // Observe reuse after the first host was initialized inline. Publishing a new
+        // forwarding target below must safely switch that host to shared entries too.
+        WinRTInspectableComObject(
+            interfaceDefinitions = outerDefinition.interfaceDefinitions,
+            defaultInterfaceId = outerInterfaceId,
+            shapeCacheKey = outerDefinition,
+        ).close()
 
         try {
             outerHost.setQueryInterfaceForwardTarget(innerReference)

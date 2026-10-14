@@ -125,14 +125,13 @@ internal class WinRTInspectableComObject(
         ?: ManagedCcwShape.create(interfaceDefinitions, hiddenInterfaceDefinitions, defaultInterfaceId)
     private val referencesAreAgile = ccwShape.referencesAreAgile
     internal val primaryInterfaceId = ccwShape.primaryInterfaceId
-    private val initialQueryInterfaceTableEntryCount = ccwShape.queryInterfaceTableShape.entryCount
     private val interfaceObjectMemorySizeBytes = ccwShape.interfaceObjectMemorySizeBytes
     private val referenceCounterStorageOffsetBytes = interfaceObjectMemorySizeBytes
     private val queryInterfaceTableStorageOffsetBytes =
         referenceCounterStorageOffsetBytes + Long.SIZE_BYTES
     private val hostOwnedMemory = PlatformAbi.allocateBytesOwned(
         sizeBytes = queryInterfaceTableStorageOffsetBytes +
-            managedComQueryInterfaceTableSizeBytes(initialQueryInterfaceTableEntryCount),
+            ccwShape.queryInterfaceTableShape.instanceStorageSizeBytes,
         alignmentBytes = NativeAbiLayout.ADDRESS.byteAlignment,
     )
     private val interfaceObjectMemory = hostOwnedMemory.pointer
@@ -854,7 +853,10 @@ internal class WinRTInspectableComObject(
 
         private fun cachedShape(definition: WinRTCcwDefinition): ManagedCcwShape {
             @Suppress("UNCHECKED_CAST")
-            (definition.preparedShape.load() as ManagedCcwShape?)?.let { return it }
+            (definition.preparedShape.load() as ManagedCcwShape?)?.let {
+                it.queryInterfaceTableShape.shareNativeEntries()
+                return it
+            }
 
             val created = ManagedCcwShape.create(
                 interfaceDefinitions = definition.interfaceDefinitions,
@@ -866,7 +868,9 @@ internal class WinRTInspectableComObject(
             }
 
             @Suppress("UNCHECKED_CAST")
-            return definition.preparedShape.load() as ManagedCcwShape
+            return (definition.preparedShape.load() as ManagedCcwShape).also {
+                it.queryInterfaceTableShape.shareNativeEntries()
+            }
         }
 
         internal fun findManagedValue(pointer: RawAddress): Any? =

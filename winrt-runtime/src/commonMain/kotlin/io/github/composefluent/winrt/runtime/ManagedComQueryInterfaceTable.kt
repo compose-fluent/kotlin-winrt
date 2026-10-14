@@ -12,19 +12,60 @@ internal class ManagedComQueryInterfaceTableShape(
 
     val entryCount: Int
         get() = interfaceIdLowBits.size
+
+    // CsWinRT 3 ComputeVtables returns type-level ComInterfaceEntry storage. Keep our
+    // IID/relative-offset entries on the cached shape too, never on another instance.
+    @kotlin.concurrent.Volatile
+    private var sharedEntries: OwnedNativeAllocation? = null
+    @Suppress("unused")
+    private var cleanup: AutoCloseable? = null
+
+    // Some runtime definitions capture an instance and are never reused. Unlike generated
+    // CsWinRT static entries, our native table needs an allocation; defer it until shape reuse
+    // is observed. Existing inline tables remain valid when later hosts use shared entries.
+    fun shareNativeEntries() {
+        if (sharedEntries != null) return
+        creationLock.withLock {
+            if (sharedEntries != null) return@withLock
+            val allocation = PlatformAbi.allocateBytesOwned(
+                (entryCount.toLong() * managedComQueryInterfaceTableEntryWordCount * Long.SIZE_BYTES).coerceAtLeast(1L),
+                Long.SIZE_BYTES.toLong(),
+            )
+            try {
+                writeEntryWords(this) { index, value ->
+                    allocation.memory.writeInt64(index.toLong() * Long.SIZE_BYTES, value)
+                }
+                cleanup = finalizationHook.register(this, allocation::close)
+                sharedEntries = allocation
+            } catch (error: Throwable) {
+                allocation.close()
+                throw error
+            }
+        }
+    }
+
+    val sharedEntriesPointer: RawAddress
+        get() {
+            val entries = sharedEntries ?: return RawAddress.Null
+            return entries.pointer
+        }
+
+    val instanceStorageSizeBytes: Long
+        get() = (managedComQueryInterfaceTableHeaderWordCount.toLong() +
+            if (sharedEntries == null) entryCount.toLong() * managedComQueryInterfaceTableEntryWordCount else 0L) * Long.SIZE_BYTES
+
+    companion object {
+        private val finalizationHook = FinalizationHook()
+        private val creationLock = PlatformLock()
+    }
 }
 
 internal const val managedComQueryInterfaceTableEntryCountWord = 0
 internal const val managedComQueryInterfaceTableForwardTargetWord = 1
-internal const val managedComQueryInterfaceTableHeaderWordCount = 2
+internal const val managedComQueryInterfaceTableEntriesWord = 2
+internal const val managedComQueryInterfaceTableObjectBaseWord = 3
+internal const val managedComQueryInterfaceTableHeaderWordCount = 4
 internal const val managedComQueryInterfaceTableEntryWordCount = 3
-
-internal fun managedComQueryInterfaceTableWordCount(entryCount: Int): Int =
-    managedComQueryInterfaceTableHeaderWordCount +
-        entryCount * managedComQueryInterfaceTableEntryWordCount
-
-internal fun managedComQueryInterfaceTableSizeBytes(entryCount: Int): Long =
-    managedComQueryInterfaceTableWordCount(entryCount).toLong() * Long.SIZE_BYTES
 
 internal fun initializeManagedComQueryInterfaceTable(
     storage: RawAddress,
@@ -85,7 +126,7 @@ internal class ManagedComQueryInterfaceTablePublisher(
 
     fun publish(forwardTarget: RawAddress) {
         val allocation = PlatformAbi.allocateBytesOwned(
-            sizeBytes = managedComQueryInterfaceTableSizeBytes(shape.entryCount),
+            sizeBytes = shape.instanceStorageSizeBytes,
             alignmentBytes = Long.SIZE_BYTES.toLong(),
         )
         writeManagedComQueryInterfaceTable(
@@ -115,20 +156,8 @@ private fun writeManagedComQueryInterfaceTable(
     interfaceObjectMemory: RawAddress,
     forwardTarget: RawAddress,
 ) {
-    writeTableWord(storage, managedComQueryInterfaceTableEntryCountWord, shape.entryCount.toLong())
-    writeTableWord(storage, managedComQueryInterfaceTableForwardTargetWord, forwardTarget.value)
-    var index = 0
-    while (index < shape.entryCount) {
-        val offset = managedComQueryInterfaceTableHeaderWordCount +
-            index * managedComQueryInterfaceTableEntryWordCount
-        writeTableWord(storage, offset, shape.interfaceIdLowBits[index])
-        writeTableWord(storage, offset + 1, shape.interfaceIdHighBits[index])
-        writeTableWord(
-            storage,
-            offset + 2,
-            interfaceObjectMemory.value + shape.targetOffsetsBytes[index],
-        )
-        index += 1
+    writeTableWords(storage, shape, interfaceObjectMemory, forwardTarget) { index, value ->
+        writeTableWord(storage, index, value)
     }
 }
 
@@ -157,22 +186,45 @@ private fun writeManagedComQueryInterfaceTable(
     interfaceObjectMemoryOffsetBytes: Long,
     forwardTarget: RawAddress,
 ) {
-    writeTableWord(storage, storageOffsetBytes, managedComQueryInterfaceTableEntryCountWord, shape.entryCount.toLong())
-    writeTableWord(storage, storageOffsetBytes, managedComQueryInterfaceTableForwardTargetWord, forwardTarget.value)
+    writeTableWords(
+        RawAddress(storage.pointer.value + storageOffsetBytes),
+        shape,
+        RawAddress(interfaceObjectMemory.pointer.value + interfaceObjectMemoryOffsetBytes),
+        forwardTarget,
+    ) { index, value ->
+        writeTableWord(storage, storageOffsetBytes, index, value)
+    }
+}
+
+private inline fun writeTableWords(
+    storage: RawAddress,
+    shape: ManagedComQueryInterfaceTableShape,
+    interfaceObjectMemory: RawAddress,
+    forwardTarget: RawAddress,
+    writeWord: (Int, Long) -> Unit,
+) {
+    val shared = shape.sharedEntriesPointer
+    val entries = if (PlatformAbi.isNull(shared)) {
+        RawAddress(storage.value + managedComQueryInterfaceTableHeaderWordCount * Long.SIZE_BYTES)
+    } else shared
+    writeWord(managedComQueryInterfaceTableEntryCountWord, shape.entryCount.toLong())
+    writeWord(managedComQueryInterfaceTableForwardTargetWord, forwardTarget.value)
+    writeWord(managedComQueryInterfaceTableEntriesWord, entries.value)
+    writeWord(managedComQueryInterfaceTableObjectBaseWord, interfaceObjectMemory.value)
+    if (PlatformAbi.isNull(shared)) {
+        writeEntryWords(shape) { index, value ->
+            writeWord(managedComQueryInterfaceTableHeaderWordCount + index, value)
+        }
+    }
+}
+
+private inline fun writeEntryWords(shape: ManagedComQueryInterfaceTableShape, writeWord: (Int, Long) -> Unit) {
     var index = 0
     while (index < shape.entryCount) {
-        val offset = managedComQueryInterfaceTableHeaderWordCount +
-            index * managedComQueryInterfaceTableEntryWordCount
-        writeTableWord(storage, storageOffsetBytes, offset, shape.interfaceIdLowBits[index])
-        writeTableWord(storage, storageOffsetBytes, offset + 1, shape.interfaceIdHighBits[index])
-        writeTableWord(
-            storage,
-            storageOffsetBytes,
-            offset + 2,
-            interfaceObjectMemory.pointer.value +
-                interfaceObjectMemoryOffsetBytes +
-                shape.targetOffsetsBytes[index],
-        )
+        val offset = index * managedComQueryInterfaceTableEntryWordCount
+        writeWord(offset, shape.interfaceIdLowBits[index])
+        writeWord(offset + 1, shape.interfaceIdHighBits[index])
+        writeWord(offset + 2, shape.targetOffsetsBytes[index])
         index += 1
     }
 }

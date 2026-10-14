@@ -8,12 +8,14 @@ internal expect fun allocateWin64ExecutableCode(
 internal fun buildManagedComQueryInterfaceStub(fallbackAddress: Long): ByteArray {
     val tableSlotOffset = managedComQueryInterfaceTableSlot * Long.SIZE_BYTES
     val counterSlotOffset = managedComReferenceCounterSlot * Long.SIZE_BYTES
-    val tableHeaderSize = managedComQueryInterfaceTableHeaderWordCount * Long.SIZE_BYTES
+    val tableEntriesOffset = managedComQueryInterfaceTableEntriesWord * Long.SIZE_BYTES
+    val tableObjectBaseOffset = managedComQueryInterfaceTableObjectBaseWord * Long.SIZE_BYTES
     val tableForwardTargetOffset = managedComQueryInterfaceTableForwardTargetWord * Long.SIZE_BYTES
     val tableEntrySize = managedComQueryInterfaceTableEntryWordCount * Long.SIZE_BYTES
     require(tableSlotOffset in 0..Byte.MAX_VALUE)
     require(counterSlotOffset in 0..Byte.MAX_VALUE)
-    require(tableHeaderSize in 0..Byte.MAX_VALUE)
+    require(tableEntriesOffset in 0..Byte.MAX_VALUE)
+    require(tableObjectBaseOffset in 0..Byte.MAX_VALUE)
     require(tableForwardTargetOffset in 0..Byte.MAX_VALUE)
     require(tableEntrySize in 0..Byte.MAX_VALUE)
 
@@ -31,7 +33,7 @@ internal fun buildManagedComQueryInterfaceStub(fallbackAddress: Long): ByteArray
         emit(0x45, 0x8B, 0x11) // mov r10d, [r9]
         emit(0x45, 0x85, 0xD2) // test r10d, r10d
         jumpIf(0x8E, ManagedComCodeLabel.Forward)
-        emit(0x49, 0x83, 0xC1, tableHeaderSize) // add r9, tableHeaderSize
+        emit(0x4D, 0x8B, 0x49, tableEntriesOffset) // mov r9, [r9 + entries pointer]
 
         mark(ManagedComCodeLabel.Scan)
         emit(0x48, 0x8B, 0x02) // mov rax, [rdx]
@@ -61,7 +63,9 @@ internal fun buildManagedComQueryInterfaceStub(fallbackAddress: Long): ByteArray
         emit(0x4C, 0x8D, 0x50, 0x01) // lea r10, [rax + 1]
         emit(0xF0, 0x4D, 0x0F, 0xB1, 0x13) // lock cmpxchg [r11], r10
         jumpIf(0x85, ManagedComCodeLabel.ReferenceLoop)
-        emit(0x49, 0x8B, 0x41, Long.SIZE_BYTES * 2) // mov rax, [r9 + target offset]
+        emit(0x49, 0x8B, 0x41, Long.SIZE_BYTES * 2) // mov rax, [r9 + relative target offset]
+        emit(0x4C, 0x8B, 0x51, tableSlotOffset) // mov r10, [rcx + table slot]
+        emit(0x49, 0x03, 0x42, tableObjectBaseOffset) // add rax, [r10 + instance base]
         emit(0x49, 0x89, 0x00) // mov [r8], rax
         emit(0x31, 0xC0) // xor eax, eax (S_OK)
         emit(0xC3) // ret
