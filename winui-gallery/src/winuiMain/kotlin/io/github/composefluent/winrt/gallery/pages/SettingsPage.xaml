@@ -8,6 +8,15 @@
     xmlns:toolkit="using:UWPPackage">
 <!-- #endif -->
     <Page.Resources>
+<!-- #if WINUI2 -->
+        <!-- Explicitly retain the WinUI 2 template. A style without BasedOn falls
+             back to the OS template, whose inner Grid also reserves 154 px. -->
+        <Style x:Key="GalleryCompactToggleSwitchStyle" TargetType="ToggleSwitch"
+               BasedOn="{StaticResource DefaultToggleSwitchStyle}">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+<!-- #endif -->
         <!--  These styles can be referenced to create a consistent SettingsPage layout  -->
         <!--  Reference SettingsExpander Page in Windows Community Toolkit Gallery for the full sample  -->
 
@@ -83,7 +92,11 @@
                         <toolkit:SettingsExpander.HeaderIcon>
                             <FontIcon Glyph="&#xEC4F;" />
                         </toolkit:SettingsExpander.HeaderIcon>
-                        <ToggleSwitch x:Name="soundToggle" Toggled="soundToggle_Toggled" />
+                        <ToggleSwitch x:Name="soundToggle" Toggled="soundToggle_Toggled"
+<!-- #if WINUI2 -->
+                                      Style="{StaticResource GalleryCompactToggleSwitchStyle}"
+<!-- #endif -->
+                        />
                         <toolkit:SettingsExpander.Items>
                             <toolkit:SettingsCard
                                 x:Name="SpatialAudioCard"
@@ -92,7 +105,11 @@
                                 <toolkit:SettingsCard.Description>
                                     <HyperlinkButton Click="soundPageHyperlink_Click" Content="Learn more about enabling sounds in your app" />
                                 </toolkit:SettingsCard.Description>
-                                <ToggleSwitch x:Name="spatialSoundBox" Toggled="spatialSoundBox_Toggled" />
+                                <ToggleSwitch x:Name="spatialSoundBox" Toggled="spatialSoundBox_Toggled"
+<!-- #if WINUI2 -->
+                                              Style="{StaticResource GalleryCompactToggleSwitchStyle}"
+<!-- #endif -->
+                                />
                             </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>

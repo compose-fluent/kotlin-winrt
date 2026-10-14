@@ -78,7 +78,7 @@
                         Text="Favorites" />
                 </SelectorBar>
 <!-- #else -->
-<essential:Segmented Style="{StaticResource PivotSegmentedStyle}"
+                <essential:Segmented Style="{StaticResource GalleryTokenSegmentedStyle}"
                     x:Name="FilterBar"
                     Grid.Row="1"
                     Margin="36,24,0,16"
@@ -88,11 +88,11 @@
 
                         IsSelected="True"
                         Tag="Recent"
-                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Clock" /><TextBlock Text="Recent" /></StackPanel></essential:SegmentedItem>
+                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Clock" Width="16" Height="16" VerticalAlignment="Center" /><TextBlock Text="Recent" /></StackPanel></essential:SegmentedItem>
                     <essential:SegmentedItem
 
                         Tag="Favorites"
-                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Favorite" /><TextBlock Text="Favorites" /></StackPanel></essential:SegmentedItem>
+                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Favorite" Width="16" Height="16" VerticalAlignment="Center" /><TextBlock Text="Favorites" /></StackPanel></essential:SegmentedItem>
                 </essential:Segmented>
 <!-- #endif -->
                 <toolkit:SwitchPresenter

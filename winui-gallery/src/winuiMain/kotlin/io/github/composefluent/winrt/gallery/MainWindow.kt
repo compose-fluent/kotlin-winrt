@@ -142,7 +142,9 @@ internal class MainWindow : UserControl() {
         UwpBackButton.visibility = if (canGoBack) Visibility.Visible else Visibility.Collapsed
         UwpPaneToggleButton.visibility = if (showPaneToggle) Visibility.Visible else Visibility.Collapsed
         val navigationWidth = (if (canGoBack) 44.0 else 0.0) + (if (showPaneToggle) 44.0 else 0.0)
-        val compact = actualWidth < 700.0
+        // Before the first measure, use the window width rather than hiding the brand.
+        val width = actualWidth.takeIf { it > 0.0 } ?: checkNotNull(Window.current).bounds.width.toDouble()
+        val compact = width < 700.0
         UwpTitleBarBrand.visibility = if (compact) Visibility.Collapsed else Visibility.Visible
         UwpTitleBarBrand.margin = Thickness(navigationWidth + 16.0, 0.0, 16.0, 0.0)
         UwpTitleBarInteractive.margin = Thickness(navigationWidth + if (compact) 16.0 else 240.0, 8.0, 16.0, 8.0)
@@ -159,7 +161,6 @@ internal class MainWindow : UserControl() {
         fun updateLayout() {
             UwpTitleBarHost.padding = Thickness(coreTitleBar.systemOverlayLeftInset, 0.0, coreTitleBar.systemOverlayRightInset, 0.0)
             UwpTitleBarHost.minHeight = maxOf(48.0, coreTitleBar.height)
-            UwpTitleBarHost.visibility = if (coreTitleBar.isVisible) Visibility.Visible else Visibility.Collapsed
             updateUwpTitleBarNavigation()
         }
         fun updateColors() {
@@ -174,9 +175,16 @@ internal class MainWindow : UserControl() {
             caption.buttonPressedBackgroundColor = color("SubtleFillColorTertiaryBrush")
         }
         val metricsToken = coreTitleBar.layoutMetricsChanged.add { _, _ -> updateLayout() }
-        val visibleToken = coreTitleBar.isVisibleChanged.add { _, _ -> updateLayout() }
+        fun updateVisibility() {
+            UwpTitleBarHost.visibility = if (coreTitleBar.isVisible) Visibility.Visible else Visibility.Collapsed
+        }
+        // IsVisible is not initialized before Window.Activate. Keep the XAML shell
+        // visible for its first frame; track caption visibility once activated.
+        val visibleToken = coreTitleBar.isVisibleChanged.add { _, _ -> updateVisibility(); updateLayout() }
         sizeChanged.add { _, _ -> updateLayout() }
         window.activated.add { _, args ->
+            updateVisibility()
+            updateLayout()
             UwpTitleBarBrand.opacity = if (args?.windowActivationState == windows.ui.core.CoreWindowActivationState.Deactivated) 0.6 else 1.0
         }
         window.closed.add { _, _ ->
