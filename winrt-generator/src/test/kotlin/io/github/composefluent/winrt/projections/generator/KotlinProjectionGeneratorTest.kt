@@ -4538,7 +4538,7 @@ class KotlinProjectionGeneratorTest {
         val iJsonValue = filesByName.getValue("IJsonValue.kt").contents
 
         assertTrue(jsonValue, jsonValue.contains("IStringable"))
-        assertTrue(jsonValue, jsonValue.contains("fun createNumberValue(input: Double): JsonValue"))
+        assertTrue(jsonValue, jsonValue.contains("fun createNumberValue(input: Double): JsonValue?"))
         assertTrue(jsonValue, jsonValue.contains("fun getNumber(): Double"))
         assertTrue(jsonValue, jsonValue.contains("override fun toString(): String"))
         assertTrue(iJsonValue, iJsonValue.contains("fun getNumber(): Double"))
@@ -4554,15 +4554,15 @@ class KotlinProjectionGeneratorTest {
         val jsonArray = filesByName.getValue("JsonArray.kt").contents
         val iJsonValue = filesByName.getValue("IJsonValue.kt").contents
 
-        assertTrue(jsonObject, jsonObject.contains("fun parse(input: String): JsonObject"))
+        assertTrue(jsonObject, jsonObject.contains("fun parse(input: String): JsonObject?"))
         assertTrue(jsonObject, jsonObject.contains("fun getNamedString(name: String, defaultValue: String): String"))
-        assertTrue(jsonObject, jsonObject.contains("fun getNamedValue(name: String): JsonValue"))
+        assertTrue(jsonObject, jsonObject.contains("fun getNamedValue(name: String): JsonValue?"))
         assertTrue(jsonObject, jsonObject.contains("fun getNamedBoolean(name: String, defaultValue: Boolean): Boolean"))
-        assertTrue(jsonObject, jsonObject.contains("fun getNamedArray(name: String, defaultValue: JsonArray): JsonArray"))
-        assertTrue(iJsonObject, iJsonObject.contains("fun getNamedArray(name: String): JsonArray"))
+        assertTrue(jsonObject, jsonObject.contains("fun getNamedArray(name: String, defaultValue: JsonArray?): JsonArray?"))
+        assertTrue(iJsonObject, iJsonObject.contains("fun getNamedArray(name: String): JsonArray?"))
         assertTrue(jsonArray, jsonArray.contains("public constructor()"))
         assertTrue(iJsonValue, iJsonValue.contains("val valueType: JsonValueType"))
-        assertTrue(iJsonValue, iJsonValue.contains("fun getObject(): JsonObject"))
+        assertTrue(iJsonValue, iJsonValue.contains("fun getObject(): JsonObject?"))
         assertTrue(jsonObject, jsonObject.contains("override val valueType: JsonValueType"))
         assertTrue(jsonArray, jsonArray.contains("override val valueType: JsonValueType"))
     }
@@ -27984,11 +27984,9 @@ class KotlinProjectionGeneratorTest {
     private fun generateWindowsDataJsonFromInstalledWinmd(): Map<String, KotlinProjectionFile> {
         val windowsWinmd = runCatching { KotlinProjectionGeneratorOptions.locateWindowsWinmd() }.getOrNull()
         assumeTrue("Windows SDK Windows.winmd is required for CsWinRT parity fixture.", windowsWinmd?.isRegularFile() == true)
-        val model = runCatching { WinRTMetadataLoader.load(windowsWinmd!!) }
-            .getOrElse { failure ->
-                assumeTrue("Windows SDK Windows.winmd could not be parsed: ${failure.message}", false)
-                error("unreachable")
-            }
+        // A missing SDK may skip this fixture; a discovered but unreadable WinMD
+        // is a test failure, not successful validation of the projection surface.
+        val model = WinRTMetadataLoader.load(windowsWinmd!!)
             .filterToWindowsDataJson()
         return KotlinProjectionGenerator()
             .generate(model)
