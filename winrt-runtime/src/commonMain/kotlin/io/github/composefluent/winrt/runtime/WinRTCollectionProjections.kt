@@ -93,7 +93,7 @@ open class WinRTReferenceValueAdapter<T>(
 
     open fun disposeAbi(pointer: RawAddress) {
         if (!PlatformAbi.isNull(pointer)) {
-            IUnknownReference(pointer.asRawComPtr()).close()
+            disposeComAbi(pointer)
         }
     }
 }

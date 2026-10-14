@@ -8,6 +8,28 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class ComObjectReferenceFinalizationTest {
+    @Test
+    fun owned_abi_disposal_releases_once_without_querying_or_wrapping_the_pointer() {
+        // WindowsRuntimeUnknownMarshaller.Free works for any COM ABI pointer and
+        // never queries its interfaces, even when the requested projection differs.
+        FakeOwnedReferenceHost.create(supportAgileInspectable = true).use { host ->
+            host.createReference(trackContext = false).use { parent ->
+                val descriptor = WinRTDelegateDescriptor(
+                    interfaceId = IID.IUnknown,
+                    parameterKinds = emptyList(),
+                    returnKind = WinRTDelegateValueKind.UNIT,
+                )
+                MarshalInspectable.any().disposeAbi(parent.getRefPointer().asRawAddress())
+                MarshalDelegate.disposeAbi(parent.getRefPointer().asRawAddress(), descriptor)
+                disposeComAbi(PlatformAbi.nullPointer)
+                assertEquals(0, host.agilityQueries)
+                assertEquals(2, host.releaseCalls)
+                assertEquals(1, host.ownedReferenceBalance)
+            }
+            assertEquals(3, host.releaseCalls)
+        }
+    }
+
     // CsWinRT 3.0 FreeThreadedObjectReference.DerivedTryAsNative carries the
     // parent's agility into the queried reference without another ABI probe.
     @Test

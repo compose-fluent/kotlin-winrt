@@ -194,7 +194,7 @@ internal object ValueBoxingInterop {
             exactUnbox = { it },
             createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef() },
             readOwnedPointer = ::unboxInspectablePointer,
-            disposeOwnedPointer = { pointer -> IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close() },
+            disposeOwnedPointer = ::disposeComAbi,
         )
 
     private val classAdapter =

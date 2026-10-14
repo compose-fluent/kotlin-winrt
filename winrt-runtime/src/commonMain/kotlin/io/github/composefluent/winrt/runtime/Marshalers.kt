@@ -472,11 +472,7 @@ object MarshalInterface {
                 }
             },
             disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
-            disposeAbiPointer = { pointer ->
-                if (!PlatformAbi.isNull(pointer)) {
-                    IUnknownReference(pointer.asRawComPtr(), typeHandle.interfaceId).close()
-                }
-            },
+            disposeAbiPointer = ::disposeComAbi,
         )
 }
 
@@ -514,11 +510,7 @@ object MarshalInspectable {
                 }
             },
             disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
-            disposeAbiPointer = { pointer ->
-                if (!PlatformAbi.isNull(pointer)) {
-                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
-                }
-            },
+            disposeAbiPointer = ::disposeComAbi,
         )
 
     fun any(): Marshaler<Any?> =
@@ -537,11 +529,7 @@ object MarshalInspectable {
             fromAbiPointer = WinRTObjectMarshaller::fromAbi,
             fromManagedPointer = WinRTObjectMarshaller::fromManaged,
             disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
-            disposeAbiPointer = { pointer ->
-                if (!PlatformAbi.isNull(pointer)) {
-                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
-                }
-            },
+            disposeAbiPointer = ::disposeComAbi,
         )
 
     fun array(elementType: KClass<*>): Marshaler<Any?> =
@@ -560,11 +548,7 @@ object MarshalInspectable {
             fromAbiPointer = WinRTObjectMarshaller::fromAbi,
             fromManagedPointer = { value -> WinRTObjectMarshaller.fromManaged(value, elementType) },
             disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
-            disposeAbiPointer = { pointer ->
-                if (!PlatformAbi.isNull(pointer)) {
-                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
-                }
-            },
+            disposeAbiPointer = ::disposeComAbi,
         )
 }
 
@@ -585,11 +569,7 @@ object MarshalGenericParameter {
             fromAbiPointer = { pointer -> WinRTGenericParameterProjection.fromAbi(pointer) },
             fromManagedPointer = { value -> WinRTGenericParameterProjection.fromManaged(value) },
             disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
-            disposeAbiPointer = { pointer ->
-                if (!PlatformAbi.isNull(pointer)) {
-                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
-                }
-            },
+            disposeAbiPointer = ::disposeComAbi,
         )
 }
 
@@ -618,11 +598,7 @@ object MarshalReferenceValueAdapter {
                     ?: PlatformAbi.nullPointer
             },
             disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
-            disposeAbiPointer = { pointer ->
-                if (!PlatformAbi.isNull(pointer)) {
-                    IUnknownReference(pointer.asRawComPtr()).close()
-                }
-            },
+            disposeAbiPointer = ::disposeComAbi,
         )
 }
 
@@ -658,11 +634,9 @@ object MarshalDelegate {
         value?.close()
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun disposeAbi(pointer: RawAddress, descriptor: WinRTDelegateDescriptor) {
-        if (PlatformAbi.isNull(pointer)) {
-            return
-        }
-        WinRTDelegateReference.fromAbi(pointer, descriptor)?.close()
+        disposeComAbi(pointer)
     }
 
     fun createMarshalerArray(values: Array<out WinRTDelegateReference?>?): WinRTAbiArray? =

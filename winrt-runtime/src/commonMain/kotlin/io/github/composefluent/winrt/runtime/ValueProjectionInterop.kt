@@ -87,7 +87,7 @@ object WinRTReferenceProjectionInterop {
                 WinRTReferenceProjection.fromAbi(result, interfaceId) as T
             } finally {
                 if (!PlatformAbi.isNull(result)) {
-                    IUnknownReference(result.asRawComPtr()).close()
+                    disposeComAbi(result)
                 }
             }
         }

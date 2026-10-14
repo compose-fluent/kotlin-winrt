@@ -5,6 +5,17 @@ internal enum class ComOwnershipMode {
     Borrowed,
 }
 
+/**
+ * CsWinRT 3.0 WindowsRuntimeUnknownMarshaller.Free: consume an owned ABI reference
+ * in the caller's COM context. This is synchronous ABI cleanup, not RCW disposal;
+ * it must not create a new context-aware wrapper or a Cleaner registration.
+ */
+internal fun disposeComAbi(pointer: RawAddress) {
+    if (!PlatformAbi.isNull(pointer)) {
+        WinRTPlatformApi.releaseRaw(pointer)
+    }
+}
+
 @PublishedApi
 internal class ComPtr private constructor(
     referenceTrackerPointer: RawComPtr,
