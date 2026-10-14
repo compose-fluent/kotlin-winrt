@@ -23,6 +23,13 @@ to construct and lay out all catalog pages after the shell loads. Validation
 results and event output are written to the package's `LocalState/gallery.log`.
 This smoke path checks activation/layout; it does not replace manual input tests.
 
+The Native UWP Gallery logs launch execution state and background, suspension,
+and resume events to the same log. Manual validation covers cold launch,
+theme/recent-page persistence across exit and launch, and minimizing until the
+OS suspends the app, then restoring the same page and interacting with it.
+Protocol/file activation and background-task activation are not registered by
+this Gallery manifest, so these scenarios are not covered by that validation.
+
 Both variants use the layouts and pages in `src/winuiMain/kotlin`, including the
 navigation shell, Home, Settings, page headers, examples and source viewer.
 `src/uwpMain/kotlin` contains UWP startup/activation and compatibility resources; target-specific

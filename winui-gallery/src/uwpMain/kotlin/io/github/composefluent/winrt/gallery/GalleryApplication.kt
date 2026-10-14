@@ -12,9 +12,14 @@ class GalleryApplication : Application() {
     override fun initializeComponent() {
         super.initializeComponent()
         unhandledException.add { _, args -> galleryLog("Unhandled: ${args?.message}") }
+        enteredBackground.add { _, _ -> galleryLog("Lifecycle: entered background") }
+        leavingBackground.add { _, _ -> galleryLog("Lifecycle: leaving background") }
+        suspending.add { _, _ -> galleryLog("Lifecycle: suspending") }
+        resuming.add { _, _ -> galleryLog("Lifecycle: resuming") }
     }
 
     override fun onLaunched(args: LaunchActivatedEventArgs?) = try {
+        galleryLog("Launch: previous state=${args?.previousExecutionState}; arguments=${args?.arguments.orEmpty()}")
         val window = checkNotNull(Window.current)
         val shell = currentShell ?: MainWindow().also {
             currentShell = it
