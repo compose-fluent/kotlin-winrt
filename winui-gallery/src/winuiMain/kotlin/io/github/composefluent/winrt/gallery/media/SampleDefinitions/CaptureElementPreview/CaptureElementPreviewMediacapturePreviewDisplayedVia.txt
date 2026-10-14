@@ -1,7 +1,8 @@
 --- header
 A MediaCapture preview displayed via a MediaPlayerElement.
 --- xaml
-<Grid    MinWidth="400" MinHeight="300" RowSpacing="10" ColumnSpacing="4">
+<Grid xmlns:frames="using:Windows.Media.Capture.Frames"
+    MinWidth="400" MinHeight="300" RowSpacing="10" ColumnSpacing="4">
     <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="100" />
@@ -11,7 +12,13 @@ A MediaCapture preview displayed via a MediaPlayerElement.
         <RowDefinition Height="*" />
     </Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
-        <ComboBox x:Name="cameraSourceComboBox" Header="Camera source" DisplayMemberPath="DisplayName" SelectionChanged="CameraSourceComboBox_SelectionChanged" />
+        <ComboBox x:Name="cameraSourceComboBox" Header="Camera source" SelectionChanged="CameraSourceComboBox_SelectionChanged">
+            <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="frames:MediaFrameSourceGroup">
+                    <TextBlock Text="{x:Bind DisplayName}" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
         <TextBlock x:Name="frameSourceName" VerticalAlignment="Center"/>
     </StackPanel>
     <MediaPlayerElement x:Name="captureElement" Grid.Row="1" Grid.Column="0" Stretch="Uniform" AutoPlay="True" />

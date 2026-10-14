@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:io.github.composefluent.winrt.gallery.controls"
+    xmlns:frames="using:Windows.Media.Capture.Frames"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -56,9 +57,14 @@
                 <StackPanel Spacing="16">
                     <ComboBox
                         x:Name="cameraSourceComboBox"
-                        DisplayMemberPath="DisplayName"
                         Header="Camera source"
-                        SelectionChanged="CameraSourceComboBox_SelectionChanged" />
+                        SelectionChanged="CameraSourceComboBox_SelectionChanged">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="frames:MediaFrameSourceGroup">
+                                <TextBlock Text="{x:Bind DisplayName}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                     <ToggleSwitch
                         x:Name="mirrorSwitch"
                         Header="Mirror preview"
