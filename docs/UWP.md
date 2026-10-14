@@ -95,6 +95,13 @@ and a Windows SDK that includes XAML compiler tools. The existing default compil
 release `0.1.0-preview.6` is WinUI-only. There is no default downloadable UWP
 compiler release in this toolkit configuration.
 
+The UWP backend is already part of `kotlin-xamlc`, not a separate compiler project.
+Its `Kotlin XamlCompiler` CI builds and tests both `winui` and `uwp`, and the same
+release workflow publishes both framework archives. The remaining distribution
+step is to publish a release containing the UWP backend and pin its verified
+archive checksum in this toolkit. Do not point the default at an unpublished
+version or reuse the WinUI archive for UWP.
+
 Supply an unpacked **UWP** Kotlin XAML compiler package:
 
 ```powershell
