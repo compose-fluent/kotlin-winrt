@@ -219,12 +219,14 @@ class WinRTMetadataLoaderTest {
 
         val iBox = sampleNamespace.types.first { it.name == "IBox" }
         assertEquals(1, iBox.genericParameterCount)
-        assertEquals(emptyList<String>(), iBox.genericParameters.map { it.name })
+        // GenericParam follows AssemblyRef in the CLI table stream. Its name and
+        // constraint must survive the preceding table's row-size calculation.
+        assertEquals(listOf("T"), iBox.genericParameters.map { it.name })
 
         val iConstrainedBox = sampleNamespace.types.first { it.name == "IConstrainedBox" }
         assertEquals(1, iConstrainedBox.genericParameterCount)
         assertEquals(listOf("TItem"), iConstrainedBox.genericParameters.map { it.name })
-        assertEquals(emptyList<String>(), iConstrainedBox.genericParameters.single().constraints)
+        assertEquals(listOf("Sample.Foundation.IWidgetBase"), iConstrainedBox.genericParameters.single().constraints)
         assertEquals(listOf("Sample.Foundation.IBox<String>"), iConstrainedBox.implementedInterfaces.map { it.interfaceName })
         assertEquals("T0", iConstrainedBox.properties.single().typeName)
 

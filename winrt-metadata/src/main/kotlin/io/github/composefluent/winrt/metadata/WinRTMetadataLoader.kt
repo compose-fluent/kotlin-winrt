@@ -2330,7 +2330,9 @@ private class MetadataTables private constructor(
             TABLE_ASSEMBLY -> 16 + blobIndexSize + stringIndexSize * 2
             TABLE_ASSEMBLY_PROCESSOR -> 4
             TABLE_ASSEMBLY_OS -> 12
-            TABLE_ASSEMBLY_REF -> 12 + 4 + blobIndexSize + stringIndexSize * 2 + blobIndexSize
+            // ECMA-335 II.22.5 / .NET AssemblyRefTableReader: four UInt16 version
+            // fields and one UInt32 flags field. Unlike Assembly, no HashAlgId.
+            TABLE_ASSEMBLY_REF -> 12 + blobIndexSize + stringIndexSize * 2 + blobIndexSize
             TABLE_ASSEMBLY_REF_PROCESSOR -> 4 + simpleIndexSize(TABLE_ASSEMBLY_REF, rowCounts)
             TABLE_ASSEMBLY_REF_OS -> 12 + simpleIndexSize(TABLE_ASSEMBLY_REF, rowCounts)
             TABLE_FILE -> 4 + stringIndexSize + blobIndexSize
