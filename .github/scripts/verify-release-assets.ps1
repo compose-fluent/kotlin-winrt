@@ -5,9 +5,15 @@ param(
     [Parameter(Mandatory)][string] $Commit
 )
 $ErrorActionPreference = 'Stop'
-$expected = @("Kotlin-WinUI-Gallery-$Version-jvm.msix", "Kotlin-WinUI-Gallery-$Version-mingwX64.msix", 'winui-gallery-signing.cer')
-foreach ($target in @('jvm', 'mingwX64')) {
-    $package = [IO.Compression.ZipFile]::OpenRead((Join-Path $Directory "Kotlin-WinUI-Gallery-$Version-$target.msix"))
+$galleries = @(
+    @{ File = "Kotlin-WinUI-Gallery-$Version-jvm.msix"; Identity = 'ComposeFluent.KotlinWinUIGallery' },
+    @{ File = "Kotlin-WinUI-Gallery-$Version-mingwX64.msix"; Identity = 'ComposeFluent.KotlinWinUIGallery' },
+    @{ File = "Kotlin-UWP-Gallery-$Version-mingwX64.msix"; Identity = 'ComposeFluent.KotlinWinUI2Gallery' }
+)
+$expected = @($galleries | ForEach-Object { $_.File }) + @('winui-gallery-signing.cer')
+foreach ($gallery in $galleries) {
+    $target = $gallery.File
+    $package = [IO.Compression.ZipFile]::OpenRead((Join-Path $Directory $target))
     try {
         $manifest = $package.GetEntry('AppxManifest.xml')
         if (-not $manifest -or -not $package.GetEntry('AppxSignature.p7x')) { throw "Unsigned or invalid MSIX: $target" }
@@ -15,7 +21,7 @@ foreach ($target in @('jvm', 'mingwX64')) {
         try { [xml]$xml = $reader.ReadToEnd() } finally { $reader.Dispose() }
         $identity = $xml.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Identity']")
         if ($null -eq $identity -or $identity.GetAttribute('Version') -cne "$Version.0" -or
-            $identity.GetAttribute('Name') -cne 'ComposeFluent.KotlinWinUIGallery' -or
+            $identity.GetAttribute('Name') -cne $gallery.Identity -or
             $identity.GetAttribute('Publisher') -cne 'CN=ComposeFluent' -or
             $identity.GetAttribute('ProcessorArchitecture') -cne 'x64') { throw "Wrong Gallery package identity: $target" }
     } finally { $package.Dispose() }

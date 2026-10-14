@@ -247,8 +247,11 @@ The normal Gradle entry points resolve and compile XAML automatically:
 ```
 
 Use `--offline` once dependencies and the verified compiler package are cached.
-The existing snapshot workflow builds JVM and Native packages without cloning
-the XamlCompiler fork. Signing uses the existing certificate configuration.
+The snapshot workflow builds WinUI 3 JVM, WinUI 3 Native, and UWP Native Release
+packages in independent jobs without cloning the XamlCompiler fork. Signing uses
+the existing certificate configuration. UWP selects `-PkotlinWinRT.gallery.winuiVersion=2`
+and publishes `Kotlin-UWP-Gallery-<version>-mingwX64.msix` with the public signing
+certificate. Its workflow artifact ends in `uwp-mingwX64`.
 For the full Gallery Release, run JVM and Native packaging in separate Gradle
 invocations with `--no-daemon`. The workflow uses an 8 GB JVM build heap, then a separate Native compiler process
 with 12 GB and a 2 GB Gradle heap. Keep `--max-workers=1` when building the full
@@ -259,8 +262,9 @@ Version 0.1.0 release assets include separate packages for the supported Intelli
 IDEA and Android Studio distributions. XAML Preview is temporarily disabled;
 Native Hot Reload transport is not implemented.
 
-The [project release workflow](../.github/workflows/release.yml) builds signed JVM
-and Native packages when a stable project tag is pushed. See the [root README](../README.md)
+The [project release workflow](../.github/workflows/release.yml) builds all three signed
+packages when a stable project tag is pushed, verifies their separate package identities,
+and includes them in the release checksums and GitHub Release assets. See the [root README](../README.md)
 for actual Gallery screenshots, downloads and installation requirements.
 
 Upstream licenses and asset attribution remain in

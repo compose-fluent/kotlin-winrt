@@ -25,13 +25,50 @@ permissions:
 
 jobs:
   build-gallery:
-    name: Build and sign WinUI Gallery packages
+    name: Build and sign ${{ matrix.variant }} Gallery
     timeout-minutes: 360
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: winui3-jvm
+            framework: '3'
+            target: jvm
+            task: signWinAppPackageWinuiJvmMain
+            manifest: winui-gallery/src/winuiMain/appxResources/AppxManifest.xml
+            build_dir: winui-gallery/build
+            file_prefix: Kotlin-WinUI-Gallery
+            artifact_suffix: jvm
+          - variant: winui3-native
+            framework: '3'
+            target: mingwX64
+            task: signWinAppPackageMingwX64MainReleaseExecutable
+            manifest: winui-gallery/src/winuiMain/appxResources/AppxManifest.xml
+            build_dir: winui-gallery/build
+            file_prefix: Kotlin-WinUI-Gallery
+            artifact_suffix: mingwX64
+          - variant: uwp-native
+            framework: '2'
+            target: mingwX64
+            task: signWinAppPackageMingwX64MainReleaseExecutable
+            manifest: winui-gallery/src/uwpMain/AppxManifest.xml
+            build_dir: winui-gallery/build/winui2
+            file_prefix: Kotlin-UWP-Gallery
+            artifact_suffix: uwp-mingwX64
+    env:
+      GALLERY_MANIFEST: ${{ matrix.manifest }}
+      GALLERY_FRAMEWORK: ${{ matrix.framework }}
+      GALLERY_TARGET: ${{ matrix.target }}
+      GALLERY_TASK: ${{ matrix.task }}
+      GALLERY_BUILD_DIR: ${{ matrix.build_dir }}
+      GALLERY_FILE_PREFIX: ${{ matrix.file_prefix }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4
@@ -66,6 +103,15 @@ jobs:
               throw "Windows SDK tool $tool was not found under $toolPath."
             }
           }
+          if ($env:GALLERY_FRAMEWORK -eq '2') {
+            $genXbfPaths = @(
+              (Join-Path $sdkRoot "bin\$sdkVersion\XamlCompiler\x64\GenXbf.dll"),
+              (Join-Path $toolPath 'GenXbf.dll')
+            )
+            if (-not ($genXbfPaths | Where-Object { Test-Path -LiteralPath $_ })) {
+              throw "UWP requires the Windows SDK XAML compiler tools: $($genXbfPaths -join ', ')"
+            }
+          }
 
       - name: Set package identity and version
         id: package-meta
@@ -97,7 +143,7 @@ jobs:
           Add-Content -Path $env:GITHUB_ENV -Value "WINUI_GALLERY_PACKAGE_VERSION=$fileVersion"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$fileVersion"
 
-          $manifestPath = Join-Path $env:GITHUB_WORKSPACE 'winui-gallery/src/winuiMain/appxResources/AppxManifest.xml'
+          $manifestPath = Join-Path $env:GITHUB_WORKSPACE $env:GALLERY_MANIFEST
           [xml]$manifest = Get-Content -Raw $manifestPath
           $identity = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Identity']")
           if ($null -eq $identity) {
@@ -139,7 +185,7 @@ jobs:
           $certificate = $privateCertificates[0]
           Add-Content -Path $env:GITHUB_ENV -Value "WINUI_GALLERY_SIGNING_CERTIFICATE_THUMBPRINT=$($certificate.Thumbprint)"
 
-          $manifestPath = Join-Path $env:GITHUB_WORKSPACE 'winui-gallery/src/winuiMain/appxResources/AppxManifest.xml'
+          $manifestPath = Join-Path $env:GITHUB_WORKSPACE $env:GALLERY_MANIFEST
           [xml]$manifest = Get-Content -Raw $manifestPath
           $identity = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Identity']")
           $publisher = $identity.GetAttribute('Publisher')
@@ -154,80 +200,47 @@ jobs:
           Export-Certificate -Cert $certificate -FilePath $publicCertificatePath -Type CERT -Force | Out-Null
           Add-Content -Path $env:GITHUB_ENV -Value "WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE=$publicCertificatePath"
 
-      - name: Build JVM and MinGW packages
+      - name: Build and sign Gallery package
         shell: pwsh
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           # Standalone/manual runs stay snapshots; the release caller supplies an explicit tag.
           $env:GITHUB_REF_TYPE = 'branch'
-          $packageRoot = Join-Path $env:GITHUB_WORKSPACE 'winui-gallery/build/kotlin-winrt/packages'
+          $packageRoot = Join-Path (Join-Path $env:GITHUB_WORKSPACE $env:GALLERY_BUILD_DIR) 'kotlin-winrt/packages'
           $artifactRoot = Join-Path $env:RUNNER_TEMP 'winui-gallery-snapshot-artifacts'
-          $jvmArtifactDirectory = Join-Path $artifactRoot 'jvm'
-          $mingwArtifactDirectory = Join-Path $artifactRoot 'mingw'
-          New-Item -ItemType Directory -Path $jvmArtifactDirectory, $mingwArtifactDirectory -Force | Out-Null
-
-          $galleryGradleOptions = @('--no-daemon', '--no-configuration-cache', '--max-workers=1')
-          if ($env:RELEASE_TAG) { $galleryGradleOptions += "-Pwinrt.releaseTag=$env:RELEASE_TAG" }
-          $galleryJvmOptions = $galleryGradleOptions + @(
-            '-Dorg.gradle.jvmargs=-Xmx8g -XX:+UseSerialGC -Dfile.encoding=UTF-8')
-          # Keep all Native Release optimizations, including devirtualization. A
-          # separate compiler process leaves its heap free of Gradle and JVM IR.
-          # The public Windows runner has 16 GB: reserve 2 GB for Gradle and give
-          # the Native compiler 12 GB, with one compiler task running at a time.
-          # Return idle Java heap while LLVM runs outside it, leaving room for
-          # LLVM's native allocations on the same runner.
-          $galleryNativeOptions = $galleryGradleOptions + @(
-            '-Dorg.gradle.jvmargs=-Xmx2g -XX:+UseSerialGC -Dfile.encoding=UTF-8',
-            '-Pkotlin.native.disableCompilerDaemon=true',
-            '-Pkotlin.native.jvmArgs=-Xmx12g -XX:+UseG1GC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:G1PeriodicGCInterval=30000')
-          & .\gradlew.bat :winui-gallery:signWinAppPackageWinuiJvmMain @galleryJvmOptions
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
+          New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
+          $galleryOptions = @('--no-daemon', '--no-configuration-cache', '--max-workers=1',
+            "-PkotlinWinRT.gallery.winuiVersion=$env:GALLERY_FRAMEWORK")
+          if ($env:RELEASE_TAG) { $galleryOptions += "-Pwinrt.releaseTag=$env:RELEASE_TAG" }
+          if ($env:GALLERY_TARGET -eq 'jvm') {
+            $galleryOptions += '-Dorg.gradle.jvmargs=-Xmx8g -XX:+UseSerialGC -Dfile.encoding=UTF-8'
+          } else {
+            # Preserve Native Release optimizations. Keep the compiler heap separate
+            # from Gradle and return idle heap to leave room for LLVM allocations.
+            $galleryOptions += @(
+              '-Dorg.gradle.jvmargs=-Xmx2g -XX:+UseSerialGC -Dfile.encoding=UTF-8',
+              '-Pkotlin.native.disableCompilerDaemon=true',
+              '-Pkotlin.native.jvmArgs=-Xmx12g -XX:+UseG1GC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:G1PeriodicGCInterval=30000')
           }
+          & .\gradlew.bat ":winui-gallery:$env:GALLERY_TASK" @galleryOptions
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $signedPackages = @(Get-ChildItem -Path $packageRoot -Filter '*-signed.msix' -File -Recurse)
           if ($signedPackages.Count -ne 1) {
-            throw "Expected one signed JVM package after the JVM task; found $($signedPackages.Count) under $packageRoot."
+            throw "Expected one signed Gallery package; found $($signedPackages.Count) under $packageRoot."
           }
-          $jvmPackage = $signedPackages[0]
+          $fileName = '{0}-{1}-{2}.msix' -f $env:GALLERY_FILE_PREFIX, $env:WINUI_GALLERY_PACKAGE_VERSION, $env:GALLERY_TARGET
+          Copy-Item $signedPackages[0].FullName (Join-Path $artifactRoot $fileName)
+          Copy-Item $env:WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE (Join-Path $artifactRoot 'winui-gallery-signing.cer')
 
-          & .\gradlew.bat :winui-gallery:signWinAppPackageMingwX64MainReleaseExecutable @galleryNativeOptions
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
-          $mingwPackages = @(
-            Get-ChildItem -Path $packageRoot -Filter '*-signed.msix' -File -Recurse |
-              Where-Object { $_.FullName -cne $jvmPackage.FullName }
-          )
-          if ($mingwPackages.Count -ne 1) {
-            throw "Expected one signed MinGW package in addition to the JVM package; found $($mingwPackages.Count)."
-          }
-          $mingwPackage = $mingwPackages[0]
-
-          $version = $env:WINUI_GALLERY_PACKAGE_VERSION
-          Copy-Item $jvmPackage.FullName (Join-Path $jvmArtifactDirectory "Kotlin-WinUI-Gallery-$version-jvm.msix")
-          Copy-Item $mingwPackage.FullName (Join-Path $mingwArtifactDirectory "Kotlin-WinUI-Gallery-$version-mingwX64.msix")
-          Copy-Item $env:WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE (Join-Path $jvmArtifactDirectory 'winui-gallery-signing.cer')
-          Copy-Item $env:WINUI_GALLERY_SIGNING_PUBLIC_CERTIFICATE (Join-Path $mingwArtifactDirectory 'winui-gallery-signing.cer')
-
-      - name: Upload JVM package
+      - name: Upload Gallery package
         uses: actions/upload-artifact@v4
         with:
-          name: winui-gallery-${{ steps.package-meta.outputs.kind }}-${{ steps.package-meta.outputs.version }}-jvm
-          path: ${{ runner.temp }}/winui-gallery-snapshot-artifacts/jvm/*
+          name: winui-gallery-${{ steps.package-meta.outputs.kind }}-${{ steps.package-meta.outputs.version }}-${{ matrix.artifact_suffix }}
+          path: ${{ runner.temp }}/winui-gallery-snapshot-artifacts/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
-
-      - name: Upload MinGW package
-        uses: actions/upload-artifact@v4
-        with:
-          name: winui-gallery-${{ steps.package-meta.outputs.kind }}-${{ steps.package-meta.outputs.version }}-mingwX64
-          path: ${{ runner.temp }}/winui-gallery-snapshot-artifacts/mingw/*
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
-
       - name: Remove signing material
         if: always()
         shell: pwsh
