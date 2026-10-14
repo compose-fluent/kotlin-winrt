@@ -25,17 +25,14 @@ class XamlCompilerConfigurationTest {
     }
 
     @Test fun selecting_uwp_does_not_reuse_the_winui_release_or_checksum() {
-        val (project, windows) = configuration()
+        val (_, windows) = configuration()
         assertFalse(windows.xaml.archiveUrl.get().isEmpty())
         windows.application.applicationModel.set(WindowsApplicationModel.Uwp)
         assertEquals(XamlFramework.Uwp, windows.xaml.framework.get())
-        assertEquals("", windows.xaml.compilerVersion.get())
-        assertEquals("", windows.xaml.archiveSha256.get())
-        assertEquals("", windows.xaml.archiveUrl.get())
-        val failure = resolveFailure(project, windows)
-        assertTrue(failure, failure.contains("No default UWP XamlCompiler release"))
-        assertTrue(failure, failure.contains("windows.xaml.compilerDirectory"))
-        assertTrue(failure, failure.contains("windows.xaml.compilerVersion"))
+        assertEquals("0.1.0-preview.7", windows.xaml.compilerVersion.get())
+        assertEquals("c771ea8a7875500ed293e8da7d9de0b27d87695d9b4a8999143d50a2e63696d2", windows.xaml.archiveSha256.get())
+        assertEquals("https://github.com/compose-fluent/microsoft-ui-xaml/releases/download/" +
+            "kotlin-xamlc-v0.1.0-preview.7/kotlin-xamlc-0.1.0-preview.7-uwp-win-x64.zip", windows.xaml.archiveUrl.get())
     }
 
     @Test fun explicit_uwp_release_requires_its_own_checksum_and_uses_the_uwp_archive() {
@@ -50,9 +47,10 @@ class XamlCompilerConfigurationTest {
             "kotlin-xamlc-v1.2.3/kotlin-xamlc-1.2.3-uwp-win-x64.zip", windows.xaml.archiveUrl.get())
     }
 
-    @Test fun checksum_without_an_explicit_uwp_version_does_not_select_a_release() {
+    @Test fun explicitly_empty_uwp_version_is_rejected_even_with_a_checksum() {
         val (project, windows) = configuration()
         windows.xaml.framework.set(XamlFramework.Uwp)
+        windows.xaml.compilerVersion.set("")
         windows.xaml.archiveSha256.set("b".repeat(64))
         assertTrue(resolveFailure(project, windows).contains("windows.xaml.compilerVersion"))
         assertEquals("", windows.xaml.archiveUrl.get())

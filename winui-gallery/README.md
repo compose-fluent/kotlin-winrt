@@ -11,11 +11,10 @@ with a separate package identity, so it can coexist with the desktop Gallery.
 
 ```powershell
 .\gradlew.bat :winui-gallery:runWinAppPackageMingwX64MainReleaseExecutable --detach `
-    '-PkotlinWinRT.gallery.winuiVersion=2' `
-    '-PkotlinWinRT.xaml.compilerDirectory=<UWP kotlin-xamlc package directory>'
+    '-PkotlinWinRT.gallery.winuiVersion=2'
 ```
 
-The UWP compiler package is required; see [UWP support](../docs/UWP.md). Native is
+The UWP compiler downloads automatically; see [UWP support](../docs/UWP.md). Native is
 the runnable UWP target. The JVM source/compilation path is also maintained, but
 the OpenJDK AppContainer startup limitation documented there still applies.
 Use `--args=NumberBox` to open a particular page, or `--args=--validate-controls`

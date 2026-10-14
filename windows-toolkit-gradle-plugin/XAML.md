@@ -54,9 +54,10 @@ The first build downloads it; subsequent offline builds use a checksum-verified
 Gradle user-home cache. WinUI's GenXbf comes from the resolved WinUI NuGet package.
 WinUI applications do not need a compiler checkout or a stock XamlCompiler installed.
 
-UWP has no default downloadable compiler release. Supply an unpacked UWP compiler
-package through `compilerDirectory`, or explicitly select a UWP release version
-and its archive SHA-256. The default UWP archive name is
+UWP defaults to the published `0.1.0-preview.7` compiler with SHA-256
+`c771ea8a7875500ed293e8da7d9de0b27d87695d9b4a8999143d50a2e63696d2`.
+It downloads and caches automatically. Optionally supply a local package through
+`compilerDirectory`, or a custom version and checksum. The UWP archive name is
 `kotlin-xamlc-<version>-uwp-win-x64.zip`. A local package contains
 `kotlin-xamlc.json` and the checksummed executable/dependencies, and declares UWP
 plus the selected SDK version in its compatibility metadata. A WinUI package or

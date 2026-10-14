@@ -91,18 +91,17 @@ Only one XAML Application is allowed, and conflicting root resources are rejecte
 ## Supply the UWP compiler
 
 Build on Windows x64 with the [normal JDK/C++ prerequisites](../README.md#requirements)
-and a Windows SDK that includes XAML compiler tools. The existing default compiler
-release `0.1.0-preview.6` is WinUI-only. There is no default downloadable UWP
-compiler release in this toolkit configuration.
+and a Windows SDK that includes XAML compiler tools. UWP defaults to the published
+[kotlin-xamlc 0.1.0-preview.7](https://github.com/compose-fluent/microsoft-ui-xaml/releases/tag/kotlin-xamlc-v0.1.0-preview.7)
+UWP archive, downloaded automatically and verified against SHA-256
+`c771ea8a7875500ed293e8da7d9de0b27d87695d9b4a8999143d50a2e63696d2`.
 
 The UWP backend is already part of `kotlin-xamlc`, not a separate compiler project.
 Its `Kotlin XamlCompiler` CI builds and tests both `winui` and `uwp`, and the same
-release workflow publishes both framework archives. The remaining distribution
-step is to publish a release containing the UWP backend and pin its verified
-archive checksum in this toolkit. Do not point the default at an unpublished
-version or reuse the WinUI archive for UWP.
+release workflow publishes both framework archives. Each framework uses its own
+archive and checksum.
 
-Supply an unpacked **UWP** Kotlin XAML compiler package:
+For compiler development, optionally override with an unpacked **UWP** package:
 
 ```powershell
 $uwpCompiler = 'C:/tools/kotlin-xamlc-<version>-uwp-win-x64'

@@ -19,6 +19,9 @@ import javax.inject.Inject
 private const val DEFAULT_WINUI_XAML_COMPILER_VERSION = "0.1.0-preview.6"
 private const val DEFAULT_WINUI_XAML_COMPILER_SHA256 =
     "7718088e70e1d4e95446e0b1e6891fcce09ab70c82ba3ae6027d6aaa43fbc628"
+private const val DEFAULT_UWP_XAML_COMPILER_VERSION = "0.1.0-preview.7"
+private const val DEFAULT_UWP_XAML_COMPILER_SHA256 =
+    "c771ea8a7875500ed293e8da7d9de0b27d87695d9b4a8999143d50a2e63696d2"
 
 typealias NamedNuGetPackageContainer = NamedDomainObjectContainer<KotlinWinRTNuGetPackage>
 
@@ -186,16 +189,18 @@ abstract class WindowsExtension @Inject constructor(
         val projectDirectory = project.layout.projectDirectory
         compilerDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.compilerDirectory").map { projectDirectory.dir(it) })
         genXbfDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.genXbfDirectory").map { projectDirectory.dir(it) })
-        // No UWP release is bundled yet. Keep unused download inputs harmless for local
-        // compiler overrides, including configuration-cache serialization; the resolver
-        // diagnoses missing version/checksum only when a download is actually requested.
+        // Each framework has its own archive and checksum. Explicit versions must
+        // provide a matching checksum instead of inheriting a different release's pin.
         compilerVersion.convention(project.providers.gradleProperty("kotlinWinRT.xaml.version").orElse(
-            framework.map { if (it == XamlFramework.WinUi) DEFAULT_WINUI_XAML_COMPILER_VERSION else "" },
+            framework.map { if (it == XamlFramework.WinUi) DEFAULT_WINUI_XAML_COMPILER_VERSION else DEFAULT_UWP_XAML_COMPILER_VERSION },
         ))
         archiveSha256.convention(project.providers.gradleProperty("kotlinWinRT.xaml.sha256").orElse(
             framework.zip(compilerVersion) { selected, version ->
-                if (selected == XamlFramework.WinUi && version == DEFAULT_WINUI_XAML_COMPILER_VERSION)
-                    DEFAULT_WINUI_XAML_COMPILER_SHA256 else ""
+                when {
+                    selected == XamlFramework.WinUi && version == DEFAULT_WINUI_XAML_COMPILER_VERSION -> DEFAULT_WINUI_XAML_COMPILER_SHA256
+                    selected == XamlFramework.Uwp && version == DEFAULT_UWP_XAML_COMPILER_VERSION -> DEFAULT_UWP_XAML_COMPILER_SHA256
+                    else -> ""
+                }
             },
         ))
         archiveUrl.convention(compilerVersion.zip(framework) { version, selected ->
