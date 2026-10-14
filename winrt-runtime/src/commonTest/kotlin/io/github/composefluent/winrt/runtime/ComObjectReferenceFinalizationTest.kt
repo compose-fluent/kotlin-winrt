@@ -8,6 +8,51 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class ComObjectReferenceFinalizationTest {
+    // CsWinRT 3.0 FreeThreadedObjectReference.DerivedTryAsNative carries the
+    // parent's agility into the queried reference without another ABI probe.
+    @Test
+    fun queried_agile_references_preserve_classification_and_independent_ownership() {
+        FakeOwnedReferenceHost.create(supportAgileInspectable = true).use { host ->
+            val parent = host.createReference()
+            val child = parent.queryInterface(IID.IInspectable).getOrThrow()
+            try {
+                parent.close()
+                child.queryInterface(IID.IUnknown).getOrThrow().use {
+                    assertEquals(1, host.agilityQueries)
+                    assertEquals(2, host.ownedReferenceBalance)
+                }
+                assertEquals(1, host.ownedReferenceBalance)
+            } finally {
+                parent.close()
+                child.close()
+            }
+        }
+    }
+
+    @Test
+    fun unclassified_parent_does_not_skip_queried_reference_agility_probe() {
+        FakeOwnedReferenceHost.create(supportAgileInspectable = true).use { host ->
+            host.createReference(trackContext = false).use { parent ->
+                assertEquals(0, host.agilityQueries)
+                parent.queryInterface(IID.IInspectable).getOrThrow().use {
+                    assertEquals(1, host.agilityQueries)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun non_agile_parent_does_not_promote_queried_reference_to_free_threaded() {
+        FakeOwnedReferenceHost.create(supportAgileInspectable = true, reportsAgile = false).use { host ->
+            host.createReference().use { parent ->
+                assertEquals(1, host.agilityQueries)
+                parent.queryInterface(IID.IInspectable).getOrThrow().use {
+                    assertEquals(2, host.agilityQueries)
+                }
+            }
+        }
+    }
+
     // CsWinRT keeps additional type data on the RCW. A cache value may refer
     // back to its owner; this must remain a collectible managed cycle.
     @Test
@@ -194,6 +239,10 @@ class ComObjectReferenceFinalizationTest {
     ) : AutoCloseable {
         private val releaseCount = AtomicInt(0)
         private val ownedReferences = AtomicInt(0)
+        private val agilityQueryCount = AtomicInt(0)
+
+        val agilityQueries: Int
+            get() = agilityQueryCount.load()
 
         val releaseCalls: Int
             get() = releaseCount.load()
@@ -201,9 +250,13 @@ class ComObjectReferenceFinalizationTest {
         val ownedReferenceBalance: Int
             get() = ownedReferences.load()
 
-        fun createReference(): IInspectableReference {
+        fun createReference(trackContext: Boolean = true): IInspectableReference {
             ownedReferences.addAndFetch(1)
-            return IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+            return IInspectableReference(ComPtr.create(
+                raw = pointer.asRawComPtr(),
+                interfaceId = IID.IInspectable,
+                trackContext = trackContext,
+            ))
         }
 
         override fun close() {
@@ -214,7 +267,7 @@ class ComObjectReferenceFinalizationTest {
         }
 
         companion object {
-            fun create(supportAgileInspectable: Boolean = false): FakeOwnedReferenceHost {
+            fun create(supportAgileInspectable: Boolean = false, reportsAgile: Boolean = true): FakeOwnedReferenceHost {
                 val scope = PlatformAbi.confinedScope()
                 lateinit var host: FakeOwnedReferenceHost
                 val releaseCallback = ComAbiInteropBridge.createRawInt32Callback(
@@ -239,8 +292,9 @@ class ComObjectReferenceFinalizationTest {
                     ) { arguments ->
                         val requestedIid = PlatformAbi.readGuid(arguments[1] as RawAddress)
                         val resultOut = arguments[2] as RawAddress
+                        if (requestedIid == IID.IAgileObject) host.agilityQueryCount.addAndFetch(1)
                         if (requestedIid == IID.IUnknown || requestedIid == IID.IInspectable ||
-                            requestedIid == IID.IAgileObject
+                            (requestedIid == IID.IAgileObject && reportsAgile)
                         ) {
                             host.ownedReferences.addAndFetch(1)
                             PlatformAbi.writePointer(resultOut, pointer)

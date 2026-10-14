@@ -110,6 +110,7 @@ internal class ComPtr private constructor(
                 referenceTrackerPointer = referenceTrackerHandle,
                 isAggregated = isAggregated,
                 nativeObjectLifetime = support.nativeObjectLifetime,
+                knownFreeThreaded = support.callsAreFreeThreaded,
             )
         } catch (error: Throwable) {
             release()
@@ -277,6 +278,7 @@ internal class ComPtr private constructor(
             referenceTrackerPointer = trackerHandle,
             isAggregated = queriedIsAggregated,
             nativeObjectLifetime = support.nativeObjectLifetime,
+            knownFreeThreaded = support.callsAreFreeThreaded,
         )
 
     companion object {
@@ -292,6 +294,7 @@ internal class ComPtr private constructor(
             trackContext: Boolean = true,
             managedCcwReleaseIdentity: RawAddress = RawAddress.Null,
             nativeObjectLifetime: WinRTNativeObjectLifetime? = null,
+            knownFreeThreaded: Boolean = false,
         ): ComPtr = create(
             raw = raw,
             interfaceIdLowBits = interfaceId.abiLowBits,
@@ -303,6 +306,7 @@ internal class ComPtr private constructor(
             trackContext = trackContext,
             managedCcwReleaseIdentity = managedCcwReleaseIdentity,
             nativeObjectLifetime = nativeObjectLifetime,
+            knownFreeThreaded = knownFreeThreaded,
         )
 
         internal fun create(
@@ -359,6 +363,7 @@ internal class ComPtr private constructor(
             managedCcwReleaseIdentity: RawAddress,
             nativeObjectLifetime: WinRTNativeObjectLifetime?,
             consumeOnFailure: Boolean = false,
+            knownFreeThreaded: Boolean = false,
         ): ComPtr {
             require(!PlatformAbi.isNull(raw)) {
                 "COM object reference cannot wrap a null pointer."
@@ -375,6 +380,7 @@ internal class ComPtr private constructor(
                     trackContext = trackContext,
                     managedCcwReleaseIdentity = managedCcwReleaseIdentity,
                     nativeObjectLifetime = nativeObjectLifetime,
+                    knownFreeThreaded = knownFreeThreaded,
                 )
                 createdSupport = support
                 return ComPtr(

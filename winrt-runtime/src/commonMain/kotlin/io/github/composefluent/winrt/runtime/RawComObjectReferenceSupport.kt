@@ -16,6 +16,7 @@ internal class RawComObjectReferenceSupport(
     internal val managedCcwReleaseIdentity: RawAddress = RawAddress.Null,
     internal val nativeObjectLifetime: WinRTNativeObjectLifetime? = null,
     private val afterRelease: (() -> Unit)? = null,
+    knownFreeThreaded: Boolean = false,
 ) {
     private val disposed = AtomicInt(0)
     private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
@@ -23,7 +24,10 @@ internal class RawComObjectReferenceSupport(
     private var releaseTrackerSourceOnDispose: Boolean = false
     private var ownsTrackerPointer = true
     // Retain the existing agility/FTM probe result; a null context alone does not prove agility.
-    private val callsAreFreeThreaded = trackContext && ComThreadingSupport.isFreeThreaded(pointer)
+    // CsWinRT 3.0 FreeThreadedObjectReference.DerivedTryAsNative preserves agility
+    // across QI on the same object. Unknown ABI pointers must still be probed.
+    internal val callsAreFreeThreaded = trackContext &&
+        (knownFreeThreaded || ComThreadingSupport.isFreeThreaded(pointer))
     private var objectContext =
         if (trackContext) {
             ObjectReferenceContext.capture(
