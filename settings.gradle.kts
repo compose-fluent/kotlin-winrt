@@ -45,6 +45,7 @@ include(
     ":winrt-samples:winui-kmp-library",
     ":winrt-samples:winui-kmp-app",
     ":winrt-samples:uwp-app",
+    ":winrt-samples:uwp-background-task",
     ":winui-gallery",
     ":winui-gallery:processor",
     ":winui-gallery:code-document",

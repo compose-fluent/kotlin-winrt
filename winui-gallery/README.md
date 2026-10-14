@@ -51,8 +51,17 @@ For repeatable protocol/file tests without changing default app associations, us
 uses the Windows activation broker for this development package. Verify the
 corresponding callback in `gallery.log`, both while running and after closing
 the app; a successful broker call alone is not proof that the callback completed.
-The background example validates in-process activation, not an out-of-process
-background component or a timed trigger.
+The same page registers a one-shot 15-minute `TimeTrigger`, an in-process
+time-zone `SystemTrigger`, and a Native out-of-process background component.
+The component follows CsWinRT's `BgTaskComponent` sample and implements
+`IBackgroundTask` in `winrt-samples/uwp-background-task`. Its packaging identity
+provides the DLL and activation mapping without linking the component into the UI.
+Use `tools/Invoke-UwpGalleryBackgroundTask.ps1 -TaskName KotlinGallery.SystemTrigger -Activate`
+or `-TaskName KotlinGallery.Component -Activate` after registering the corresponding
+task. This uses the Windows SDK debug activation API; it does not change the
+machine's time zone or prove natural trigger scheduling. Check both the completion
+event and matching callback receipt in `gallery.log`. Completed tasks unregister
+themselves; the cleanup button removes any remaining Gallery test registrations.
 
 Native UWP validation covers protocol and file activation both while running and
 after closing the app, including reading the activated file's name. It also covers
@@ -60,7 +69,11 @@ the ApplicationTrigger request, background callback, deferral completion and tas
 completion event. Theme checks cover a saved dark theme on cold startup and
 switching back to the current system theme. Multiple-window creation, closing and
 reopening are exercised in the Gallery. Toast submission and badge update/clear
-calls succeed; system toast popup display and clicking a toast remain unverified.
+calls succeed. Notification-center display and clicking a toast while the app is
+running have been verified; banner display and notification cold activation need
+separate verification. The system-event and Native component debug activations
+also passed completion and callback-receipt checks, including Windows loading the
+component in `backgroundTaskHost.exe`.
 
 Both variants use the layouts and pages in `src/winuiMain/kotlin`, including the
 navigation shell, Home, Settings, page headers, examples and source viewer.

@@ -22,6 +22,9 @@
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
+        <Extension Category="windows.backgroundTasks" EntryPoint="io.github.composefluent.winrt.samples.background.GalleryBackgroundTask">
+          <BackgroundTasks><Task Type="systemEvent" /></BackgroundTasks>
+        </Extension>
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="kotlin-winrt-gallery"><uap:DisplayName>Kotlin UWP Gallery</uap:DisplayName></uap:Protocol>
         </uap:Extension>

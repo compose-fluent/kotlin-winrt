@@ -6,6 +6,10 @@
         <Button Content="Launch protocol" Click="Protocol_Click" />
         <Button Content="Open .kwgallery file" Click="File_Click" />
         <Button Content="Run background task" Click="Background_Click" />
+        <Button Content="Register one-shot timer (15 minutes)" Click="Timer_Click" />
+        <Button Content="Register one-shot time-zone trigger" Click="System_Click" />
+        <Button Content="Register Native background component" Click="Component_Click" />
+        <Button Content="Remove Gallery background tasks" Click="Clear_Click" />
         <TextBlock x:Name="Status" TextWrapping="Wrap" />
     </StackPanel>
 </Page>

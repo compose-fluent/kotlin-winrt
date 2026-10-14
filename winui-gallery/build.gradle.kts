@@ -116,6 +116,16 @@ kotlin {
     }
 }
 
+// Windows activates this DLL in backgroundTaskHost; the UI does not link its
+// Kotlin declarations. Consume the toolkit's packaging identity variant only.
+if (galleryUsesWinUi2) {
+    configurations.matching {
+        it.name.startsWith("kotlinWinRTIdentityApplicationMingwX64") && !it.name.endsWith("Projection")
+    }.configureEach {
+        dependencies.add(project.dependencies.project(mapOf("path" to ":winrt-samples:uwp-background-task")))
+    }
+}
+
 // The Gallery owns a full WinUI projection compile in addition to its app
 // compile. Apply the same JVM optimizer bypass used by winrt-projections to
 // every JVM compiler task, including the generated projection task.
