@@ -16951,6 +16951,21 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_collection_interface_adapter_preserves_the_interface_signature() {
+        // CsWinRT GuidGenerator.GetSignature and IReadOnlyDictionaryMethods use the
+        // declared interface GUID, including when nested inside IKeyValuePair.
+        val renderer = KotlinProjectionRenderer()
+        val binding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.ProjectedInterface,
+            typeName = "Sample.Foundation.IWidget",
+            resolvedTypeName = "Sample.Foundation.IWidget",
+        )
+        val adapter = checkNotNull(renderer.collectionReferenceAdapterCode(binding)).toString()
+        assertTrue(adapter, adapter.contains(checkNotNull(renderer.abiTypeSignature(binding)).toString()))
+        assertFalse(adapter.contains("object_()"))
+    }
+
+    @Test
     fun generator_fails_closed_for_projected_interface_type_signature_with_unrenderable_generic_argument() {
         val renderer = KotlinProjectionRenderer()
         val binding = KotlinProjectionAbiTypeBinding(

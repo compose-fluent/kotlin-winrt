@@ -1436,12 +1436,15 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             CodeBlock.of("%T(it.getRefPointer())", IUNKNOWN_REFERENCE_CLASS_NAME)
         else -> return null
     }
+    // CsWinRT GuidGenerator.GetSignature preserves interface GUIDs inside nested
+    // collection signatures; substituting IInspectable changes their closed IIDs.
+    val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
     return hoistAdapter(projectedType, CodeBlock.of(
-        "%T<%T>(projectedTypeName = %S, typeSignature = %T.object_(), projector = { %L }, marshaller = { %L })",
+        "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { %L }, marshaller = { %L })",
         WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
         projectedType,
         projectedTypeName,
-        WINRT_TYPE_SIGNATURE_CLASS_NAME,
+        typeSignature,
         projector,
         marshaller,
     ))
