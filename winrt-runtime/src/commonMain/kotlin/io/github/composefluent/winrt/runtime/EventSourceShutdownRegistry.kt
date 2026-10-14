@@ -25,7 +25,7 @@ internal object EventSourceShutdownRegistry {
 
     fun registerCallback(
         objectReference: ComObjectReference,
-        state: WeakReference<Any>,
+        state: PlatformManagedWeakReference<Any>,
         token: EventRegistrationToken,
         removeHandler: (ComObjectReference, EventRegistrationToken) -> Unit,
     ): AutoCloseable =
@@ -38,7 +38,7 @@ internal object EventSourceShutdownRegistry {
 
     fun registerVtable(
         objectReference: ComObjectReference,
-        state: WeakReference<Any>,
+        state: PlatformManagedWeakReference<Any>,
         token: EventRegistrationToken,
         removeHandlerSlot: Int,
     ): AutoCloseable =
@@ -51,7 +51,7 @@ internal object EventSourceShutdownRegistry {
 
     private fun register(
         objectReference: ComObjectReference,
-        state: WeakReference<Any>,
+        state: PlatformManagedWeakReference<Any>,
         token: EventRegistrationToken,
         removal: Removal,
     ): AutoCloseable {
@@ -125,7 +125,7 @@ internal object EventSourceShutdownRegistry {
     private class Registration(
         val id: Long,
         private val publisher: PublisherReference,
-        private val state: WeakReference<Any>,
+        private val state: PlatformManagedWeakReference<Any>,
         private val token: EventRegistrationToken,
         private val removal: Removal,
     ) {
@@ -143,7 +143,7 @@ internal object EventSourceShutdownRegistry {
             }
             try {
                 runCatching {
-                    val resolvedState = state.tryGetTarget() as? EventSourceState<*> ?: return@runCatching
+                    val resolvedState = state.get() as? EventSourceState<*> ?: return@runCatching
                     // Closing the state releases the publisher, which is a call like the removal.
                     if (!publisher.isCallableInCurrentContext()) {
                         return@runCatching

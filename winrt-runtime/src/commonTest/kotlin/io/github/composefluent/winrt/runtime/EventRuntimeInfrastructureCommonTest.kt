@@ -534,7 +534,7 @@ class EventRuntimeInfrastructureCommonTest {
         RuntimeScope.initializeMultithreaded().use {
             WinRTRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
                 val sentinel = Any()
-                val state = WeakReference<Any>(sentinel)
+                val state = PlatformManagedWeakReference<Any>(sentinel)
 
                 EventSourceCache.create(instance, 41, state)
                 assertSame(state, EventSourceCache.getState(instance, 41))

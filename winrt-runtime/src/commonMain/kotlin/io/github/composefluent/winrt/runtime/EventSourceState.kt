@@ -33,7 +33,9 @@ abstract class EventSourceState<T : Any> protected constructor(
 ) : AutoCloseable {
     private val lock = PlatformLock()
     private val objectPointerKey = PlatformAbi.pointerKey(thisPtr)
-    private val cacheEntry = WeakReference<Any>(this)
+    // CsWinRT 3 EventSourceState<T> is managed-only and caches a System.WeakReference.
+    // Its state never needs WinRT weak-reference resolution or an associated native lock.
+    private val cacheEntry = PlatformManagedWeakReference<Any>(this)
     private val cacheCleanupRegistration = finalizationHook.register(this, CacheCleanup(objectPointerKey, index, cacheEntry)::run)
     private var disposed = false
     @PublishedApi
@@ -137,7 +139,7 @@ abstract class EventSourceState<T : Any> protected constructor(
         return snapshot.singleHandler != null || snapshot.manyHandlers?.isNotEmpty() == true
     }
 
-    internal fun getWeakReferenceForCache(): WeakReference<Any> = cacheEntry
+    internal fun getWeakReferenceForCache(): PlatformManagedWeakReference<Any> = cacheEntry
 
     internal fun initializeReferenceTracking(pointer: RawAddress) {
         lock.withLock {
@@ -221,7 +223,7 @@ abstract class EventSourceState<T : Any> protected constructor(
     private data class CacheCleanup(
         private val objectPointerKey: Long,
         private val index: Int,
-        private val cacheEntry: WeakReference<Any>,
+        private val cacheEntry: PlatformManagedWeakReference<Any>,
     ) {
         fun run() {
             EventSourceCache.remove(objectPointerKey, index, cacheEntry)

@@ -19,7 +19,7 @@ abstract class EventSource<T : Any> private constructor(
     private val lock = PlatformLock()
     // Match CsWinRT's dormant EventSource shape: an unsubscribed source has no cache probe or
     // weak state yet. The first subscribe/unsubscribe lookup still consults the shared cache.
-    private var state: WeakReference<Any>? = null
+    private var state: PlatformManagedWeakReference<Any>? = null
 
     protected constructor(
         objectReference: ComObjectReference,
@@ -72,7 +72,7 @@ abstract class EventSource<T : Any> private constructor(
             val eventInvokeHandle = createMarshaler(state.eventInvoke)
             state.eventInvokeHandle = eventInvokeHandle
             eventInvokeHandle.addCleanupAction {
-                (stateReference.tryGetTarget() as? EventSourceState<*>)?.close()
+                (stateReference.get() as? EventSourceState<*>)?.close()
             }
             try {
                 if (shutdownRemoveHandlerSlot != null) {
@@ -141,12 +141,12 @@ abstract class EventSource<T : Any> private constructor(
 
     @Suppress("UNCHECKED_CAST")
     private fun getStateUnsafe(): EventSourceState<T>? {
-        val local = state?.tryGetTarget() as? EventSourceState<T>
+        val local = state?.get() as? EventSourceState<T>
         if (local != null) {
             return local
         }
         val cached = EventSourceCache.getState(objectReference, index)
         state = cached
-        return cached?.tryGetTarget() as? EventSourceState<T>
+        return cached?.get() as? EventSourceState<T>
     }
 }

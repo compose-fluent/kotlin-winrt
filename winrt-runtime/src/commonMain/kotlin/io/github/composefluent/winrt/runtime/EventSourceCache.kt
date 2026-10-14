@@ -14,7 +14,7 @@ internal object EventSourceCache {
     fun create(
         obj: ComObjectReference,
         index: Int,
-        state: WeakReference<Any>,
+        state: PlatformManagedWeakReference<Any>,
     ) {
         val target = obj.comPtr.tryWithQueryInterfacePointer(IID.IWeakReferenceSource, ::getWeakReferenceFromSource)
             ?: return
@@ -37,7 +37,7 @@ internal object EventSourceCache {
     fun getState(
         obj: ComObjectReference,
         index: Int,
-    ): WeakReference<Any>? {
+    ): PlatformManagedWeakReference<Any>? {
         val cacheKey = PlatformAbi.pointerKey(obj.pointer)
         return lock.withLock {
             val entry = caches[cacheKey] ?: return@withLock null
@@ -76,7 +76,7 @@ internal object EventSourceCache {
     fun remove(
         objectPointerKey: Long,
         index: Int,
-        state: WeakReference<Any>,
+        state: PlatformManagedWeakReference<Any>,
     ) {
         val staleTarget = lock.withLock {
             val entry = caches[objectPointerKey] ?: return@withLock null
@@ -102,23 +102,23 @@ internal object EventSourceCache {
     private class CacheEntry(
         private var target: WeakReferenceReference,
     ) : AutoCloseable {
-        private val states = mutableMapOf<Int, WeakReference<Any>>()
+        private val states = mutableMapOf<Int, PlatformManagedWeakReference<Any>>()
 
         val isEmpty: Boolean
             get() = states.isEmpty()
 
-        fun getState(index: Int): WeakReference<Any>? = states[index]
+        fun getState(index: Int): PlatformManagedWeakReference<Any>? = states[index]
 
         fun setState(
             index: Int,
-            state: WeakReference<Any>,
+            state: PlatformManagedWeakReference<Any>,
         ) {
             states[index] = state
         }
 
         fun removeState(
             index: Int,
-            state: WeakReference<Any>,
+            state: PlatformManagedWeakReference<Any>,
         ) {
             if (states[index] === state) {
                 states.remove(index)
