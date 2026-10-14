@@ -3140,7 +3140,11 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
         projection.compileTaskProvider.configure { task ->
             // Publish a regular KLIB file even when business compilations use unpacked KLIBs.
             task.produceUnpackagedKlib.set(false)
-            task.inputs.file(supportSources.map { it.file("projection-registrar.tsv") })
+            // Empty projection inputs legitimately produce no registrar. A file
+            // tree tracks its appearance/removal without requiring a missing file.
+            task.inputs.files(supportSources.map { directory ->
+                directory.asFileTree.matching { it.include("projection-registrar.tsv") }
+            })
                 .withPropertyName("winRTProjectionRegistrar")
                 .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
             task.outputs.dir(nativeAuthoringOutputDirectory(project, task.name))
