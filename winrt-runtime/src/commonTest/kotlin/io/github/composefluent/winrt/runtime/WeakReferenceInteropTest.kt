@@ -4,12 +4,36 @@ import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WeakReferenceInteropTest {
+    @Test
+    fun event_cache_liveness_probe_releases_owned_output_and_handles_expired_target() {
+        // CsWinRT 3 EventSourceCache.GetState/Update resolve and release IUnknown directly.
+        FakeWeakReferenceHost.create().use { host ->
+            val target = host.createProjectedTarget()
+            try {
+                assertNotNull(target.nativeObject.tryGetWeakReference()).use { reference ->
+                    repeat(3) {
+                        assertTrue(reference.isTargetAlive())
+                        assertEquals(1, host.targetOwnedBalance)
+                    }
+                    host.targetAlive = false
+                    assertFalse(reference.isTargetAlive())
+                    assertEquals(1, host.targetOwnedBalance)
+                }
+                assertEquals(0, host.weakReferenceOwnedBalance)
+            } finally {
+                target.nativeObject.close()
+            }
+            assertEquals(0, host.targetOwnedBalance)
+        }
+    }
+
     @Test
     fun set_target_preserves_shared_native_weak_reference_ownership() {
         // CsWinRT WeakReference.SetTarget replaces its shared IWeakReference RCW field.
@@ -97,6 +121,11 @@ class WeakReferenceInteropTest {
                     exclusiveReference.resolve(IID.IUnknown)
                 }
                 assertEquals(KnownHResults.E_FAIL, exclusiveFailure.hResult)
+                assertEquals(1, host.targetOwnedBalance)
+                val probeFailure = assertFailsWith<WinRTRuntimeException> {
+                    exclusiveReference.isTargetAlive()
+                }
+                assertEquals(KnownHResults.E_FAIL, probeFailure.hResult)
                 assertEquals(1, host.targetOwnedBalance)
             } finally {
                 exclusive?.close()
@@ -215,6 +244,7 @@ class WeakReferenceInteropTest {
         private val weakReferenceReferenceCount = AtomicInt(1)
         private val weakReferenceReleases = AtomicInt(0)
         private val weakReferenceQueries = AtomicInt(0)
+        var targetAlive = true
 
         val weakReferenceReleaseCalls: Int
             get() = weakReferenceReleases.load()
@@ -308,8 +338,8 @@ class WeakReferenceInteropTest {
         private fun resolveWeakReference(args: List<Any?>): Int {
             val interfaceId = PlatformAbi.readGuid(args[1] as RawAddress)
             val supported = interfaceId == IID.IUnknown || interfaceId == IID.IInspectable
-            val resolved = if (supported) targetPointer else PlatformAbi.nullPointer
-            if (supported) addRef(listOf(resolved))
+            val resolved = if (supported && targetAlive) targetPointer else PlatformAbi.nullPointer
+            if (!PlatformAbi.isNull(resolved)) addRef(listOf(resolved))
             PlatformAbi.writePointer(args[2] as RawAddress, resolved)
             return if (supported) resolveResult.value else KnownHResults.E_NOINTERFACE.value
         }

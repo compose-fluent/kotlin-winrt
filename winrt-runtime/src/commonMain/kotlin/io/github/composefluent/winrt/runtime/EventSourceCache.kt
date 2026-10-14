@@ -128,7 +128,7 @@ internal object EventSourceCache {
         val isTargetCallableInCurrentContext: Boolean
             get() = target.isCallableInCurrentContext
 
-        fun isTargetAlive(): Boolean = target.resolve(IID.IUnknown)?.use { true } ?: false
+        fun isTargetAlive(): Boolean = target.isTargetAlive()
 
         fun resolveTarget(interfaceId: Guid): ComObjectReference? =
             runCatching { target.resolve(interfaceId) }.getOrNull()

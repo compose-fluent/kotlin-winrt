@@ -88,6 +88,17 @@ internal class WeakReferenceReference internal constructor(
     ) : this(ComPtr.create(pointer.asRawComPtr(), interfaceId))
 
     fun resolve(interfaceId: Guid): IUnknownReference? = resolveWeakReference(interfaceId)
+
+    // CsWinRT 3 EventSourceCache resolves IUnknown only to test liveness and immediately
+    // releases the owned ABI output. No RCW or apartment context is needed for that probe.
+    fun isTargetAlive(): Boolean = withResolvedWeakReference(IID.IUnknown) { pointer ->
+        if (PlatformAbi.isNull(pointer)) {
+            false
+        } else {
+            disposeComAbi(pointer)
+            true
+        }
+    }
 }
 
 // These ABI outputs each carry one owned reference. CsWinRT's weak methods keep caller-side
@@ -123,6 +134,17 @@ private fun releaseFailedWeakAbiOutput(pointer: RawAddress, error: Throwable) {
 }
 
 private fun ComObjectReference.resolveWeakReference(interfaceId: Guid): IUnknownReference? =
+    withResolvedWeakReference(interfaceId) { pointer ->
+        if (PlatformAbi.isNull(pointer)) null else {
+            createReferenceForOwnedWeakAbi(pointer, interfaceId) { IUnknownReference(it) }
+        }
+    }
+
+// consumeOwned must consume the successful owned output, including on exceptional paths.
+private inline fun <T> ComObjectReference.withResolvedWeakReference(
+    interfaceId: Guid,
+    consumeOwned: (RawAddress) -> T,
+): T =
     try {
         withWinRTStructStorage(
             sizeBytes = (Guid.BYTE_SIZE + Long.SIZE_BYTES).toLong(),
@@ -143,11 +165,7 @@ private fun ComObjectReference.resolveWeakReference(interfaceId: Guid): IUnknown
                 releaseFailedWeakAbiOutput(resolvedPointer, error)
                 throw error
             }
-            if (PlatformAbi.isNull(resolvedPointer)) {
-                null
-            } else {
-                createReferenceForOwnedWeakAbi(resolvedPointer, interfaceId) { IUnknownReference(it) }
-            }
+            consumeOwned(resolvedPointer)
         }
     } finally {
         // This reference owns the COM pointer even when the shared RCW has another primary type.
