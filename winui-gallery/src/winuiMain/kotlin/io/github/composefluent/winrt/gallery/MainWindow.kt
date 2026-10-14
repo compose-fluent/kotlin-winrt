@@ -44,7 +44,7 @@ internal class MainWindow : UserControl() {
         GalleryNavigationHost.navigate = ::navigate
         // WindowEx is Window.Content; its theme also drives the system backdrop
         // and caption helpers, while RootGrid inherits the same theme.
-        requestedTheme = theme
+        GalleryTheme.applyTheme(this, theme)
 // #if WINUI3
         GalleryTheme.attach(this, checkNotNull(window))
 // #else
@@ -344,7 +344,7 @@ internal class MainWindow : UserControl() {
 
     private fun settings(): UIElement = io.github.composefluent.winrt.gallery.pages.SettingsPage(this, theme,
         setTheme = {
-            theme = it; GalleryPreferences.put("Theme", it.toString()); requestedTheme = it
+            theme = it; GalleryPreferences.put("Theme", it.toString()); GalleryTheme.applyTheme(this, it)
         },
         setTopNavigation = {
             navigation.paneDisplayMode = if (it) NavigationViewPaneDisplayMode.Top else NavigationViewPaneDisplayMode.Auto

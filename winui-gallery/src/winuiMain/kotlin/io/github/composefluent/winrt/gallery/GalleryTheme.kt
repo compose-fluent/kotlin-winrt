@@ -21,6 +21,26 @@ internal object GalleryTheme {
     private var root: FrameworkElement? = null
     private val accessibility = AccessibilitySettings()
     private val uiSettings = UISettings()
+// #if WINUI2
+    private var followsSystemTheme = true
+// #endif
+    fun applyTheme(element: FrameworkElement, theme: ElementTheme) {
+// #if WINUI2
+        followsSystemTheme = theme == ElementTheme.Default
+        // Application.RequestedTheme is fixed at startup. Default would inherit
+        // that saved choice, so resolve the current OS palette explicitly.
+        element.requestedTheme = if (followsSystemTheme) systemTheme() else theme
+// #else
+        element.requestedTheme = theme
+// #endif
+    }
+// #if WINUI2
+    private fun systemTheme(): ElementTheme {
+        val foreground = uiSettings.getColorValue(UIColorType.Foreground)
+        return if (5 * foreground.g.toInt() + 2 * foreground.r.toInt() + foreground.b.toInt() > 8 * 128)
+            ElementTheme.Dark else ElementTheme.Light
+    }
+// #endif
 // #if WINUI3
     private var themeSettings: ThemeSettings? = null
     val highContrast: Boolean get() = themeSettings?.highContrast ?: accessibility.highContrast
@@ -110,7 +130,10 @@ internal object GalleryTheme {
 
 // #else
         val contrastToken = accessibility.highContrastChanged.add { _, _ -> element.galleryDispatcher.tryEnqueue { safeRefresh("highContrastChanged") } }
-        val colorToken = uiSettings.colorValuesChanged.add { _, _ -> element.galleryDispatcher.tryEnqueue { safeRefresh("colorValuesChanged") } }
+        val colorToken = uiSettings.colorValuesChanged.add { _, _ -> element.galleryDispatcher.tryEnqueue {
+            if (followsSystemTheme) element.requestedTheme = systemTheme()
+            safeRefresh("colorValuesChanged")
+        } }
         window.closed.add { _, _ ->
             accessibility.highContrastChanged.remove(contrastToken)
             uiSettings.colorValuesChanged.remove(colorToken)
