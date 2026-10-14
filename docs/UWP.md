@@ -179,6 +179,28 @@ runtime's dynamic ABI callbacks. The sample manifest provides the concrete layou
 Application file access and other operations remain subject to AppContainer rules;
 use package resources and UWP application-data APIs for the sample's assets/logs.
 
+## Background tasks
+
+In-process tasks omit `BackgroundTaskBuilder.taskEntryPoint`; Windows delivers
+them to the projected `Application.onBackgroundActivated` override. Take a
+deferral from the task instance before asynchronous work and complete it when the
+work ends. The Gallery demonstrates `ApplicationTrigger`, `TimeTrigger`, and
+`SystemTrigger`, including registration completion and callback-result checks.
+
+For an out-of-process task, use an authored WinRT class exposing `IBackgroundTask`
+and set `taskEntryPoint` to its runtime class name. The manifest must declare the
+matching `windows.backgroundTasks` extension and task type. The toolkit merges
+the authored host's class-to-DLL mapping into the package-level
+`windows.activatableClass.inProcessServer` extension; an EXE side-by-side manifest
+alone does not register the component for UWP background activation.
+
+See the [Native background component](../winrt-samples/uwp-background-task/README.md)
+and [Gallery validation instructions](../winui-gallery/README.md). Windows debug
+activation has verified both the in-process system-event callback and the Native
+DLL in `backgroundTaskHost.exe`, including deferral completion and a matching
+application-data receipt. Debug activation does not validate natural scheduling.
+The JVM AppContainer limitation above still applies to JVM-hosted components.
+
 ## WinUI 2 and remaining validation
 
 WinUI 2 is a UWP controls library distributed as the `Microsoft.UI.Xaml` NuGet
