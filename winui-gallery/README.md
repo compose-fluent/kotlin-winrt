@@ -74,6 +74,10 @@ running have been verified; banner display and notification cold activation need
 separate verification. The system-event and Native component debug activations
 also passed completion and callback-receipt checks, including Windows loading the
 component in `backgroundTaskHost.exe`.
+The one-shot `TimeTrigger` also fired naturally after the foreground process was
+terminated: a new Gallery process logged `Application.onBackgroundActivated` for
+`KotlinGallery.TimeTrigger`, then suspended. Its registration was consumed without
+using the debug activation API. Natural time-zone changes remain untested.
 
 Both variants use the layouts and pages in `src/winuiMain/kotlin`, including the
 navigation shell, Home, Settings, page headers, examples and source viewer.

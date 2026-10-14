@@ -199,6 +199,9 @@ and [Gallery validation instructions](../winui-gallery/README.md). Windows debug
 activation has verified both the in-process system-event callback and the Native
 DLL in `backgroundTaskHost.exe`, including deferral completion and a matching
 application-data receipt. Debug activation does not validate natural scheduling.
+Separately, the Gallery's one-shot timer has naturally cold-started the application
+and entered `onBackgroundActivated` after the foreground process exited; Windows
+consumed the one-shot registration. Natural time-zone events remain untested.
 The JVM AppContainer limitation above still applies to JVM-hosted components.
 
 ## WinUI 2 and remaining validation
