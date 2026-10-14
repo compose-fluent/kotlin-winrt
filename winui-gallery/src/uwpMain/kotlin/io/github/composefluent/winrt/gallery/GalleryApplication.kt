@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.gallery
 import windows.applicationmodel.activation.LaunchActivatedEventArgs
 import windows.ui.viewmanagement.ApplicationView
 import windows.ui.xaml.Application
+import windows.ui.xaml.ApplicationTheme
 import windows.ui.xaml.Window
 
 // The Windows SDK UWP activation contract owns Window.Current; the desktop
@@ -10,6 +11,13 @@ import windows.ui.xaml.Window
 class GalleryApplication : Application() {
     private var currentShell: MainWindow? = null
     override fun initializeComponent() {
+        // Set the startup palette before UWP creates application resources.
+        // Setting only the shell's RequestedTheme leaves cold-start resource
+        // brushes in the system palette until the first live theme change.
+        when (GalleryPreferences.text("Theme")) {
+            "Dark" -> requestedTheme = ApplicationTheme.Dark
+            "Light" -> requestedTheme = ApplicationTheme.Light
+        }
         super.initializeComponent()
         unhandledException.add { _, args -> galleryLog("Unhandled: ${args?.message}") }
         enteredBackground.add { _, _ -> galleryLog("Lifecycle: entered background") }
