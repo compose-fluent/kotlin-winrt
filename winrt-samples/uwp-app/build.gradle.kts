@@ -14,11 +14,11 @@ kotlin {
 
 windows {
     application {
-        applicationModel.set(WindowsApplicationModel.Uwp)
-        windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
-        mainClass.set("io.github.composefluent.winrt.samples.uwp.MainKt")
-        executableBaseName.set("kotlin-winrt-uwp")
-        minWindowsVersion.set("10.0.19041.0")
+        applicationModel = WindowsApplicationModel.Uwp
+        windowsAppSdkDeployment = WindowsAppSdkDeployment.None
+        mainClass = "io.github.composefluent.winrt.samples.uwp.MainKt"
+        executableBaseName = "kotlin-winrt-uwp"
+        minWindowsVersion = "10.0.19041.0"
     }
     packageReferences {
         windowsSdk("10.0.26100.0", includeExtensions = false)

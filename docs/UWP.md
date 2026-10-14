@@ -38,11 +38,11 @@ kotlin {
 
 windows {
     application {
-        applicationModel.set(WindowsApplicationModel.Uwp)
-        packageType.set(WindowsPackageType.Packaged)
-        windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
-        mainClass.set("sample.uwp.MainKt")
-        minWindowsVersion.set("10.0.19041.0")
+        applicationModel = WindowsApplicationModel.Uwp
+        packageType = WindowsPackageType.Packaged
+        windowsAppSdkDeployment = WindowsAppSdkDeployment.None
+        mainClass = "sample.uwp.MainKt"
+        minWindowsVersion = "10.0.19041.0"
     }
     packageReferences {
         windowsSdk("10.0.26100.0", includeExtensions = false)
@@ -69,7 +69,7 @@ Select the framework explicitly in each UWP module:
 import io.github.composefluent.winrt.runtime.XamlFramework
 
 windows {
-    xaml { framework.set(XamlFramework.Uwp) }
+    xaml { framework = XamlFramework.Uwp }
 }
 ```
 
@@ -111,7 +111,7 @@ backend override. Runtime/compiler/projection artifacts must come from the same
 kotlin-winrt build.
 
 The DSL equivalent is
-`windows { xaml { compilerDirectory.set(layout.projectDirectory.dir("C:/tools/<uwp-package>")) } }`.
+`windows { xaml { compilerDirectory = layout.projectDirectory.dir("C:/tools/<uwp-package>") } }`.
 A local package needs no `compilerVersion` or archive checksum setting. If using a
 published custom UWP distribution instead, set both `compilerVersion` and
 `archiveSha256` (or `kotlinWinRT.xaml.version` and `kotlinWinRT.xaml.sha256`). The
