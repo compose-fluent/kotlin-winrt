@@ -192,6 +192,12 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         val target = outputDirectory.resolve(relativeDirectory).resolve("${file.name}.kt")
         Files.createDirectories(target.parent)
         val contents = file.toString()
+        // Windows preserves the old directory-entry spelling when an existing
+        // file is overwritten after a case-only type rename. Recreate that entry
+        // so scanner and IR handoff manifests observe the same generated name.
+        if (Files.isRegularFile(target) && target.toRealPath().fileName.toString() != target.fileName.toString()) {
+            Files.delete(target)
+        }
         if (!Files.isRegularFile(target) || Files.readString(target) != contents) {
             Files.writeString(target, contents)
         }

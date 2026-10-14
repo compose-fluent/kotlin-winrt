@@ -31,6 +31,33 @@ import kotlin.io.path.writeText
 
 class KotlinWinRTAuthoringSourceScannerTest {
     @Test
+    fun recreates_generated_file_spelling_after_case_only_type_rename() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-case-")
+        val candidate = KotlinWinRTAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "Widget",
+            sourceTypeName = "sample.Widget",
+            winRTBaseClassName = "Microsoft.UI.Xaml.Application",
+            winRTInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+            overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+        )
+        KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(listOf(candidate), model(), output)
+        val renamed = candidate.copy(className = "WIDGET", sourceTypeName = "sample.WIDGET")
+        KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(listOf(renamed), model(), output)
+
+        val names = Files.list(output.resolve("sample")).use { paths ->
+            paths.map { it.fileName.toString() }.toList()
+        }
+        assertTrue(names.contains("WinRT_WIDGET_TypeDetails.kt"))
+        assertFalse(names.contains("WinRT_Widget_TypeDetails.kt"))
+        val generated = output.resolve("sample/WinRT_WIDGET_TypeDetails.kt")
+        assertTrue(generated.readText().contains("WinRT_WIDGET_TypeDetails"))
+        val modified = Files.getLastModifiedTime(generated)
+        KotlinWinRTAuthoringTypeDetailsRenderer.renderTo(listOf(renamed), model(), output)
+        assertEquals(modified, Files.getLastModifiedTime(generated))
+    }
+
+    @Test
     fun reads_authored_candidate_file_rows() {
         val input = Files.createTempFile("kotlin-winrt-authored-candidates-", ".tsv")
         input.writeText(
