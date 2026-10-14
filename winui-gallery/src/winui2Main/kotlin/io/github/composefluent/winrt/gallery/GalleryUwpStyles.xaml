@@ -45,6 +45,8 @@
             <StaticResource x:Key="SubtleButtonBorderBrushDisabled" ResourceKey="SubtleFillColorTransparentBrush" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
+    <!-- PivotSegmentedStyle in WinUIEssential.UWP 1.3.3 references this app-supplied spacing. -->
+    <x:Double x:Key="SegmentedItemSpacing">0</x:Double>
     <Style x:Key="GalleryUwpBaseTextBlockStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="XamlAutoFontFamily" />
         <Setter Property="FontSize" Value="{StaticResource BodyTextBlockFontSize}" />

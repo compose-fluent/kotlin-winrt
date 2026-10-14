@@ -78,7 +78,7 @@
                         Text="Favorites" />
                 </SelectorBar>
 <!-- #else -->
-<essential:Segmented
+<essential:Segmented Style="{StaticResource PivotSegmentedStyle}"
                     x:Name="FilterBar"
                     Grid.Row="1"
                     Margin="36,24,0,16"

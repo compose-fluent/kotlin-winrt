@@ -188,7 +188,7 @@
                             Text="Kotlin" />
                     </SelectorBar>
 <!-- #else -->
-<essential:Segmented
+<essential:Segmented Style="{StaticResource PivotSegmentedStyle}"
                         x:Name="SelectorBarControl"
                         Margin="4,0,0,0"
                         SelectionChanged="SelectorBarControl_SelectionChanged" SelectionMode="Single" SelectedValuePath="Tag" HorizontalContentAlignment="Stretch">

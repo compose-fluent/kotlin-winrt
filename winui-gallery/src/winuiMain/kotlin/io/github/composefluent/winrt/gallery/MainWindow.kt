@@ -56,7 +56,7 @@ internal class MainWindow : UserControl() {
 // #if WINUI3
         titleBar.isPaneToggleButtonVisible = !GalleryPreferences.flag("TopNavigation")
 // #else
-        navigation.isPaneToggleButtonVisible = !GalleryPreferences.flag("TopNavigation")
+        updateUwpTitleBarNavigation()
 // #endif
         GalleryCatalog.home.let { home ->
             navigation.menuItems!!.add(menu(home.id, home.title, home.glyph.ifBlank { null }))
@@ -74,7 +74,11 @@ internal class MainWindow : UserControl() {
                 parent.menuItems!!.add(menu(page.id, page.title, page.glyph.ifBlank { null }))
             }
         }
+// #if WINUI3
         search.maxWidth = 580.0
+// #else
+        search.maxWidth = 320.0
+// #endif
         search.horizontalAlignment = HorizontalAlignment.Stretch
         search.keyboardAccelerators!!.firstOrNull()?.invoked?.add { _,args -> search.focus(FocusState.Programmatic); args!!.handled = true }
         navigation.selectionChanged.add { _, args ->
@@ -98,7 +102,8 @@ internal class MainWindow : UserControl() {
         titleBar.paneToggleRequested.add { _, _ -> navigation.isPaneOpen = !navigation.isPaneOpen }
         titleBar.backRequested.add { _, _ -> if (history.isNotEmpty()) show(history.removeAt(history.lastIndex)) }
 // #else
-        navigation.backRequested.add { _, _ -> if (history.isNotEmpty()) show(history.removeAt(history.lastIndex)) }
+        UwpBackButton.click.add { _, _ -> if (history.isNotEmpty()) show(history.removeAt(history.lastIndex)) }
+        UwpPaneToggleButton.click.add { _, _ -> navigation.isPaneOpen = !navigation.isPaneOpen }
 // #endif
         // The accelerator belongs to the page-wide Grid for key routing, but
         // its default placement would show an Alt+Left tooltip on empty content.
@@ -131,6 +136,18 @@ internal class MainWindow : UserControl() {
     }
 
 // #if WINUI2
+    private fun updateUwpTitleBarNavigation() {
+        val canGoBack = history.isNotEmpty()
+        val showPaneToggle = navigation.paneDisplayMode != NavigationViewPaneDisplayMode.Top
+        UwpBackButton.visibility = if (canGoBack) Visibility.Visible else Visibility.Collapsed
+        UwpPaneToggleButton.visibility = if (showPaneToggle) Visibility.Visible else Visibility.Collapsed
+        val navigationWidth = (if (canGoBack) 44.0 else 0.0) + (if (showPaneToggle) 44.0 else 0.0)
+        val compact = actualWidth < 700.0
+        UwpTitleBarBrand.visibility = if (compact) Visibility.Collapsed else Visibility.Visible
+        UwpTitleBarBrand.margin = Thickness(navigationWidth + 16.0, 0.0, 16.0, 0.0)
+        UwpTitleBarInteractive.margin = Thickness(navigationWidth + if (compact) 16.0 else 240.0, 8.0, 16.0, 8.0)
+    }
+
     // UWP owns caption buttons and drag handling; keep interactive controls above
     // the hit-testable drag region, as in the Windows UWP title-bar sample.
     internal fun configureUwpTitleBar() {
@@ -143,9 +160,7 @@ internal class MainWindow : UserControl() {
             UwpTitleBarHost.padding = Thickness(coreTitleBar.systemOverlayLeftInset, 0.0, coreTitleBar.systemOverlayRightInset, 0.0)
             UwpTitleBarHost.minHeight = maxOf(48.0, coreTitleBar.height)
             UwpTitleBarHost.visibility = if (coreTitleBar.isVisible) Visibility.Visible else Visibility.Collapsed
-            val compact = actualWidth < 700.0
-            UwpTitleBarBrand.visibility = if (compact) Visibility.Collapsed else Visibility.Visible
-            UwpTitleBarInteractive.margin = Thickness(if (compact) 16.0 else 240.0, 8.0, 16.0, 8.0)
+            updateUwpTitleBarNavigation()
         }
         fun updateColors() {
             fun color(name: String) = GalleryTheme.brush(name).asWinRT<microsoft.ui.xaml.media.SolidColorBrush>().color
@@ -269,7 +284,7 @@ internal class MainWindow : UserControl() {
 // #if WINUI3
             titleBar.isBackButtonVisible = history.isNotEmpty()
 // #else
-            navigation.isBackButtonVisible = if (history.isNotEmpty()) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed
+            updateUwpTitleBarNavigation()
 // #endif
         } catch (error: Throwable) {
             println("Kotlin WinUI Gallery: navigation failed for $canonical\n${error.stackTraceToString()}")
@@ -294,7 +309,7 @@ internal class MainWindow : UserControl() {
 // #if WINUI3
         titleBar.isBackButtonVisible = history.isNotEmpty()
 // #else
-        navigation.isBackButtonVisible = if (history.isNotEmpty()) NavigationViewBackButtonVisible.Visible else NavigationViewBackButtonVisible.Collapsed
+        updateUwpTitleBarNavigation()
 // #endif
         // The projected Frame navigation overload requires a generated Page
         // type and can leave the old Page visible when the parameter is a
@@ -328,7 +343,7 @@ internal class MainWindow : UserControl() {
 // #if WINUI3
             titleBar.isPaneToggleButtonVisible = !it
 // #else
-            navigation.isPaneToggleButtonVisible = !it
+            updateUwpTitleBarNavigation()
 // #endif
             GalleryPreferences.putFlag("TopNavigation", it)
         },

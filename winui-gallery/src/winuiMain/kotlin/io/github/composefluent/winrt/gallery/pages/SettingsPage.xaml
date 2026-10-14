@@ -157,6 +157,9 @@
                             <toolkit:SettingsCard
                                 HorizontalContentAlignment="Left"
                                 ContentAlignment="Vertical"
+<!-- #if WINUI2 -->
+                                Style="{StaticResource GalleryVerticalSettingsExpanderItemStyle}"
+<!-- #endif -->
                                 Header="Dependencies &amp; references">
                                 <StackPanel Margin="-12,0,0,0" Orientation="Vertical">
                                     <HyperlinkButton Content="Kotlin/WinRT" NavigateUri="https://github.com/compose-fluent/kotlin-winrt" />
@@ -174,6 +177,9 @@
                             <toolkit:SettingsCard
                                 HorizontalContentAlignment="Left"
                                 ContentAlignment="Vertical"
+<!-- #if WINUI2 -->
+                                Style="{StaticResource GalleryVerticalSettingsExpanderItemStyle}"
+<!-- #endif -->
                                 Header="WinUI Gallery assets &amp; samples"
                                 Description="This independent Kotlin/WinRT project uses assets and samples adapted from Microsoft WinUI Gallery.">
                                 <StackPanel Margin="-12,0,0,0" Orientation="Vertical">

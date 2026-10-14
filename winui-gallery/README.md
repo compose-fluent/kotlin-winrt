@@ -48,6 +48,10 @@ The UWP shell applies WinUI 2 `BackdropMaterial` (Mica on supported Windows 11,
 solid fallback on Windows 10), extends into the system title bar and uses
 `Window.SetTitleBar` for dragging. Search remains interactive above that region;
 caption insets, theme colors and inactive appearance follow the UWP window APIs.
+Back and pane-toggle buttons share the title-bar row with the desktop shell.
+Shared tabs use WinUIEssential's `PivotSegmentedStyle`. The UWP SettingsCard
+resource overlay gives About an explicit vertical item template: the 1.3.3
+enum-based alignment trigger does not activate in this UWP path.
 `GalleryUwpStyles.xaml` ports the newer typography/subtle-button resources needed
 by the shared layouts; these are Gallery resources, not additional UWP SDK APIs.
 

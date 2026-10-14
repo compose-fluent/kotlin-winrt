@@ -5,6 +5,9 @@ WinUIEssential.UWP 1.3.3 supplies SettingsCard, SettingsExpander and Segmented:
 https://github.com/HO-COOH/WinUIEssentials
 Distributed under the MIT license. The complete copyright and permission notice
 is included in `licenses/WinUI-Essential-LICENSE.txt`.
+`GalleryUwpSettingsCardStyles.xaml` adapts the UWP 1.3.3 SettingsCard template
+with explicit vertical placement for the About items, retaining its named parts
+and interaction states without depending on the package's alignment trigger.
 
 `GalleryUwpStyles.xaml` adapts typography and subtle-button resources from
 Microsoft.UI.Xaml `Themes/generic.xaml` (WinUI package 2.3.9):

@@ -15,7 +15,7 @@
             <SelectorBarItem x:Name="KotlinTab" Text="Kotlin" />
         </SelectorBar>
 <!-- #else -->
-<essential:Segmented x:Name="Languages" Margin="-12,0,0,0" SelectionChanged="Languages_SelectionChanged" SelectionMode="Single" SelectedValuePath="Tag" HorizontalContentAlignment="Stretch">
+<essential:Segmented Style="{StaticResource PivotSegmentedStyle}" x:Name="Languages" Margin="-12,0,0,0" SelectionChanged="Languages_SelectionChanged" SelectionMode="Single" SelectedValuePath="Tag" HorizontalContentAlignment="Stretch">
 
             <essential:SegmentedItem x:Name="XamlTab" Content="XAML" />
             <essential:SegmentedItem x:Name="KotlinTab" Content="Kotlin" />

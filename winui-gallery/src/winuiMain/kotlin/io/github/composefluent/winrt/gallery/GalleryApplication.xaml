@@ -23,6 +23,7 @@
 <!-- #if WINUI2 -->
                 <ResourceDictionary Source="ms-appx:///UWPPackage/SettingsCard_Resource.xaml" />
                 <ResourceDictionary Source="ms-appx:///UWPPackage/SettingsExpander_Resource.xaml" />
+                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUwpSettingsCardStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///UWPPackage/Segmented_Resource.xaml" />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUwpStyles.xaml" />
 <!-- #endif -->
