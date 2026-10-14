@@ -72,8 +72,10 @@ reopening are exercised in the Gallery. Toast submission and badge update/clear
 calls succeed. Notification-center display and clicking a toast while the app is
 running have been verified. A separate notification click with no Gallery process
 and no pending background tasks cold-started a new process, entered toast activation,
-displayed the page, and remained running through suspension/resume. Banner display
-has not been conclusively observed. The system-event and Native component debug activations
+displayed the page, and remained running through suspension/resume. The user also
+confirmed successful banner display and the independent cold-start interaction;
+banner visibility was manually verified, not captured by Computer Use.
+The system-event and Native component debug activations
 also passed completion and callback-receipt checks, including Windows loading the
 component in `backgroundTaskHost.exe`.
 The one-shot `TimeTrigger` also fired naturally after the foreground process was
