@@ -26,9 +26,9 @@ abstract class ResolveWinUiXamlCompilerTask : DefaultTask() {
     @TaskAction fun resolve() {
         val version = compilerVersion.orNull?.trim().orEmpty()
         require(version.isNotEmpty()) {
-            "No default UWP XamlCompiler release is bundled. Configure windows.xaml.compilerDirectory " +
-                "with a local UWP compiler package, or set windows.xaml.compilerVersion and " +
-                "windows.xaml.archiveSha256 for a published UWP package " +
+            "XamlCompiler version must not be empty. Configure windows.xaml.compilerDirectory " +
+                "with a local compiler package, or set windows.xaml.compilerVersion and " +
+                "windows.xaml.archiveSha256 for the selected framework's published package " +
                 "(-PkotlinWinRT.xaml.version and -PkotlinWinRT.xaml.sha256)."
         }
         val hash = archiveSha256.orNull?.trim()?.lowercase().orEmpty()
