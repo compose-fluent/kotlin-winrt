@@ -14,6 +14,34 @@ import kotlin.test.assertTrue
 
 class WinRTObjectReferenceCacheJvmTest {
     @Test
+    fun independent_rcw_caches_publish_one_instance_under_concurrent_first_access() {
+        // CsWinRT 3.0 code_writers.h publishes each RCW cache independently with
+        // CompareExchange. Kotlin's shared cold lock must preserve the same identity.
+        val state = WinRTObjectState<TestReference>()
+        val start = CountDownLatch(1)
+        val interfaces = ConcurrentLinkedQueue<ConcurrentCacheMap<WinRTTypeHandle, TestReference>>()
+        val typeData = ConcurrentLinkedQueue<ConcurrentCacheMap<WinRTTypeHandle, Any>>()
+        val workers = List(8) { index ->
+            thread {
+                assertTrue(start.await(10, TimeUnit.SECONDS))
+                if (index % 2 == 0) {
+                    interfaces += state.queryInterfaceCache
+                    typeData += state.additionalTypeData
+                } else {
+                    typeData += state.additionalTypeData
+                    interfaces += state.queryInterfaceCache
+                }
+            }
+        }
+        start.countDown()
+        workers.forEach { it.join(10_000); assertTrue(!it.isAlive) }
+        assertEquals(8, interfaces.size)
+        assertEquals(8, typeData.size)
+        interfaces.forEach { assertSame(state.queryInterfaceCache, it) }
+        typeData.forEach { assertSame(state.additionalTypeData, it) }
+    }
+
+    @Test
     fun concurrent_initialization_closes_the_unpublished_reference() {
         val created = ConcurrentLinkedQueue<TestReference>()
         val creatorsReady = CountDownLatch(2)

@@ -97,8 +97,30 @@ internal class WinRTObjectSupport<K : Any, TReference : AutoCloseable>(
 // through cached callbacks or tracker edges. Each cached reference already owns its
 // native-only ComPtr cleaner; no cleaner may capture this managed cache graph.
 internal class WinRTObjectState<TReference : AutoCloseable> {
-    val queryInterfaceCache = ConcurrentCacheMap<WinRTTypeHandle, TReference>()
-    val additionalTypeData = ConcurrentCacheMap<WinRTTypeHandle, Any>()
+    // CsWinRT 3.0 code_writers.h emits independent nullable cache fields. In
+    // particular, using event/helper data must not allocate an unused QI cache
+    // (including its OS lock and Cleaner on Native), or vice versa.
+    @kotlin.concurrent.Volatile
+    private var queryInterfaces: ConcurrentCacheMap<WinRTTypeHandle, TReference>? = null
+
+    @kotlin.concurrent.Volatile
+    private var typeData: ConcurrentCacheMap<WinRTTypeHandle, Any>? = null
+
+    val queryInterfaceCache: ConcurrentCacheMap<WinRTTypeHandle, TReference>
+        get() = queryInterfaces ?: initializeQueryInterfaceCache()
+
+    private fun initializeQueryInterfaceCache(): ConcurrentCacheMap<WinRTTypeHandle, TReference> =
+        WinRTObjectStateInitialization.lock.withLock {
+            queryInterfaces ?: ConcurrentCacheMap<WinRTTypeHandle, TReference>().also { queryInterfaces = it }
+        }
+
+    val additionalTypeData: ConcurrentCacheMap<WinRTTypeHandle, Any>
+        get() = typeData ?: initializeAdditionalTypeData()
+
+    private fun initializeAdditionalTypeData(): ConcurrentCacheMap<WinRTTypeHandle, Any> =
+        WinRTObjectStateInitialization.lock.withLock {
+            typeData ?: ConcurrentCacheMap<WinRTTypeHandle, Any>().also { typeData = it }
+        }
 }
 
 internal object WinRTObjectStateInitialization {
