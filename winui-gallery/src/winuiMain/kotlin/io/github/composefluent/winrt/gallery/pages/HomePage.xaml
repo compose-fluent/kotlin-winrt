@@ -84,15 +84,18 @@
                     Margin="36,24,0,16"
                     HorizontalAlignment="Center" SelectionMode="Single" SelectedValuePath="Tag" HorizontalContentAlignment="Stretch">
 
-                    <essential:SegmentedItem
-
-                        IsSelected="True"
-                        Tag="Recent"
-                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Clock" Width="16" Height="16" VerticalAlignment="Center" /><TextBlock Text="Recent" /></StackPanel></essential:SegmentedItem>
-                    <essential:SegmentedItem
-
-                        Tag="Favorites"
-                        ><StackPanel Orientation="Horizontal" Spacing="8"><SymbolIcon Symbol="Favorite" Width="16" Height="16" VerticalAlignment="Center" /><TextBlock Text="Favorites" /></StackPanel></essential:SegmentedItem>
+                    <essential:SegmentedItem IsSelected="True" Tag="Recent">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE917;" Style="{StaticResource GalleryTokenIconStyle}" />
+                            <TextBlock Text="Recent" />
+                        </StackPanel>
+                    </essential:SegmentedItem>
+                    <essential:SegmentedItem Tag="Favorites">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE734;" Style="{StaticResource GalleryTokenIconStyle}" />
+                            <TextBlock Text="Favorites" />
+                        </StackPanel>
+                    </essential:SegmentedItem>
                 </essential:Segmented>
 <!-- #endif -->
                 <toolkit:SwitchPresenter
