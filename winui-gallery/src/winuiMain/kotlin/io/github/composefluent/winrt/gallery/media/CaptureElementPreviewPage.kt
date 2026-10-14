@@ -28,7 +28,13 @@ internal class CaptureElementPreviewPage : Page(), microsoft.ui.xaml.data.INotif
             try {
                 val groups = windows.media.capture.frames.MediaFrameSourceGroup.findAllAsync()!!.await()
                 if (groups!!.isEmpty()) frameSourceName.text = "No camera devices found."
-                else { cameraSourceComboBox.itemsSource = groups; cameraSourceComboBox.selectedIndex = 0 }
+                else {
+                    // ItemsSource requires a bindable/object collection. The native
+                    // IVectorView<MediaFrameSourceGroup> returned by FindAllAsync is
+                    // unwrapped on round-trip (as in CsWinRT), so copy into a managed list.
+                    cameraSourceComboBox.itemsSource = groups.toMutableList()
+                    cameraSourceComboBox.selectedIndex = 0
+                }
                 if (!snapshotsExpanded) {
                     snapshotsExpanded = true; val viewer = captureContainer.children!!.removeAt(0)
                     captureContainer.children!!.add(ExpandToFillContainer().apply { children!!.add(viewer) })

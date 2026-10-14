@@ -28,6 +28,11 @@ internal class GalleryPageTasks(private val owner: FrameworkElement) {
             try { action() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
+                // #if WINUI2
+                galleryLog("Page operation failed: ${error.stackTraceToString()}")
+                // #else
+                println("Kotlin WinUI Gallery: ${error.stackTraceToString()}")
+                // #endif
                 if (owner.xamlRoot == null || dialog != null) {
                     println("Kotlin WinUI Gallery: ${error.message}")
                     return@launch

@@ -67,6 +67,7 @@
                         ToolTipService.ToolTip="Mirrors only the preview, not captured photos" />
                     <Button
                         x:Name="captureButton"
+                        IsEnabled="False"
                         Click="CapturePhoto_Click"
                         Content="Capture Photo" />
                 </StackPanel>
