@@ -6,9 +6,57 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import windows.foundation.EventRegistrationToken
 
 class EventRuntimeInfrastructureCommonTest {
+    @Test
+    fun vtable_event_registration_preserves_native_ownership_and_recovers_after_failure() {
+        // CsWinRT 3.0 EventSource<T>.Subscribe uses a scoped ABI reference; the
+        // native event source must retain it beyond add and release it on remove.
+        EventSourceCache.clearForTests()
+        TestEventHost(retainHandler = true).use { host ->
+            host.createReference().use { owner ->
+                val source = object : EventSource<(Int) -> Unit>(owner, IInspectableVftblSlots.FirstCustom) {
+                    override fun createMarshaler(handler: (Int) -> Unit): WinRTDelegateHandle =
+                        WinRTDelegateBridge.createUnitDelegate(testEventInterfaceId, listOf(WinRTDelegateValueKind.INT32)) {
+                            handler(it[0] as Int)
+                        }
+                    override fun createEventSourceState(): EventSourceState<(Int) -> Unit> =
+                        object : EventSourceState<(Int) -> Unit>(owner.pointer.asRawAddress(), eventIndex) {
+                            override fun createEventInvoke(): (Int) -> Unit = { value ->
+                                forEachHandler { it(value) }
+                            }
+                        }
+                }
+                val values = mutableListOf<Int>()
+                val first: (Int) -> Unit = { values += it }
+                val second: (Int) -> Unit = { values += it * 10 }
+                host.failNextAdd = true
+                assertTrue(runCatching { source.subscribe(first) }.isFailure)
+                assertEquals(0, host.registrations)
+                try {
+                    source.subscribe(first)
+                    source.subscribe(second)
+                    assertEquals(1, host.registrations)
+                    host.dispatch(3)
+                    assertEquals(listOf(3, 30), values)
+                    source.unsubscribe(first)
+                    host.dispatch(4)
+                    assertEquals(listOf(3, 30, 40), values)
+                    val pointer = host.retainedHandler
+                    source.unsubscribe(second)
+                    assertEquals(host.token, host.lastRemovedToken)
+                    assertNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+                } finally {
+                    source.unsubscribe(first)
+                    source.unsubscribe(second)
+                }
+            }
+        }
+        EventSourceCache.clearForTests()
+    }
+
     @Test
     fun event_source_registers_once_and_dispatches_current_handlers() {
         EventSourceCache.clearForTests()
@@ -730,7 +778,23 @@ class EventRuntimeInfrastructureCommonTest {
         }
     }
 
-    private class TestEventHost : AutoCloseable {
+    private class TestEventHost(private val retainHandler: Boolean = false) : AutoCloseable {
+        var retainedHandler: RawAddress = PlatformAbi.nullPointer
+            private set
+        var failNextAdd = false
+        var registrations = 0
+            private set
+
+        fun dispatch(value: Int) {
+            WinRTPlatformApi.checkSucceededRaw(ComVtableInvoker.invokeArgs(retainedHandler.asRawComPtr(), 3, value))
+        }
+
+        private fun releaseHandler() {
+            val pointer = retainedHandler
+            retainedHandler = PlatformAbi.nullPointer
+            disposeComAbi(pointer)
+        }
+
         val token = EventRegistrationToken(0x55667788_00000002)
         var lastAddedHandlerPointerKey: Long? = null
         var lastRemovedToken: EventRegistrationToken? = null
@@ -744,12 +808,25 @@ class EventRuntimeInfrastructureCommonTest {
                             methods =
                                 listOf(
                                     WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { args ->
-                                        lastAddedHandlerPointerKey = PlatformAbi.pointerKey(args[0] as RawAddress)
-                                        EventRegistrationToken.copyTo(token, args[1] as RawAddress)
-                                        KnownHResults.S_OK.value
+                                        if (failNextAdd) {
+                                            failNextAdd = false
+                                            KnownHResults.E_FAIL.value
+                                        } else {
+                                            val pointer = args[0] as RawAddress
+                                            if (retainHandler) {
+                                                releaseHandler()
+                                                WinRTPlatformApi.addRefRaw(pointer)
+                                                retainedHandler = pointer
+                                            }
+                                            registrations += 1
+                                            lastAddedHandlerPointerKey = PlatformAbi.pointerKey(pointer)
+                                            EventRegistrationToken.copyTo(token, args[1] as RawAddress)
+                                            KnownHResults.S_OK.value
+                                        }
                                     },
                                     WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Int64) { args ->
                                         lastRemovedToken = EventRegistrationToken(args[0] as Long)
+                                        releaseHandler()
                                         KnownHResults.S_OK.value
                                     },
                                 ),
@@ -761,6 +838,7 @@ class EventRuntimeInfrastructureCommonTest {
         fun createReference(): ComObjectReference = host.createPrimaryReference()
 
         override fun close() {
+            releaseHandler()
             host.close()
         }
     }

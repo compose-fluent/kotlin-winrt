@@ -11,18 +11,32 @@ internal object StandardDelegates {
         objectReference: ComObjectReference,
         addHandlerSlot: Int,
         handler: ComObjectReference,
-    ): EventRegistrationToken =
+    ): EventRegistrationToken = try {
+        addEventHandler(objectReference, addHandlerSlot, handler.pointer.asRawAddress())
+    } finally {
+        winRTKeepAlive(handler)
+    }
+
+    /** The caller owns the handler ABI reference for the duration of this call. */
+    fun addEventHandler(
+        objectReference: ComObjectReference,
+        addHandlerSlot: Int,
+        handler: RawAddress,
+    ): EventRegistrationToken = try {
         acquireNativeScalarScratchFrame().use { tokenOut ->
             HResult(
                 ComVtableInvoker.invokeArgs(
                     instance = objectReference.pointer,
                     slot = addHandlerSlot,
-                    arg0 = handler.pointer.asRawAddress(),
+                    arg0 = handler,
                     arg1 = tokenOut.pointer,
                 ),
             ).requireSuccess("WinRT event add handler")
             EventRegistrationToken.fromAbiValue(tokenOut.readInt64())
         }
+    } finally {
+        winRTKeepAlive(objectReference)
+    }
 
     fun removeEventHandler(
         objectReference: ComObjectReference,

@@ -11,8 +11,8 @@ import windows.foundation.EventRegistrationToken
  */
 abstract class EventSource<T : Any> private constructor(
     private val objectReference: ComObjectReference,
-    private val addHandler: (ComObjectReference, ComObjectReference) -> EventRegistrationToken,
-    private val removeHandler: (ComObjectReference, EventRegistrationToken) -> Unit,
+    private val addHandler: ((ComObjectReference, ComObjectReference) -> EventRegistrationToken)?,
+    private val removeHandler: ((ComObjectReference, EventRegistrationToken) -> Unit)?,
     private val index: Int,
     private val shutdownRemoveHandlerSlot: Int?,
 ) {
@@ -39,12 +39,8 @@ abstract class EventSource<T : Any> private constructor(
         vtableIndexForAddHandler: Int,
     ) : this(
         objectReference = objectReference,
-        addHandler = { reference, handler ->
-            StandardDelegates.addEventHandler(reference, vtableIndexForAddHandler, handler)
-        },
-        removeHandler = { reference, token ->
-            StandardDelegates.removeEventHandler(reference, vtableIndexForAddHandler + 1, token)
-        },
+        addHandler = null,
+        removeHandler = null,
         index = vtableIndexForAddHandler,
         shutdownRemoveHandlerSlot = vtableIndexForAddHandler + 1,
     )
@@ -79,9 +75,24 @@ abstract class EventSource<T : Any> private constructor(
                 (stateReference.tryGetTarget() as? EventSourceState<*>)?.close()
             }
             try {
-                eventInvokeHandle.createReference().use { reference ->
-                    state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
-                    state.token = addHandler(objectReference, reference)
+                if (shutdownRemoveHandlerSlot != null) {
+                    // CsWinRT 3.0 EventSource.Subscribe passes an ObjectReferenceValue
+                    // directly to the ABI. The owned temporary keeps the CCW alive
+                    // through registration without creating an RCW or Cleaner.
+                    val pointer = eventInvokeHandle.tryAcquireMarshalingReference()
+                        ?: throw WinRTObjectDisposedException("Delegate handle is already closed.")
+                    try {
+                        state.initializeReferenceTracking(pointer)
+                        state.token = StandardDelegates.addEventHandler(objectReference, index, pointer)
+                    } finally {
+                        disposeComAbi(pointer)
+                        winRTKeepAlive(eventInvokeHandle)
+                    }
+                } else {
+                    eventInvokeHandle.createReference().use { reference ->
+                        state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
+                        state.token = requireNotNull(addHandler)(objectReference, reference)
+                    }
                 }
                 state.installShutdownRegistration(
                     shutdownRemoveHandlerSlot?.let { removeHandlerSlot ->
@@ -95,7 +106,7 @@ abstract class EventSource<T : Any> private constructor(
                         objectReference = objectReference,
                         state = stateReference,
                         token = state.token,
-                        removeHandler = removeHandler,
+                        removeHandler = requireNotNull(removeHandler),
                     ),
                 )
                 this.state = stateReference
@@ -117,7 +128,11 @@ abstract class EventSource<T : Any> private constructor(
                 this.state = resolvedState.getWeakReferenceForCache()
                 return@withLock
             }
-            removeHandler(objectReference, resolvedState.token)
+            if (shutdownRemoveHandlerSlot != null) {
+                StandardDelegates.removeEventHandler(objectReference, shutdownRemoveHandlerSlot, resolvedState.token)
+            } else {
+                requireNotNull(removeHandler)(objectReference, resolvedState.token)
+            }
             resolvedState.clearShutdownRegistration()
             resolvedState.close()
             this.state = null
