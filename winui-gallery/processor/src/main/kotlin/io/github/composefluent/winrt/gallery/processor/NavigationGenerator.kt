@@ -59,7 +59,10 @@ internal fun generate(entries: List<Entry>, descriptions: JsonObject, xamlNamesp
         groups.forEachIndexed { index, group ->
             appendLine("  private fun group$index() = GalleryGroup(${quote(group.route)}, ${quote(group.value("title"))}, ${quote(group.value("glyph"))}, listOf(")
             pages.filter { it.value("group") == group.route }.forEach { page ->
-                val detail = details.getValue(page.route)
+                val sharedDetail = details.getValue(page.route)
+                val detail = if (xamlNamespace == "windows.ui.xaml") {
+                    JsonObject(sharedDetail + sharedDetail["Uwp"]?.jsonObject.orEmpty())
+                } else sharedDetail
                 fun field(key: String) = detail[key]?.jsonPrimitive?.content.orEmpty()
                 val docs = detail["Docs"]?.jsonArray.orEmpty().joinToString(", ", "listOf(", ")") { doc ->
                     "GalleryLink(${quote(doc.jsonObject.getValue("Title").jsonPrimitive.content)}, ${quote(doc.jsonObject.getValue("Uri").jsonPrimitive.content)})"

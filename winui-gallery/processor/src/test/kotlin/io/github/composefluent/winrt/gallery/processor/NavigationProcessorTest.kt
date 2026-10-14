@@ -79,4 +79,19 @@ class NavigationProcessorTest {
         assertFalse(output.contains("GalleryGroup(\"DesktopWindows\""))
         assertContains(output, "fun create(route: String): windows.ui.xaml.UIElement?")
     }
+
+    @Test fun uwp_catalog_overrides_leave_shared_and_desktop_metadata_intact() {
+        val group = Entry("GalleryGroupEntry", mapOf("route" to "Shell", "title" to "Shell", "glyph" to "x"), "Shell", "groups.kt")
+        val page = Entry("GalleryPage", mapOf("route" to "Toast", "title" to "Toast", "group" to "Shell"), "ToastPage", "ToastPage.kt", "winui-gallery/src/uwpMain/kotlin/ToastPage.kt")
+        val catalog = Json.parseToJsonElement("""{"Groups":[{"Items":[{"UniqueId":"Toast","Description":"Shared description","ApiNamespace":"Desktop.Notifications","Uwp":{"ApiNamespace":"Windows.UI.Notifications","Docs":[{"Title":"UWP notifications","Uri":"https://example.test/uwp"}]}}]}]}""").jsonObject
+        val entries = listOf(group, page, home)
+        val uwp = generate(entries, catalog, "windows.ui.xaml")
+        assertContains(uwp, "Shared description")
+        assertContains(uwp, "Windows.UI.Notifications")
+        assertContains(uwp, "UWP notifications")
+        assertFalse(uwp.contains("Desktop.Notifications"))
+        val desktop = generate(entries, catalog)
+        assertContains(desktop, "Desktop.Notifications")
+        assertFalse(desktop.contains("UWP notifications"))
+    }
 }
