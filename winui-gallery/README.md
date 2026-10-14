@@ -25,7 +25,7 @@ This smoke path checks activation/layout; it does not replace manual input tests
 
 Both variants use the layouts and pages in `src/winuiMain/kotlin`, including the
 navigation shell, Home, Settings, page headers, examples and source viewer.
-`src/winui2Main/kotlin` contains UWP startup/activation and compatibility resources; target-specific
+`src/uwpMain/kotlin` contains UWP startup/activation and compatibility resources; target-specific
 logging lives in `src/winui2JvmMain` and `src/winui2MingwX64Main`. Existing target
 identity declarations and the Gallery's AppX image/icon assets are shared.
 The UWP application uses `Windows.UI.Xaml` with `Microsoft.UI.Xaml.Controls`

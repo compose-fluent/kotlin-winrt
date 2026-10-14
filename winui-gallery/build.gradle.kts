@@ -22,7 +22,7 @@ val prepareGallerySources by tasks.registering(JavaExec::class) {
     classpath = galleryVariantTools
     mainClass.set("io.github.composefluent.winrt.gallery.processor.GalleryVariantSourcesKt")
     val original = layout.projectDirectory.dir("src/winuiMain/kotlin")
-    val overlay = layout.projectDirectory.dir("src/winui2Main/kotlin")
+    val overlay = layout.projectDirectory.dir("src/uwpMain/kotlin")
     val exclusions = layout.projectDirectory.file("winui2-exclusions.tsv")
     val metadata = galleryMetadata.flatMap { it.outputDirectory.file("kotlin-winrt-authoring/metadata-index.tsv") }
     inputs.dir(original)
@@ -173,7 +173,7 @@ windows {
             applicationModel.set(WindowsApplicationModel.Uwp)
             windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
             executableBaseName.set("kotlin-winui2-gallery")
-            appxManifest(layout.projectDirectory.file("src/winui2Main/AppxManifest.xml"))
+            appxManifest(layout.projectDirectory.file("src/uwpMain/AppxManifest.xml"))
         }
     }
     packageReferences {
