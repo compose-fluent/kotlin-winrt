@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gallery
 
-import windows.applicationmodel.activation.LaunchActivatedEventArgs
+import windows.applicationmodel.activation.*
+import io.github.composefluent.winrt.runtime.asWinRT
 import windows.ui.viewmanagement.ApplicationView
 import windows.ui.xaml.Application
 import windows.ui.xaml.ApplicationTheme
@@ -10,6 +11,39 @@ import windows.ui.xaml.Window
 // AppInstance/AppWindow implementation is compiled only for the WinUI 3 variant.
 class GalleryApplication : Application() {
     private var currentShell: MainWindow? = null
+    override fun onActivated(args: IActivatedEventArgs?) {
+        when (args?.kind) {
+            ActivationKind.Protocol -> {
+                val protocol = args.asWinRT<ProtocolActivatedEventArgs>()
+                val uri = protocol.uri
+                galleryLog("Activation: protocol; uri=${uri?.absoluteUri}; previous=${protocol.previousExecutionState}")
+                val route = uri?.host?.let(GalleryNavigationHost::resolveRoute)
+                showShell(route ?: "UwpActivation")
+            }
+            ActivationKind.ToastNotification -> {
+                val toast = args.asWinRT<ToastNotificationActivatedEventArgs>()
+                galleryLog("Activation: toast; arguments=${toast.argument}; inputs=${toast.userInput?.size}")
+                showShell("AppNotification")
+            }
+            else -> super.onActivated(args)
+        }
+    }
+    override fun onFileActivated(args: FileActivatedEventArgs?) = try {
+        galleryLog("Activation: file callback entered")
+        galleryLog("Activation: file; names=${args?.files?.map { it?.name }}; previous=${args?.previousExecutionState}")
+        showShell("UwpActivation")
+    } catch (error: Throwable) {
+        galleryLog("File activation failed: ${error.stackTraceToString()}")
+        throw error
+    }
+    override fun onBackgroundActivated(args: BackgroundActivatedEventArgs?) {
+        val instance = checkNotNull(args?.taskInstance)
+        val deferral = instance.getDeferral()
+        try {
+            galleryLog("Activation: background; task=${instance.task?.name}")
+            GalleryPreferences.put("LastBackgroundActivation", instance.task?.name.orEmpty())
+        } finally { deferral?.complete() }
+    }
     override fun initializeComponent() {
         // Set the startup palette before UWP creates application resources.
         // Setting only the shell's RequestedTheme leaves cold-start resource
@@ -28,6 +62,13 @@ class GalleryApplication : Application() {
 
     override fun onLaunched(args: LaunchActivatedEventArgs?) = try {
         galleryLog("Launch: previous state=${args?.previousExecutionState}; arguments=${args?.arguments.orEmpty()}")
+        showShell(args?.arguments.orEmpty().ifBlank { "Home" })
+    } catch (error: Throwable) {
+        galleryLog("Launch failed: ${error.stackTraceToString()}")
+        throw error
+    }
+
+    private fun showShell(route: String) {
         val window = checkNotNull(Window.current)
         val shell = currentShell ?: MainWindow().also {
             currentShell = it
@@ -37,7 +78,6 @@ class GalleryApplication : Application() {
             GalleryWindows.track(window)
         }
         checkNotNull(ApplicationView.getForCurrentView()).title = if (galleryTargetName == "mingw") "Kotlin/Native" else "Kotlin/JVM"
-        val route = args?.arguments.orEmpty().ifBlank { "Home" }
         if (route == "--validate-controls") {
             if (shell.isLoaded) {
                 shell.galleryDispatcher.tryEnqueue { validatePages(shell, 0) }
@@ -51,9 +91,6 @@ class GalleryApplication : Application() {
         window.activate()
         GalleryNavigationHost.navigate(GalleryXamlValidation.routeArgument(if (route == "--validate-controls") "Home" else route))
         galleryLog("Activated; ${GalleryCatalog.pages.size} shared sample pages")
-    } catch (error: Throwable) {
-        galleryLog("Launch failed: ${error.stackTraceToString()}")
-        throw error
     }
 
     // Explicit construction/layout smoke; no Loaded handlers, camera or picker actions are invoked.

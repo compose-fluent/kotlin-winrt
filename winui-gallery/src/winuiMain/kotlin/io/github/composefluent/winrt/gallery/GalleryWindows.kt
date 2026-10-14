@@ -7,9 +7,24 @@ import microsoft.ui.xaml.controls.*
 import microsoft.ui.xaml.input.KeyboardAccelerator
 import windows.system.VirtualKey
 import windows.system.VirtualKeyModifiers
+// #if WINUI2
+import windows.ui.windowmanagement.AppWindow as UwpAppWindow
+// #endif
 
 internal object GalleryWindows {
     private val windows = mutableListOf<Window>()
+// #if WINUI2
+    private val appWindows = mutableListOf<UwpAppWindow>()
+    fun track(window: UwpAppWindow, content: Page) {
+        appWindows.add(window)
+        window.closed.add { _, _ ->
+            // Release the hosted page's tree; a closed AppWindow cannot accept new content.
+            content.content = null
+            appWindows.remove(window)
+            galleryLog("Window: secondary window closed")
+        }
+    }
+// #endif
 // #if WINUI3
     private val nativeWindows = mutableListOf<microsoft.ui.windowing.AppWindow>()
     fun create(title: String, content: UIElement): Window = Window().also { window ->
@@ -35,6 +50,9 @@ internal object GalleryWindows {
         content?.xamlRoot != null && content.xamlRoot == (element as? FrameworkElement)?.xamlRoot
     }
     fun closeAll() {
+// #if WINUI2
+        appWindows.toList().forEach { it.closeAsync() }
+// #endif
 // #if WINUI3
         nativeWindows.toList().forEach { it.destroy() }
 // #endif

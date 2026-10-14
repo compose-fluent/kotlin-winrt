@@ -1,0 +1,8 @@
+--- header
+A UWP toast with progress.
+--- kotlin
+val xml = windows.data.xml.dom.XmlDocument().apply {
+    loadXml("""<toast launch="AppNotification"><visual><binding template="ToastGeneric"><text>Progress Bar Example</text><progress title="Demo Progress" value="0.6" valueStringOverride="60%" status="In progress..."/></binding></visual></toast>""")
+}
+checkNotNull(windows.ui.notifications.ToastNotificationManager.createToastNotifier())
+    .show(windows.ui.notifications.ToastNotification(xml))

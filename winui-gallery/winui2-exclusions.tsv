@@ -1,5 +1,8 @@
 # Paths/globs relative to shared sources; every exclusion has a platform reason.
-multiplewindows	These samples demonstrate Windows App SDK AppWindow and desktop multi-window APIs.
+multiplewindows/AppWindowPage.*	Windows App SDK AppWindow and presenter APIs; UWP uses its own AppWindow in CreateMultipleWindows.
+multiplewindows/AppWindowTitleBarPage.*	Windows App SDK AppWindowTitleBar APIs.
+multiplewindows/TitleBarPage.*	WinUI 3 TitleBar control.
+multiplewindows/MultipleWindowsSampleWindow.*	Desktop Window subclass; UWP attaches a Page to Windows.UI.WindowManagement.AppWindow.
 samplepages/*Window*.kt	Dependent desktop window implementations for the excluded windowing samples.
 samplepages/*Window*.xaml	Dependent desktop window markup for the excluded windowing samples.
 samplepages/GalleryBackdropType.kt	Windows App SDK system backdrop sample model.
@@ -22,10 +25,6 @@ scrolling/AnnotatedScrollBarPage.kt	AnnotatedScrollBar is unavailable in WinUI 2
 scrolling/AnnotatedScrollBarPage.xaml	AnnotatedScrollBar is unavailable in WinUI 2.8.
 system/ContentIslandPage.kt	Windows App SDK ContentIsland hosting.
 system/ContentIslandPage.xaml	Windows App SDK ContentIsland hosting.
-shell/AppNotificationPage.kt	Windows App SDK AppNotificationManager.
-shell/AppNotificationPage.xaml	Windows App SDK AppNotificationManager.
-shell/BadgeNotificationManagerPage.kt	Windows App SDK BadgeNotificationManager.
-shell/BadgeNotificationManagerPage.xaml	Windows App SDK BadgeNotificationManager.
 TitleBarColorSupport.kt	Windows App SDK AppWindowTitleBar helper for excluded desktop samples.
 helpers/TitleBarHelper.kt	Windows App SDK AppWindowTitleBar helper for excluded desktop samples.
 controls/GallerySelectorBarStyles.xaml	Style for the unavailable SelectorBar control; shared navigation uses a supported selection control.

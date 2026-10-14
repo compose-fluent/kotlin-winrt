@@ -1,0 +1,8 @@
+--- header
+A UWP toast with a hero image.
+--- kotlin
+val xml = windows.data.xml.dom.XmlDocument().apply {
+    loadXml("""<toast launch="AppNotification"><visual><binding template="ToastGeneric"><text>Harbor Scene with Boats</text><image placement="hero" src="ms-appx:///Assets/SampleMedia/LandscapeImage5.jpg"/><text placement="attribution">WinUI gallery assets</text></binding></visual></toast>""")
+}
+checkNotNull(windows.ui.notifications.ToastNotificationManager.createToastNotifier())
+    .show(windows.ui.notifications.ToastNotification(xml))

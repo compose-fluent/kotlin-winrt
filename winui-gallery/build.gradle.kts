@@ -193,6 +193,7 @@ windows {
                 "Microsoft.UI.Xaml.Controls.AnimatedVisuals", "Microsoft.Graphics.Canvas.Geometry",
                 "Microsoft.UI.Xaml.Media",
                 "Windows.ApplicationModel", "Windows.ApplicationModel.Activation", "Windows.ApplicationModel.DataTransfer",
+                "Windows.ApplicationModel.Background", "Windows.UI.Notifications", "Windows.UI.WindowManagement",
                 "Windows.UI.StartScreen", "Windows.UI.ViewManagement", "Windows.Media.Capture",
                 "Windows.Media.Capture.Frames", "Windows.Media.Core", "Windows.Media.Playback", "Windows.Media.MediaProperties",
                 "Windows.Storage", "Windows.Storage.Pickers", "Windows.Storage.Streams", "Windows.Storage.FileProperties",

@@ -1,0 +1,16 @@
+--- header
+Create an independent UWP window on the current UI thread.
+--- kotlin
+val window = checkNotNull(windows.ui.windowmanagement.AppWindow.tryCreateAsync()).await()
+    ?: error("This device cannot create an additional app window.")
+val page = windows.ui.xaml.controls.Page().apply {
+    content = windows.ui.xaml.controls.TextBox().apply { placeholderText = "Type here" }
+}
+windows.ui.xaml.hosting.ElementCompositionPreview.setAppWindowContent(window, page)
+window.title = "Kotlin UWP — secondary window"
+window.requestSize(windows.foundation.Size(640f, 480f))
+window.closed.add { _, _ ->
+    page.content = null
+    // Also remove this window from the application's retained window collection.
+}
+check(checkNotNull(window.tryShowAsync()).await())

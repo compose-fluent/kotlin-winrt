@@ -27,8 +27,27 @@ The Native UWP Gallery logs launch execution state and background, suspension,
 and resume events to the same log. Manual validation covers cold launch,
 theme/recent-page persistence across exit and launch, and minimizing until the
 OS suspends the app, then restoring the same page and interacting with it.
-Protocol/file activation and background-task activation are not registered by
-this Gallery manifest, so these scenarios are not covered by that validation.
+The manifest registers `kotlin-winrt-gallery:` and `.kwgallery`. The UWP activation
+page exercises protocol/file launch and an in-process `ApplicationTrigger` task.
+Its task omits `TaskEntryPoint`, so Windows invokes `Application.OnBackgroundActivated`;
+the callback takes and completes a deferral and records its execution before the
+registration's completion handler removes the test task.
+
+For repeatable protocol/file tests without changing default app associations, use
+`tools/Invoke-UwpGalleryActivation.ps1 -Kind Protocol` or `-Kind File`. The script
+uses the Windows activation broker for this development package. Verify the
+corresponding callback in `gallery.log`, both while running and after closing
+the app; a successful broker call alone is not proof that the callback completed.
+The background example validates in-process activation, not an out-of-process
+background component or a timed trigger.
+
+Native UWP validation covers protocol and file activation both while running and
+after closing the app, including reading the activated file's name. It also covers
+the ApplicationTrigger request, background callback, deferral completion and task
+completion event. Theme checks cover a saved dark theme on cold startup and
+switching back to the current system theme. Multiple-window creation, closing and
+reopening are exercised in the Gallery. Toast submission and badge update/clear
+calls succeed; system toast popup display and clicking a toast remain unverified.
 
 Both variants use the layouts and pages in `src/winuiMain/kotlin`, including the
 navigation shell, Home, Settings, page headers, examples and source viewer.
@@ -39,6 +58,13 @@ The UWP application uses `Windows.UI.Xaml` with `Microsoft.UI.Xaml.Controls`
 extensions, following the SDK's UWP activation contract (`Window.Current`).
 The WinUI 3 application follows `.cswinrt/src/Samples/WinUIDesktopSample` and
 retains its desktop activation/windowing contract.
+
+Multiple windows uses `Windows.UI.WindowManagement.AppWindow` on UWP, with
+`ElementCompositionPreview.SetAppWindowContent` to host a XAML page. The closed
+handler clears the page's content and releases the retained window reference.
+Toast and badge samples use `Windows.UI.Notifications`; toast activation returns
+through `Application.OnActivated`. Shared page layouts retain UWP-specific source
+examples and documentation links from the catalog's `Uwp` overrides.
 
 Unsupported pages and their dependent desktop helpers are listed with reasons in
 `winui2-exclusions.tsv`. KSP builds navigation from the selected pages, so an
@@ -78,7 +104,8 @@ with the same short name, such as an `IconSource` used by a system XamlUICommand
 Runtime projection types and ABI identities are not aliased.
 
 The Gallery uses adjacent XAML and Kotlin code-behind files. WinUI 3 preserves all
-122 routes, including Home; WinUI 2 currently selects 107 of those routes. Both use the static layouts, resources,
+122 routes, including Home; WinUI 2 selects 110 of those routes and adds the UWP
+activation page. Both use the static layouts, resources,
 styles and templates from official WinUI Gallery `v2.9.3`, commit
 `14a4a1a2b8ddc527dc4a7d5f7e743d7c2bc97db7`.
 Windows App SDK remains **2.5.1**.

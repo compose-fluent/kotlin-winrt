@@ -3614,11 +3614,15 @@
         },
         {
           "UniqueId": "CreateMultipleWindows",
+          "Uwp": {
+            "ApiNamespace": "Windows.UI.WindowManagement",
+            "Docs": [{ "Title": "UWP AppWindow", "Uri": "https://learn.microsoft.com/windows/uwp/ui-input/app-window" }]
+          },
           "Title": "Multiple windows",
           "ApiNamespace": "Microsoft.UI.Xaml",
           "Subtitle": "An example showing the creation of single-threaded top level Xaml windows.",
           "ImagePath": "ms-appx:///Assets/ControlImages/Windowing.png",
-          "Description": "With Windows App SDK 1.0 we are allowing creation of single-threaded multiple top level Xaml windows in Desktop apps",
+          "Description": "Create multiple top-level XAML windows on the application's UI thread.",
           "Docs": [
             {
               "Title": "MultipleWindow - API",
@@ -3749,7 +3753,20 @@
       "IconGlyph": "",
       "Items": [
         {
+          "UniqueId": "UwpActivation",
+          "Title": "UWP activation",
+          "Subtitle": "Protocol, file and in-process background activation.",
+          "ImagePath": "ms-appx:///Assets/ControlImages/AppNotification.png",
+          "Description": "Use the Windows activation broker to enter the Gallery through a protocol, a file association or an ApplicationTrigger background task.",
+          "ApiNamespace": "Windows.ApplicationModel.Activation",
+          "Docs": [{ "Title": "UWP app activation", "Uri": "https://learn.microsoft.com/windows/uwp/launch-resume/" }]
+        },
+        {
           "UniqueId": "AppNotification",
+          "Uwp": {
+            "ApiNamespace": "Windows.UI.Notifications",
+            "Docs": [{ "Title": "UWP app notifications", "Uri": "https://learn.microsoft.com/windows/uwp/develop/app-notifications-uwp" }]
+          },
           "Title": "App notifications",
           "BaseClasses": [
             "Object"
@@ -3783,6 +3800,10 @@
         },
         {
           "UniqueId": "BadgeNotificationManager",
+          "Uwp": {
+            "ApiNamespace": "Windows.UI.Notifications",
+            "Docs": [{ "Title": "BadgeUpdateManager", "Uri": "https://learn.microsoft.com/uwp/api/windows.ui.notifications.badgeupdatemanager" }]
+          },
           "Title": "Badge notifications",
           "BaseClasses": [
             "Object"

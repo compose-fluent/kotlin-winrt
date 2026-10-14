@@ -1,0 +1,8 @@
+--- header
+UWP toast inputs and foreground activation.
+--- kotlin
+val xml = windows.data.xml.dom.XmlDocument().apply {
+    loadXml("""<toast launch="AppNotification"><visual><binding template="ToastGeneric"><text>Survey</text></binding></visual><actions><input id="comment" type="text" placeHolderContent="Leave a comment"/><action content="Submit" arguments="submit_survey" activationType="foreground"/></actions></toast>""")
+}
+checkNotNull(windows.ui.notifications.ToastNotificationManager.createToastNotifier())
+    .show(windows.ui.notifications.ToastNotification(xml))

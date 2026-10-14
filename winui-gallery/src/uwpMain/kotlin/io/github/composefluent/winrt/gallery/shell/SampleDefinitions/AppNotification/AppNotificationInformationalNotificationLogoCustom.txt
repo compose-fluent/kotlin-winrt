@@ -1,0 +1,8 @@
+--- header
+A UWP toast with a logo and sound.
+--- kotlin
+val xml = windows.data.xml.dom.XmlDocument().apply {
+    loadXml("""<toast launch="AppNotification"><visual><binding template="ToastGeneric"><text>PersonPicture</text><image placement="appLogoOverride" hint-crop="circle" src="ms-appx:///Assets/ControlImages/PersonPicture.png"/></binding></visual><audio src="ms-winsoundevent:Notification.Default"/></toast>""")
+}
+checkNotNull(windows.ui.notifications.ToastNotificationManager.createToastNotifier())
+    .show(windows.ui.notifications.ToastNotification(xml))

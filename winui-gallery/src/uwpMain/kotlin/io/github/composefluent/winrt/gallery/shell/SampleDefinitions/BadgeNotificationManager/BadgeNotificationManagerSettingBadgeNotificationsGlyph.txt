@@ -1,0 +1,8 @@
+--- header
+Set a UWP badge glyph.
+--- kotlin
+val xml = windows.data.xml.dom.XmlDocument().apply {
+    loadXml("""<badge value="$(SelectedGlyph)"/>""")
+}
+checkNotNull(windows.ui.notifications.BadgeUpdateManager.createBadgeUpdaterForApplication())
+    .update(windows.ui.notifications.BadgeNotification(xml))

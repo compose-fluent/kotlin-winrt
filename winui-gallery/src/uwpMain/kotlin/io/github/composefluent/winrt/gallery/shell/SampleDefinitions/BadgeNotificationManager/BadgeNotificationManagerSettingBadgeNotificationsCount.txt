@@ -1,0 +1,11 @@
+--- header
+Set a numeric UWP badge.
+--- kotlin
+val count = ($(BadgeCount)).toUInt()
+val xml = windows.data.xml.dom.XmlDocument().apply {
+    loadXml("""<badge value="$count"/>""")
+}
+val updater = checkNotNull(windows.ui.notifications.BadgeUpdateManager.createBadgeUpdaterForApplication())
+updater.update(windows.ui.notifications.BadgeNotification(xml))
+// Remove the badge:
+updater.clear()

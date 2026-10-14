@@ -1,0 +1,8 @@
+--- header
+A UWP toast notification.
+--- kotlin
+val xml = windows.data.xml.dom.XmlDocument().apply {
+    loadXml("""<toast launch="AppNotification"><visual><binding template="ToastGeneric"><text>Welcome to Kotlin WinUI Gallery</text><text>Explore interactive UWP samples.</text></binding></visual></toast>""")
+}
+checkNotNull(windows.ui.notifications.ToastNotificationManager.createToastNotifier())
+    .show(windows.ui.notifications.ToastNotification(xml))
