@@ -16963,6 +16963,9 @@ class KotlinProjectionGeneratorTest {
         val adapter = checkNotNull(renderer.collectionReferenceAdapterCode(binding)).toString()
         assertTrue(adapter, adapter.contains(checkNotNull(renderer.abiTypeSignature(binding)).toString()))
         assertFalse(adapter.contains("object_()"))
+        // IReadOnlyList<T>.GetAtDynamic disposes its ABI result after FromAbi;
+        // the projected interface must own a retained reference independently.
+        assertTrue(adapter, adapter.contains("Metadata.wrap(io.github.composefluent.winrt.runtime.IUnknownReference(it!!.getRefPointer()))"))
     }
 
     @Test

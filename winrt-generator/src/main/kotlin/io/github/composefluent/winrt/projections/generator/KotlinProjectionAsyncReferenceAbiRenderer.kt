@@ -1420,9 +1420,12 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     }
     val projector = when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.ProjectedInterface ->
-            CodeBlock.of("%T.Metadata.wrap(it!!)", projectedType)
+            // The adapter lends its input reference only for the projection call.
+            // Like CsWinRT MarshalInterface<T>.FromAbi, retain an independent owner
+            // before the collection releases its ABI result.
+            CodeBlock.of("%T.Metadata.wrap(%T(it!!.getRefPointer()))", projectedType, IUNKNOWN_REFERENCE_CLASS_NAME)
         KotlinProjectionAbiValueKind.UnknownReference ->
-            CodeBlock.of("it!!")
+            CodeBlock.of("%T(it!!.getRefPointer())", IUNKNOWN_REFERENCE_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference ->
             CodeBlock.of("it!!.asInspectable()")
         else -> return null
