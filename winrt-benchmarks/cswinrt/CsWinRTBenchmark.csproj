@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Keep the benchmark on the same public CsWinRT release pinned by the local .cswinrt baseline. -->
+    <!-- Historical comparison runner; independent of the local CsWinRT implementation reference. -->
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
   </ItemGroup>
@@ -28,12 +28,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\.cswinrt\src\Benchmarks\QueryInterface.cs" Link="Reference\QueryInterface.cs" />
-    <Compile Include="..\..\.cswinrt\src\Benchmarks\EventPerf.cs" Link="Reference\EventPerf.cs" />
-    <Compile Include="..\..\.cswinrt\src\Benchmarks\GuidPerf.cs" Link="Reference\GuidPerf.cs" />
-    <Compile Include="..\..\.cswinrt\src\Benchmarks\ReflectionPerf.cs" Link="Reference\ReflectionPerf.cs" />
-    <Compile Include="..\..\.cswinrt\src\Benchmarks\AsyncPerf.cs" Link="Reference\AsyncPerf.cs" />
-    <Compile Include="..\..\.cswinrt\src\Benchmarks\NonAgileObjectPerf.cs" Link="Reference\NonAgileObjectPerf.cs" />
+    <Compile Include="..\reference\QueryInterface.cs" Link="Reference\QueryInterface.cs" />
+    <Compile Include="..\reference\EventPerf.cs" Link="Reference\EventPerf.cs" />
+    <Compile Include="..\reference\GuidPerf.cs" Link="Reference\GuidPerf.cs" />
+    <Compile Include="..\reference\ReflectionPerf.cs" Link="Reference\ReflectionPerf.cs" />
+    <Compile Include="..\reference\AsyncPerf.cs" Link="Reference\AsyncPerf.cs" />
+    <Compile Include="..\reference\NonAgileObjectPerf.cs" Link="Reference\NonAgileObjectPerf.cs" />
   </ItemGroup>
 
 </Project>

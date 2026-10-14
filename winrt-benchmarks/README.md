@@ -11,7 +11,7 @@ The module belongs to the validation layer. It does not define runtime contracts
 
 ## Reference Mapping
 
-The source of truth is `.cswinrt/src/Benchmarks`. The module mirrors all 97 benchmark methods from its six benchmark families without substituting another WinRT workload:
+The workload source of truth is the pinned CsWinRT `src/Benchmarks` copy in [`reference`](reference/README.md). The module mirrors all 97 benchmark methods from its six benchmark families without substituting another WinRT workload:
 
 | Reference family | Scenarios |
 | --- | ---: |
@@ -28,7 +28,7 @@ Kotlin's synchronous scenario factories inline the operation and checksum into e
 
 Every scenario validates a deterministic single-operation checksum before warmup. Each runner then calibrates that scenario toward an approximately 5 ms batch, capped at 100,000 operations. Warmup treats `warmupRounds` as a shared minimum and continues until it has covered at least 100,000 operations and 500 ms, or one second for a slow scenario, followed by five settling batches. This keeps JIT tier transitions and process ramp-up out of the measurement window without forcing slow scenarios through 100,000 calls. Results record the actual warmup rounds and operations. The report generator refuses to compare runners when their scenario sets, shared protocol parameters, or normalized checksums differ.
 
-The `benchmarkCatalogParity` gate derives the authoritative catalog directly from the `[MemoryDiagnoser]` classes and `[Benchmark]` methods in `.cswinrt/src/Benchmarks`, then compares it with the catalogs exported by all four built runners. A renamed, missing, extra, or duplicated scenario fails the gate.
+The `benchmarkCatalogParity` gate derives the authoritative catalog directly from the `[MemoryDiagnoser]` classes and `[Benchmark]` methods in `reference`, then compares it with the catalogs exported by all four built runners. A renamed, missing, extra, or duplicated scenario fails the gate.
 
 Gradle finishes the Kotlin build prerequisites before timing and serializes the four runner processes. This keeps project-parallel builds or another benchmark runner from competing with the active measurement.
 

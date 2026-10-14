@@ -325,7 +325,7 @@ val benchmarkCppWinRTCatalog by tasks.registering(Exec::class) {
 
 val benchmarkCatalogParity by tasks.registering(Exec::class) {
     group = "verification"
-    description = "Verifies all four executable catalogs against .cswinrt/src/Benchmarks."
+    description = "Verifies all four executable catalogs against the pinned CsWinRT benchmark sources."
     dependsOn(
         benchmarkKotlinJvmCatalog,
         benchmarkKotlinNativeCatalog,
@@ -340,7 +340,7 @@ val benchmarkCatalogParity by tasks.registering(Exec::class) {
         "-File",
         layout.projectDirectory.file("scripts/Test-BenchmarkCatalogParity.ps1").asFile.absolutePath,
         "-ReferenceDirectory",
-        rootProject.layout.projectDirectory.dir(".cswinrt/src/Benchmarks").asFile.absolutePath,
+        layout.projectDirectory.dir("reference").asFile.absolutePath,
         "-KotlinJvmCatalog",
         benchmarkCatalogDirectory.get().file("kotlin-jvm.txt").asFile.absolutePath,
         "-KotlinNativeCatalog",
