@@ -17,8 +17,8 @@ fun main() {
         val result = NetProjectionSample.add()
         println("simple-math=${result.expression} = ${result.value}")
     }
-    if (PlatformRuntime.isWindows && (shouldRunWinUiSmoke() || !hasExplicitSmokeSelection)) {
-        runWinUiSample()
+    if (PlatformRuntime.isWindows && (shouldRunWinUISmoke() || !hasExplicitSmokeSelection)) {
+        runWinUISample()
     }
 }
 
@@ -28,10 +28,10 @@ fun shouldRunNativeSmoke(): Boolean =
 fun shouldRunComponentSmoke(): Boolean =
     winRTSampleOption("kotlin.winrt.samples.runComponentSmoke")
 
-fun shouldRunWinUiSmoke(): Boolean =
-    winRTSampleOption("kotlin.winrt.samples.runWinUiSmoke")
+fun shouldRunWinUISmoke(): Boolean =
+    winRTSampleOption("kotlin.winrt.samples.runWinUISmoke")
 
 private fun hasExplicitSmokeSelection(): Boolean =
     winRTSampleOptionConfigured("kotlin.winrt.samples.runNativeSmoke") ||
         winRTSampleOptionConfigured("kotlin.winrt.samples.runComponentSmoke") ||
-        winRTSampleOptionConfigured("kotlin.winrt.samples.runWinUiSmoke")
+        winRTSampleOptionConfigured("kotlin.winrt.samples.runWinUISmoke")

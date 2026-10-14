@@ -8,14 +8,14 @@ import java.nio.file.Path
 import kotlin.io.path.writeText
 
 /** The SDK owns literal conversion for both project and SDK designer accessors. */
-internal fun writeXamlMemberConversionSource(root: Path, framework: XamlFramework = XamlFramework.WinUi) {
+internal fun writeXamlMemberConversionSource(root: Path, framework: XamlFramework = XamlFramework.WinUI) {
     val file = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlMemberValue.kt")
     Files.createDirectories(file.parent)
     file.writeText("""
         package io.github.composefluent.winrt.generated.xaml
-        internal inline fun <reified T> kotlinWinUiXamlMemberValue(value: Any?): T {
+        internal inline fun <reified T> kotlinWinUIXamlMemberValue(value: Any?): T {
           if (value is T || value !is String) return value as T
-          return io.github.composefluent.winrt.runtime.convertWinUiXamlLiteral(T::class, value) { type, text ->
+          return io.github.composefluent.winrt.runtime.convertWinUIXamlLiteral(T::class, value) { type, text ->
             ${framework.xamlKotlinNamespace}.markup.XamlBindingHelper.convertValue(type, text)
           } as T
         }
@@ -31,7 +31,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(
     references: List<Path>,
     names: Set<String>,
     assemblyName: String?,
-    framework: XamlFramework = XamlFramework.WinUi,
+    framework: XamlFramework = XamlFramework.WinUI,
 ): String? {
     if (names.isEmpty()) return null
     val model = WinRTMetadataLoader.loadSources(references.map(WinRTMetadataSource::path))
@@ -39,12 +39,12 @@ internal fun writeXamlProjectedTypeRegistrationSource(
 }
 
 internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMetadataModel,
-    names: Set<String>, assemblyName: String?, framework: XamlFramework = XamlFramework.WinUi): String? {
+    names: Set<String>, assemblyName: String?, framework: XamlFramework = XamlFramework.WinUI): String? {
     if (names.isEmpty()) return null
     val semantics = model.semanticHelpers()
     val specialTypes = model.specialTypeResolver()
     val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
-    val sdkNamespaces = WinUiXamlNamespaces.namespaces(WinUiXamlNamespaces.PRESENTATION, framework).toSet()
+    val sdkNamespaces = WinUIXamlNamespaces.namespaces(WinUIXamlNamespaces.PRESENTATION, framework).toSet()
     fun sdk(type: WinRTTypeDefinition) = type.qualifiedName.substringBeforeLast('.') in sdkNamespaces
     val requested = names.toMutableSet()
     names.mapNotNull(definitions::get).filter(::sdk).forEach { original ->
@@ -60,7 +60,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
     }.sortedBy { it.qualifiedName }
     if (types.isEmpty()) return null
     val suffix = assemblyName.orEmpty().replace(Regex("[^A-Za-z0-9_]"), "_")
-    val register = "registerKotlinWinUiXamlProjectedTypes_$suffix"
+    val register = "registerKotlinWinUIXamlProjectedTypes_$suffix"
     val packageName = "io.github.composefluent.winrt.generated.xaml"
     val file = root.resolve("${packageName.replace('.', '/')}/KotlinXamlProjectedTypes_$suffix.kt")
     Files.createDirectories(file.parent)
@@ -74,15 +74,15 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
             val owner = xamlTypeClassId(name).asSingleFqName().asString()
             val baseName = type.baseTypeName ?: "System.Object"
             val base = xamlTypeClassId(baseName).asSingleFqName().asString()
-            val registration = if (development) "registerWinUiXamlHotReloadAccessors" else "registerWinUiXamlProjectedTypeDefinition"
-            appendLine("  io.github.composefluent.winrt.runtime.$registration(io.github.composefluent.winrt.runtime.WinUiXamlTypeDefinition(")
+            val registration = if (development) "registerWinUIXamlHotReloadAccessors" else "registerWinUIXamlProjectedTypeDefinition"
+            appendLine("  io.github.composefluent.winrt.runtime.$registration(io.github.composefluent.winrt.runtime.WinUIXamlTypeDefinition(")
             appendLine("    type = $owner::class, name = ${literal(name)},")
             appendLine("    baseName = ${literal(baseName)}, baseType = $base::class,")
             if (!development) appendLine("    activate = { $owner() },")
             else appendLine("    isWinRTComponent = false,")
             appendLine("    isBindable = false,")
             appendLine("    members = listOf(")
-            val convert: (String, String) -> String = { value, target -> "kotlinWinUiXamlMemberValue<$target>($value)" }
+            val convert: (String, String) -> String = { value, target -> "kotlinWinUIXamlMemberValue<$target>($value)" }
             val inherited = definitions[type.baseTypeName]?.let { semantics.classMemberMergeDescriptor(it).mergedProperties }
                 .orEmpty().associateBy { it.propertyName }
             for (member in semantics.classMemberMergeDescriptor(type).mergedProperties.filter { it.isPublic && !it.isPrivate && it.getterTarget != null }) {
@@ -92,7 +92,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                     it.getterTarget == member.getterTarget && it.setterTarget == member.setterTarget
                 } == true) continue
                 val ref = WinRTTypeRef.fromDisplayName(member.propertyTypeName)
-                val property = WinUiXamlApplicationProperty(member.propertyName, ref, isReadOnly = member.setterTarget == null)
+                val property = WinUIXamlApplicationProperty(member.propertyName, ref, isReadOnly = member.setterTarget == null)
                 // Match the projection's shared property nullability and collection mappings.
                 val nullable = WinRTPropertyDefinition(member.propertyName, member.propertyTypeName)
                     .isNullablePropertyProjection(name, definitions)
@@ -113,7 +113,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
         appendLine("internal fun $register() {")
         types.forEachIndexed { index, type -> if (!sdk(type)) appendLine("  ${register}_$index()") }
         if (types.any(::sdk)) {
-            appendLine("  if (io.github.composefluent.winrt.runtime.isWinUiXamlHotReloadEnabled()) {")
+            appendLine("  if (io.github.composefluent.winrt.runtime.isWinUIXamlHotReloadEnabled()) {")
             types.forEachIndexed { index, type -> if (sdk(type)) appendLine("    ${register}_$index()") }
             appendLine("  }")
         }

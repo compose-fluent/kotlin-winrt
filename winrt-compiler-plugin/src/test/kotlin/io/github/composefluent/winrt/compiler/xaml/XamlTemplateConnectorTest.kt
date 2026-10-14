@@ -1,6 +1,6 @@
 package io.github.composefluent.winrt.compiler.xaml
 
-import io.github.composefluent.winrt.runtime.WinUiXamlBindingScope
+import io.github.composefluent.winrt.runtime.WinUIXamlBindingScope
 import io.github.composefluent.winrt.runtime.XamlFramework
 import io.github.composefluent.winrt.metadata.*
 import kotlinx.serialization.json.*
@@ -15,15 +15,15 @@ import java.net.URLClassLoader
 
 class XamlTemplateConnectorTest {
     @Test
-    fun generated_connectors_wait_for_template_children_and_use_the_sdk_data_root() = exerciseConnectors(XamlFramework.WinUi)
+    fun generated_connectors_wait_for_template_children_and_use_the_sdk_data_root() = exerciseConnectors(XamlFramework.WinUI)
 
     @Test
-    fun uwp_connectors_preserve_the_separate_binding_interface_and_template_lifecycle() = exerciseConnectors(XamlFramework.Uwp)
+    fun uwp_connectors_preserve_the_separate_binding_interface_and_template_lifecycle() = exerciseConnectors(XamlFramework.UWP)
 
     private fun exerciseConnectors(framework: XamlFramework) {
         // CSharpPagePass2.GetBindingConnector sets the source; Connect initializes
         // ControlTemplate only after its children, and ProcessBindings initializes DataTemplate.
-        val root = File(if (framework == XamlFramework.WinUi) "build/xaml-template-connector" else "build/xaml-template-connector-uwp").absoluteFile.apply { mkdirs() }
+        val root = File(if (framework == XamlFramework.WinUI) "build/xaml-template-connector" else "build/xaml-template-connector-uwp").absoluteFile.apply { mkdirs() }
         writeXamlBindingSupportSource(root.toPath(), framework = framework)
         File(root, "UI.kt").writeText("""
             package microsoft.ui.xaml
@@ -150,16 +150,16 @@ class XamlTemplateConnectorTest {
             import io.github.composefluent.winrt.runtime.*
             import io.github.composefluent.winrt.generated.xaml.KotlinXamlBindingScopeConnector
             import microsoft.ui.xaml.FrameworkElement
-            class Owner(val root: FrameworkElement, val child: FrameworkElement, var source: Any) : WinUiXamlBindingScopeOwner {
+            class Owner(val root: FrameworkElement, val child: FrameworkElement, var source: Any) : WinUIXamlBindingScopeOwner {
                 var updates = 0
-                override fun _kotlinXamlUpdateScope(scope: WinUiXamlBindingScope, initial: Boolean) {
+                override fun _kotlinXamlUpdateScope(scope: WinUIXamlBindingScope, initial: Boolean) {
                     check(scope.dataRoot === source)
                     check(scope.target(1) === root)
                     check(scope.target(2) === child)
                     updates++
                 }
-                override fun _kotlinXamlConnectScope(scope: WinUiXamlBindingScope, connectionId: Int, target: Any?) { }
-                override fun _kotlinXamlWriteBackScope(scope: WinUiXamlBindingScope, bindingId: Int) { }
+                override fun _kotlinXamlConnectScope(scope: WinUIXamlBindingScope, connectionId: Int, target: Any?) { }
+                override fun _kotlinXamlWriteBackScope(scope: WinUIXamlBindingScope, bindingId: Int) { }
                 override fun _kotlinXamlCreateScopeConnector(connectionId: Int, target: Any?): Any? = null
             }
             fun exercise(): String {
@@ -236,35 +236,35 @@ class XamlTemplateConnectorTest {
             package io.github.composefluent.winrt.generated.xaml
             object KotlinXamlApplicationDefinitionsProbe { fun registerAll() { } }
         """.trimIndent())
-        val location = WinUiXamlSourceLocation(1, 1)
+        val location = WinUIXamlSourceLocation(1, 1)
         // The Controls namespace and scope shape are exported by XamlCompiler's
         // actual ControlTemplate harvester; the data root is TargetType (Button).
-        val fixtureIndex = WinUiXamlDeclarationIndex(3, listOf(WinUiXamlPageDeclaration(
+        val fixtureIndex = WinUIXamlDeclarationIndex(3, listOf(WinUIXamlPageDeclaration(
             "probe.MainPage", "MainPage.xaml", "Microsoft.UI.Xaml.Controls.Page", false,
             listOf("templates", "compiled-bindings", "deferred-elements", "named-elements", "events"), listOf(
-                WinUiXamlConnectionDeclaration(1, "Microsoft.UI.Xaml.Controls.Page", null, location, emptyList(),
+                WinUIXamlConnectionDeclaration(1, "Microsoft.UI.Xaml.Controls.Page", null, location, emptyList(),
                     scopeId = 1, isScopeRoot = true),
-                WinUiXamlConnectionDeclaration(2, "Microsoft.UI.Xaml.Controls.ControlTemplate", null, location, emptyList(),
+                WinUIXamlConnectionDeclaration(2, "Microsoft.UI.Xaml.Controls.ControlTemplate", null, location, emptyList(),
                     scopeId = 2, isScopeRoot = true, isTemplateChild = true,
                     dataTypeName = "Microsoft.UI.Xaml.Controls.Button", children = listOf(3, 4, 5)),
-                WinUiXamlConnectionDeclaration(3, "Microsoft.UI.Xaml.Controls.Grid", null, location, emptyList(),
+                WinUIXamlConnectionDeclaration(3, "Microsoft.UI.Xaml.Controls.Grid", null, location, emptyList(),
                     scopeId = 2, isTemplateChild = true),
-                WinUiXamlConnectionDeclaration(4, "Microsoft.UI.Xaml.Controls.TextBlock", null, location, emptyList(),
+                WinUIXamlConnectionDeclaration(4, "Microsoft.UI.Xaml.Controls.TextBlock", null, location, emptyList(),
                     elementName = "DeferredTemplateText", scopeId = 2, isTemplateChild = true,
                     canBeInstantiatedLater = true, isUnloadableRoot = true, bindings = listOf(
-                        WinUiXamlBindingDeclaration("Load", "Microsoft.UI.Xaml.Controls.TextBlock", "System.Boolean", "OneWay",
-                            WinUiXamlBindingExpression("member", "IsEnabled", receiver = WinUiXamlBindingExpression("root")),
+                        WinUIXamlBindingDeclaration("Load", "Microsoft.UI.Xaml.Controls.TextBlock", "System.Boolean", "OneWay",
+                            WinUIXamlBindingExpression("member", "IsEnabled", receiver = WinUIXamlBindingExpression("root")),
                             location, isLoad = true))),
-                WinUiXamlConnectionDeclaration(5, "Microsoft.UI.Xaml.Controls.Button", null, location,
-                    listOf(WinUiXamlEventDeclaration("Click", "onTemplateClick", "Microsoft.UI.Xaml.Controls.Button",
+                WinUIXamlConnectionDeclaration(5, "Microsoft.UI.Xaml.Controls.Button", null, location,
+                    listOf(WinUIXamlEventDeclaration("Click", "onTemplateClick", "Microsoft.UI.Xaml.Controls.Button",
                         "Microsoft.UI.Xaml.EventHandler`1<Int32>", location)), scopeId = 2, isTemplateChild = true),
-                WinUiXamlConnectionDeclaration(6, "Microsoft.UI.Xaml.Controls.Button", "fileButton", location,
-                    listOf(WinUiXamlEventDeclaration("Click", "onClick", "Microsoft.UI.Xaml.Controls.Button",
+                WinUIXamlConnectionDeclaration(6, "Microsoft.UI.Xaml.Controls.Button", "fileButton", location,
+                    listOf(WinUIXamlEventDeclaration("Click", "onClick", "Microsoft.UI.Xaml.Controls.Button",
                         "Microsoft.UI.Xaml.EventHandler`1<Int32>", location)), scopeId = 1, bindings = listOf(
-                        WinUiXamlBindingDeclaration("IsEnabled", "Microsoft.UI.Xaml.Controls.Button", "System.Boolean", "OneTime",
-                            WinUiXamlBindingExpression("member", "PageEnabled", receiver = WinUiXamlBindingExpression("root")), location),
-                        WinUiXamlBindingDeclaration("Click", "Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.EventHandler`1<Int32>", "OneTime",
-                            WinUiXamlBindingExpression("member", "BoundClick", receiver = WinUiXamlBindingExpression("root")), location,
+                        WinUIXamlBindingDeclaration("IsEnabled", "Microsoft.UI.Xaml.Controls.Button", "System.Boolean", "OneTime",
+                            WinUIXamlBindingExpression("member", "PageEnabled", receiver = WinUIXamlBindingExpression("root")), location),
+                        WinUIXamlBindingDeclaration("Click", "Microsoft.UI.Xaml.Controls.Button", "Microsoft.UI.Xaml.EventHandler`1<Int32>", "OneTime",
+                            WinUIXamlBindingExpression("member", "BoundClick", receiver = WinUIXamlBindingExpression("root")), location,
                             isEvent = true))),
             ))), emptyList())
         File(root, "CustomApplication.kt").writeText("""
@@ -279,7 +279,7 @@ class XamlTemplateConnectorTest {
         """.trimIndent())
         // Windows SDK IComponentConnector2 owns GetBindingConnector; a namespace-only
         // substitution would compile WinUI yet produce the wrong UWP ABI contract.
-        if (framework == XamlFramework.Uwp) {
+        if (framework == XamlFramework.UWP) {
             root.walkTopDown().filter { it.isFile && it.extension == "kt" }.forEach { source ->
                 source.writeText(source.readText().replace("microsoft.ui.xaml", "windows.ui.xaml"))
             }
@@ -292,21 +292,21 @@ class XamlTemplateConnectorTest {
                 .replace("component.getBindingConnector", "(component as windows.ui.xaml.markup.IComponentConnector2).getBindingConnector")
                 .replace("fileBinding.getBindingConnector", "(fileBinding as windows.ui.xaml.markup.IComponentConnector2).getBindingConnector"))
         }
-        val index = WinUiXamlDeclarations.parse(WinUiXamlDeclarations.canonicalText(fixtureIndex)
+        val index = WinUIXamlDeclarations.parse(WinUIXamlDeclarations.canonicalText(fixtureIndex)
             .replace("Microsoft.UI.Xaml", framework.xamlNamespace)).let { declarations ->
-                declarations.copy(framework = framework, pages = declarations.pages + WinUiXamlPageDeclaration(
+                declarations.copy(framework = framework, pages = declarations.pages + WinUIXamlPageDeclaration(
                     "probe.CustomApplication", "CustomApplication.xaml", "${framework.xamlNamespace}.Application",
                     true, emptyList(), emptyList()))
             }
-        val declarations = File(root, "declarations.json").apply { writeText(WinUiXamlDeclarations.canonicalText(index)) }
+        val declarations = File(root, "declarations.json").apply { writeText(WinUIXamlDeclarations.canonicalText(index)) }
         val implementation = File(root, "implementation.json").apply { writeText(buildJsonObject {
             put("KotlinDeclarations", Json.parseToJsonElement(declarations.readText()))
             put("KotlinImplementation", buildJsonObject {
-                put("SchemaVersion", 3); put("DeclarationFingerprint", WinUiXamlDeclarations.fingerprint(index))
+                put("SchemaVersion", 3); put("DeclarationFingerprint", WinUIXamlDeclarations.fingerprint(index))
             })
         }.toString()) }
         val output = File(root, "classes")
-        val classpath = listOf(Unit::class.java, WinUiXamlBindingScope::class.java).joinToString(File.pathSeparator) {
+        val classpath = listOf(Unit::class.java, WinUIXamlBindingScope::class.java).joinToString(File.pathSeparator) {
             File(it.protectionDomain.codeSource.location.toURI()).absolutePath
         }
         val sources = root.walkTopDown().filter { it.isFile && it.extension == "kt" }.map { it.absolutePath }.toList()
@@ -320,7 +320,7 @@ class XamlTemplateConnectorTest {
         URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
             // SDK UWP CppWinRT_AppPass1 has an empty InitializeComponent, while
             // WinUI's equivalent invokes LoadComponent exactly once.
-            assertEquals(if (framework == XamlFramework.Uwp) 0 else 1,
+            assertEquals(if (framework == XamlFramework.UWP) 0 else 1,
                 loader.loadClass("probe.CustomApplicationKt").getMethod("exerciseApplication").invoke(null))
             assertEquals("control:2;template:3", loader.loadClass("probe.ProbeKt").getMethod("exercise").invoke(null))
             assertEquals("lookups:2;unloads:1", loader.loadClass("probe.ProbeKt").getMethod("exerciseGenerated").invoke(null))

@@ -13,7 +13,7 @@ import java.io.StringWriter
 import org.xml.sax.InputSource
 
 /** Application source selection only: projected types and their ABI remain owned by Kotlin/WinRT. */
-internal fun selectGalleryVariant(source: String, winUi2: Boolean): String {
+internal fun selectGalleryVariant(source: String, winUI2: Boolean): String {
     data class Branch(val parent: Boolean, val condition: Boolean, var otherwise: Boolean = false)
     val branches = ArrayDeque<Branch>()
     var enabled = true
@@ -21,7 +21,7 @@ internal fun selectGalleryVariant(source: String, winUi2: Boolean): String {
         val directive = line.trim().removePrefix("//").removePrefix("<!--").removeSuffix("-->").trim()
         when (directive) {
             "#if WINUI2", "#if WINUI3" -> {
-                val condition = (directive == "#if WINUI2") == winUi2
+                val condition = (directive == "#if WINUI2") == winUI2
                 branches.addLast(Branch(enabled, condition))
                 enabled = enabled && condition
                 ""
@@ -40,7 +40,7 @@ internal fun selectGalleryVariant(source: String, winUi2: Boolean): String {
 }
 
 /** Resolve each type against the selected SDK, preserving WinUI 2 extension types when present. */
-internal class GalleryUwpTypeNames(private val types: Set<String>) {
+internal class GalleryUWPTypeNames(private val types: Set<String>) {
     private val kotlinTypes = types.associateBy { type -> type.substringBeforeLast('.').lowercase() + "." + type.substringAfterLast('.') }
 
     fun runtimeName(name: String): String {
@@ -144,16 +144,16 @@ internal class GalleryUwpTypeNames(private val types: Set<String>) {
 /** args: version, input root, output root, overlay root, metadata index, exclusion manifest. */
 fun main(args: Array<String>) {
     require(args.size == 6)
-    val winUi2 = args[0] == "2"
+    val winUI2 = args[0] == "2"
     require(args[0] in setOf("2", "3"))
     val input = Path.of(args[1]).toAbsolutePath().normalize()
     val output = Path.of(args[2]).toAbsolutePath().normalize()
     val module = input.parent.parent.parent
     require(output.startsWith(module.resolve("build")) && output != module.resolve("build"))
     val overlay = Path.of(args[3])
-    val exclusions = if (winUi2) Files.readAllLines(Path.of(args[5])).filter { it.isNotBlank() && !it.startsWith('#') }
+    val exclusions = if (winUI2) Files.readAllLines(Path.of(args[5])).filter { it.isNotBlank() && !it.startsWith('#') }
         .map { it.substringBefore('\t') } else emptyList()
-    val names = if (winUi2) GalleryUwpTypeNames(Files.readAllLines(Path.of(args[4])).map { it.substringBefore('\t') }.toSet()) else null
+    val names = if (winUI2) GalleryUWPTypeNames(Files.readAllLines(Path.of(args[4])).map { it.substringBefore('\t') }.toSet()) else null
     val selected = linkedMapOf<Path, Path>()
     Files.walk(input).use { paths -> paths.filter(Files::isRegularFile).sorted().forEach { path ->
         val relative = input.relativize(path)
@@ -163,7 +163,7 @@ fun main(args: Array<String>) {
                 Regex(".*" + excluded.split('*').joinToString(".*") { Regex.escape(it) }).matches(name)
         }) selected[relative] = path
     } }
-    if (winUi2 && Files.isDirectory(overlay)) Files.walk(overlay).use { paths ->
+    if (winUI2 && Files.isDirectory(overlay)) Files.walk(overlay).use { paths ->
         paths.filter(Files::isRegularFile).sorted().forEach { selected[overlay.relativize(it)] = it }
     }
     Files.createDirectories(output)
@@ -173,7 +173,7 @@ fun main(args: Array<String>) {
     selected.forEach { (relative, path) ->
         val target = output.resolve(relative)
         Files.createDirectories(target.parent)
-        val source = try { selectGalleryVariant(Files.readString(path), winUi2) }
+        val source = try { selectGalleryVariant(Files.readString(path), winUI2) }
         catch (error: IllegalStateException) { throw IllegalStateException("$path: ${error.message}", error) }
         val result = when {
             names == null -> source

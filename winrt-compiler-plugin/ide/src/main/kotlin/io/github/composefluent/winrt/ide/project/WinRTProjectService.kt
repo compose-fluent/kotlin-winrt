@@ -74,7 +74,7 @@ class WinRTProjectService(private val project: Project) {
                 if (!project.isDisposed) WinRTGradleTasks.run(project, module,
                     listOf("restoreWinAppDependencies", "generateWinRTProjections"), "Restore WinRT NuGet dependencies") {
                     dependencyRevision.value += 1
-                    project.getService(io.github.composefluent.winrt.ide.analysis.WinUiXamlSnapshotService::class.java).refresh()
+                    project.getService(io.github.composefluent.winrt.ide.analysis.WinUIXamlSnapshotService::class.java).refresh()
                 }
             }
         }

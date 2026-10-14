@@ -33,8 +33,8 @@ internal class XamlLibraryRegistrationsIr(
     private val classes: List<IrClass>,
     private val types: Map<String, IndexedWinRTType>,
     private val names: Set<String>,
-    private val members: Map<String, WinUiXamlApplicationTypeMembers>,
-    private val framework: XamlFramework = XamlFramework.WinUi,
+    private val members: Map<String, WinUIXamlApplicationTypeMembers>,
+    private val framework: XamlFramework = XamlFramework.WinUI,
 ) {
     private val knownTypes = mutableMapOf<String, IrType>()
     private val runtimePackage = FqName("io.github.composefluent.winrt.runtime")
@@ -114,7 +114,7 @@ internal class XamlLibraryRegistrationsIr(
         (klass.declarations + klass.companionObject()?.takeIf(::xamlLibraryDeclarationAccessible)?.declarations.orEmpty())
             .filterIsInstance<IrSimpleFunction>().filter { it.visibility == DescriptorVisibilities.PUBLIC && xamlLibraryDeclarationAccessible(it) }
 
-    private fun findFunction(klass: IrClass, method: WinUiXamlApplicationMethod): IrSimpleFunction =
+    private fun findFunction(klass: IrClass, method: WinUIXamlApplicationMethod): IrSimpleFunction =
         publicFunctions(klass).single { function -> function.name.asString() == method.name &&
             (function.parentClassOrNull?.kind == ClassKind.OBJECT) == method.isStatic &&
             runCatching { xamlApplicationTypeReference(function.returnType, types, names, framework) == method.returnType &&
@@ -160,17 +160,17 @@ internal class XamlLibraryRegistrationsIr(
                 }
             }
         }
-        return nested + construct("WinUiXamlValueTypeDefinition", args)
+        return nested + construct("WinUIXamlValueTypeDefinition", args)
     }
 
-    private fun IrBuilderWithScope.propertyDefinition(klass: IrClass, member: WinUiXamlApplicationProperty): IrExpression {
+    private fun IrBuilderWithScope.propertyDefinition(klass: IrClass, member: WinUIXamlApplicationProperty): IrExpression {
         val property = klass.declarations.filterIsInstance<IrProperty>().single { it.name.asString() == member.name }
         val getter = requireNotNull(property.getter)
         val args = linkedMapOf("name" to irString(member.name), "typeName" to irString(member.type.xamlStandardTypeName()),
             "type" to classLiteral(getter.returnType), "isDependencyProperty" to irBoolean(member.isDependencyProperty),
             "get" to lambda(listOf(pluginContext.irBuiltIns.anyType), pluginContext.irBuiltIns.anyNType) { p ->
                 irCall(getter.symbol).apply { dispatchReceiver = irAs(irGet(p[0]), klass.defaultType) }
-            }, "valueTypes" to list("WinUiXamlValueTypeDefinition", valueDefinitions(member.type, getter.returnType)))
+            }, "valueTypes" to list("WinUIXamlValueTypeDefinition", valueDefinitions(member.type, getter.returnType)))
         if (!member.isReadOnly) {
             val setter = requireNotNull(property.setter)
             args["set"] = lambda(listOf(pluginContext.irBuiltIns.anyType, pluginContext.irBuiltIns.anyNType), pluginContext.irBuiltIns.unitType) { p ->
@@ -180,10 +180,10 @@ internal class XamlLibraryRegistrationsIr(
                 }
             }
         }
-        return construct("WinUiXamlMemberDefinition", args)
+        return construct("WinUIXamlMemberDefinition", args)
     }
 
-    private fun IrBuilderWithScope.attachedDefinitions(klass: IrClass, schema: WinUiXamlApplicationTypeMembers): List<IrExpression> {
+    private fun IrBuilderWithScope.attachedDefinitions(klass: IrClass, schema: WinUIXamlApplicationTypeMembers): List<IrExpression> {
         val methods = schema.methods.filter { it.isStatic && it.isPublic }
         return methods.filter { it.name.startsWith("Get") && it.name.length > 3 &&
             it.parameterTypes.size == 1 && !isWinRTVoidTypeName(it.returnType.typeName) }.map { getter ->
@@ -199,7 +199,7 @@ internal class XamlLibraryRegistrationsIr(
                 "targetTypeName" to irString(getter.parameterTypes.single().xamlStandardTypeName()), "targetType" to classLiteral(targetType),
                 "get" to lambda(listOf(pluginContext.irBuiltIns.anyType), pluginContext.irBuiltIns.anyNType) { p ->
                     staticCall(get, listOf(irAs(irGet(p[0]), targetType)))
-                }, "valueTypes" to list("WinUiXamlValueTypeDefinition", valueDefinitions(getter.returnType, get.returnType)))
+                }, "valueTypes" to list("WinUIXamlValueTypeDefinition", valueDefinitions(getter.returnType, get.returnType)))
             if (setter != null) {
                 val set = findFunction(klass, setter)
                 val parameters = set.parameters.filter { it.kind == IrParameterKind.Regular }
@@ -207,11 +207,11 @@ internal class XamlLibraryRegistrationsIr(
                     staticCall(set, parameters.mapIndexed { i, parameter -> irAs(irGet(p[i]), parameter.type) })
                 }
             }
-            construct("WinUiXamlMemberDefinition", args)
+            construct("WinUIXamlMemberDefinition", args)
         }
     }
 
-    fun generate(registrar: IrClass, descriptors: List<WinUiXamlApplicationTypeDescriptor>,
+    fun generate(registrar: IrClass, descriptors: List<WinUIXamlApplicationTypeDescriptor>,
         interfaces: Map<IrClass, List<Pair<WinRTTypeRef, String>>>) {
         val initialize = registrar.functions.single { it.name.asString() == "registerTypes" }
         initialize.body = DeclarationIrBuilder(pluginContext, initialize.symbol).irBlockBody {
@@ -221,7 +221,7 @@ internal class XamlLibraryRegistrationsIr(
                 klass.superTypes.forEach(::remember)
                 if (klass.kind == ClassKind.ENUM_CLASS) {
                     val entries = klass.declarations.filterIsInstance<IrEnumEntry>().filter(::xamlLibraryDeclarationAccessible)
-                    +irCall(runtime("registerWinUiXamlEnumType")).apply {
+                    +irCall(runtime("registerWinUIXamlEnumType")).apply {
                         typeArguments[0] = klass.defaultType
                         arguments[0] = classLiteral(klass.defaultType)
                         arguments[1] = irString(name)
@@ -262,11 +262,11 @@ internal class XamlLibraryRegistrationsIr(
                     xamlCollectionRegistrationType(interfaces.getValue(klass))?.let { (type, source) ->
                         // Build the shape twice as distinct IR expressions; IR nodes cannot have two parents.
                         args["shape"] = valueDefinitions(type, resolveType(source)).last()
-                        args["valueTypes"] = list("WinUiXamlValueTypeDefinition", valueDefinitions(type, resolveType(source)))
+                        args["valueTypes"] = list("WinUIXamlValueTypeDefinition", valueDefinitions(type, resolveType(source)))
                     }
-                    args["members"] = list("WinUiXamlMemberDefinition", schema.properties.filterNot { it.isStatic }
+                    args["members"] = list("WinUIXamlMemberDefinition", schema.properties.filterNot { it.isStatic }
                         .map { propertyDefinition(klass, it) } + attachedDefinitions(klass, schema))
-                    +irCall(runtime("registerWinUiXamlTypeDefinition")).apply { arguments[0] = construct("WinUiXamlTypeDefinition", args) }
+                    +irCall(runtime("registerWinUIXamlTypeDefinition")).apply { arguments[0] = construct("WinUIXamlTypeDefinition", args) }
                 }
             }
         }

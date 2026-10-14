@@ -12,17 +12,17 @@ Kotlin/Native `mingwX64` 目标。页面包含应用资源、`x:Bind`、具名�
 ```kotlin
 windows {
     application {
-        applicationModel.set(WindowsApplicationModel.Uwp)
+        applicationModel.set(WindowsApplicationModel.UWP)
         windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
     }
 }
 ```
 
-这会令 `windows.xaml.framework` 默认采用 `XamlFramework.Uwp`。UWP 应用需要
+这会令 `windows.xaml.framework` 默认采用 `XamlFramework.UWP`。UWP 应用需要
 `WindowsPackageType.Packaged`，使用系统 XAML，不部署 Windows App SDK。
-`XamlFramework.WinUi` 选择 Windows App SDK 的 WinUI 3，不能用于此应用。
+`XamlFramework.WinUI` 选择 Windows App SDK 的 WinUI 3，不能用于此应用。
 WinUI 2 的控件虽然也位于 `Microsoft.UI.Xaml` 命名空间，其基础框架仍是 UWP；
-使用 WinUI 2 NuGet 控件库时，应继续选择 `XamlFramework.Uwp`。
+使用 WinUI 2 NuGet 控件库时，应继续选择 `XamlFramework.UWP`。
 
 共享 Kotlin、XAML 和 Appx 资源仍放在 `src/winuiMain`。`winuiMain` 是兼容既有工程
 布局的 source set 名称；实际框架由上述配置决定。JVM 和 Native 各自的实现分别在
@@ -35,7 +35,7 @@ import io.github.composefluent.winrt.runtime.XamlFramework
 
 windows {
     xaml {
-        framework.set(XamlFramework.Uwp)
+        framework.set(XamlFramework.UWP)
     }
 }
 ```
@@ -107,7 +107,7 @@ Native 版本由 `mingwX64` 生成可执行文件，不携带 JVM。
 ## Manifest 与检查范围
 
 源 Manifest 在 `src/winuiMain/appxResources/AppxManifest.xml`，`EntryPoint` 保留应用
-类名 `io.github.composefluent.winrt.samples.uwp.UwpApplication`。暂存阶段会设置
+类名 `io.github.composefluent.winrt.samples.uwp.UWPApplication`。暂存阶段会设置
 `uap10:RuntimeBehavior="windowsApp"` 与 `uap10:TrustLevel="appContainer"`。
 
 Manifest 声明 `codeGeneration`，供运行时的动态 ABI 回调代码使用。回调分配使用

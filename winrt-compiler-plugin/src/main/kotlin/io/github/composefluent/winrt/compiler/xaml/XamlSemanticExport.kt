@@ -38,25 +38,25 @@ internal object XamlSemanticOptions {
     }
 
     fun framework(configuration: CompilerConfiguration): XamlFramework =
-        configuration.get(keys.getValue("xamlFramework"))?.let(::parseXamlFramework) ?: XamlFramework.WinUi
+        configuration.get(keys.getValue("xamlFramework"))?.let(::parseXamlFramework) ?: XamlFramework.WinUI
 
     fun compilation(configuration: CompilerConfiguration): XamlCompilation? {
         fun value(name: String) = configuration.get(keys.getValue(name))
         if (keys.keys.filterNot { it == "xamlFramework" }.all { value(it) == null }) return null
         val declarationPath = Path.of(requireNotNull(value("xamlDeclarations")))
-        val declarations = WinUiXamlDeclarations.parse(Files.readString(declarationPath))
+        val declarations = WinUIXamlDeclarations.parse(Files.readString(declarationPath))
         value("xamlFramework")?.let { require(parseXamlFramework(it) == declarations.framework) {
             "XAML framework option does not match the declaration index"
         } }
         val finalPath = value("xamlImplementation")
         if (finalPath != null) {
             require(value("xamlSemanticOutput") == null) { "XAML final and semantic modes are mutually exclusive" }
-            val actual = WinUiXamlDeclarations.readCompilerOutput(Path.of(finalPath))
+            val actual = WinUIXamlDeclarations.readCompilerOutput(Path.of(finalPath))
             val plan = Json.parseToJsonElement(Files.readString(Path.of(finalPath))).jsonObject
                 .getValue("KotlinImplementation").jsonObject
-            require(plan.getValue("SchemaVersion").jsonPrimitive.int in 1..WinUiXamlDeclarations.SCHEMA_VERSION &&
-                plan.getValue("DeclarationFingerprint").jsonPrimitive.content == WinUiXamlDeclarations.fingerprint(declarations) &&
-                WinUiXamlDeclarations.canonicalText(actual) == WinUiXamlDeclarations.canonicalText(declarations)) {
+            require(plan.getValue("SchemaVersion").jsonPrimitive.int in 1..WinUIXamlDeclarations.SCHEMA_VERSION &&
+                plan.getValue("DeclarationFingerprint").jsonPrimitive.content == WinUIXamlDeclarations.fingerprint(declarations) &&
+                WinUIXamlDeclarations.canonicalText(actual) == WinUIXamlDeclarations.canonicalText(declarations)) {
                 "XAML final plan does not match declaration input"
             }
             return XamlCompilation(declarations, null)
@@ -77,7 +77,7 @@ internal object XamlSemanticOptions {
     }
 }
 
-internal data class XamlCompilation(val declarations: WinUiXamlDeclarationIndex, val semanticExport: IrGenerationExtension?,
+internal data class XamlCompilation(val declarations: WinUIXamlDeclarationIndex, val semanticExport: IrGenerationExtension?,
     val semanticOnly: Boolean = false)
 
 @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -92,7 +92,7 @@ private class XamlSemanticExport(
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         Files.deleteIfExists(output)
         Files.deleteIfExists(output.resolveSibling("KotlinXaml.winmd"))
-        val declarations = WinUiXamlDeclarations.parse(Files.readString(declarationPath)).let { index ->
+        val declarations = WinUIXamlDeclarations.parse(Files.readString(declarationPath)).let { index ->
             // Runtime/IDE source hashes belong to executable page bodies, not XAMLC's
             // semantic contract. Both isolated and combined export use the same schema.
             index.copy(pages = index.pages.map { it.copy(sourceHash = "") })
@@ -132,8 +132,8 @@ private class XamlSemanticExport(
             }
         }
         if (invalidHandler) return
-        val authored = mutableListOf<WinUiXamlApplicationTypeDescriptor>()
-        val applicationMembers = mutableMapOf<String, WinUiXamlApplicationTypeMembers>()
+        val authored = mutableListOf<WinUIXamlApplicationTypeDescriptor>()
+        val applicationMembers = mutableMapOf<String, WinUIXamlApplicationTypeMembers>()
         val headerTypes = applicationHeader?.let { WinRTMetadataLoader.load(it).namespaces.flatMap { it.types } }.orEmpty()
         val dependencyTypes = references.filter { it.fileName.toString().endsWith(".KotlinXaml.winmd") }
             .flatMap { WinRTMetadataLoader.load(it).namespaces.flatMap { namespace -> namespace.types } }
@@ -157,7 +157,7 @@ private class XamlSemanticExport(
             }
             // LoadComponent fills this already constructed root. A no-argument
             // constructor is needed only if IXamlType activates it from markup.
-            authored += WinUiXamlApplicationTypeDescriptor(page.className, page.baseTypeName,
+            authored += WinUIXamlApplicationTypeDescriptor(page.className, page.baseTypeName,
                 declarations.framework.xamlComponentInterfaceNames, isActivatable = isActivatable)
             applicationMembers[page.className] = xamlApplicationProperties(klass, types, applicationTypes,
                 xamlProperties = page.properties, framework = declarations.framework)
@@ -191,7 +191,7 @@ private class XamlSemanticExport(
                 val klass = requireNotNull(classes.singleOrNull { it.first.fqNameWhenAvailable?.asString() == type.qualifiedName }) {
                     "XAML application type ${type.qualifiedName} is missing from Kotlin semantic compilation"
                 }.first
-                authored += WinUiXamlApplicationTypeDescriptor(type.qualifiedName, type.baseTypeName,
+                authored += WinUIXamlApplicationTypeDescriptor(type.qualifiedName, type.baseTypeName,
                     type.implementedInterfaces.map { it.interfaceName }, type.activation.isActivatable,
                     isSealed = klass.modality == org.jetbrains.kotlin.descriptors.Modality.FINAL,
                     enumEntries = if (klass.kind == org.jetbrains.kotlin.descriptors.ClassKind.ENUM_CLASS)
@@ -200,8 +200,8 @@ private class XamlSemanticExport(
             }
         val symbols = buildJsonObject {
             put("SchemaVersion", declarations.schemaVersion)
-            put("DeclarationFingerprint", WinUiXamlDeclarations.fingerprint(declarations))
-            put("Declarations", Json.parseToJsonElement(WinUiXamlDeclarations.canonicalText(declarations)))
+            put("DeclarationFingerprint", WinUIXamlDeclarations.fingerprint(declarations))
+            put("Declarations", Json.parseToJsonElement(WinUIXamlDeclarations.canonicalText(declarations)))
             put("Pages", JsonArray(pages))
         }
         Files.createDirectories(output.toAbsolutePath().parent)

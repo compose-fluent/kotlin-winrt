@@ -31,12 +31,12 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         myFixture.addFileToProject("assets/Strings/zh-CN/Resources.resw", """<root><data name="AppName"><value>应用</value></data></root>""")
         val metadata = myFixture.addFileToProject("Controls.winmd", "")
         io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Controls", listOf(
-            io.github.composefluent.winrt.metadata.WinUiXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Page"),
-            io.github.composefluent.winrt.metadata.WinUiXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.TextBlock"),
-            io.github.composefluent.winrt.metadata.WinUiXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Media.SolidColorBrush"),
-            io.github.composefluent.winrt.metadata.WinUiXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.ResourceDictionary"),
-        ), mapOf("Microsoft.UI.Xaml.Controls.TextBlock" to io.github.composefluent.winrt.metadata.WinUiXamlApplicationTypeMembers(
-            properties = listOf("Foreground", "Style", "Tag").map { property -> io.github.composefluent.winrt.metadata.WinUiXamlApplicationProperty(
+            io.github.composefluent.winrt.metadata.WinUIXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.Page"),
+            io.github.composefluent.winrt.metadata.WinUIXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Controls.TextBlock"),
+            io.github.composefluent.winrt.metadata.WinUIXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.Media.SolidColorBrush"),
+            io.github.composefluent.winrt.metadata.WinUIXamlApplicationTypeDescriptor("Microsoft.UI.Xaml.ResourceDictionary"),
+        ), mapOf("Microsoft.UI.Xaml.Controls.TextBlock" to io.github.composefluent.winrt.metadata.WinUIXamlApplicationTypeMembers(
+            properties = listOf("Foreground", "Style", "Tag").map { property -> io.github.composefluent.winrt.metadata.WinUIXamlApplicationProperty(
                 property, io.github.composefluent.winrt.metadata.WinRTTypeRef.named("String")) })),
             java.nio.file.Path.of(metadata.virtualFile.path), emptyMap())
         val metadataInput = myFixture.addFileToProject("resource-editor-input.json", kotlinx.serialization.json.buildJsonObject {
@@ -46,9 +46,9 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         }.toString())
         val module = WinRTModuleData(":", directory, "$directory/build", "2.4.0", "", listOf(
             WinRTSourceSetData("main", listOf(directory), emptyList(), listOf("$directory/assets"))),
-            emptyList(), emptyList(), emptyList(), listOf(WinUiXamlCompilationData("analyze", listOf(directory), "", metadataInput.virtualFile.path, "", "")))
+            emptyList(), emptyList(), emptyList(), listOf(WinUIXamlCompilationData("analyze", listOf(directory), "", metadataInput.virtualFile.path, "", "")))
         val index = project.service<WinRTResourceIndex>()
-        val catalog = project.service<io.github.composefluent.winrt.ide.xaml.WinUiXamlCatalogService>()
+        val catalog = project.service<io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalogService>()
         project.service<WinRTProjectService>().replaceBuildModels(directory, listOf(module))
         PlatformTestUtil.waitWithEventsDispatching("Resource files indexed", {
             index.forFile(file.virtualFile.path)?.entries?.size == 4
@@ -89,15 +89,15 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
     fun testStaticAndThemeResourceColorsAndDiagnosticsUseOnlyTheKeySpan() {
         val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Page.Resources><SolidColorBrush x:Key="Accent.Brush"/></Page.Resources><TextBlock Foreground="{StaticResource Accent.Brush}"/><TextBlock Foreground="{ThemeResource ResourceKey=Accent.Brush}"/><TextBlock Foreground="{ThemeResource Missing}"/></Page>""")
         val values = file.rootTag!!.findSubTags("TextBlock").map { it.getAttribute("Foreground")!!.valueElement!! }
-        for (value in values) assertNotNull(value.text, io.github.composefluent.winrt.ide.xaml.WinUiXamlMarkupHighlighting.parse(value)?.resourceKey)
+        for (value in values) assertNotNull(value.text, io.github.composefluent.winrt.ide.xaml.WinUIXamlMarkupHighlighting.parse(value)?.resourceKey)
         assertEquals(1, WinRTResourceReferences.reference(values[0])!!.multiResolve(false).size)
         assertEquals(1, WinRTResourceReferences.reference(values[1])!!.multiResolve(false).size)
         assertEquals(0, WinRTResourceReferences.reference(values[2])!!.multiResolve(false).size)
         val highlights = myFixture.doHighlighting()
-        val resolved = highlights.filter { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinUiXamlMarkupColors.RESOURCE }
+        val resolved = highlights.filter { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinUIXamlMarkupColors.RESOURCE }
         assertEquals(highlights.map { "${it.forcedTextAttributesKey}: ${it.description}" }.toString(), 2, resolved.size)
         assertTrue(resolved.all { file.text.substring(it.startOffset, it.endOffset) == "Accent.Brush" })
-        val extensions = highlights.filter { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinUiXamlMarkupColors.EXTENSION }
+        val extensions = highlights.filter { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinUIXamlMarkupColors.EXTENSION }
         assertEquals(setOf("StaticResource", "ThemeResource"), extensions.map { file.text.substring(it.startOffset, it.endOffset) }.toSet())
         val unknown = highlights.single { it.description?.startsWith("No resource source candidate") == true }
         assertEquals("Missing", file.text.substring(unknown.startOffset, unknown.endOffset))
@@ -218,7 +218,7 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
         assertEquals(generic.virtualFile, theme.containingFile.virtualFile)
         val highlights = myFixture.doHighlighting()
         assertFalse(highlights.mapNotNull { it.description }.toString(), highlights.any { it.description?.startsWith("No resource source candidate") == true })
-        assertEquals(2, highlights.count { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinUiXamlMarkupColors.RESOURCE })
+        assertEquals(2, highlights.count { it.forcedTextAttributesKey == io.github.composefluent.winrt.ide.xaml.WinUIXamlMarkupColors.RESOURCE })
         val document = myFixture.editor.document
         WriteCommandAction.runWriteCommandAction(project) { document.setText(document.text.replace("SubtleButtonStyle}", "Sub}")) }
         PsiDocumentManager.getInstance(project).commitAllDocuments()
@@ -309,7 +309,7 @@ class WinRTResourceReferencesTest : BasePlatformTestCase() {
 
     fun testLocalDefinitionsOverrideSystemResources() {
         val file = configure("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Page.Resources><Color x:Key="SystemColorWindowColor">Red</Color></Page.Resources><TextBlock Foreground="{ThemeResource SystemColorWindowColor}"/></Page>""")
-        val definition = file.rootTag!!.subTags[0].subTags.single().getAttribute("Key", io.github.composefluent.winrt.ide.xaml.WinUiXamlCatalog.XAML)!!.valueElement!!
+        val definition = file.rootTag!!.subTags[0].subTags.single().getAttribute("Key", io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.XAML)!!.valueElement!!
         val reference = file.rootTag!!.subTags[1].getAttribute("Foreground")!!.valueElement!!
         assertEquals(definition, WinRTResourceReferences.reference(reference)!!.multiResolve(false).single().element)
     }

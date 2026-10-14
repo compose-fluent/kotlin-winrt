@@ -22,7 +22,7 @@ fun main(args: Array<String>) {
         types = options.types,
         excludedNamespaces = options.excludedNamespaces,
         excludedTypes = options.excludedTypes,
-        additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
+        additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
     )
     val fileCount = KotlinProjectionGenerator(
         emitSupportFiles = true,
@@ -47,7 +47,7 @@ internal data class KotlinProjectionGeneratorOptions(
     val excludedNamespaces: Set<String>,
     val excludedTypes: Set<String>,
     val additionExcludes: Set<String>,
-    val xamlFramework: XamlFramework = XamlFramework.WinUi,
+    val xamlFramework: XamlFramework = XamlFramework.WinUI,
 ) {
     companion object {
         fun parse(args: List<String>): KotlinProjectionGeneratorOptions {
@@ -58,7 +58,7 @@ internal data class KotlinProjectionGeneratorOptions(
             val excludedNamespaces = mutableSetOf<String>()
             val excludedTypes = mutableSetOf<String>()
             val additionExcludes = mutableSetOf<String>()
-            var xamlFramework = XamlFramework.WinUi
+            var xamlFramework = XamlFramework.WinUI
             var index = 0
             while (index < args.size) {
                 when (val arg = args[index]) {

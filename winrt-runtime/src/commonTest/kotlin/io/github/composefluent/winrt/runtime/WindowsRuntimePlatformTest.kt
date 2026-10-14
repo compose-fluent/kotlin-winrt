@@ -28,7 +28,7 @@ class WindowsRuntimePlatformTest {
         assertTrue(WinRTExceptionTranslator.exceptionFor(KnownHResults.REGDB_E_CLASSNOTREG) is WinRTIllegalStateException)
         assertTrue(WinRTExceptionTranslator.exceptionFor(ExceptionHelpers.ERROR_FILE_NOT_FOUND) is WinRTFileNotFoundException)
         assertTrue(WinRTExceptionTranslator.exceptionFor(ExceptionHelpers.ERROR_BAD_FORMAT) is WinRTBadImageFormatException)
-        assertTrue(WinRTExceptionTranslator.exceptionFor(ExceptionHelpers.E_XAMLPARSEFAILED) is WinUiXamlParseException)
+        assertTrue(WinRTExceptionTranslator.exceptionFor(ExceptionHelpers.E_XAMLPARSEFAILED) is WinUIXamlParseException)
     }
 
     @Test

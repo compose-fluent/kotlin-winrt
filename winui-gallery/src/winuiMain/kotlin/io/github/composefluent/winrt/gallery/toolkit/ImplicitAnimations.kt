@@ -1,6 +1,6 @@
 // Home's show/hide timelines port CommunityToolkit/Windows components/Animations/src/Xaml (MIT).
 package io.github.composefluent.winrt.gallery.toolkit
-import io.github.composefluent.winrt.runtime.WinUiXamlContentProperty
+import io.github.composefluent.winrt.runtime.WinUIXamlContentProperty
 import io.github.composefluent.winrt.runtime.asWinRT
 import microsoft.ui.xaml.*
 import microsoft.ui.xaml.hosting.ElementCompositionPreview
@@ -40,7 +40,7 @@ internal class OpacityAnimation : ImplicitTimeline() {
         insertKeyFrame(0f,From.toFloat()); insertKeyFrame(1f,To.toFloat(),curve); curve.close()
     }
 }
-@WinUiXamlContentProperty("Animations")
+@WinUIXamlContentProperty("Animations")
 internal class ImplicitAnimationSet : DependencyObject() {
     val Animations: MutableList<ImplicitTimeline> = mutableListOf()
     fun create(element: UIElement): CompositionAnimationGroup {

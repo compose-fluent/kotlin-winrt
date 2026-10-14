@@ -1,19 +1,19 @@
 # XAML runtime contract
 
 The shared metadata and managed lifecycle contracts serve WinUI and UWP XAML.
-Existing `WinUiXaml` lifecycle/model names remain compatible; neutral
+Existing `WinUIXaml` lifecycle/model names remain compatible; neutral
 `XamlTypeDefinition` and `registerXamlTypeDefinition` names use the same implementation.
 Generic ABI, projection and marshaling support retains `WinRT` names. Windows App
 SDK deployment and Appx packaging are separate responsibilities.
 
-Hosts call `XamlRuntime.initialize(XamlFramework.WinUi)` or
-`XamlRuntime.initialize(XamlFramework.Uwp)` before registering projections or invoking
+Hosts call `XamlRuntime.initialize(XamlFramework.WinUI)` or
+`XamlRuntime.initialize(XamlFramework.UWP)` before registering projections or invoking
 user code. Repeating the same selection is allowed; changing it after explicit
 initialization or first projection use fails. Without explicit initialization,
 `KOTLIN_WINRT_USE_WINDOWS_UI_XAML_PROJECTIONS` supplies the existing process default.
 This follows CsWinRT's `Configuration/FeatureSwitches.cs` and `Projections.cs` mapping
-boundary. Shared XAML ABI helpers use `XamlInterfaceIds`; existing `WinUiXamlInterfaceIds`
-and `WinUiXamlMetadataProvider` retain their fixed WinUI behavior.
+boundary. Shared XAML ABI helpers use `XamlInterfaceIds`; existing `WinUIXamlInterfaceIds`
+and `WinUIXamlMetadataProvider` retain their fixed WinUI behavior.
 
 The Windows SDK's UWP `IXamlType` omits WinUI's inline `BoxedType` member and exposes
 it on `IXamlType2` instead. `XamlTypeAbi` adapts the shared method bodies at the ABI
@@ -21,7 +21,7 @@ boundary, including inherited calls. Application CCWs expose the selected
 `IXamlMetadataProvider`, and their member/type results use that framework's IIDs.
 UWP consults registered component providers without activating the Windows App SDK
 controls provider. No external providers yields an empty namespace array; unknown
-type lookup yields a null result with success. `UwpXamlRuntimeTest` verifies the
+type lookup yields a null result with success. `UWPXamlRuntimeTest` verifies the
 real SDK interface identities and slots on synthetic COM objects. This runtime
 coverage does not establish packaged UWP application or AppContainer compatibility.
 
@@ -38,8 +38,9 @@ packaged UWP smoke must additionally exercise the capability and the bundled JVM
 own executable memory, which is outside the Kotlin callback allocator.
 
 Generated sources and compiler/runtime artifacts must be rebuilt together after
-the `WinRTXaml` to `WinUiXaml` symbol rename. Existing Gradle task/configuration
-names, hot-reload protocol keys and IDE persistent identifiers remain compatible.
+the `WinRTXaml` to `WinUIXaml` symbol rename and the `WinUi`/`Uwp` to `WinUI`/`UWP`
+capitalization change. Public Kotlin APIs and enum entries use `WinUI` and `UWP`;
+consumers must update their imports and references and regenerate compiled bindings.
 
 Ownership follows `.cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs` (`GetInterfaceTableEntries`), `.cswinrt/src/cswinrt/code_writers.h` (`write_composable_constructors`), and `.cswinrt/src/WinRT.Runtime/Interop/EventSource{TDelegate}.cs`.
 
@@ -49,17 +50,17 @@ Ownership follows `.cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs` (`GetInterf
 - The actual native Page aggregation and `Application.LoadComponent` call must be verified in Gallery. An ABI-shaped synthetic host only proves outer interface identity and callback mechanics.
 - As in CsWinRT `MarshalInspectable<T>.CreateMarshaler2`, a derived page crosses `Object`/`IInspectable` boundaries as its controlling managed outer. The nondelegating native inner implements inherited SDK ABI calls and must not replace that object identity in activation results or component loading.
 - Generated event code uses projected event add/remove APIs, `EventSource` and existing delegate/reference tracking. It must not maintain an independent global callback registry. Any generated unsubscribe hook must retain the same handler instance used for subscription.
-- Named controls and initialization state are fields on each page. Kotlin constructor calls are lowered to `initializeWinUiXamlComponent(constructorCall)` after the complete constructor returns, including secondary constructor bodies. Delegating base-constructor calls are not wrapped. Kotlin 2.4 rich constructor references contain invocation bodies and follow the same lowering. The managed `WinUiXamlComponent` interface carries the contract across compilation boundaries; it has no IID or CCW entry.
+- Named controls and initialization state are fields on each page. Kotlin constructor calls are lowered to `initializeWinUIXamlComponent(constructorCall)` after the complete constructor returns, including secondary constructor bodies. Delegating base-constructor calls are not wrapped. Kotlin 2.4 rich constructor references contain invocation bodies and follow the same lowering. The managed `WinUIXamlComponent` interface carries the contract across compilation boundaries; it has no IID or CCW entry.
 - User code overrides `initializeComponent()`, calls `super.initializeComponent()` to execute the generated guarded load, and then accesses named controls. There is no separate initialized callback. Repeated base calls preserve the loaded tree and subscriptions; arbitrary user override statements are ordinary Kotlin code and are not automatically idempotent. Constructor exceptions skip initialization; initialization exceptions propagate before the call returns an instance.
 - A separate generated construction guard owns the automatic call to the user override. Authoring's activation boundary ensures completion before marshaling the result; if a compiled constructor call already completed it, the activation check does nothing. This also covers factories supplied by callers that do not use compiler lowering. Failure is retained and no partially initialized result is published by the activation factory.
-- This is the user-requested C++/WinRT lifecycle alignment: `strings/base_implements.h` owns `create_and_initialize`, and `nuget/readme.md#initializecomponent` documents construction followed by initialization. CsWinRT remains the ABI/composition reference. The plugin must be enabled in consuming Kotlin modules; reflection bypassing compiled Kotlin call sites must explicitly use `initializeWinUiXamlComponent` after construction. Native target validation remains a separate gate.
+- This is the user-requested C++/WinRT lifecycle alignment: `strings/base_implements.h` owns `create_and_initialize`, and `nuget/readme.md#initializecomponent` documents construction followed by initialization. CsWinRT remains the ABI/composition reference. The plugin must be enabled in consuming Kotlin modules; reflection bypassing compiled Kotlin call sites must explicitly use `initializeWinUIXamlComponent` after construction. Native target validation remains a separate gate.
 - XamlCompiler `CSharpPagePass1.tt` guards reentrant loading before `LoadComponent`; Kotlin keeps this guard. To satisfy the approved failure contract, final generated code distinguishes loading, loaded and failed: successful repeat and synchronous reentry do nothing; failure propagates and subsequent attempts fail with the original cause rather than duplicate partially installed subscriptions. This is a narrow documented difference from the C# boolean guard. No thread-safe background XAML loading is implied.
 
 `XamlConnectorIdentityTest` verifies same outer IUnknown, same managed receiver, per-instance dispatch, borrowed target ownership and null connector output using a synthetic connector-shaped interface (its GUID is not the WinUI IID). `EventRuntimeInfrastructureCommonTest` verifies existing token/handler ownership. Native execution and real WinUI loading remain separate integration gates.
 
 ## Authored XAML types
 
-`WinUiXamlTypeDefinition` and `WinUiXamlMemberDefinition` correspond to the
+`WinUIXamlTypeDefinition` and `WinUIXamlMemberDefinition` correspond to the
 `XamlUserType` activator and `XamlMember` getter/setter delegates emitted by
 XamlCompiler's `CSharpTypeInfoPass2.tt`. CsWinRT owns the underlying CCW/RCW
 identity and inspectable marshaling; Kotlin reuses those runtime responsibilities.
@@ -124,7 +125,7 @@ schema and are excluded from runtime member registration and component ABI expor
 schema is separate from authored component ABI export. The metadata writer
 owns Property/MethodSemantics encoding, following CsWinRT
 `WinRTTypeWriter.AddPropertyDefinition`. The initial XAML analysis consumes
-the scanner's application declaration WinMD. `@WinUiXamlContentProperty` maps
+the scanner's application declaration WinMD. `@WinUIXamlContentProperty` maps
 implicit child content to an explicitly typed property in both passes and in
 the generated runtime metadata.
 
@@ -152,7 +153,7 @@ Content properties can refer to inherited members. A definition's initializer
 initializes its own companion or object, and ordinary model classes receive
 bindable metadata without being registered as Windows Runtime components.
 
-`@WinUiXamlCreateFromString("Parse")` names a public companion/object factory
+`@WinUIXamlCreateFromString("Parse")` names a public companion/object factory
 accepting one String and returning the represented value. A fully qualified
 factory on another type is also supported. Both schema passes emit WinUI's
 `CreateFromStringAttribute.MethodName`, and the owning module compiles the typed

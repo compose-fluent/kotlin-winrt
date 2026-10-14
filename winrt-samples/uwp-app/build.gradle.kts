@@ -14,7 +14,7 @@ kotlin {
 
 windows {
     application {
-        applicationModel = WindowsApplicationModel.Uwp
+        applicationModel = WindowsApplicationModel.UWP
         windowsAppSdkDeployment = WindowsAppSdkDeployment.None
         mainClass = "io.github.composefluent.winrt.samples.uwp.MainKt"
         executableBaseName = "kotlin-winrt-uwp"

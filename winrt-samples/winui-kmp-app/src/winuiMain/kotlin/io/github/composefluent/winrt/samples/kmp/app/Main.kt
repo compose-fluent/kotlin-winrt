@@ -1,9 +1,9 @@
 package io.github.composefluent.winrt.samples.kmp.app
 
-import io.github.composefluent.winrt.samples.kmp.library.WinUiKmpLibrarySample
+import io.github.composefluent.winrt.samples.kmp.library.WinUIKmpLibrarySample
 
 fun main() {
     println("winui-kmp-app: starting")
-    WinUiKmpLibrarySample.start()
+    WinUIKmpLibrarySample.start()
     println("winui-kmp-app: finished")
 }

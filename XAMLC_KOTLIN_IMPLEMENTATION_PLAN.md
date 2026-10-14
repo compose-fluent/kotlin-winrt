@@ -137,7 +137,7 @@ class MainPage : Page() {
 | --- | --- |
 | Kotlin：`winrt-compiler-plugin/.../KotlinWinRTCompilerPlugin.kt` | `KotlinWinRTCompilerPluginRegistrar` 注册 `IrGenerationExtension`；当前主入口尚未注册 FIR 声明/父类型生成扩展。已有 authoring 元数据输出和 `lowerAuthoredTypeConstructors` 可复用。 |
 | Kotlin：`gradle/libs.versions.toml` | 研究时 Kotlin 版本为 `2.4.0`；插件实现必须以项目实际版本的 API 为准。 |
-| Kotlin：`winrt-runtime/.../WinUiAuthoredTypeMetadata.kt` | 仅提供代码创建控件的类型身份；`IsConstructible=false`，`ActivateInstance`/`CreateFromString` 返回 `E_NOTIMPL`，自定义成员尚未生成。 |
+| Kotlin：`winrt-runtime/.../WinUIAuthoredTypeMetadata.kt` | 仅提供代码创建控件的类型身份；`IsConstructible=false`，`ActivateInstance`/`CreateFromString` 返回 `E_NOTIMPL`，自定义成员尚未生成。 |
 | Kotlin：`winrt-runtime/.../XamlSystemProjectionRuntime.kt` | 已有 Application 的 metadata provider 接入、SDK provider 转发及 authored 类型查询。 |
 | Kotlin：`winrt-metadata/.../WinRTAuthoringMetadata.kt` | authored descriptor 描述类名、基类、接口、工厂，尚不包含完整 Kotlin 用户成员模型。 |
 | Kotlin：`winrt-metadata/.../WinRTPortableExecutableMetadataWriter.kt` | 已有真实 PE/WinMD 输出，不能另造重复写入器。 |

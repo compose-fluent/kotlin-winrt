@@ -17,11 +17,11 @@ class AuthoringMetadataIndexTest {
         val index = readAuthoringMetadataIndexRows(listOf("$winui\tRuntimeClass", "$uwp\tRuntimeClass"), "xaml")
         for (types in listOf(index, index.toMap())) {
             assertEquals(uwp, resolveIndexedWinRTTypeByProjectedName(
-                "microsoft.ui.xaml.data.PropertyChangedEventArgs", types, XamlFramework.Uwp)?.qualifiedName)
+                "microsoft.ui.xaml.data.PropertyChangedEventArgs", types, XamlFramework.UWP)?.qualifiedName)
             assertEquals(winui, resolveIndexedWinRTTypeByProjectedName(
-                "windows.ui.xaml.data.PropertyChangedEventArgs", types, XamlFramework.WinUi)?.qualifiedName)
+                "windows.ui.xaml.data.PropertyChangedEventArgs", types, XamlFramework.WinUI)?.qualifiedName)
             assertNull(resolveIndexedWinRTTypeByProjectedName(
-                "microsoft.ui.xaml.data.PropertyChangedEventArgs", types - uwp, XamlFramework.Uwp))
+                "microsoft.ui.xaml.data.PropertyChangedEventArgs", types - uwp, XamlFramework.UWP))
         }
     }
 

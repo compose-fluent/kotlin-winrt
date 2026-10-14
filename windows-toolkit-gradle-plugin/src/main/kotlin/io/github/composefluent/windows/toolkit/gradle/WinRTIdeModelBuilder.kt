@@ -61,7 +61,7 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             manifestFiles = windows?.application?.appxManifestFiles?.files.orEmpty()
                 .map { it.absoluteFile.normalize().path }.sorted(),
             xamlCompilations = if (windows == null) emptyList() else
-                project.tasks.withType(CompileWinUiXamlTask::class.java).filter { !it.semanticSymbols.isPresent }.map { task ->
+                project.tasks.withType(CompileWinUIXamlTask::class.java).filter { !it.semanticSymbols.isPresent }.map { task ->
                     IdeXamlCompilation(
                         task.name,
                         task.sourceRoots.files.map { it.absoluteFile.normalize().path }.sorted(),
@@ -92,7 +92,7 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                 hostRuns.firstOrNull { it.sdkPreview.get() }?.let { task ->
                     IdeStaticPreview(task.name, task.hostExecutable.get().asFile.absolutePath,
                         task.workingDirectory.get().asFile.absolutePath,
-                        project.tasks.named("buildWinRTXamlSdkPreview", BuildWinUiXamlSdkPreviewTask::class.java)
+                        project.tasks.named("buildWinRTXamlSdkPreview", BuildWinUIXamlSdkPreviewTask::class.java)
                             .get().metadataReferencesFile.get().asFile.absolutePath)
                 },
             runTasks = if (windows == null) emptyList() else (

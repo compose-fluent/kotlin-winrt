@@ -25,7 +25,7 @@ import kotlin.io.path.name
 abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
     init {
         emitXamlComponentResourceSources.convention(false)
-        xamlFramework.convention(XamlFramework.WinUi)
+        xamlFramework.convention(XamlFramework.WinUI)
     }
 
     @get:InputFiles
@@ -125,21 +125,21 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
                     lines.drop(1).any(String::isNotBlank)
             }
             if (hasXamlResourceRows) {
-                writeWinUiXamlComponentResourcesSource(outputRoot, sourceRows, xamlFramework.get())
+                writeWinUIXamlComponentResourcesSource(outputRoot, sourceRows, xamlFramework.get())
             } else {
                 Files.deleteIfExists(
-                    outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
+                    outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUIXamlComponentResources.kt"),
                 )
             }
         } else {
             Files.deleteIfExists(
-                outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
+                outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUIXamlComponentResources.kt"),
             )
         }
     }
 }
 
-private fun writeWinUiXamlComponentResourcesSource(
+private fun writeWinUIXamlComponentResourcesSource(
     outputRoot: Path,
     sourceRows: Map<CompilerSupportSourceKey, List<String>>,
     framework: XamlFramework,
@@ -156,7 +156,7 @@ private fun writeWinUiXamlComponentResourcesSource(
     if (runtimeClassNames.isEmpty()) {
         return
     }
-    val target = outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt")
+    val target = outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUIXamlComponentResources.kt")
         Files.createDirectories(target.parent)
         GradleFileOperations.writeStringIfChanged(
             target,
@@ -169,7 +169,7 @@ private fun writeWinUiXamlComponentResourcesSource(
                 appendLine("import io.github.composefluent.winrt.runtime.ActivationFactory")
                 appendLine("import ${framework.xamlKotlinTypeName("ResourceDictionary")}")
                 appendLine()
-                appendLine("public object WinUiXamlComponentResources {")
+                appendLine("public object WinUIXamlComponentResources {")
                 appendLine("    public fun installInto(mergedDictionaries: MutableList<ResourceDictionary>) {")
                 runtimeClassNames.forEach { runtimeClassName ->
                     append("        mergedDictionaries.add(ResourceDictionary.Metadata.wrap(ActivationFactory.activateInstance(")

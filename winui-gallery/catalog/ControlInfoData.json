@@ -3614,7 +3614,7 @@
         },
         {
           "UniqueId": "CreateMultipleWindows",
-          "Uwp": {
+          "UWP": {
             "ApiNamespace": "Windows.UI.WindowManagement",
             "Docs": [{ "Title": "UWP AppWindow", "Uri": "https://learn.microsoft.com/windows/uwp/ui-input/app-window" }]
           },
@@ -3753,7 +3753,7 @@
       "IconGlyph": "",
       "Items": [
         {
-          "UniqueId": "UwpActivation",
+          "UniqueId": "UWPActivation",
           "Title": "UWP activation",
           "Subtitle": "Protocol, file and in-process background activation.",
           "ImagePath": "ms-appx:///Assets/ControlImages/AppNotification.png",
@@ -3763,7 +3763,7 @@
         },
         {
           "UniqueId": "AppNotification",
-          "Uwp": {
+          "UWP": {
             "ApiNamespace": "Windows.UI.Notifications",
             "Docs": [{ "Title": "UWP app notifications", "Uri": "https://learn.microsoft.com/windows/uwp/develop/app-notifications-uwp" }]
           },
@@ -3800,7 +3800,7 @@
         },
         {
           "UniqueId": "BadgeNotificationManager",
-          "Uwp": {
+          "UWP": {
             "ApiNamespace": "Windows.UI.Notifications",
             "Docs": [{ "Title": "BadgeUpdateManager", "Uri": "https://learn.microsoft.com/uwp/api/windows.ui.notifications.badgeupdatemanager" }]
           },

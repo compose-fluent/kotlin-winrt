@@ -4,14 +4,14 @@ import windows.applicationmodel.Package
 import windows.storage.ApplicationData
 import windows.ui.xaml.Application
 
-private var application: UwpApplication? = null
+private var application: UWPApplication? = null
 
 fun main() {
     try {
         sampleLog("Starting ${checkNotNull(checkNotNull(Package.current).id).familyName}")
         Application.start {
             try {
-                application = UwpApplication()
+                application = UWPApplication()
             } catch (error: Throwable) {
                 reportStartupFailure(error)
                 throw error

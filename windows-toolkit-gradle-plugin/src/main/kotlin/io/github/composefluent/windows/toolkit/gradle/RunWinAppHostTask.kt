@@ -29,7 +29,7 @@ abstract class RunWinAppHostTask @Inject constructor(
         environmentVariables.convention(emptyMap())
         supportsXamlHotReload.convention(false)
         sdkPreview.convention(false)
-        designPreview.convention(project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
+        designPreview.convention(project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
     }
 
     @get:InputFile
@@ -86,7 +86,7 @@ abstract class RunWinAppHostTask @Inject constructor(
             spec.args(args.get())
             if (designPreview.get()) {
                 check(supportsXamlHotReload.get()) { "The XAML preview host requires a JVM WinUI development launch." }
-                spec.args(io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol.PREVIEW_ARGUMENT)
+                spec.args(io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
             }
             val configuredEnvironment = environmentVariables.get()
             spec.environment(configuredEnvironment)

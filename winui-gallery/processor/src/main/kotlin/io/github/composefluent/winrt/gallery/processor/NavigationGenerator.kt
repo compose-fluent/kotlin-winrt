@@ -61,7 +61,7 @@ internal fun generate(entries: List<Entry>, descriptions: JsonObject, xamlNamesp
             pages.filter { it.value("group") == group.route }.forEach { page ->
                 val sharedDetail = details.getValue(page.route)
                 val detail = if (xamlNamespace == "windows.ui.xaml") {
-                    JsonObject(sharedDetail + sharedDetail["Uwp"]?.jsonObject.orEmpty())
+                    JsonObject(sharedDetail + sharedDetail["UWP"]?.jsonObject.orEmpty())
                 } else sharedDetail
                 fun field(key: String) = detail[key]?.jsonPrimitive?.content.orEmpty()
                 val docs = detail["Docs"]?.jsonArray.orEmpty().joinToString(", ", "listOf(", ")") { doc ->

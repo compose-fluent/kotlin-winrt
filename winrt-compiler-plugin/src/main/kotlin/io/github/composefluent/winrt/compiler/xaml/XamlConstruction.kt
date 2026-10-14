@@ -22,7 +22,7 @@ internal class XamlConstruction : IrGenerationExtension {
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         val lifecycle = pluginContext.referenceClass(xamlComponentId) ?: return
         val initialize = pluginContext.referenceFunctions(CallableId(
-            xamlComponentId.packageFqName, Name.identifier("initializeWinUiXamlComponent"))).single()
+            xamlComponentId.packageFqName, Name.identifier("initializeWinUIXamlComponent"))).single()
         fun IrClass.isComponent(visited: MutableSet<IrClass> = mutableSetOf()): Boolean =
             this == lifecycle.owner || (visited.add(this) && superTypes.any {
                 it.classOrNull?.owner?.isComponent(visited) == true

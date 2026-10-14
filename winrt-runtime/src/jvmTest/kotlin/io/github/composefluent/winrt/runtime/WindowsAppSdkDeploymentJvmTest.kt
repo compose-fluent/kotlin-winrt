@@ -23,8 +23,8 @@ class WindowsAppSdkDeploymentJvmTest {
         try {
             val expected = WinAppHostConfiguration(
                 WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None,
-                kotlinx.io.files.Path(root.toString()), applicationModel = WinAppApplicationModel.Uwp,
-                xamlFramework = XamlFramework.Uwp,
+                kotlinx.io.files.Path(root.toString()), applicationModel = WinAppApplicationModel.UWP,
+                xamlFramework = XamlFramework.UWP,
             )
             Files.writeString(properties, expected.toStagedProperties())
             thread.contextClassLoader = object : ClassLoader(originalLoader) {
@@ -52,8 +52,8 @@ class WindowsAppSdkDeploymentJvmTest {
                 packageIdentity = WinAppPackageIdentity.Packaged,
                 windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.None,
                 runtimeAssetsRoot = rootPath,
-                applicationModel = WinAppApplicationModel.Uwp,
-                xamlFramework = XamlFramework.Uwp,
+                applicationModel = WinAppApplicationModel.UWP,
+                xamlFramework = XamlFramework.UWP,
             )
             Files.writeString(root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME), expected.toStagedProperties())
             assertEquals(expected, WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath))
@@ -61,7 +61,7 @@ class WindowsAppSdkDeploymentJvmTest {
                 "schemaVersion=1\npackageIdentity=Packaged\nwindowsAppSdkDeployment=None\n")
             val legacy = WinAppHostConfiguration.fromStagedRuntimeAssets(rootPath)
             assertEquals(WinAppApplicationModel.Desktop, legacy.applicationModel)
-            assertEquals(XamlFramework.WinUi, legacy.xamlFramework)
+            assertEquals(XamlFramework.WinUI, legacy.xamlFramework)
         } finally {
             Files.deleteIfExists(root.resolve(WinAppHostConfiguration.STAGED_CONFIGURATION_FILE_NAME))
             Files.delete(root)

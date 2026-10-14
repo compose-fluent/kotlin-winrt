@@ -514,7 +514,7 @@ data class KotlinTypeProjectionPlan(
     val moduleActivationAndAuthoringDescriptor: WinRTModuleActivationAndAuthoringDescriptor? = null,
     val projectedAttributes: List<WinRTProjectedAttributeDescriptor> = emptyList(),
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
-    val useWinUiXamlTypeRedirects: Boolean = false,
+    val useWinUIXamlTypeRedirects: Boolean = false,
 )
 
 data class KotlinProjectionInterfaceBinding(

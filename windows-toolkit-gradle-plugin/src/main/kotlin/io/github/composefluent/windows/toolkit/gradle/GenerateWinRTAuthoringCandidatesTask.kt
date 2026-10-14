@@ -72,7 +72,7 @@ abstract class GenerateWinRTAuthoringCandidatesTask @Inject constructor(
     abstract val outputFile: RegularFileProperty
 
     init {
-        xamlFramework.convention(XamlFramework.WinUi)
+        xamlFramework.convention(XamlFramework.WinUI)
         scannerJvmArgs.convention(emptyList())
         sourceRootOwners.convention(emptyMap())
     }

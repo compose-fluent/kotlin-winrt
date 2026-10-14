@@ -73,7 +73,7 @@ object WinAppHostScope {
             // Select by application model: a desktop XAML island may also use system XAML.
             val acquiredRuntime = when (configuration.applicationModel) {
                 WinAppApplicationModel.Desktop -> RuntimeScope.initializeSingleThreaded()
-                WinAppApplicationModel.Uwp -> RuntimeScope.initializeMultithreaded()
+                WinAppApplicationModel.UWP -> RuntimeScope.initializeMultithreaded()
             }
             runtime = acquiredRuntime
             val scope = Scope(

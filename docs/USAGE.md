@@ -16,8 +16,8 @@ are separate settings:
 
 | Application | `applicationModel` | `windows.xaml.framework` | Package and deployment |
 | --- | --- | --- | --- |
-| WinUI 3 | `Desktop` (default) | `WinUi` (default) | Packaged or unpackaged; Windows App SDK deployment selected independently |
-| UWP system XAML, including WinUI 2 controls | `Uwp` | `Uwp` (inferred from the application model) | `Packaged` and Windows App SDK deployment `None`; bundled JVM when targeting JVM |
+| WinUI 3 | `Desktop` (default) | `WinUI` (default) | Packaged or unpackaged; Windows App SDK deployment selected independently |
+| UWP system XAML, including WinUI 2 controls | `UWP` | `UWP` (inferred from the application model) | `Packaged` and Windows App SDK deployment `None`; bundled JVM when targeting JVM |
 
 WinUI 2's `Microsoft.UI.Xaml` namespace does not select WinUI 3: its controls extend
 `Windows.UI.Xaml`. XAML libraries must set their framework explicitly because they
@@ -161,7 +161,7 @@ windows {
 }
 ```
 
-Do not consume `winrt-projections-windows-ui-xaml` and `winrt-projections-windows-app-sdk` together. UWP applications and their projection modules also set `windows.xaml.framework` to `XamlFramework.Uwp`; selecting a projection dependency alone does not configure the application model or compiler backend. The App SDK artifact exposes WebView2 Core transitively; add `winrt-projections-windows-webview2` directly only when using the standalone WebView2 projection without the App SDK family.
+Do not consume `winrt-projections-windows-ui-xaml` and `winrt-projections-windows-app-sdk` together. UWP applications and their projection modules also set `windows.xaml.framework` to `XamlFramework.UWP`; selecting a projection dependency alone does not configure the application model or compiler backend. The App SDK artifact exposes WebView2 Core transitively; add `winrt-projections-windows-webview2` directly only when using the standalone WebView2 projection without the App SDK family.
 
 ```kotlin
 dependencies {
@@ -542,8 +542,8 @@ Useful focused sample runs:
 Run the WebView2 sample with an installed Evergreen WebView2 Runtime:
 
 ```powershell
-& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=false" :winrt-samples:runWinAppHostWinuiJvmMain
-& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUi=false" :winrt-samples:runReleaseExecutableMingwX64
+& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUI=false" :winrt-samples:runWinAppHostWinuiJvmMain
+& .\gradlew.bat "-Dkotlin.winrt.samples.runWebView2Sample=true" "-Dkotlin.winrt.samples.autoExitWinUI=false" :winrt-samples:runReleaseExecutableMingwX64
 ```
 
 The sample starts with embedded offline HTML and accepts HTTP or HTTPS addresses from its navigation bar. Both launch paths stage `WebView2Loader.dll` and the Windows App SDK payload through the normal application layout tasks, and keep WebView2 user data under `winrt-samples/build/kotlin-winrt/webview2-user-data` instead of the tracked application layout.

@@ -84,7 +84,7 @@ class WinRTTemplateGenerationTest : BasePlatformTestCase() {
         }
     }
 
-    fun testCreateWinUiApplicationWithDefaultResourcesAndBackdrop() {
+    fun testCreateWinUIApplicationWithDefaultResourcesAndBackdrop() {
         val checkout = Path.of(System.getProperty("winrt.ide.toolchain")).toRealPath()
         val root = Path.of(requireNotNull(System.getProperty("winrt.ide.templateOutput"))).resolve("winui-default").toAbsolutePath().normalize()
         require(root.startsWith(checkout.resolve(".gradle")) && !Files.exists(root))

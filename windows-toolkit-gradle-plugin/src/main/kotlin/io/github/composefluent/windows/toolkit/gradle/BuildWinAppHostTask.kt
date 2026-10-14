@@ -44,7 +44,7 @@ abstract class BuildWinAppHostTask : DefaultTask() {
 
     init {
         applicationModel.convention(WindowsApplicationModel.Desktop)
-        xamlFramework.convention(XamlFramework.WinUi)
+        xamlFramework.convention(XamlFramework.WinUI)
         packageType.convention(WindowsPackageType.Packaged.name)
         applicationVariant.convention("jvm:main")
         jvmRuntimeMode.convention(WinAppJvmRuntimeMode.Bundled.name)
@@ -352,7 +352,7 @@ abstract class BuildWinAppHostTask : DefaultTask() {
                 add("/ENTRY:wmainCRTStartup")
             }
             // CsWinRT's UWP stub sets this bit even though recent Windows can infer it from the manifest.
-            if (applicationModel.get() == WindowsApplicationModel.Uwp) add("/APPCONTAINER")
+            if (applicationModel.get() == WindowsApplicationModel.UWP) add("/APPCONTAINER")
             addAll(
                 listOf(
                     "/LIBPATH:${sdk.libRoot.resolve("um").resolve(architecture)}",
@@ -454,7 +454,7 @@ internal fun applicationHostSource(
         .replace("\"", "\\\"")
     val bundledRuntime = runtimeMode == WinAppJvmRuntimeMode.Bundled.name
     val bundledRuntimeCondition = if (bundledRuntime) "1" else "0"
-    val uwp = applicationModel == WindowsApplicationModel.Uwp
+    val uwp = applicationModel == WindowsApplicationModel.UWP
     val jvmLibraryLoader = if (uwp) """
     // UWP's package graph owns DLL search paths. StageWinAppPackageTask declares
     // LoaderSearchPathOverride for the bundled runtime; LoadPackagedLibrary takes
@@ -872,11 +872,11 @@ internal fun applicationHostSource(
             if (wcsncmp(wargv[i], prefix, prefix_length) == 0) {
                 const wchar_t *directory = wargv[i] + prefix_length;
                 if (enabled || directory[0] == L'\0' ||
-                    !SetEnvironmentVariableW(L"${io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol.SESSION_DIRECTORY}", directory)) {
+                    !SetEnvironmentVariableW(L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.SESSION_DIRECTORY}", directory)) {
                     return 1;
                 }
                 enabled = 1;
-            } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
+            } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
                 kotlin_winrt_preview_requested = 1;
             } else {
                 wargv[next++] = wargv[i];
@@ -911,7 +911,7 @@ internal fun applicationHostSource(
             return 1;
         }
         main_class = (*env)->FindClass(env, kotlin_winrt_preview_requested ?
-            "io/github/composefluent/winrt/generated/xaml/KotlinWinUiXamlPreviewHost" : "$mainClassPath");
+            "io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost" : "$mainClassPath");
         if (main_class == NULL) {
             exit_code = 1;
             kotlin_winrt_handle_pending_exception(env);

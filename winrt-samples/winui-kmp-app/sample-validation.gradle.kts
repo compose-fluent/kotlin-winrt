@@ -35,8 +35,8 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
         layout.buildDirectory.dir("kotlin-winrt/application-layout/winuiJvm_main/runtime-assets").get().asFile.absolutePath,
     )
     systemProperty(
-        "kotlin.winrt.samples.autoExitWinUi",
-        providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),
+        "kotlin.winrt.samples.autoExitWinUI",
+        providers.systemProperty("kotlin.winrt.samples.autoExitWinUI").orElse("true").get(),
     )
     providers.systemProperty("kotlin.winrt.samples.timerSmoke").orNull?.let { value ->
         systemProperty("kotlin.winrt.samples.timerSmoke", value)
@@ -56,7 +56,7 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
 }
 
 private val winuiKmpOptionProperties = listOf(
-    "kotlin.winrt.samples.autoExitWinUi",
+    "kotlin.winrt.samples.autoExitWinUI",
     "kotlin.winrt.samples.timerSmoke",
     "kotlin.winrt.samples.skipWindowContent",
     "kotlin.winrt.samples.skipCallbackSmoke",
@@ -66,10 +66,10 @@ private val winuiKmpOptionProperties = listOf(
 
 tasks.named<Exec>("runReleaseExecutableMingwX64") {
     environment(
-        "kotlin.winrt.samples.autoExitWinUi",
-        providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),
+        "kotlin.winrt.samples.autoExitWinUI",
+        providers.systemProperty("kotlin.winrt.samples.autoExitWinUI").orElse("true").get(),
     )
-    winuiKmpOptionProperties.filterNot { it == "kotlin.winrt.samples.autoExitWinUi" }.forEach { name ->
+    winuiKmpOptionProperties.filterNot { it == "kotlin.winrt.samples.autoExitWinUI" }.forEach { name ->
         providers.systemProperty(name).orNull?.let { value ->
             environment(name, value)
         }
@@ -122,10 +122,10 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
             "compiler-authored candidate table",
         ).readText()
         listOf(
-            "WinUiKmpLibraryApp\tio.github.composefluent.winrt.samples.kmp.library.WinUiKmpLibraryApp\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides",
-            "WinUiKmpLocalContentControl\tio.github.composefluent.winrt.samples.kmp.library.WinUiKmpLocalContentControl\tMicrosoft.UI.Xaml.Controls.ContentControl",
-            "WinUiKmpLocalPanel\tio.github.composefluent.winrt.samples.kmp.library.WinUiKmpLocalPanel\tMicrosoft.UI.Xaml.Controls.Panel",
-            "WinUiKmpLocalAutomationPeer\tio.github.composefluent.winrt.samples.kmp.library.WinUiKmpLocalAutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.AutomationPeer",
+            "WinUIKmpLibraryApp\tio.github.composefluent.winrt.samples.kmp.library.WinUIKmpLibraryApp\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides",
+            "WinUIKmpLocalContentControl\tio.github.composefluent.winrt.samples.kmp.library.WinUIKmpLocalContentControl\tMicrosoft.UI.Xaml.Controls.ContentControl",
+            "WinUIKmpLocalPanel\tio.github.composefluent.winrt.samples.kmp.library.WinUIKmpLocalPanel\tMicrosoft.UI.Xaml.Controls.Panel",
+            "WinUIKmpLocalAutomationPeer\tio.github.composefluent.winrt.samples.kmp.library.WinUIKmpLocalAutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.AutomationPeer",
         ).forEach { expected ->
             check(candidates.contains(expected)) {
                 "Expected native authored candidate row containing '$expected':\n$candidates"
@@ -145,10 +145,10 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
             nativeAuthoringRoot.get().file("kotlin-winrt-authoring/authored-metadata.tsv").asFile,
             "compiler-authored metadata descriptor",
         ).readText()
-        check(metadata.contains("WinUiKmpLibraryApp\tMicrosoft.UI.Xaml.Application")) {
+        check(metadata.contains("WinUIKmpLibraryApp\tMicrosoft.UI.Xaml.Application")) {
             "Expected public WinUI Application authored metadata row: $metadata"
         }
-        check(!metadata.contains("WinUiKmpLocalPanel\t")) {
+        check(!metadata.contains("WinUIKmpLocalPanel\t")) {
             "Internal composable helper types must stay TypeDetails-only and not become exported activatable metadata: $metadata"
         }
 
@@ -159,10 +159,10 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
         check(hostManifest.contains("\"targetArtifact\": \"winui_kmp_library.dll\"")) {
             "Expected native host manifest to target the mingw shared library: $hostManifest"
         }
-        check(hostManifest.contains("WinUiKmpLibraryApp")) {
+        check(hostManifest.contains("WinUIKmpLibraryApp")) {
             "Expected native host manifest to expose the public WinUI application runtime class: $hostManifest"
         }
-        check(!hostManifest.contains("WinUiKmpLocalPanel")) {
+        check(!hostManifest.contains("WinUIKmpLocalPanel")) {
             "Internal composable helper types must not be exported as activatable classes: $hostManifest"
         }
 
@@ -170,7 +170,7 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
         val typeDetailsRoot = generatedTypeDetailsRoot.get().asFile
         val panelTypeDetails = requireFile(
             typeDetailsRoot.resolve(
-                "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUiKmpLocalPanel_TypeDetails.kt",
+                "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUIKmpLocalPanel_TypeDetails.kt",
             ),
             "generated local Panel TypeDetails",
         ).readText()
@@ -182,7 +182,7 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
         }
         val gridHostTypeDetails = requireFile(
             typeDetailsRoot.resolve(
-                "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUiKmpLocalGridHostPanel_TypeDetails.kt",
+                "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUIKmpLocalGridHostPanel_TypeDetails.kt",
             ),
             "generated local Grid host TypeDetails",
         ).readText()
@@ -197,7 +197,7 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
         }
         val automationPeerTypeDetails = requireFile(
             typeDetailsRoot.resolve(
-                "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUiKmpLocalAutomationPeer_TypeDetails.kt",
+                "io/github/composefluent/winrt/samples/kmp/library/WinRT_WinUIKmpLocalAutomationPeer_TypeDetails.kt",
             ),
             "generated local AutomationPeer TypeDetails",
         ).readText()

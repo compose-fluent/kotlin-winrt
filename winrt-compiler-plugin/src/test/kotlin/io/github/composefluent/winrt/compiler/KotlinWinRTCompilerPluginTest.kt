@@ -888,7 +888,7 @@ class KotlinWinRTCompilerPluginTest {
                 ),
                 KotlinWinRTCompilerSupportManifestEntry(
                     kind = "xaml-component-resource",
-                    className = "io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources",
+                    className = "io.github.composefluent.winrt.projections.support.WinUIXamlComponentResources",
                     sourceFile = "xaml-component-resources.tsv",
                     entries = 5,
                 ),

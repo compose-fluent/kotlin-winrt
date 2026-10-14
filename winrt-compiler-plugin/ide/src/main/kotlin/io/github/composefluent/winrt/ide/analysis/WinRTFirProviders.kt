@@ -49,7 +49,7 @@ class WinRTFirConfigurationProvider : KotlinFirCompilerPluginConfigurationForIde
         val path = registrar.javaClass.getMethod("declarationsPath", CompilerConfiguration::class.java)
             .invoke(registrar, original) as? String ?: return configuration
         val text = ProjectManager.getInstance().openProjects.asSequence()
-            .mapNotNull { it.service<WinUiXamlSnapshotService>().currentText(path) }.firstOrNull() ?: return configuration
+            .mapNotNull { it.service<WinUIXamlSnapshotService>().currentText(path) }.firstOrNull() ?: return configuration
         registrar.javaClass.getMethod("overrideDeclarations", CompilerConfiguration::class.java, String::class.java)
             .invoke(registrar, configuration, text)
         return configuration

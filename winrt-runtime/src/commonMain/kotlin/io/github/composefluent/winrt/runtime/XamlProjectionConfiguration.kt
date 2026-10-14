@@ -19,7 +19,7 @@ internal object XamlProjectionConfiguration {
         }
 
     fun initialize(framework: XamlFramework) {
-        val requested = if (framework == XamlFramework.Uwp) 2 else 1
+        val requested = if (framework == XamlFramework.UWP) 2 else 1
         selectedFramework.compareAndSet(0, requested)
         check(selectedFramework.load() == requested) {
             "XAML is already initialized for ${this.framework}; select $framework before using projections."
@@ -30,12 +30,12 @@ internal object XamlProjectionConfiguration {
         selectedFramework.store(0)
     }
 
-    private fun decode(value: Int): XamlFramework = if (value == 2) XamlFramework.Uwp else XamlFramework.WinUi
+    private fun decode(value: Int): XamlFramework = if (value == 2) XamlFramework.UWP else XamlFramework.WinUI
 
     val useWindowsUiXamlProjections: Boolean
-        get() = framework == XamlFramework.Uwp
+        get() = framework == XamlFramework.UWP
 
-    val supportsWinUiOnlyTypes: Boolean
+    val supportsWinUIOnlyTypes: Boolean
         get() = !useWindowsUiXamlProjections
 
     fun <T> select(
@@ -44,15 +44,15 @@ internal object XamlProjectionConfiguration {
     ): T = if (useWindowsUiXamlProjections) wuxValue else muxValue
 
     val abi: XamlAbiContract
-        get() = select(winUiAbi, uwpAbi)
+        get() = select(winUIAbi, uwpAbi)
 
-    private val winUiAbi by lazy {
+    private val winUIAbi by lazy {
         XamlAbiContract(
-            WinUiXamlInterfaceIds.IXamlMetadataProvider,
-            WinUiXamlInterfaceIds.IXamlType,
-            WinUiXamlInterfaceIds.IXamlMember,
-            WinUiXamlInterfaceIds.IApplicationOverrides,
-            WinUiXamlMetadataProviderInfo.runtimeClassName,
+            WinUIXamlInterfaceIds.IXamlMetadataProvider,
+            WinUIXamlInterfaceIds.IXamlType,
+            WinUIXamlInterfaceIds.IXamlMember,
+            WinUIXamlInterfaceIds.IApplicationOverrides,
+            WinUIXamlMetadataProviderInfo.runtimeClassName,
         )
     }
 
@@ -70,7 +70,7 @@ internal object XamlProjectionConfiguration {
         )
     }
 
-    fun winUiOnlyTypeError(typeName: String): WinRTUnsupportedOperationException =
+    fun winUIOnlyTypeError(typeName: String): WinRTUnsupportedOperationException =
         WinRTUnsupportedOperationException(
             message =
                 "The '$typeName' type is only supported for WinUI, and not when using System XAML projections " +

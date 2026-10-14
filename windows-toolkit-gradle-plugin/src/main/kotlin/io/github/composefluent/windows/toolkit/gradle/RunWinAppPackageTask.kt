@@ -1,6 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
-import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
@@ -134,12 +134,12 @@ abstract class RunWinAppPackageTask @Inject constructor(
         winAppCliVersion.convention(WinAppCliDefaults.VERSION)
         winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
         offline.convention(false)
-        developmentSessionDirectory.convention(project.providers.environmentVariable(WinUiXamlHotReloadProtocol.SESSION_DIRECTORY))
+        developmentSessionDirectory.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY))
         supportsXamlHotReload.convention(false)
         supportsDevelopmentRun.convention(packageType.zip(selfContained) { type, bundled ->
             type == WindowsPackageType.Packaged.name && !bundled
         })
-        designPreview.convention(project.providers.environmentVariable(WinUiXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
+        designPreview.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
         previewHostExecutable.convention(hostExecutable)
         outputs.upToDateWhen { false }
     }
@@ -203,7 +203,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         if (errors.isNotEmpty()) {
             throw GradleException("Cannot run packaged application from $input:\n${errors.joinToString("\n")}")
         }
-        if (applicationModel.get() == WindowsApplicationModel.Uwp) {
+        if (applicationModel.get() == WindowsApplicationModel.UWP) {
             require(!designPreview.get()) { "The WinUI designer is not a UWP AppContainer launch mode." }
             require(!debugOutput.get()) { "UWP launch does not capture WinApp CLI debug output; attach a native debugger to the reported PID." }
             val restoredRoots = dependencyLockFiles.files.filter(java.io.File::isFile).let { lockFiles ->
@@ -273,7 +273,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         ).resolve()
         val applicationArguments = winAppDevelopmentArguments(if (designPreview.get()) {
             check(supportsXamlHotReload.get()) { "The XAML preview host requires a JVM WinUI development launch." }
-            WinUiXamlHotReloadProtocol.PREVIEW_ARGUMENT
+            WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT
         } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
         val arguments = buildList {
@@ -295,7 +295,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         execOperations.exec { spec ->
             spec.commandLine(winAppCliCommandLine(cli.command, arguments))
             spec.workingDir = winAppWorkspace.get().asFile
-            spec.environment.remove(WinUiXamlHotReloadProtocol.SESSION_DIRECTORY)
+            spec.environment.remove(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY)
         }
     }
 }

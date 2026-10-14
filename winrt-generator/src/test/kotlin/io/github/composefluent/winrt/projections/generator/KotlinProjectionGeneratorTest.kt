@@ -1385,7 +1385,7 @@ class KotlinProjectionGeneratorTest {
             compositionTarget.qualifiedName to compositionTarget,
         )
 
-        val binding = KotlinProjectionPlanner(useWinUiXamlTypeRedirects = true).classifyAbiTypeBinding(
+        val binding = KotlinProjectionPlanner(useWinUIXamlTypeRedirects = true).classifyAbiTypeBinding(
             typeName = "Windows.UI.Composition.CompositionTarget",
             currentNamespace = "Windows.UI.Composition",
             typesByQualifiedName = typesByQualifiedName,
@@ -10194,8 +10194,8 @@ class KotlinProjectionGeneratorTest {
         val application = filesByName.getValue("Application.kt").contents
         val applicationOverrides = filesByName.getValue("IApplicationOverrides.kt").contents
 
-        assertFalse(application, application.contains("WinRTWinUiResourceManagerBootstrap"))
-        assertFalse(application, application.contains("_winUiResourceManagerRegistration"))
+        assertFalse(application, application.contains("WinRTWinUIResourceManagerBootstrap"))
+        assertFalse(application, application.contains("_winUIResourceManagerRegistration"))
         assertTrue(application, application.contains("protected constructor(_inner: IInspectableReference, __winrtWrapper: Unit)"))
         assertTrue(applicationOverrides, applicationOverrides.contains("public interface IApplicationOverrides"))
         assertFalse(applicationOverrides, applicationOverrides.contains("internal interface IApplicationOverrides"))
@@ -10204,7 +10204,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(constructor, constructor.contains("WinRTAuthoringSupportIntrinsic.ensureInitialized()"))
         val start = application.substringAfter("public fun start(").substringBefore("override fun")
         assertFalse(start, start.contains("WinRTAuthoringSupportIntrinsic.ensureInitialized()"))
-        assertFalse(start, start.contains("WinUiXamlProjectionSupportIntrinsic"))
+        assertFalse(start, start.contains("WinUIXamlProjectionSupportIntrinsic"))
         assertTrue(start, start.projectionCallSiteCount() > 0)
         assertTrue(start, start.contains("val __winrtCallSiteArgument2:"))
         val callSiteSupport = filesByName.getValue("WinRTModulePlatformAbiCall.kt").contents
@@ -10212,7 +10212,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(start, start.contains("createReference().use"))
         assertTrue(application, application.contains("override fun exit()"))
         val exit = application.substringAfter("override fun exit()").substringBefore("override fun")
-        assertFalse(exit, exit.contains("WinUiXamlProjectionSupportIntrinsic"))
+        assertFalse(exit, exit.contains("WinUIXamlProjectionSupportIntrinsic"))
         assertTrue(exit, exit.projectionCallSiteCount() > 0)
         assertTrue(exit, exit.contains("val __winrtCallSiteResult: Unit"))
     }

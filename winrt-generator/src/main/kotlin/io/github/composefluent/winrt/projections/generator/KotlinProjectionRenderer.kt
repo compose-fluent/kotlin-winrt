@@ -118,7 +118,7 @@ class KotlinProjectionRenderer(
     internal val useInterfaceProjectionArtifacts: Boolean = false,
     internal val suppressProjectedMemberSlotConstants: Boolean = false,
     internal val projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int> = emptyMap(),
-    internal val useWinUiXamlTypeRedirects: Boolean = false,
+    internal val useWinUIXamlTypeRedirects: Boolean = false,
     internal val useKotlinDurationAlias: Boolean = false,
     internal val modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport? = null,
     internal val supportOwnerIdentity: String? = null,
@@ -140,7 +140,7 @@ class KotlinProjectionRenderer(
         useInterfaceProjectionArtifacts = useInterfaceProjectionArtifacts,
         suppressProjectedMemberSlotConstants = suppressProjectedMemberSlotConstants,
         projectedSlotLiterals = projectedSlotLiterals,
-        useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects,
+        useWinUIXamlTypeRedirects = useWinUIXamlTypeRedirects,
         useKotlinDurationAlias = useKotlinDurationAlias,
         modulePlatformAbiCalls = calls,
         supportOwnerIdentity = ownerIdentity,
@@ -1424,7 +1424,7 @@ class KotlinProjectionRenderer(
         currentNamespace: String? = null,
     ): KotlinProjectionAbiTypeBinding =
         KotlinProjectionPlanner(
-            useWinUiXamlTypeRedirects = useWinUiXamlTypeRedirects,
+            useWinUIXamlTypeRedirects = useWinUIXamlTypeRedirects,
             guidSignatureHelpers = guidSignatureHelpers,
         ).classifyAbiTypeBinding(
             typeName = redirectedAbiTypeExpression(typeName),

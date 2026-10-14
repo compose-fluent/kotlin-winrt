@@ -180,11 +180,11 @@ abstract class WindowsExtension @Inject constructor(
 
     /** The forked compiler package; local overrides use the same versioned protocol. */
     @get:Nested
-    val xaml: WinUiXamlConfiguration = objects.newInstance(WinUiXamlConfiguration::class.java).apply {
+    val xaml: WinUIXamlConfiguration = objects.newInstance(WinUIXamlConfiguration::class.java).apply {
         framework.convention(project.provider {
-            if (application.applicationModel.get() == WindowsApplicationModel.Uwp)
-                io.github.composefluent.winrt.runtime.XamlFramework.Uwp
-            else io.github.composefluent.winrt.runtime.XamlFramework.WinUi
+            if (application.applicationModel.get() == WindowsApplicationModel.UWP)
+                io.github.composefluent.winrt.runtime.XamlFramework.UWP
+            else io.github.composefluent.winrt.runtime.XamlFramework.WinUI
         })
         val projectDirectory = project.layout.projectDirectory
         compilerDirectory.convention(project.providers.gradleProperty("kotlinWinRT.xaml.compilerDirectory").map { projectDirectory.dir(it) })
@@ -192,20 +192,20 @@ abstract class WindowsExtension @Inject constructor(
         // Each framework has its own archive and checksum. Explicit versions must
         // provide a matching checksum instead of inheriting a different release's pin.
         compilerVersion.convention(project.providers.gradleProperty("kotlinWinRT.xaml.version").orElse(
-            framework.map { if (it == XamlFramework.WinUi) DEFAULT_WINUI_XAML_COMPILER_VERSION else DEFAULT_UWP_XAML_COMPILER_VERSION },
+            framework.map { if (it == XamlFramework.WinUI) DEFAULT_WINUI_XAML_COMPILER_VERSION else DEFAULT_UWP_XAML_COMPILER_VERSION },
         ))
         archiveSha256.convention(project.providers.gradleProperty("kotlinWinRT.xaml.sha256").orElse(
             framework.zip(compilerVersion) { selected, version ->
                 when {
-                    selected == XamlFramework.WinUi && version == DEFAULT_WINUI_XAML_COMPILER_VERSION -> DEFAULT_WINUI_XAML_COMPILER_SHA256
-                    selected == XamlFramework.Uwp && version == DEFAULT_UWP_XAML_COMPILER_VERSION -> DEFAULT_UWP_XAML_COMPILER_SHA256
+                    selected == XamlFramework.WinUI && version == DEFAULT_WINUI_XAML_COMPILER_VERSION -> DEFAULT_WINUI_XAML_COMPILER_SHA256
+                    selected == XamlFramework.UWP && version == DEFAULT_UWP_XAML_COMPILER_VERSION -> DEFAULT_UWP_XAML_COMPILER_SHA256
                     else -> ""
                 }
             },
         ))
         archiveUrl.convention(compilerVersion.zip(framework) { version, selected ->
             if (version.isBlank()) "" else {
-                val frameworkSuffix = if (selected == XamlFramework.Uwp) "-uwp" else ""
+                val frameworkSuffix = if (selected == XamlFramework.UWP) "-uwp" else ""
                 "https://github.com/compose-fluent/microsoft-ui-xaml/releases/download/kotlin-xamlc-v$version/" +
                     "kotlin-xamlc-$version$frameworkSuffix-win-x64.zip"
             }
@@ -214,7 +214,7 @@ abstract class WindowsExtension @Inject constructor(
             .map(String::toBoolean).orElse(true))
     }
 
-    fun xaml(action: Action<in WinUiXamlConfiguration>) = action.execute(xaml)
+    fun xaml(action: Action<in WinUIXamlConfiguration>) = action.execute(xaml)
     /** Stable namespace owned by this module's generated AppX resource accessor. */
     val appxResourcePackageName: Property<String> = objects.property(String::class.java).convention(
         defaultAppxResourcePackageName(project.name),
@@ -261,7 +261,7 @@ abstract class WindowsExtension @Inject constructor(
     internal val runtimeAssets get() = application.runtimeAssets
 }
 
-abstract class WinUiXamlConfiguration @Inject constructor(objects: ObjectFactory) {
+abstract class WinUIXamlConfiguration @Inject constructor(objects: ObjectFactory) {
     /** Overrides source discovery, e.g. when a task generates XAML after configuration. */
     val enabled: Property<Boolean> = objects.property(Boolean::class.java)
     /** UI framework used by the XAML schema and compiler; independent of AppX packaging. */

@@ -236,30 +236,30 @@ val verifyWinRTSampleMode by tasks.registering(VerifyWinRTSampleModeTask::class)
 val sampleJvmOptionProperties = listOf(
     "kotlin.winrt.samples.runNativeSmoke",
     "kotlin.winrt.samples.runComponentSmoke",
-    "kotlin.winrt.samples.runWinUiSmoke",
+    "kotlin.winrt.samples.runWinUISmoke",
     "kotlin.winrt.samples.runWebView2Sample",
-    "kotlin.winrt.samples.autoNavigateWinUi",
+    "kotlin.winrt.samples.autoNavigateWinUI",
     "kotlin.winrt.samples.autoShowMenuFlyout",
-    "kotlin.winrt.samples.autoExitWinUi",
-    "kotlin.winrt.samples.minimalWinUiSurface",
+    "kotlin.winrt.samples.autoExitWinUI",
+    "kotlin.winrt.samples.minimalWinUISurface",
     "kotlin.winrt.samples.skipObjectContent",
     "kotlin.winrt.samples.skipSettingsCard",
     "kotlin.winrt.samples.skipShimmer",
     "kotlin.winrt.samples.enableShimmerLoading",
     "kotlin.winrt.samples.skipShimmerSizing",
     "kotlin.winrt.samples.skipMica",
-    "kotlin.winrt.samples.noWinUiContent",
+    "kotlin.winrt.samples.noWinUIContent",
     "kotlin.winrt.samples.skipXamlResources",
-    "kotlin.winrt.samples.skipWinUiResourceManager",
+    "kotlin.winrt.samples.skipWinUIResourceManager",
     "KOTLIN_WINRT_TRACE_CCW",
 )
 
 val standardSampleSmokeDefaults = mapOf(
     "kotlin.winrt.samples.runNativeSmoke" to "true",
     "kotlin.winrt.samples.runComponentSmoke" to "true",
-    "kotlin.winrt.samples.runWinUiSmoke" to "true",
+    "kotlin.winrt.samples.runWinUISmoke" to "true",
     "kotlin.winrt.samples.autoShowMenuFlyout" to "true",
-    "kotlin.winrt.samples.autoExitWinUi" to "true",
+    "kotlin.winrt.samples.autoExitWinUI" to "true",
 )
 
 val webView2UserDataRoot = layout.buildDirectory.dir("kotlin-winrt/webview2-user-data")

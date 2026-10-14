@@ -76,7 +76,7 @@ class WinRTIdeModelBuilderTest {
         windows.packageReferences.nugetPackage("Microsoft.WindowsAppSDK", "2.2.0")
         windows.packageReferences.nugetPackage("Sample.ProjectDependency", "1.0.0")
         windows.application.appxManifest("src/desktopMain/appxResources/AppxManifest.xml")
-        project.tasks.register("analyzeWinRTXamlFixture", CompileWinUiXamlTask::class.java) { task ->
+        project.tasks.register("analyzeWinRTXamlFixture", CompileWinUIXamlTask::class.java) { task ->
             task.sourceRoots.from(project.file("src/desktopMain/kotlin"))
             task.outputDirectory.set(project.layout.buildDirectory.dir("ide-fixture/declarations"))
             task.compilerDirectory.set(project.layout.projectDirectory.dir("tools/xamlc"))
@@ -95,7 +95,7 @@ class WinRTIdeModelBuilderTest {
         assertEquals(listOf("Microsoft.WindowsAppSDK", "Sample.ProjectDependency"), model.nuGetPackages.map { it.id })
         assertEquals("2.2.0", model.nuGetPackages.first().version)
         assertEquals("runWinRTXamlSdkPreview", model.staticPreview!!.taskName)
-        assertTrue(model.staticPreview!!.executable.endsWith("KotlinWinUiXamlPreview.exe"))
+        assertTrue(model.staticPreview!!.executable.endsWith("KotlinWinUIXamlPreview.exe"))
         assertFalse("The SDK designer must not become a user application run configuration",
             model.hotReloadLaunches.any { it.taskName == model.staticPreview!!.taskName })
         val sdk = project.tasks.named("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java).get()

@@ -27,30 +27,30 @@
         <xml.schemaProvider implementation="io.github.composefluent.winrt.ide.resources.AppxManifestSchemaProvider"/>
         <newProjectWizard.generator implementation="io.github.composefluent.winrt.ide.templates.WinRTProjectWizard"/>
         <fileType name="WinRT XAML" language="XML" extensions="xaml"
-                  implementationClass="io.github.composefluent.winrt.ide.xaml.WinUiXamlFileType" fieldName="INSTANCE"/>
-        <xml.elementDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlDescriptorProvider"/>
-        <xml.implicitNamespaceDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlNamespaceProvider"/>
-        <xml.schemaProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlSchemaProvider"/>
-        <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUiXamlCompletionContributor"/>
-        <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlReferenceContributor"/>
-        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUiXamlEventAnnotator"/>
-        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUiXamlBindingAnnotator"/>
-        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUiXamlMarkupAnnotator"/>
-        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUiXamlAttributeAnnotator"/>
-        <colorSettingsPage implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlColorSettingsPage"/>
+                  implementationClass="io.github.composefluent.winrt.ide.xaml.WinUIXamlFileType" fieldName="INSTANCE"/>
+        <xml.elementDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlDescriptorProvider"/>
+        <xml.implicitNamespaceDescriptorProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlNamespaceProvider"/>
+        <xml.schemaProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlSchemaProvider"/>
+        <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUIXamlCompletionContributor"/>
+        <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlReferenceContributor"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUIXamlEventAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUIXamlBindingAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUIXamlMarkupAnnotator"/>
+        <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUIXamlAttributeAnnotator"/>
+        <colorSettingsPage implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlColorSettingsPage"/>
         <psi.referenceContributor language="XML" implementation="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceContributor"/>
         <annotator language="XML" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceReferenceAnnotator"/>
         <completion.contributor language="XML" order="first" implementationClass="io.github.composefluent.winrt.ide.resources.WinRTResourceCompletion"/>
-        <codeInsight.lineMarkerProvider language="kotlin" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUiXamlRelatedMarker"/>
-        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlGeneratedNavigation"/>
-        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlAttributeNavigation"/>
-        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlNameReferencesSearch"/>
-        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlKotlinReferencesSearch"/>
-        <implicitUsageProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlImplicitUsageProvider"/>
-        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlNameRenameProcessor"/>
-        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlClassRenameProcessor" order="last"/>
-        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlKotlinRenameProcessor" order="last"/>
-        <renameHandler implementation="io.github.composefluent.winrt.ide.xaml.WinUiXamlNameRenameHandler" order="first"/>
+        <codeInsight.lineMarkerProvider language="kotlin" implementationClass="io.github.composefluent.winrt.ide.xaml.WinUIXamlRelatedMarker"/>
+        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlGeneratedNavigation"/>
+        <gotoDeclarationHandler implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlAttributeNavigation"/>
+        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlNameReferencesSearch"/>
+        <referencesSearch implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlKotlinReferencesSearch"/>
+        <implicitUsageProvider implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlImplicitUsageProvider"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlNameRenameProcessor"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlClassRenameProcessor" order="last"/>
+        <renamePsiElementProcessor implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlKotlinRenameProcessor" order="last"/>
+        <renameHandler implementation="io.github.composefluent.winrt.ide.xaml.WinUIXamlNameRenameHandler" order="first"/>
         <toolWindow id="Kotlin WinRT" anchor="right"
                     factoryClass="io.github.composefluent.winrt.ide.ui.WinRTToolWindowFactory"/>
         <externalProjectDataService implementation="io.github.composefluent.winrt.ide.gradle.WinRTProjectDataService"/>
@@ -68,15 +68,15 @@
                   topic="com.intellij.execution.ExecutionListener"/>
     </projectListeners>
     <actions>
-        <action id="KotlinWinRT.NewXamlPage" class="io.github.composefluent.winrt.ide.templates.WinUiNewXamlPageAction"
+        <action id="KotlinWinRT.NewXamlPage" class="io.github.composefluent.winrt.ide.templates.WinUINewXamlPageAction"
                 text="XAML Page" description="Create a Kotlin WinRT Page with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">
             <add-to-group group-id="NewGroup" anchor="last"/>
         </action>
-        <action id="KotlinWinRT.NewXamlUserControl" class="io.github.composefluent.winrt.ide.templates.WinUiNewXamlUserControlAction"
+        <action id="KotlinWinRT.NewXamlUserControl" class="io.github.composefluent.winrt.ide.templates.WinUINewXamlUserControlAction"
                 text="XAML UserControl" description="Create a Kotlin WinRT UserControl with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">
             <add-to-group group-id="NewGroup" anchor="last"/>
         </action>
-        <action id="KotlinWinRT.NewXamlResources" class="io.github.composefluent.winrt.ide.templates.WinUiNewXamlResourcesAction"
+        <action id="KotlinWinRT.NewXamlResources" class="io.github.composefluent.winrt.ide.templates.WinUINewXamlResourcesAction"
                 text="XAML ResourceDictionary" description="Create a XAML resource dictionary" icon="AllIcons.FileTypes.Xml">
             <add-to-group group-id="NewGroup" anchor="last"/>
         </action>

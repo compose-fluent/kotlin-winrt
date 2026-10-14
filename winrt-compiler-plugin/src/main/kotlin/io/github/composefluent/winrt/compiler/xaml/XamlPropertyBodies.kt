@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.compiler.xaml
 
-import io.github.composefluent.winrt.metadata.WinUiXamlPageDeclaration
-import io.github.composefluent.winrt.metadata.WinUiXamlPropertyDeclaration
+import io.github.composefluent.winrt.metadata.WinUIXamlPageDeclaration
+import io.github.composefluent.winrt.metadata.WinUIXamlPropertyDeclaration
 import io.github.composefluent.winrt.metadata.xamlTypeName
 import io.github.composefluent.winrt.runtime.XamlFramework
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
@@ -20,8 +20,8 @@ import org.jetbrains.kotlin.name.*
 
 /** Ordinary x:Property fields and per-property events mirror CSharpPagePass1/2.tt. */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
-internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, private val classes: Map<String?, IrClass>, private val framework: XamlFramework = XamlFramework.WinUi) {
-    fun generate(klass: IrClass, page: WinUiXamlPageDeclaration, properties: Map<String, IrProperty>) {
+internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, private val classes: Map<String?, IrClass>, private val framework: XamlFramework = XamlFramework.WinUI) {
+    fun generate(klass: IrClass, page: WinUIXamlPageDeclaration, properties: Map<String, IrProperty>) {
         val eventClass = requireNotNull(pluginContext.referenceClass(xamlPropertyEventId)).owner
         for (declaration in page.properties) {
             val property = properties.getValue(declaration.name)
@@ -79,7 +79,7 @@ internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, pr
     }
 
     /** Called inside the guarded LoadComponent operation, after type registration. */
-    fun defaults(builder: IrBuilderWithScope, page: WinUiXamlPageDeclaration, properties: Map<String, IrProperty>,
+    fun defaults(builder: IrBuilderWithScope, page: WinUIXamlPageDeclaration, properties: Map<String, IrProperty>,
         receiver: () -> IrExpression): List<IrExpression> = with(builder) {
         page.properties.mapNotNull { declaration ->
             val field = requireNotNull(properties.getValue(declaration.name).backingField)
@@ -100,7 +100,7 @@ internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, pr
                     // Reuse the scanner-generated literal conversion bridge,
                     // including mapped scalar and SDK CreateFromString handling.
                     val convert = pluginContext.referenceFunctions(CallableId(FqName("io.github.composefluent.winrt.generated.xaml"),
-                        Name.identifier("kotlinWinUiXamlMemberValue"))).single()
+                        Name.identifier("kotlinWinUIXamlMemberValue"))).single()
                     irCall(convert).apply {
                         type = field.type; typeArguments[0] = field.type
                         arguments[0] = irString(requireNotNull(declaration.defaultValue))
@@ -118,13 +118,13 @@ internal class XamlPropertyBodies(private val pluginContext: IrPluginContext, pr
         val klass = requireNotNull(type.classOrNull).owner
         if (klass.kind == org.jetbrains.kotlin.descriptors.ClassKind.ENUM_CLASS &&
             classes[klass.fqNameWhenAvailable?.asString()] === klass) {
-            // registerWinUiXamlEnumType maps application enum ordinals to Int32.
+            // registerWinUIXamlEnumType maps application enum ordinals to Int32.
             // Its ordinal zero is available before the page's load-time registrars.
             return@with IrGetEnumValueImpl(startOffset, endOffset, type,
                 klass.declarations.filterIsInstance<IrEnumEntry>().first().symbol)
         }
         val default = pluginContext.referenceFunctions(CallableId(FqName("io.github.composefluent.winrt.runtime"),
-            Name.identifier("defaultWinUiXamlValue"))).single()
+            Name.identifier("defaultWinUIXamlValue"))).single()
         irBlock(resultType = type) {
             // Projected structs/enums register their ABI adapter in Metadata.
             klass.companionObject()?.let { +irGetObject(it.symbol) }

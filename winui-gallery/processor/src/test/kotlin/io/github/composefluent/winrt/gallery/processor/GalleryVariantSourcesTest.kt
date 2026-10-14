@@ -30,14 +30,14 @@ class GalleryVariantSourcesTest {
         assertFailsWith<IllegalStateException> { selectGalleryVariant("// #if WINUI2", true) }
     }
 
-    private val names = GalleryUwpTypeNames(setOf(
+    private val names = GalleryUWPTypeNames(setOf(
         "Windows.UI.Xaml.Controls.Button", "Windows.UI.Xaml.Controls.NavigationView",
         "Microsoft.UI.Xaml.Controls.NavigationView", "Microsoft.UI.Xaml.Controls.NumberBox",
         "Microsoft.UI.Xaml.Controls.AnimatedIcon", "Windows.UI.Xaml.Data.IValueConverter",
         "Windows.UI.Xaml.FrameworkElement",
     ))
 
-    @Test fun preservesExtensionTypesAndUsesTheUwpBaseType() {
+    @Test fun preservesExtensionTypesAndUsesTheUWPBaseType() {
         val selected = names.kotlin("""
             import microsoft.ui.xaml.controls.*
             import microsoft.ui.xaml.FrameworkElement

@@ -10,7 +10,7 @@ enum class WinAppPackageIdentity {
 /** Application activation/lifetime model, independent of the package format. */
 enum class WinAppApplicationModel {
     Desktop,
-    Uwp,
+    UWP,
 }
 
 internal val WinAppPackageIdentity.mddBootstrapInitializeOptions: Int
@@ -52,17 +52,17 @@ data class WinAppHostConfiguration(
     val runtimeAssetsRoot: Path? = null,
     val windowsAppSdkVersion: WindowsAppSdkVersion? = null,
     val applicationModel: WinAppApplicationModel = WinAppApplicationModel.Desktop,
-    val xamlFramework: XamlFramework = XamlFramework.WinUi,
+    val xamlFramework: XamlFramework = XamlFramework.WinUI,
 ) {
     init {
-        if (applicationModel == WinAppApplicationModel.Uwp) {
+        if (applicationModel == WinAppApplicationModel.UWP) {
             require(packageIdentity == WinAppPackageIdentity.Packaged) {
                 "UWP applications require package identity and AppContainer activation."
             }
             require(windowsAppSdkDeployment == WindowsAppSdkDeploymentMode.None) {
                 "UWP applications use system XAML and must not bootstrap the Windows App SDK."
             }
-            require(xamlFramework == XamlFramework.Uwp) {
+            require(xamlFramework == XamlFramework.UWP) {
                 "UWP applications require the Windows.UI.Xaml projection framework."
             }
         }
@@ -101,7 +101,7 @@ data class WinAppHostConfiguration(
                 runtimeAssetsRoot = root,
                 applicationModel = values["applicationModel"]?.let(WinAppApplicationModel::valueOf)
                     ?: WinAppApplicationModel.Desktop,
-                xamlFramework = values["xamlFramework"]?.let(XamlFramework::valueOf) ?: XamlFramework.WinUi,
+                xamlFramework = values["xamlFramework"]?.let(XamlFramework::valueOf) ?: XamlFramework.WinUI,
             )
         }
 
@@ -115,7 +115,7 @@ data class WinAppHostConfiguration(
             windowsAppSdkDeployment: WindowsAppSdkDeploymentMode,
             runtimeAssetsRoot: Path? = null,
             applicationModel: WinAppApplicationModel = WinAppApplicationModel.Desktop,
-            xamlFramework: XamlFramework = XamlFramework.WinUi,
+            xamlFramework: XamlFramework = XamlFramework.WinUI,
         ): WinAppHostConfiguration {
             if (!windowsAppSdkDeployment.requiresRuntimeAssets) {
                 return WinAppHostConfiguration(

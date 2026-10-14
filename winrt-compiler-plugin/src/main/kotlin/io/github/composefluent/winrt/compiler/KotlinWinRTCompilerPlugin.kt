@@ -323,7 +323,7 @@ class KotlinWinRTIrGenerationExtension(
     private val compilerSupportManifestPath: String?,
     private val compilerSupportClassOutputDirectoryPath: String?,
     private val projectionSupportMode: String?,
-    private val xamlFramework: XamlFramework = XamlFramework.WinUi,
+    private val xamlFramework: XamlFramework = XamlFramework.WinUI,
 ) : IrGenerationExtension {
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     override fun generate(
@@ -1971,7 +1971,7 @@ private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupport
             sourceFile = "projection-registrar.tsv",
         ),
         "xaml-component-resource" to CompilerSupportManifestExpectedEntry(
-            className = "io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources",
+            className = "io.github.composefluent.winrt.projections.support.WinUIXamlComponentResources",
             sourceFile = "xaml-component-resources.tsv",
         ),
         "authoring-type-details-registrar" to CompilerSupportManifestExpectedEntry(

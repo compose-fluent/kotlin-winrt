@@ -2,8 +2,8 @@ package io.github.composefluent.winrt.runtime
 
 /** The XAML ABI used by an application. UWP uses the Windows SDK implementation. */
 enum class XamlFramework {
-    WinUi,
-    Uwp,
+    WinUI,
+    UWP,
 }
 
 /**
@@ -22,7 +22,7 @@ object XamlRuntime {
     }
 }
 
-/** ABI identities for the selected XAML implementation; WinUiXamlInterfaceIds stays WinUI-only. */
+/** ABI identities for the selected XAML implementation; WinUIXamlInterfaceIds stays WinUI-only. */
 object XamlInterfaceIds {
     val IXamlMetadataProvider: Guid
         get() = XamlProjectionConfiguration.abi.metadataProvider
@@ -61,8 +61,8 @@ internal object XamlTypeAbi {
         )
     }
 
-    private fun slot(winUiSlot: Int): Int =
-        if (XamlProjectionConfiguration.abi.boxedTypeInterface == null) winUiSlot else winUiSlot - 1
+    private fun slot(winUISlot: Int): Int =
+        if (XamlProjectionConfiguration.abi.boxedTypeInterface == null) winUISlot else winUISlot - 1
 
     val underlyingType: Int get() = slot(18)
     val activateInstance: Int get() = slot(19)

@@ -10,11 +10,11 @@ import com.intellij.patterns.PlatformPatterns
 import com.intellij.psi.*
 import com.intellij.psi.xml.*
 import com.intellij.util.ProcessingContext
-import io.github.composefluent.winrt.ide.xaml.WinUiXamlCatalog
-import io.github.composefluent.winrt.ide.xaml.WinUiXamlResourceExpression
-import io.github.composefluent.winrt.ide.xaml.WinUiXamlSymbols
-import io.github.composefluent.winrt.ide.xaml.WinUiXamlMarkupHighlighting
-import io.github.composefluent.winrt.ide.xaml.WinUiXamlMarkupColors
+import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
+import io.github.composefluent.winrt.ide.xaml.WinUIXamlResourceExpression
+import io.github.composefluent.winrt.ide.xaml.WinUIXamlSymbols
+import io.github.composefluent.winrt.ide.xaml.WinUIXamlMarkupHighlighting
+import io.github.composefluent.winrt.ide.xaml.WinUIXamlMarkupColors
 import java.net.URI
 
 class WinRTResourceReferenceContributor : PsiReferenceContributor() {
@@ -34,10 +34,10 @@ class WinRTResourceReferenceAnnotator : Annotator, com.intellij.openapi.project.
         if (reference.multiResolve(false).isEmpty()) holder.newAnnotation(HighlightSeverity.WEAK_WARNING,
             "No resource source candidate is known here. Runtime resources may be supplied by dependencies; stage the package to inspect them.")
             .range(reference.rangeInElement.shiftRight(element.textRange.startOffset)).create()
-        else if (element is XmlAttributeValue && WinUiXamlMarkupHighlighting.parse(element)?.resourceKey != null)
+        else if (element is XmlAttributeValue && WinUIXamlMarkupHighlighting.parse(element)?.resourceKey != null)
             holder.newSilentAnnotation(HighlightSeverity.TEXT_ATTRIBUTES)
                 .range(reference.rangeInElement.shiftRight(element.textRange.startOffset))
-                .textAttributes(WinUiXamlMarkupColors.RESOURCE).create()
+                .textAttributes(WinUIXamlMarkupColors.RESOURCE).create()
     }
 }
 
@@ -49,22 +49,22 @@ internal object WinRTResourceReferences {
         val file = element.containingFile as? XmlFile ?: return null
         val lookup = file.originalFile.virtualFile?.path?.let { file.project.service<WinRTResourceIndex>().forFile(it) }
         val attribute = (element as? XmlAttributeValue)?.parent as? XmlAttribute
-        val dictionarySource = attribute?.localName == "Source" && WinUiXamlSymbols.isXaml(file) &&
+        val dictionarySource = attribute?.localName == "Source" && WinUIXamlSymbols.isXaml(file) &&
             attribute.parent.localName == "ResourceDictionary"
         val value = when (element) { is XmlAttributeValue -> element.value; is XmlText -> element.value.trim(); else -> return null }
-        val key = WinUiXamlResourceExpression.parse(value)?.key ?: value.takeIf {
+        val key = WinUIXamlResourceExpression.parse(value)?.key ?: value.takeIf {
             attribute?.localName == "ResourceKey" && attribute.parent.localName.removeSuffix("Extension") in
                 setOf("StaticResource", "ThemeResource")
         }
         val kind = when {
-            key != null && WinUiXamlSymbols.isXaml(file) -> Kind.Key
-            attribute?.localName == "Uid" && attribute.namespace == WinUiXamlCatalog.XAML -> Kind.Uid
+            key != null && WinUIXamlSymbols.isXaml(file) -> Kind.Key
+            attribute?.localName == "Uid" && attribute.namespace == WinUIXamlCatalog.XAML -> Kind.Uid
             value.startsWith("ms-resource:", true) -> Kind.String
             value.startsWith("ms-appx:", true) -> Kind.File
             dictionarySource && !value.startsWith('{') -> Kind.File
             attribute != null && file.rootTag?.localName == "Package" && attribute.localName.endsWith("Logo") -> Kind.File
-            attribute != null && WinUiXamlSymbols.isXaml(file) &&
-                WinUiXamlSymbols.members(attribute.parent).firstOrNull { it.name == attribute.localName }?.typeName in
+            attribute != null && WinUIXamlSymbols.isXaml(file) &&
+                WinUIXamlSymbols.members(attribute.parent).firstOrNull { it.name == attribute.localName }?.typeName in
                 setOf("Windows.Foundation.Uri", "Microsoft.UI.Xaml.Media.ImageSource") && !value.startsWith('{') -> Kind.File
             else -> return null
         }
@@ -74,7 +74,7 @@ internal object WinRTResourceReferences {
         if (kind == Kind.File && token.contains(':') && !token.startsWith("ms-appx:", true)) return null
         val contentRange = ElementManipulators.getValueTextRange(element)
         val range = if (kind == Kind.Key && element is XmlAttributeValue)
-            WinUiXamlMarkupHighlighting.parse(element)?.resourceKey ?: contentRange else contentRange
+            WinUIXamlMarkupHighlighting.parse(element)?.resourceKey ?: contentRange else contentRange
         return object : PsiPolyVariantReferenceBase<PsiElement>(element, range, true) {
             override fun multiResolve(incompleteCode: Boolean): Array<ResolveResult> {
                 val targets = when (kind) {
@@ -168,7 +168,7 @@ internal object WinRTResourceReferences {
 
     private fun dictionary(file: XmlFile, lookup: WinRTResourceLookup?, tag: XmlTag, key: String?, visited: MutableSet<XmlTag>): List<XmlAttributeValue> {
         if (!visited.add(tag) || visited.size > 128) return emptyList()
-        val found = tag.subTags.mapNotNull { child -> child.getAttribute("Key", WinUiXamlCatalog.XAML)?.valueElement?.takeIf { key == null || it.value == key } }
+        val found = tag.subTags.mapNotNull { child -> child.getAttribute("Key", WinUIXamlCatalog.XAML)?.valueElement?.takeIf { key == null || it.value == key } }
         val merged = tag.subTags.filter { it.localName.endsWith(".MergedDictionaries") || it.localName.endsWith(".ThemeDictionaries") }
             .flatMap { it.subTags.toList() }.flatMap { child -> dictionary(file, lookup, child, key, visited) }
         val source = tag.getAttributeValue("Source")?.let { uri -> files(file, lookup, uri).filterIsInstance<XmlFile>() }

@@ -19,13 +19,13 @@ fun xamlCompilerSupportTypeNames(framework: XamlFramework, previewHost: Boolean 
         "Markup.XamlBindingHelper", "Markup.XamlMarkupHelper", "Markup.XamlReader",
         "Media.VisualTreeHelper", "Media.Imaging.RenderTargetBitmap",
     ).map(framework::xamlTypeName) + when (framework) {
-        XamlFramework.Uwp -> listOf("Windows.System.DispatcherQueue", "Windows.UI.ViewManagement.ApplicationView")
-        XamlFramework.WinUi -> listOf("Microsoft.UI.Dispatching.DispatcherQueue") +
+        XamlFramework.UWP -> listOf("Windows.System.DispatcherQueue", "Windows.UI.ViewManagement.ApplicationView")
+        XamlFramework.WinUI -> listOf("Microsoft.UI.Dispatching.DispatcherQueue") +
             if (previewHost) listOf("Controls.Grid", "Controls.XamlControlsResources").map(framework::xamlTypeName) else emptyList()
     }
 
 /** The three projected interfaces match CSharpPagePass2's generated template binding class. */
-internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = null, framework: XamlFramework = XamlFramework.WinUi) {
+internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = null, framework: XamlFramework = XamlFramework.WinUI) {
     val connectorInterfaces = framework.xamlComponentInterfaceNames.joinToString(", ") { it.substringAfterLast('.') }
     val bindingConnector = framework.xamlBindingConnectorTypeName.substringAfterLast('.')
     val suffix = assemblyName?.replace(Regex("[^A-Za-z0-9_]"), "_")?.let { "_$it" }.orEmpty()
@@ -42,7 +42,7 @@ internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = n
         // The SDK invokes ordinary Connect and binding Connect independently.
         // Kotlin's native composition owner retains the live page. Forward
         // weakly, as template scopes do, to avoid a COM/managed ownership cycle.
-        internal class $pageClassName(owner: WinUiXamlPageBindingOwner) : $connectorInterfaces {
+        internal class $pageClassName(owner: WinUIXamlPageBindingOwner) : $connectorInterfaces {
             private val owner = WeakReference(owner)
             override fun connect(connectionId: Int, target: Any?) {
                 owner.tryGetTarget()?._kotlinXamlConnectBindings(connectionId, target)
@@ -60,12 +60,12 @@ internal fun writeXamlBindingSupportSource(root: Path, assemblyName: String? = n
         import ${framework.xamlKotlinNamespace}.markup.*
 
         internal class $className(
-            owner: WinUiXamlBindingScopeOwner,
+            owner: WinUIXamlBindingScopeOwner,
             scopeId: Int,
             target: Any?,
             controlTemplate: Boolean,
         ) : $connectorInterfaces, IDataTemplateComponent, IDataTemplateExtension {
-            private val scope = WinUiXamlBindingScope(owner, scopeId)
+            private val scope = WinUIXamlBindingScope(owner, scopeId)
             private val root = requireNotNull(target).asWinRT<FrameworkElement>()
             private val isControlTemplate = controlTemplate
             private var dataContextHandlerRemoved = false

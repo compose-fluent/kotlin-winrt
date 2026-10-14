@@ -11,13 +11,13 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.jetbrains.jewel.bridge.theme.SwingBridgeTheme
 
 @OptIn(ExperimentalComposeUiApi::class)
-class WinUiNewXamlFormTest : BasePlatformTestCase() {
+class WinUINewXamlFormTest : BasePlatformTestCase() {
     fun testTypingANameAndShowingAnErrorKeepsTheFooterAtFullHeight() {
         val name = TextFieldState()
         val scene = ImageComposeScene(460, 340, Density(1f))
         try {
             scene.setContent { SwingBridgeTheme {
-                WinUiNewXamlForm(WinUiXamlFileKind.Page, "E:/very/long/project/directory/".repeat(5), name, TextFieldState("sample.views"),
+                WinUINewXamlForm(WinUIXamlFileKind.Page, "E:/very/long/project/directory/".repeat(5), name, TextFieldState("sample.views"),
                     "A file with this name already exists. ".repeat(5).takeIf { name.text.isNotEmpty() }, false, name.text.isNotEmpty(), {}, {})
             } }
             scene.render().close()

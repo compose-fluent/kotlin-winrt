@@ -11,7 +11,7 @@ import com.intellij.psi.xml.XmlFile
 class WinRTResourceCompletion : CompletionContributor() {
     override fun fillCompletionVariants(parameters: CompletionParameters, result: CompletionResultSet) {
         val file = parameters.originalFile as? XmlFile ?: return
-        if (!io.github.composefluent.winrt.ide.xaml.WinUiXamlSymbols.isXaml(file)) return
+        if (!io.github.composefluent.winrt.ide.xaml.WinUIXamlSymbols.isXaml(file)) return
         val lookup = file.originalFile.virtualFile?.path?.let { file.project.service<WinRTResourceIndex>().forFile(it) }
         val value = PsiTreeUtil.getParentOfType(parameters.position, XmlAttributeValue::class.java) ?: return
         val attribute = value.parent as? XmlAttribute ?: return

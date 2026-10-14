@@ -23,10 +23,10 @@
 <!-- #if WINUI2 -->
                 <ResourceDictionary Source="ms-appx:///UWPPackage/SettingsCard_Resource.xaml" />
                 <ResourceDictionary Source="ms-appx:///UWPPackage/SettingsExpander_Resource.xaml" />
-                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUwpSettingsCardStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUWPSettingsCardStyles.xaml" />
                 <ResourceDictionary Source="ms-appx:///UWPPackage/Segmented_Resource.xaml" />
-                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUwpStyles.xaml" />
-                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUwpTokenStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUWPStyles.xaml" />
+                <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryUWPTokenStyles.xaml" />
 <!-- #endif -->
                 <local:ItemTemplates />
                 <ResourceDictionary Source="ms-appx:///io/github/composefluent/winrt/gallery/GalleryExampleResources.xaml" />

@@ -1,10 +1,10 @@
 # Kotlin XAML compilation
 
-The same pipeline serves WinUI 3 (`XamlFramework.WinUi`) and the Windows SDK's
-UWP XAML (`XamlFramework.Uwp`). Setting `applicationModel` to
-`WindowsApplicationModel.Uwp` supplies the UWP default; XAML libraries and projection
-modules select it explicitly with `windows { xaml { framework.set(XamlFramework.Uwp) } }`.
-The existing `winuiMain` source-set and `WinUiXaml` task names remain compatible and
+The same pipeline serves WinUI 3 (`XamlFramework.WinUI`) and the Windows SDK's
+UWP XAML (`XamlFramework.UWP`). Setting `applicationModel` to
+`WindowsApplicationModel.UWP` supplies the UWP default; XAML libraries and projection
+modules select it explicitly with `windows { xaml { framework.set(XamlFramework.UWP) } }`.
+The existing `winuiMain` source-set and `WinUIXaml` task names remain compatible and
 do not select the framework. WinUI 2 controls also use the UWP framework, even
 though their namespace is `Microsoft.UI.Xaml`. See the [UWP guide](../docs/UWP.md)
 for complete application configuration and current runtime-validation limits.

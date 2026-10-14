@@ -206,8 +206,8 @@ tasks.withType<Test>().configureEach {
     if (!providers.gradleProperty("winrt.ide.sdkPreviewProject").isPresent) exclude("**/WinRTPreviewLaunchIntegrationTest.class")
     if (!providers.gradleProperty("winrt.ide.templateOutput").isPresent) exclude("**/WinRTTemplateGenerationTest.class")
     if (!providers.gradleProperty("winrt.ide.xamlInput").isPresent || !providers.gradleProperty("winrt.ide.xamlCompiler").isPresent)
-        exclude("**/WinUiXamlDocumentCompilerTest.class")
-    if (!providers.gradleProperty("winrt.ide.xamlInput").isPresent) exclude("**/WinUiXamlSdkSemanticsTest.class")
+        exclude("**/WinUIXamlDocumentCompilerTest.class")
+    if (!providers.gradleProperty("winrt.ide.xamlInput").isPresent) exclude("**/WinUIXamlSdkSemanticsTest.class")
     systemProperty("winrt.ide.toolchain", rootProject.projectDir.resolve("../..").canonicalPath)
     providers.gradleProperty("winrt.ide.templateOutput").orNull?.let { systemProperty("winrt.ide.templateOutput", it) }
     providers.gradleProperty("winrt.ide.xamlInput").orNull?.let { systemProperty("winrt.ide.xamlInput", it) }

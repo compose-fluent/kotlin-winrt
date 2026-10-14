@@ -11,7 +11,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.project.WinRTGradleTasks
-import io.github.composefluent.winrt.ide.analysis.WinUiXamlSnapshotService
+import io.github.composefluent.winrt.ide.analysis.WinUIXamlSnapshotService
 import org.jetbrains.jewel.bridge.addComposeTab
 import org.jetbrains.jewel.ui.component.*
 
@@ -20,10 +20,10 @@ class WinRTToolWindowFactory : ToolWindowFactory {
         project.service<WinRTProjectService>().refreshFromGradleCache()
         toolWindow.addComposeTab("Overview", focusOnClickInside = true) { WinRTOverviewPanel(project) }
         toolWindow.addComposeTab("Hot Reload", focusOnClickInside = true) {
-            io.github.composefluent.winrt.ide.hotreload.WinUiXamlHotReloadPanel(project)
+            io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadPanel(project)
         }
         toolWindow.addComposeTab("Visual Tree", focusOnClickInside = true) {
-            io.github.composefluent.winrt.ide.preview.WinUiXamlPreviewPanel(project, treeOnly = true)
+            io.github.composefluent.winrt.ide.preview.WinUIXamlPreviewPanel(project, treeOnly = true)
         }
         toolWindow.addComposeTab("NuGet", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.nuget.WinRTNuGetPanel(project)
@@ -38,7 +38,7 @@ class WinRTToolWindowFactory : ToolWindowFactory {
 @Composable
 private fun WinRTOverviewPanel(project: Project) {
     val service = project.service<WinRTProjectService>()
-    val snapshots by project.service<WinUiXamlSnapshotService>().state.collectAsState()
+    val snapshots by project.service<WinUIXamlSnapshotService>().state.collectAsState()
     val module = selectedWinRTModule(project)
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Kotlin WinRT"); WinRTModulePicker(project) }
@@ -56,7 +56,7 @@ private fun WinRTOverviewPanel(project: Project) {
                 }
             }
             if (module.xamlCompilations.isNotEmpty()) item {
-                val states = module.xamlCompilations.mapNotNull { snapshots[WinUiXamlSnapshotService.key(it.declarationsFile)] }
+                val states = module.xamlCompilations.mapNotNull { snapshots[WinUIXamlSnapshotService.key(it.declarationsFile)] }
                 val errors = states.mapNotNull { it.error }.distinct()
                 if (states.isEmpty()) Text("Prepare XAML to enable generated members in the editor.")
                 else if (errors.isNotEmpty()) errors.forEach { Text(it) }

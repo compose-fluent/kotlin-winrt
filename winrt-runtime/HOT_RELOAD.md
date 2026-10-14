@@ -6,10 +6,10 @@ engine does not by itself provide a UWP development session. See the
 [UWP guide](../docs/UWP.md) for supported build configuration and remaining checks.
 
 The common property engine uses the compiler's existing XAML type/member
-registrations. Property discovery reuses `WinUiAuthoredTypeMetadata.customProperty`,
+registrations. Property discovery reuses `WinUIAuthoredTypeMetadata.customProperty`,
 corresponding to CsWinRT's generated `ICustomProperty` implementation in
 `.cswinrt/src/WinRT.Runtime/Projections/ICustomPropertyProvider.net5.cs`.
-Literal conversion reuses `convertWinUiXamlLiteral` and the generated SDK converter.
+Literal conversion reuses `convertWinUIXamlLiteral` and the generated SDK converter.
 There is no reflection fallback or separate WinRT type classification table.
 
 For SDK controls, the compiler's existing typed member emitter supplies development
@@ -105,10 +105,10 @@ member access.
 
 | Input / operation | Existing owner and reference | Update requirement |
 | --- | --- | --- |
-| Names and connection IDs | XAMLC pass 2, WinUiXamlPageDeclaration and XamlPageBodies | Pair XBF and connection declarations from the same compiler generation; map retained slots within their original name scope. |
+| Names and connection IDs | XAMLC pass 2, WinUIXamlPageDeclaration and XamlPageBodies | Pair XBF and connection declarations from the same compiler generation; map retained slots within their original name scope. |
 | Generated fields and binding calls | XamlFirRegistrar, XamlPageBodies and XamlCompiledBindingBodies | Match the loaded Kotlin class shape and typed accessor/handler signatures. |
 | Event lifetime | Generated projected add/remove methods and WinRT event sources; CsWinRT Interop/EventSource{TDelegate}.cs | Capture each add result and its typed remover; own subscriptions by component, connection ID and generation. |
-| Binding lifetime | WinUiXamlBindingState and WinUiXamlBindingScope; XAMLC CSharpPagePass2 StopTracking / DisconnectUnloadedObject | Release listeners and deferred targets before disconnecting; initialize the newly connected scope once after commit. |
+| Binding lifetime | WinUIXamlBindingState and WinUIXamlBindingScope; XAMLC CSharpPagePass2 StopTracking / DisconnectUnloadedObject | Release listeners and deferred targets before disconnecting; initialize the newly connected scope once after commit. |
 
 An artifact must include the expected source/version, the loaded Kotlin class ABI
 fingerprint, projection/toolchain identities, an old-to-new connection map, paired

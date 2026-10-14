@@ -22,7 +22,7 @@ import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
-import io.github.composefluent.winrt.projections.generator.redirectedWinUiXamlProjectionSurfaceTypeReferences
+import io.github.composefluent.winrt.projections.generator.redirectedWinUIXamlProjectionSurfaceTypeReferences
 import io.github.composefluent.winrt.projections.generator.winRTAuthoringHostExportsClassName
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -69,7 +69,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     abstract val xamlFramework: Property<io.github.composefluent.winrt.runtime.XamlFramework>
 
     init {
-        xamlFramework.convention(io.github.composefluent.winrt.runtime.XamlFramework.WinUi)
+        xamlFramework.convention(io.github.composefluent.winrt.runtime.XamlFramework.WinUI)
         windowsSdkDeclared.convention(false)
     }
 
@@ -363,7 +363,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
                 types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes).toSet(),
                 excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
                 excludedTypes = effectiveExcludeTypes.toSet(),
-                additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
+                additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
             )
         }
         val authoringMetadataBaseModel = unfilteredModel.filterProjectionSurface(
@@ -371,7 +371,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes).toSet(),
             excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
             excludedTypes = effectiveExcludeTypes.toSet(),
-            additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
+            additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
         )
         val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
         Files.createDirectories(authoringMetadataIndex.parent)
@@ -421,7 +421,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes + authoringCandidateMetadataRoots).toSet(),
             excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
             excludedTypes = effectiveExcludeTypes.toSet(),
-            additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
+            additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
         )
         val authoringModel = KotlinWinRTAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             authoringDetailsBaseModel,

@@ -5,7 +5,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.platform.backend.navigation.NavigationRequests
 import com.intellij.psi.PsiFile
 import com.intellij.psi.impl.FakePsiElement
-import io.github.composefluent.winrt.ide.xaml.WinUiXamlCatalog
+import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
 import java.io.StringReader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -57,7 +57,7 @@ internal data class WinRTFrameworkResourceKey(val value: String, val source: Str
                         }
                         if (parent == Scope.Dictionary) {
                             val key = (0 until reader.attributeCount).firstOrNull {
-                                reader.getAttributeNamespace(it) == WinUiXamlCatalog.XAML && reader.getAttributeLocalName(it) == "Key"
+                                reader.getAttributeNamespace(it) == WinUIXamlCatalog.XAML && reader.getAttributeLocalName(it) == "Key"
                             }
                             if (key != null) {
                                 val end = reader.location.characterOffset.coerceAtMost(text.length)

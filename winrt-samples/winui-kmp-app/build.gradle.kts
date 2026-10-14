@@ -54,7 +54,7 @@ val auditGeneratedWinuiKmpProjectionOutput by tasks.registering(
 }
 
 private val winuiKmpOptionProperties = listOf(
-    "kotlin.winrt.samples.autoExitWinUi",
+    "kotlin.winrt.samples.autoExitWinUI",
     "kotlin.winrt.samples.timerSmoke",
     "kotlin.winrt.samples.skipWindowContent",
     "kotlin.winrt.samples.skipCallbackSmoke",
@@ -66,7 +66,7 @@ tasks.named<io.github.composefluent.windows.toolkit.gradle.RunWinAppHostTask>("r
     jvmArgs.addAll(
         providers.provider {
             winuiKmpOptionProperties.map { name ->
-                val defaultValue = if (name == "kotlin.winrt.samples.autoExitWinUi") "true" else ""
+                val defaultValue = if (name == "kotlin.winrt.samples.autoExitWinUI") "true" else ""
                 "-D$name=${providers.systemProperty(name).orElse(defaultValue).get()}"
             }
         },

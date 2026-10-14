@@ -47,7 +47,7 @@ the callback takes and completes a deferral and records its execution before the
 registration's completion handler removes the test task.
 
 For repeatable protocol/file tests without changing default app associations, use
-`tools/Invoke-UwpGalleryActivation.ps1 -Kind Protocol` or `-Kind File`. The script
+`tools/Invoke-UWPGalleryActivation.ps1 -Kind Protocol` or `-Kind File`. The script
 uses the Windows activation broker for this development package. Verify the
 corresponding callback in `gallery.log`, both while running and after closing
 the app; a successful broker call alone is not proof that the callback completed.
@@ -56,7 +56,7 @@ time-zone `SystemTrigger`, and a Native out-of-process background component.
 The component follows CsWinRT's `BgTaskComponent` sample and implements
 `IBackgroundTask` in `winrt-samples/uwp-background-task`. Its packaging identity
 provides the DLL and activation mapping without linking the component into the UI.
-Use `tools/Invoke-UwpGalleryBackgroundTask.ps1 -TaskName KotlinGallery.SystemTrigger -Activate`
+Use `tools/Invoke-UWPGalleryBackgroundTask.ps1 -TaskName KotlinGallery.SystemTrigger -Activate`
 or `-TaskName KotlinGallery.Component -Activate` after registering the corresponding
 task. This uses the Windows SDK debug activation API; it does not change the
 machine's time zone or prove natural trigger scheduling. Check both the completion
@@ -98,7 +98,7 @@ Multiple windows uses `Windows.UI.WindowManagement.AppWindow` on UWP, with
 handler clears the page's content and releases the retained window reference.
 Toast and badge samples use `Windows.UI.Notifications`; toast activation returns
 through `Application.OnActivated`. Shared page layouts retain UWP-specific source
-examples and documentation links from the catalog's `Uwp` overrides.
+examples and documentation links from the catalog's `UWP` overrides.
 
 Unsupported pages and their dependent desktop helpers are listed with reasons in
 `winui2-exclusions.tsv`. KSP builds navigation from the selected pages, so an
@@ -117,13 +117,13 @@ solid fallback on Windows 10), extends into the system title bar and uses
 caption insets, theme colors and inactive appearance follow the UWP window APIs.
 Back and pane-toggle buttons share the title-bar row with the desktop shell.
 Source/design tabs use WinUIEssential's `PivotSegmentedStyle`; Home uses
-`GalleryUwpTokenStyles.xaml` to match the desktop token buttons, including
+`GalleryUWPTokenStyles.xaml` to match the desktop token buttons, including
 their rounded shape, accent selection colors and eight-pixel spacing.
 Settings-page switches remove the UWP control's unused minimum width.
 The UWP SettingsCard
 resource overlay gives About an explicit vertical item template: the 1.3.3
 enum-based alignment trigger does not activate in this UWP path.
-`GalleryUwpStyles.xaml` ports the newer typography/subtle-button resources needed
+`GalleryUWPStyles.xaml` ports the newer typography/subtle-button resources needed
 by the shared layouts; these are Gallery resources, not additional UWP SDK APIs.
 
 Use `// #if WINUI2`, `// #if WINUI3`, `// #else`, `// #endif` for Kotlin differences,

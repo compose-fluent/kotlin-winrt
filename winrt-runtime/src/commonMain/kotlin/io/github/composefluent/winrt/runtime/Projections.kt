@@ -83,7 +83,7 @@ object Projections {
             isWindowsRuntimeType = true,
         )
         if (baseRuntimeClassName != null) {
-            WinUiAuthoredTypeMetadata.register(publicType, runtimeClassName, baseRuntimeClassName)
+            WinUIAuthoredTypeMetadata.register(publicType, runtimeClassName, baseRuntimeClassName)
         }
         return existing == null || existing.runtimeClassName != runtimeClassName || !existing.isRuntimeClass
     }
@@ -271,7 +271,7 @@ object Projections {
     }
 
     internal fun clearRegistriesForTests() {
-        WinUiAuthoredTypeMetadata.clearForTests()
+        WinUIAuthoredTypeMetadata.clearForTests()
         customTypeToHelperTypeMappings.clear()
         runtimeClassToDefaultInterfaceMappings.clear()
         isTypeWindowsRuntimeTypeCache.clear()

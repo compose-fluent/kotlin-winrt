@@ -217,7 +217,7 @@ class KotlinProjectionSupportRenderer private constructor(
                     emitProjectionRegistrar,
                     supportOwnerIdentity,
                 ),
-                renderWinUiXamlComponentResourceInput(model, plans),
+                renderWinUIXamlComponentResourceInput(model, plans),
                 renderAuthoringMetadataTypeMappingHelper(inventory),
                 renderAuthoringWrapperPlan(inventory, plans, authoredRuntimeClassNames),
                 renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
@@ -504,11 +504,11 @@ class KotlinProjectionSupportRenderer private constructor(
         )
     }
 
-    private fun renderWinUiXamlComponentResourceInput(
+    private fun renderWinUIXamlComponentResourceInput(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ): KotlinProjectionFile? {
-        val resourceDictionaryRuntimeClassNames = winUiXamlComponentResourceDictionaryRuntimeClassNames(model, plans)
+        val resourceDictionaryRuntimeClassNames = winUIXamlComponentResourceDictionaryRuntimeClassNames(model, plans)
         if (resourceDictionaryRuntimeClassNames.isEmpty()) {
             return null
         }
@@ -523,7 +523,7 @@ class KotlinProjectionSupportRenderer private constructor(
         )
     }
 
-    private fun winUiXamlComponentResourceDictionaryRuntimeClassNames(
+    private fun winUIXamlComponentResourceDictionaryRuntimeClassNames(
         model: WinRTMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ): List<String> {
@@ -709,7 +709,7 @@ class KotlinProjectionSupportRenderer private constructor(
         } else {
             0
         }
-        val xamlComponentResourceEntries = winUiXamlComponentResourceDictionaryRuntimeClassNames(model, plans).size
+        val xamlComponentResourceEntries = winUIXamlComponentResourceDictionaryRuntimeClassNames(model, plans).size
         val rows = listOfNotNull(
             compilerSupportManifestRow(
                 kind = "projection-registrar",
@@ -720,7 +720,7 @@ class KotlinProjectionSupportRenderer private constructor(
             ),
             compilerSupportManifestRow(
                 kind = "xaml-component-resource",
-                className = "$SUPPORT_PACKAGE.WinUiXamlComponentResources",
+                className = "$SUPPORT_PACKAGE.WinUIXamlComponentResources",
                 sourceFile = "xaml-component-resources.tsv",
                 entries = xamlComponentResourceEntries,
                 owner = supportOwnerIdentity.orEmpty(),

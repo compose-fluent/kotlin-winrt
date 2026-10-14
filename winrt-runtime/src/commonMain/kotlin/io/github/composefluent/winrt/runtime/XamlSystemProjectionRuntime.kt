@@ -132,7 +132,7 @@ internal object XamlSystemProjectionRuntimeHooks {
     }
 
     fun closeRuntimeCaches() {
-        WinUiXamlMetadataProviderCache.close()
+        WinUIXamlMetadataProviderCache.close()
     }
 
     internal fun augmentInspectableDefinition(
@@ -192,22 +192,22 @@ internal object XamlSystemProjectionRuntimeHooks {
                 interfaceId = interfaceId,
                 methods = listOf(
                     WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
-                        forwardWinUiXamlMetadataProviderCall(
-                            slot = WinUiXamlMetadataProviderSlots.GetXamlType,
+                        forwardWinUIXamlMetadataProviderCall(
+                            slot = WinUIXamlMetadataProviderSlots.GetXamlType,
                             arg0 = rawArgs[0] as RawAddress,
                             arg1 = rawArgs[1] as RawAddress,
                         )
                     },
                     WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
-                        forwardWinUiXamlMetadataProviderCall(
-                            slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
+                        forwardWinUIXamlMetadataProviderCall(
+                            slot = WinUIXamlMetadataProviderSlots.GetXamlTypeByFullName,
                             arg0 = rawArgs[0] as RawAddress,
                             arg1 = rawArgs[1] as RawAddress,
                         )
                     },
                     WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { _, rawArgs ->
-                        forwardWinUiXamlMetadataProviderCall(
-                            slot = WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions,
+                        forwardWinUIXamlMetadataProviderCall(
+                            slot = WinUIXamlMetadataProviderSlots.GetXmlnsDefinitions,
                             arg0 = rawArgs[0] as RawAddress,
                             arg1 = rawArgs[1] as RawAddress,
                         )
@@ -216,20 +216,20 @@ internal object XamlSystemProjectionRuntimeHooks {
             )
         }
 
-    private fun forwardWinUiXamlMetadataProviderCall(
+    private fun forwardWinUIXamlMetadataProviderCall(
         slot: Int,
         arg0: RawAddress,
         arg1: RawAddress,
     ): Int {
         var typeName: String? = null
-        if (slot != WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions) {
+        if (slot != WinUIXamlMetadataProviderSlots.GetXmlnsDefinitions) {
             PlatformAbi.writePointer(arg1, PlatformAbi.nullPointer)
-            val nameHandle = if (slot == WinUiXamlMetadataProviderSlots.GetXamlType) {
+            val nameHandle = if (slot == WinUIXamlMetadataProviderSlots.GetXamlType) {
                 PlatformAbi.readPointer(arg0)
             } else arg0
             val name = HString.fromHandle(nameHandle, owner = false).use { it.toKString() }
             typeName = name
-            val authored = WinUiAuthoredTypeMetadata.tryCreateAuthored(name, ::resolveWinUiXamlType)
+            val authored = WinUIAuthoredTypeMetadata.tryCreateAuthored(name, ::resolveWinUIXamlType)
             if (FeatureSwitches.traceCcw) {
                 println("winrt-xaml-metadata: lookup slot=$slot name=$name authored=${!PlatformAbi.isNull(authored)}")
             }
@@ -241,8 +241,8 @@ internal object XamlSystemProjectionRuntimeHooks {
         if (FeatureSwitches.traceCcw) {
             println("winrt-xaml-metadata: forward slot=$slot")
         }
-        val providers = WinUiXamlMetadataProviderCache.getOrCreateAll()
-        if (slot == WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions) {
+        val providers = WinUIXamlMetadataProviderCache.getOrCreateAll()
+        if (slot == WinUIXamlMetadataProviderSlots.GetXmlnsDefinitions) {
             return forwardXmlnsDefinitions(providers, arg0, arg1)
         }
         var lastHr = KnownHResults.S_OK.value
@@ -265,7 +265,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         // Like CSharpTypeInfoPass2, referenced types can have application-generated
         // metadata even when their library's IXamlMetadataProvider omits them.
         typeName?.let { name ->
-            val fallback = WinUiAuthoredTypeMetadata.tryCreate(name, ::resolveWinUiXamlType)
+            val fallback = WinUIAuthoredTypeMetadata.tryCreate(name, ::resolveWinUIXamlType)
             if (!PlatformAbi.isNull(fallback)) {
                 PlatformAbi.writePointer(arg1, fallback)
                 return KnownHResults.S_OK.value
@@ -277,13 +277,13 @@ internal object XamlSystemProjectionRuntimeHooks {
         return lastHr
     }
 
-    private fun resolveWinUiXamlType(name: String): RawAddress =
+    private fun resolveWinUIXamlType(name: String): RawAddress =
         HString.create(name).use { nameString ->
             PlatformAbi.confinedScope().use { scope ->
                 val result = PlatformAbi.allocatePointerSlot(scope)
                 PlatformAbi.writePointer(result, PlatformAbi.nullPointer)
-                val hr = forwardWinUiXamlMetadataProviderCall(
-                    WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName, nameString.handle, result,
+                val hr = forwardWinUIXamlMetadataProviderCall(
+                    WinUIXamlMetadataProviderSlots.GetXamlTypeByFullName, nameString.handle, result,
                 )
                 val pointer = PlatformAbi.readPointer(result)
                 if (HResult(hr).isSuccess) pointer else {
@@ -306,7 +306,7 @@ internal object XamlSystemProjectionRuntimeHooks {
 
         var lastHr = KnownHResults.E_NOINTERFACE.value
         var successfulProvider = false
-        val providerDefinitions = mutableListOf<List<WinUiXamlXmlnsDefinition>>()
+        val providerDefinitions = mutableListOf<List<WinUIXamlXmlnsDefinition>>()
         providers.forEach { provider ->
             val result = provider.getXmlnsDefinitions()
             lastHr = result.hResult
@@ -317,16 +317,16 @@ internal object XamlSystemProjectionRuntimeHooks {
         }
         if (!successfulProvider) {
             if (FeatureSwitches.traceCcw) {
-                println("winrt-xaml-metadata: forward slot=${WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions} hr=$lastHr")
+                println("winrt-xaml-metadata: forward slot=${WinUIXamlMetadataProviderSlots.GetXmlnsDefinitions} hr=$lastHr")
             }
             return lastHr
         }
 
-        val definitions = mergeWinUiXamlXmlnsDefinitions(providerDefinitions)
+        val definitions = mergeWinUIXamlXmlnsDefinitions(providerDefinitions)
         return writeXmlnsDefinitions(definitions, countOut, definitionsOut).also { hr ->
             if (FeatureSwitches.traceCcw) {
                 println(
-                    "winrt-xaml-metadata: forward slot=${WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions} " +
+                    "winrt-xaml-metadata: forward slot=${WinUIXamlMetadataProviderSlots.GetXmlnsDefinitions} " +
                         "providers=${providerDefinitions.size} definitions=${definitions.size} hr=$hr",
                 )
             }
@@ -334,7 +334,7 @@ internal object XamlSystemProjectionRuntimeHooks {
     }
 
     private fun writeXmlnsDefinitions(
-        definitions: List<WinUiXamlXmlnsDefinition>,
+        definitions: List<WinUIXamlXmlnsDefinition>,
         countOut: RawAddress,
         definitionsOut: RawAddress,
     ): Int {
@@ -343,13 +343,13 @@ internal object XamlSystemProjectionRuntimeHooks {
         }
 
         val definitionCount = definitions.size.toLong()
-        if (definitionCount > Long.MAX_VALUE / winUiXamlXmlnsDefinitionSizeBytes) {
+        if (definitionCount > Long.MAX_VALUE / winUIXamlXmlnsDefinitionSizeBytes) {
             throw WinRTOutOfMemoryException(
                 "Unable to allocate XAML XmlnsDefinition entries: size overflow.",
                 KnownHResults.E_OUTOFMEMORY,
             )
         }
-        val arrayBytes = definitionCount * winUiXamlXmlnsDefinitionSizeBytes
+        val arrayBytes = definitionCount * winUIXamlXmlnsDefinitionSizeBytes
         val definitionsPointer = WinRTPlatformApi.coTaskMemAllocRaw(arrayBytes)
         if (PlatformAbi.isNull(definitionsPointer)) {
             throw WinRTOutOfMemoryException(
@@ -361,7 +361,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         val ownedStrings = mutableListOf<RawAddress>()
         try {
             definitions.forEachIndexed { index, definition ->
-                val elementOffset = index.toLong() * winUiXamlXmlnsDefinitionSizeBytes
+                val elementOffset = index.toLong() * winUIXamlXmlnsDefinitionSizeBytes
                 val xmlNamespace = HString.create(definition.xmlNamespace).handle
                 ownedStrings += xmlNamespace
                 val namespace = HString.create(definition.namespace).handle
@@ -369,7 +369,7 @@ internal object XamlSystemProjectionRuntimeHooks {
                 PlatformAbi.writePointer(definitionsPointer, elementOffset, xmlNamespace)
                 PlatformAbi.writePointer(
                     definitionsPointer,
-                    elementOffset + winUiXamlXmlnsDefinitionNamespaceOffsetBytes,
+                    elementOffset + winUIXamlXmlnsDefinitionNamespaceOffsetBytes,
                     namespace,
                 )
             }
@@ -385,7 +385,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         }
     }
 
-    private object WinUiXamlMetadataProviderCache {
+    private object WinUIXamlMetadataProviderCache {
         private val lock = PlatformLock()
         private var cacheKey: List<String> = emptyList()
         private var providers: List<XamlMetadataProviderReference> = emptyList()
@@ -433,7 +433,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         ComWrappersSupport.registerTypedRcwFactory(collectionChangedNotifierTypeHandle()) { inspectable ->
             inspectable.use(::createCollectionChangedNotifierObject)
         }
-        if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
+        if (XamlProjectionConfiguration.supportsWinUIOnlyTypes) {
             ComWrappersSupport.registerTypedRcwFactory(dataErrorInfoTypeHandle()) { inspectable ->
                 inspectable.use(::createDataErrorInfoObject)
             }
@@ -456,7 +456,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         ComWrappersSupport.registerTypedRcwFactory(notifyCollectionChangedEventArgsTypeHandle()) { inspectable ->
             inspectable.use { createNotifyCollectionChangedEventArgs(it) }
         }
-        if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
+        if (XamlProjectionConfiguration.supportsWinUIOnlyTypes) {
             ComWrappersSupport.registerTypedRcwFactory(dataErrorsChangedEventArgsTypeHandle()) { inspectable ->
                 inspectable.use { createDataErrorsChangedEventArgs(it) }
             }
@@ -472,7 +472,7 @@ internal object XamlSystemProjectionRuntimeHooks {
                 inspectable.use { createNotifyCollectionChangedEventArgs(it) }
             }
         }
-        if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
+        if (XamlProjectionConfiguration.supportsWinUIOnlyTypes) {
             ComWrappersSupport.registerRuntimeClassFactory(muxDataErrorsChangedEventArgsTypeName) { inspectable ->
                 inspectable.use { createDataErrorsChangedEventArgs(it) }
             }
@@ -489,7 +489,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         ComWrappersSupport.registerCcwFactory(INotifyCollectionChanged::class) { value ->
             createCollectionChangedNotifierDefinition(value as INotifyCollectionChanged)
         }
-        if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
+        if (XamlProjectionConfiguration.supportsWinUIOnlyTypes) {
             ComWrappersSupport.registerCcwFactory(INotifyDataErrorInfo::class) { value ->
                 createDataErrorInfoDefinition(value as INotifyDataErrorInfo)
             }
@@ -514,7 +514,7 @@ internal object XamlSystemProjectionRuntimeHooks {
         ComWrappersSupport.registerCcwFactory(NotifyCollectionChangedEventArgs::class) { value ->
             createNotifyCollectionChangedEventArgsDefinition(value as NotifyCollectionChangedEventArgs)
         }
-        if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
+        if (XamlProjectionConfiguration.supportsWinUIOnlyTypes) {
             ComWrappersSupport.registerCcwFactory(DataErrorsChangedEventArgs::class) { value ->
                 createDataErrorsChangedEventArgsDefinition(value as DataErrorsChangedEventArgs)
             }
@@ -583,7 +583,7 @@ internal object XamlSystemProjectionMappings {
             iid = collectionChangedNotifierInterfaceId(),
             aliases = setOf(muxCollectionChangedNotifierTypeName, wuxCollectionChangedNotifierTypeName) - collectionChangedNotifierTypeName(),
         )
-        if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
+        if (XamlProjectionConfiguration.supportsWinUIOnlyTypes) {
             registerInterface(
                 type = INotifyDataErrorInfo::class,
                 helperType = INotifyDataErrorInfoProjection::class,
@@ -638,7 +638,7 @@ internal object XamlSystemProjectionMappings {
             signature = "rc(${notifyCollectionChangedEventArgsTypeName()};{${notifyCollectionChangedEventArgsInterfaceId().toString().lowercase()}})",
             aliases = setOf(muxNotifyCollectionChangedEventArgsTypeName, wuxNotifyCollectionChangedEventArgsTypeName) - notifyCollectionChangedEventArgsTypeName(),
         )
-        if (XamlProjectionConfiguration.supportsWinUiOnlyTypes) {
+        if (XamlProjectionConfiguration.supportsWinUIOnlyTypes) {
             registerRuntimeClass(
                 type = DataErrorsChangedEventArgs::class,
                 helperType = DataErrorsChangedEventArgsProjection::class,
@@ -1438,7 +1438,7 @@ private object CustomPropertyProviderDefinitionHolder {
                         val provider = explicitOrBindableCustomPropertyProvider(requireNotNull(managedValue))
                         val name = decodeBorrowedString(rawArgs[0] as RawAddress)
                         val property = provider?.getCustomProperty(name)
-                            ?: WinUiAuthoredTypeMetadata.customProperty(requireNotNull(managedValue), name)
+                            ?: WinUIAuthoredTypeMetadata.customProperty(requireNotNull(managedValue), name)
                         (rawArgs[1] as RawAddress).writeReturnedPointer(propertyPointer(property))
                         KnownHResults.S_OK.value
                     },

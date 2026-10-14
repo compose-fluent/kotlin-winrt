@@ -33,7 +33,7 @@ internal object AppxManifestPackageSupport {
 
     /** UWP is an activation and trust model, not a synonym for an AppX package. */
     fun applyApplicationModel(manifest: Path, model: WindowsApplicationModel) {
-        if (model != WindowsApplicationModel.Uwp) return
+        if (model != WindowsApplicationModel.UWP) return
         require(manifest.isRegularFile()) { "A UWP application requires an AppxManifest.xml." }
         val document = requireNotNull(readXml(manifest)) { "Cannot read AppX manifest: $manifest" }
         val namespace = "http://schemas.microsoft.com/appx/manifest/uap/windows10/10"

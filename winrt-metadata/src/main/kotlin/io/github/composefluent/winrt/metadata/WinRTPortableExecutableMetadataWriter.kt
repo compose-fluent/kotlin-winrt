@@ -11,14 +11,14 @@ object WinRTPortableExecutableMetadataWriter {
     fun writeXamlApplicationWinmd(
         assemblyName: String,
         runtimeClasses: List<WinRTAuthoredRuntimeClassDescriptor>,
-        members: Map<String, WinUiXamlApplicationTypeMembers>,
+        members: Map<String, WinUIXamlApplicationTypeMembers>,
         outputFile: Path,
         externalTypeAssemblies: Map<String, String>,
         valueTypeNames: Set<String> = emptySet(),
-        framework: XamlFramework = XamlFramework.WinUi,
+        framework: XamlFramework = XamlFramework.WinUI,
     ) {
         writeXamlSchemaWinmd(assemblyName, runtimeClasses.map {
-            WinUiXamlApplicationTypeDescriptor(it.runtimeClassName, it.baseRuntimeClassName,
+            WinUIXamlApplicationTypeDescriptor(it.runtimeClassName, it.baseRuntimeClassName,
                 it.interfaceNames, it.isActivatable, it.isSealed)
         }, members, outputFile, externalTypeAssemblies, valueTypeNames, framework)
     }
@@ -26,12 +26,12 @@ object WinRTPortableExecutableMetadataWriter {
     /** Plain Kotlin data models participate in XAML schema without becoming exported WinRT components. */
     fun writeXamlSchemaWinmd(
         assemblyName: String,
-        runtimeClasses: List<WinUiXamlApplicationTypeDescriptor>,
-        members: Map<String, WinUiXamlApplicationTypeMembers>,
+        runtimeClasses: List<WinUIXamlApplicationTypeDescriptor>,
+        members: Map<String, WinUIXamlApplicationTypeMembers>,
         outputFile: Path,
         externalTypeAssemblies: Map<String, String>,
         valueTypeNames: Set<String> = emptySet(),
-        framework: XamlFramework = XamlFramework.WinUi,
+        framework: XamlFramework = XamlFramework.WinUI,
     ) {
         require(members.keys.all { name -> runtimeClasses.any { it.runtimeClassName == name } })
         Files.createDirectories(outputFile.parent)
@@ -85,7 +85,7 @@ data class WinRTPortableExecutableInterfaceDescriptor(
     val implementedInterfaceNames: List<String> = emptyList(),
 )
 
-data class WinUiXamlApplicationTypeDescriptor(
+data class WinUIXamlApplicationTypeDescriptor(
     val runtimeClassName: String,
     val baseRuntimeClassName: String? = null,
     val interfaceNames: List<String> = emptyList(),
@@ -115,10 +115,10 @@ private class WinmdBuilder(
     private val runtimeClasses: List<WinmdClass>,
     private val interfaces: List<WinRTPortableExecutableInterfaceDescriptor> = emptyList(),
     private val externalTypeAssemblies: Map<String, String>? = null,
-    private val applicationMembers: Map<String, WinUiXamlApplicationTypeMembers> = emptyMap(),
+    private val applicationMembers: Map<String, WinUIXamlApplicationTypeMembers> = emptyMap(),
     private val valueTypeNames: Set<String> = emptySet(),
     private val isApplicationSchema: Boolean = false,
-    framework: XamlFramework = XamlFramework.WinUi,
+    framework: XamlFramework = XamlFramework.WinUI,
 ) {
     private val XAML_CONTENT_PROPERTY = framework.xamlTypeName("Markup.ContentPropertyAttribute")
     // WinRTTypeWriter.VisitEnumDeclaration owns value__, literal FieldDefs and constants.

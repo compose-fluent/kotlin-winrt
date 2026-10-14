@@ -13,7 +13,7 @@
     <Resources><Resource Language="en-us" /></Resources>
     <Applications>
         <Application Id="App" Executable="kotlin-winrt-uwp.exe"
-            EntryPoint="io.github.composefluent.winrt.samples.uwp.UwpApplication">
+            EntryPoint="io.github.composefluent.winrt.samples.uwp.UWPApplication">
             <uap:VisualElements DisplayName="Kotlin WinRT UWP" Description="Kotlin/WinRT UWP sample"
                 BackgroundColor="#006C67" Square150x150Logo="Assets\Square150x150Logo.png"
                 Square44x44Logo="Assets\Square44x44Logo.png" />

@@ -61,7 +61,7 @@ data class WinRTMetadataProjectionContext(
     /** Dependency-owned declarations that Kotlin metadata does not expose to this module. */
     val inaccessibleDependencyTypes: Set<String> = emptySet(),
     /** WinUI 2 controls also use Microsoft.UI namespaces but retain the UWP XAML ABI. */
-    val xamlFramework: io.github.composefluent.winrt.runtime.XamlFramework = io.github.composefluent.winrt.runtime.XamlFramework.WinUi,
+    val xamlFramework: io.github.composefluent.winrt.runtime.XamlFramework = io.github.composefluent.winrt.runtime.XamlFramework.WinUI,
 ) {
     val filter: WinRTMetadataFilter
         get() = WinRTMetadataFilter(include, exclude).normalized()

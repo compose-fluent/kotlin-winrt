@@ -8,4 +8,4 @@ internal expect fun winRTSampleOptionConfigured(name: String): Boolean
 
 internal expect fun configureWebView2TransparentBackground()
 
-internal expect fun runWinUiSample()
+internal expect fun runWinUISample()

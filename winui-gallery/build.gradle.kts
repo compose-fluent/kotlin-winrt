@@ -8,12 +8,12 @@ plugins {
     id("com.google.devtools.ksp") version "2.3.10"
 }
 
-val galleryWinUiVersion = providers.gradleProperty("kotlinWinRT.gallery.winuiVersion").orElse("3").get()
-require(galleryWinUiVersion in setOf("2", "3")) { "kotlinWinRT.gallery.winuiVersion must be 2 or 3" }
-val galleryUsesWinUi2 = galleryWinUiVersion == "2"
+val galleryWinUIVersion = providers.gradleProperty("kotlinWinRT.gallery.winuiVersion").orElse("3").get()
+require(galleryWinUIVersion in setOf("2", "3")) { "kotlinWinRT.gallery.winuiVersion must be 2 or 3" }
+val galleryUsesWinUI2 = galleryWinUIVersion == "2"
 // Select at build time: UWP and desktop XAML have different base classes and
 // activation contracts. A runtime Boolean cannot hide unavailable SDK symbols.
-if (galleryUsesWinUi2) layout.buildDirectory.set(layout.projectDirectory.dir("build/winui2"))
+if (galleryUsesWinUI2) layout.buildDirectory.set(layout.projectDirectory.dir("build/winui2"))
 val gallerySourceRoot = layout.buildDirectory.dir("generated/gallery-sources")
 val galleryVariantTools by configurations.creating
 dependencies { galleryVariantTools(project(":winui-gallery:processor")) }
@@ -29,9 +29,9 @@ val prepareGallerySources by tasks.registering(JavaExec::class) {
     inputs.dir(overlay)
     inputs.file(exclusions)
     inputs.file(metadata)
-    inputs.property("winUiVersion", galleryWinUiVersion)
+    inputs.property("winUIVersion", galleryWinUIVersion)
     outputs.dir(gallerySourceRoot)
-    args(galleryWinUiVersion, original.asFile.absolutePath, gallerySourceRoot.get().asFile.absolutePath,
+    args(galleryWinUIVersion, original.asFile.absolutePath, gallerySourceRoot.get().asFile.absolutePath,
         overlay.asFile.absolutePath, metadata.get().asFile.absolutePath, exclusions.asFile.absolutePath)
 }
 
@@ -78,7 +78,7 @@ tasks.named<io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjecti
 
 ksp {
     arg("gallery.repositoryRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
-    arg("gallery.xamlNamespace", if (galleryUsesWinUi2) "windows.ui.xaml" else "microsoft.ui.xaml")
+    arg("gallery.xamlNamespace", if (galleryUsesWinUI2) "windows.ui.xaml" else "microsoft.ui.xaml")
     arg(galleryXamlSourceArguments)
 }
 tasks.matching { it.name.startsWith("ksp") }.configureEach {
@@ -108,7 +108,7 @@ kotlin {
                 implementation(project(":winui-gallery:models"))
                 implementation(project(":winui-gallery:resources"))
         }
-        if (galleryUsesWinUi2) {
+        if (galleryUsesWinUI2) {
             getByName("winuiJvmMain").kotlin.srcDir("src/winui2JvmMain/kotlin")
             getByName("mingwX64Main").kotlin.srcDir("src/winui2MingwX64Main/kotlin")
         }
@@ -118,7 +118,7 @@ kotlin {
 
 // Windows activates this DLL in backgroundTaskHost; the UI does not link its
 // Kotlin declarations. Consume the toolkit's packaging identity variant only.
-if (galleryUsesWinUi2) {
+if (galleryUsesWinUI2) {
     configurations.matching {
         it.name.startsWith("kotlinWinRTIdentityApplicationMingwX64") && !it.name.endsWith("Projection")
     }.configureEach {
@@ -179,8 +179,8 @@ windows {
         packagePayload("licenses/JetBrains-Apache-2.0.txt", "licenses/JetBrains-Apache-2.0.txt")
         packagePayload("licenses/WinUI-Essential-LICENSE.txt", "licenses/WinUI-Essential-LICENSE.txt")
         packagePayload("THIRD-PARTY-NOTICES.md", "THIRD-PARTY-NOTICES.md")
-        if (galleryUsesWinUi2) {
-            applicationModel.set(WindowsApplicationModel.Uwp)
+        if (galleryUsesWinUI2) {
+            applicationModel.set(WindowsApplicationModel.UWP)
             windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
             executableBaseName.set("kotlin-winui2-gallery")
             appxManifest(layout.projectDirectory.file("src/uwpMain/AppxManifest.xml"))
@@ -188,7 +188,7 @@ windows {
     }
     packageReferences {
         windowsSdk("10.0.26100.0", includeExtensions = false, generateProjection = true)
-        if (galleryUsesWinUi2) {
+        if (galleryUsesWinUI2) {
             nugetPackage("Microsoft.UI.Xaml", "2.8.7")
             nugetPackage("Win2D.uwp", "1.28.3")
             nugetPackage("WinUIEssential.UWP", "1.3.3")

@@ -28,7 +28,7 @@ class WinAppHostDiscoveryNativeTest {
         try {
             val expected = WinAppHostConfiguration(
                 WinAppPackageIdentity.Packaged, WindowsAppSdkDeploymentMode.None, root,
-                applicationModel = WinAppApplicationModel.Uwp, xamlFramework = XamlFramework.Uwp,
+                applicationModel = WinAppApplicationModel.UWP, xamlFramework = XamlFramework.UWP,
             )
             properties.writeText(expected.toStagedProperties())
             assertEquals(expected, WinAppHostConfiguration.fromStagedRuntimeAssets())

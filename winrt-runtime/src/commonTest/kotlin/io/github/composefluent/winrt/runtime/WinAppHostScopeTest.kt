@@ -11,8 +11,8 @@ class WinAppHostScopeTest {
         val configuration = WinAppHostConfiguration(
             packageIdentity = WinAppPackageIdentity.Packaged,
             windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.None,
-            applicationModel = WinAppApplicationModel.Uwp,
-            xamlFramework = XamlFramework.Uwp,
+            applicationModel = WinAppApplicationModel.UWP,
+            xamlFramework = XamlFramework.UWP,
         )
         assertEquals(null, configuration.windowsAppSdkVersion)
         assertFailsWith<IllegalArgumentException> {
@@ -22,7 +22,7 @@ class WinAppHostScopeTest {
             configuration.copy(windowsAppSdkDeployment = WindowsAppSdkDeploymentMode.FrameworkDependent)
         }
         assertFailsWith<IllegalArgumentException> {
-            configuration.copy(xamlFramework = XamlFramework.WinUi)
+            configuration.copy(xamlFramework = XamlFramework.WinUI)
         }
         // Packaged desktop applications remain a distinct supported model.
         assertEquals(WinAppApplicationModel.Desktop,
@@ -54,8 +54,8 @@ internal fun verifyApplicationHostApartments() {
     val uwp = WinAppHostConfiguration(
         WinAppPackageIdentity.Packaged,
         WindowsAppSdkDeploymentMode.None,
-        applicationModel = WinAppApplicationModel.Uwp,
-        xamlFramework = XamlFramework.Uwp,
+        applicationModel = WinAppApplicationModel.UWP,
+        xamlFramework = XamlFramework.UWP,
     )
     FeatureSwitches.clearForTests()
     try {

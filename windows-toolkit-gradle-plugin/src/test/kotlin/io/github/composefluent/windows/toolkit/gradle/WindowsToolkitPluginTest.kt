@@ -19,7 +19,7 @@ import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
 import io.github.composefluent.winrt.metadata.WinRTTypeRef
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
-import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
+import io.github.composefluent.winrt.runtime.WinUIRuntimeAssetManifests
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ExternalModuleDependency
@@ -2607,7 +2607,7 @@ class WindowsToolkitPluginTest {
             projection-registrar	io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic	projection-registrar.tsv	1	local.jar
             generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_local_jar	generic-instantiations.tsv	1	local.jar
             future-support	io.github.composefluent.winrt.projections.support.FutureSupport	future-support.tsv	1	local.jar
-            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1	local.jar
+            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUIXamlComponentResources	xaml-component-resources.tsv	1	local.jar
             """.trimIndent(),
         )
         Files.writeString(
@@ -2644,7 +2644,7 @@ class WindowsToolkitPluginTest {
             kind	className	sourceFile	entries	owner
             projection-registrar	io.github.composefluent.winrt.runtime.WinRTProjectionSupportIntrinsic	projection-registrar.tsv	1	dependency.jar
             generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency_jar	generic-instantiations.tsv	1	dependency.jar
-            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUiXamlComponentResources	xaml-component-resources.tsv	1	dependency.jar
+            xaml-component-resource	io.github.composefluent.winrt.projections.support.WinUIXamlComponentResources	xaml-component-resources.tsv	1	dependency.jar
             """.trimIndent(),
         )
         Files.writeString(
@@ -2716,7 +2716,7 @@ class WindowsToolkitPluginTest {
                 "generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_dependency_jar\tgeneric-instantiations.tsv\t2\tdependency.jar",
             ),
         )
-        assertTrue(manifest.contains("xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUiXamlComponentResources"))
+        assertTrue(manifest.contains("xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUIXamlComponentResources"))
         assertFalse(manifest.contains("WinRTGenericTypeInstantiationRegistry"))
         assertTrue(projectionSupport.contains("Windows.Foundation.Uri"))
         assertTrue(projectionSupport.contains("Windows.System.Display.DisplayRequest"))
@@ -2727,7 +2727,7 @@ class WindowsToolkitPluginTest {
         assertTrue(xamlResources.contains("WinUI3Package.ModernDialogBoxContent_Resource"))
         assertTrue(xamlResources.contains("WinUI3Package.Shimmer_Resource"))
         val xamlBootstrap = Files.readString(
-            outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt"),
+            outputRoot.resolve("io/github/composefluent/winrt/projections/support/WinUIXamlComponentResources.kt"),
         )
         assertTrue(xamlBootstrap.contains("ActivationFactory.activateInstance(\"WinUI3Package.ModernDialogBoxContent_Resource\")"))
         assertTrue(xamlBootstrap.contains("ActivationFactory.activateInstance(\"WinUI3Package.Shimmer_Resource\")"))
@@ -6226,7 +6226,7 @@ class WindowsToolkitPluginTest {
         )
 
         val task = project.tasks.register(
-            "stageCppWinUiNativeAssets",
+            "stageCppWinUINativeAssets",
             StageWindowsPackageRuntimeAssetsTask::class.java,
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("cppwinui-assets"))
@@ -6241,7 +6241,7 @@ class WindowsToolkitPluginTest {
         task.stage()
 
         val providers = Files.readAllLines(
-            task.outputDirectory.get().asFile.toPath().resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
+            task.outputDirectory.get().asFile.toPath().resolve(WinUIRuntimeAssetManifests.xamlMetadataProvidersFileName),
         )
         assertEquals(listOf("Microsoft.Custom.Provider", "WinUI3Package.XamlMetaDataProvider", "Windows.Custom.Provider"), providers)
         val registration = Files.readString(
@@ -13417,7 +13417,7 @@ class WindowsToolkitPluginTest {
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK",
             version = "1.8.260416003",
-            includeWinUiWinmd = true,
+            includeWinUIWinmd = true,
         )
         val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
         val generatorWorkerSetup = """
@@ -13530,7 +13530,7 @@ class WindowsToolkitPluginTest {
                     def supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support").get().asFile
                     new File(supportRoot, "xaml-component-resources.tsv").text = "runtimeClassName\nWinUI3Package.Shimmer_Resource\n"
                     new File(supportRoot, "compiler-support.tsv").append(
-                        "xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUiXamlComponentResources\txaml-component-resources.tsv\t1\n"
+                        "xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUIXamlComponentResources\txaml-component-resources.tsv\t1\n"
                     )
                 }
             }
@@ -13627,7 +13627,7 @@ class WindowsToolkitPluginTest {
                         "generated/kotlin-winrt/compiler-support/merged/xaml-component-resources.tsv",
                     ).get().asFile.text
                     def mergedXamlBootstrap = layout.buildDirectory.file(
-                        "generated/kotlin-winrt/compiler-support/merged/io/github/composefluent/winrt/projections/support/WinUiXamlComponentResources.kt",
+                        "generated/kotlin-winrt/compiler-support/merged/io/github/composefluent/winrt/projections/support/WinUIXamlComponentResources.kt",
                     ).get().asFile.text
                     [
                         "Windows.Foundation.IClosable",
@@ -13882,7 +13882,7 @@ class WindowsToolkitPluginTest {
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK.WinUI",
             version = "1.8.260415005",
-            includeWinUiFrameworkAssets = true,
+            includeWinUIFrameworkAssets = true,
             includeLiftedRegistrations = true,
         )
         val makePriLog = projectDir.resolve("makepri.log")
@@ -14803,8 +14803,8 @@ private fun writeWindowsAppSdkPackage(
     nugetRoot: Path,
     packageId: String,
     version: String,
-    includeWinUiFrameworkAssets: Boolean = false,
-    includeWinUiWinmd: Boolean = false,
+    includeWinUIFrameworkAssets: Boolean = false,
+    includeWinUIWinmd: Boolean = false,
     includeLiftedRegistrations: Boolean = false,
     dependencies: List<Pair<String, String>> = emptyList(),
 ) {
@@ -14822,7 +14822,7 @@ private fun writeWindowsAppSdkPackage(
         </package>
         """.trimIndent(),
     )
-    if (includeWinUiFrameworkAssets) {
+    if (includeWinUIFrameworkAssets) {
         val nativeRoot = packageRoot.resolve("runtimes-framework/win-x64/native")
         Files.createDirectories(nativeRoot.resolve("Microsoft.UI.Xaml"))
         Files.writeString(nativeRoot.resolve("Microsoft.UI.Xaml.Controls.pri"), "pri")
@@ -14830,7 +14830,7 @@ private fun writeWindowsAppSdkPackage(
         Files.createDirectories(packageRoot.resolve("include"))
         Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
     }
-    if (includeWinUiWinmd) {
+    if (includeWinUIWinmd) {
         val winmdRoot = packageRoot.resolve("lib/net8.0")
         Files.createDirectories(winmdRoot)
         WinRTPortableExecutableMetadataWriter.writeProjectionFixtureWinmd(

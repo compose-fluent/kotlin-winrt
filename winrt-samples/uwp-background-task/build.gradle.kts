@@ -10,7 +10,7 @@ plugins {
 kotlin { mingwX64 { binaries.sharedLib() } }
 
 windows {
-    xaml { framework = XamlFramework.Uwp }
+    xaml { framework = XamlFramework.UWP }
     packageReferences {
         windowsSdk("10.0.26100.0", generateProjection = true)
         type("Windows.ApplicationModel.Background.IBackgroundTask")

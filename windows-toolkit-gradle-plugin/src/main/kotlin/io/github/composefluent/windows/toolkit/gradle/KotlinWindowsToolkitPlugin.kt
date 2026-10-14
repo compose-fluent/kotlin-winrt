@@ -10,7 +10,7 @@ import io.github.composefluent.winrt.metadata.WindowsSdkRootDiscovery
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.metadata.projectionInventory
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
-import io.github.composefluent.winrt.projections.generator.redirectedWinUiXamlProjectionSurfaceTypeReferences
+import io.github.composefluent.winrt.projections.generator.redirectedWinUIXamlProjectionSurfaceTypeReferences
 import org.gradle.api.Action
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.Plugin
@@ -1357,7 +1357,7 @@ private fun configureWinAppTasks(
                 // belong to the AppX package graph even though UWP uses no Windows App SDK.
                 // Desktop Windows App SDK frameworks still follow its deployment selection.
                 (format?.packageType ?: options.packageType.get()) == WindowsPackageType.Packaged &&
-                    (options.applicationModel.get() == WindowsApplicationModel.Uwp ||
+                    (options.applicationModel.get() == WindowsApplicationModel.UWP ||
                         (format?.deployment ?: resolvedWindowsAppSdkDeployment.get()) == WindowsAppSdkDeployment.FrameworkDependent)
             })
             task.executableBaseName.set(executableBaseName)
@@ -1566,7 +1566,7 @@ private fun configureWinAppTasks(
         }
     }
     val developmentPackageTask = registerApplicationPackageStage("stageWinAppDevelopmentPackage")
-    val designPreview = project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol.PREVIEW_ENVIRONMENT)
+    val designPreview = project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT)
         .map { it == "1" }.orElse(false)
     developmentPackageTask.configure { task ->
         task.packageIdentity.set(WinAppPackageIdentity.Packaged)
@@ -1824,7 +1824,7 @@ private fun configureWinAppTasks(
                 task.installPackage.set(options.installPackage)
                 task.packageType.set(packageType.map { it.name })
                 task.includeRestoredFrameworkDependencies.set(project.provider {
-                    options.applicationModel.get() == WindowsApplicationModel.Uwp ||
+                    options.applicationModel.get() == WindowsApplicationModel.UWP ||
                         deployment.get() == WindowsAppSdkDeployment.FrameworkDependent
                 })
                 task.powerShellExecutable.set(options.installPowerShellExecutable)
@@ -2090,7 +2090,7 @@ private fun configureMingwApplicationEntry(
             executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
         }
         executable.linkerOpts(if (console.get()) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
-        if (applicationModel.get() == WindowsApplicationModel.Uwp) executable.linkerOpts("-Wl,/APPCONTAINER")
+        if (applicationModel.get() == WindowsApplicationModel.UWP) executable.linkerOpts("-Wl,/APPCONTAINER")
         if (launcherIconTask.get().launcherIcon.isPresent) {
             val resource = launcherIconTask.flatMap { it.outputFile }
             executable.linkerOpts(resource.get().asFile.absolutePath)
@@ -2543,8 +2543,8 @@ private fun configureWinRTGeneration(
         task.additionExcludeNamespaces.set(emptyList())
         task.generateWindowsSdkProjection.set(true)
         task.projectModel.set("application")
-        task.authoringAssemblyName.set("KotlinWinUiXamlSdkPreview")
-        task.authoringTargetArtifactName.set("KotlinWinUiXamlSdkPreview.jar")
+        task.authoringAssemblyName.set("KotlinWinUIXamlSdkPreview")
+        task.authoringTargetArtifactName.set("KotlinWinUIXamlSdkPreview.jar")
         task.generateSdkPreviewSources.set(true)
         task.nugetPackages.set(project.provider {
             allNuGetPackageSpecs(extension.packageReferences).filter { it.substringBefore('@').startsWith("Microsoft.WindowsAppSDK", true) }
@@ -2575,7 +2575,7 @@ private fun configureWinRTGeneration(
         configuration.dependencies.add(project.dependencies.create("org.jetbrains:annotations:13.0"))
     }
     previewProjection.configure { task -> task.generatorWorkerClasspath.from(previewCompiler) }
-    configureWinUiXamlSdkPreview(project, extension, previewProjection,
+    configureWinUIXamlSdkPreview(project, extension, previewProjection,
         previewCompiler, compilerPluginClasspath, previewRuntime,
         previewProjection.flatMap { it.nugetPackages }, windowsSdkRegistryRoots,
         configuredJvmToolchainHome(project, extension.application), currentWindowsRuntimeIdentifier())
@@ -2766,7 +2766,7 @@ private fun configureWinRTGeneration(
         })
     }
 
-    configureWinUiXamlPipeline(
+    configureWinUIXamlPipeline(
         project, extension, authoringSourceRoots,
         prepareMetadataTask.flatMap { it.outputDirectory.file("kotlin-winrt-metadata/resolved-sources.tsv") },
         prepareMetadataTask.flatMap { it.outputDirectory.file("kotlin-winrt-authoring/metadata-index.tsv") },
@@ -4141,7 +4141,7 @@ private fun kotlinWinRTLocalGenerationRequired(project: Project): Provider<Boole
         ?: project.provider { false }
 
 @Suppress("UNCHECKED_CAST")
-private fun kotlinWinUiXamlSourcesPresent(project: Project): Boolean =
+private fun kotlinWinUIXamlSourcesPresent(project: Project): Boolean =
     (project.extensions.extraProperties.properties["kotlinWinRTXamlSourcesPresent"] as? Provider<Boolean>)?.get() == true
 
 private fun windowsSdkRegistryRootsProvider(project: Project): Provider<List<String>> =
@@ -4181,7 +4181,7 @@ private fun kotlinWinRTCombinedProjectionHasLocalOutput(
         types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes).toSet(),
         excludedNamespaces = extension.excludeNamespaces.get().toSet(),
         excludedTypes = extension.excludeTypes.get().toSet(),
-        additionalTypeReferences = ::redirectedWinUiXamlProjectionSurfaceTypeReferences,
+        additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
     )
     val projectionContext = WinRTMetadataProjectionContext(
         sources = sources,
@@ -4289,7 +4289,7 @@ private fun kotlinWinRTLocalCompilerSupportDependencies(
     mergeCompilerSupportTask: TaskProvider<MergeWinRTCompilerSupportTask>,
 ): Provider<List<TaskProvider<MergeWinRTCompilerSupportTask>>> =
     project.provider {
-        if (kotlinWinRTLocalGenerationRequired(project).get() || kotlinWinUiXamlSourcesPresent(project)) {
+        if (kotlinWinRTLocalGenerationRequired(project).get() || kotlinWinUIXamlSourcesPresent(project)) {
             listOf(mergeCompilerSupportTask)
         } else {
             emptyList()
@@ -5260,7 +5260,7 @@ private fun addWinRTCompilerPluginOptions(
                     "projectionSupportOwnerArtifactName=${projectionSupportOwnerArtifactName.get()}",
                     "projectionSupportMode=$supportMode",
                 )
-            } else if (kotlinWinUiXamlSourcesPresent(project)) {
+            } else if (kotlinWinUIXamlSourcesPresent(project)) {
                 // Metadata-only consumers still own authored/XAML classes. Their
                 // registrars and dependency support belong to the merged manifest
                 // even when SDK projection emission is owned by another module.

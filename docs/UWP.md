@@ -38,7 +38,7 @@ kotlin {
 
 windows {
     application {
-        applicationModel = WindowsApplicationModel.Uwp
+        applicationModel = WindowsApplicationModel.UWP
         packageType = WindowsPackageType.Packaged
         windowsAppSdkDeployment = WindowsAppSdkDeployment.None
         mainClass = "sample.uwp.MainKt"
@@ -55,8 +55,8 @@ windows {
 }
 ```
 
-`applicationModel` defaults to `Desktop`. Selecting `Uwp` makes
-`windows.xaml.framework` default to `XamlFramework.Uwp`. UWP requires packaged
+`applicationModel` defaults to `Desktop`. Selecting `UWP` makes
+`windows.xaml.framework` default to `XamlFramework.UWP`. UWP requires packaged
 identity, deployment `None`, and that UWP framework selection. `None` means that
 Windows App SDK is not deployed; it does not exclude a UWP component's AppX
 framework dependencies. The desktop Windows App SDK's four explicit deployment
@@ -69,7 +69,7 @@ Select the framework explicitly in each UWP module:
 import io.github.composefluent.winrt.runtime.XamlFramework
 
 windows {
-    xaml { framework = XamlFramework.Uwp }
+    xaml { framework = XamlFramework.UWP }
 }
 ```
 
@@ -208,7 +208,7 @@ The JVM AppContainer limitation above still applies to JVM-hosted components.
 
 WinUI 2 is a UWP controls library distributed as the `Microsoft.UI.Xaml` NuGet
 package. Its `Microsoft.UI.Xaml` controls derive from `Windows.UI.Xaml`; that
-namespace does not mean WinUI 3 or Windows App SDK. Keep `XamlFramework.Uwp` when
+namespace does not mean WinUI 3 or Windows App SDK. Keep `XamlFramework.UWP` when
 adding WinUI 2 metadata and runtime assets, and project its control types alongside
 the Windows SDK UWP types. Do not substitute the Windows App SDK projection family.
 Framework package dependencies and component metadata providers are selected from

@@ -11,12 +11,12 @@ private const val runtimePackage = "io.github.composefluent.winrt.runtime."
  */
 internal fun xamlPropertyRegistrationSource(
     owner: String,
-    property: WinUiXamlApplicationProperty,
+    property: WinUIXamlApplicationProperty,
     kotlinType: String,
     convert: (String, String) -> String,
     accessorName: String = property.name,
 ): String = buildString {
-    appendLine("${runtimePackage}WinUiXamlMemberDefinition(")
+    appendLine("${runtimePackage}WinUIXamlMemberDefinition(")
     appendLine("  name = ${literal(property.name)}, typeName = ${literal(property.type.xamlStandardTypeName())}, type = ${classLiteral(kotlinType)},")
     appendLine("  isDependencyProperty = ${property.isDependencyProperty}, get = { (it as $owner).`$accessorName` },")
     if (!property.isReadOnly) appendLine("  set = { instance, value -> (instance as $owner).`$accessorName` = ${convert("value", kotlinType)} },")
@@ -26,7 +26,7 @@ internal fun xamlPropertyRegistrationSource(
 }
 
 internal data class XamlStaticAccessor(
-    val method: WinUiXamlApplicationMethod,
+    val method: WinUIXamlApplicationMethod,
     val returnType: String,
     val parameterTypes: List<String>,
 )
@@ -34,7 +34,7 @@ internal data class XamlStaticAccessor(
 /** DirectUISchemaContext resolves a public static factory with one String parameter. */
 internal fun xamlCreateFromStringMethodSource(
     typeName: String,
-    members: Map<String, WinUiXamlApplicationTypeMembers>,
+    members: Map<String, WinUIXamlApplicationTypeMembers>,
 ): String? {
     val name = members.getValue(typeName).createFromStringMethod ?: return null
     val qualified = if ('.' in name) name else "$typeName.$name"
@@ -72,7 +72,7 @@ internal fun xamlCollectionRegistrationType(interfaces: List<Pair<WinRTTypeRef, 
 
 internal fun xamlAttachedRegistrationSources(
     owner: String,
-    members: WinUiXamlApplicationTypeMembers,
+    members: WinUIXamlApplicationTypeMembers,
     accessors: List<XamlStaticAccessor>,
     convert: (String, String) -> String,
 ): List<String> = accessors.filter { it.method.isStatic && it.method.isPublic &&
@@ -83,7 +83,7 @@ internal fun xamlAttachedRegistrationSources(
         it.method.name == "Set$name" && it.method.parameterTypes == getter.method.parameterTypes + getter.method.returnType &&
         isWinRTVoidTypeName(it.method.returnType.typeName) }
     buildString {
-        appendLine("${runtimePackage}WinUiXamlMemberDefinition(")
+        appendLine("${runtimePackage}WinUIXamlMemberDefinition(")
         appendLine("  name = ${literal(name)}, typeName = ${literal(getter.method.returnType.xamlStandardTypeName())}, type = ${classLiteral(getter.returnType)},")
         appendLine("  isAttachable = true, isDependencyProperty = ${members.properties.any { it.isStatic && it.name == "${name}Property" && isXamlTypeName(it.type.qualifiedName, "DependencyProperty") }},")
         appendLine("  targetTypeName = ${literal(getter.method.parameterTypes.single().xamlStandardTypeName())}, targetType = ${classLiteral(getter.parameterTypes.single())},")
@@ -109,7 +109,7 @@ internal fun xamlValueTypeRegistrationSources(
     val boxed = plan.descriptor as? WinRTReferenceTypeDescriptor
     val own = buildString {
         if (!plan.hasDefinition) return@buildString
-        appendLine("${runtimePackage}WinUiXamlValueTypeDefinition(")
+        appendLine("${runtimePackage}WinUIXamlValueTypeDefinition(")
         appendLine("  name = ${literal(type.xamlStandardTypeName())}, type = ${classLiteral(kotlinType)},")
         fun element(prefix: String, index: Int) {
             val (metadata, source) = children[index]

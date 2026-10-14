@@ -54,25 +54,25 @@
             </TitleBar.IconSource>
             <TitleBar.Content>
 <!-- #else -->
-        <Grid x:Name="UwpTitleBarHost" MinHeight="48">
-            <Grid x:Name="UwpTitleBarDragRegion" Background="Transparent">
-                <StackPanel x:Name="UwpTitleBarBrand" Margin="16,0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+        <Grid x:Name="UWPTitleBarHost" MinHeight="48">
+            <Grid x:Name="UWPTitleBarDragRegion" Background="Transparent">
+                <StackPanel x:Name="UWPTitleBarBrand" Margin="16,0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                     <Image Source="/Assets/AppList.png" Width="16" Height="16" />
                     <TextBlock Text="{x:Bind GalleryTitle}" VerticalAlignment="Center" />
                 </StackPanel>
             </Grid>
             <!-- Interactive content is a sibling above the SetTitleBar drag region. -->
-            <StackPanel x:Name="UwpTitleBarNavigation" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4,0,0,0" Spacing="4">
-                <Button x:Name="UwpBackButton" Width="40" Height="44" Padding="0" Visibility="Collapsed"
+            <StackPanel x:Name="UWPTitleBarNavigation" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4,0,0,0" Spacing="4">
+                <Button x:Name="UWPBackButton" Width="40" Height="44" Padding="0" Visibility="Collapsed"
                         Style="{StaticResource SubtleButtonStyle}" AutomationProperties.Name="Back" ToolTipService.ToolTip="Back (Alt+Left)">
                     <FontIcon Glyph="&#xE72B;" FontSize="16" />
                 </Button>
-                <Button x:Name="UwpPaneToggleButton" Width="40" Height="44" Padding="0"
+                <Button x:Name="UWPPaneToggleButton" Width="40" Height="44" Padding="0"
                         Style="{StaticResource SubtleButtonStyle}" AutomationProperties.Name="Toggle navigation" ToolTipService.ToolTip="Toggle navigation">
                     <FontIcon Glyph="&#xE700;" FontSize="16" />
                 </Button>
             </StackPanel>
-            <Grid x:Name="UwpTitleBarInteractive" Margin="240,8,16,8">
+            <Grid x:Name="UWPTitleBarInteractive" Margin="240,8,16,8">
 <!-- #endif -->
                 <AutoSuggestBox
                     x:Name="controlsSearchBox"

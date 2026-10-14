@@ -54,11 +54,11 @@ class ValueBoxingTest {
         ComWrappersSupport.clearRegistriesForTests()
         registerProjectedPointBoxing()
         registerEnumDescriptors()
-        assertEquals(0u, defaultWinUiXamlValue(UInt::class))
-        assertEquals(Guid("00000000-0000-0000-0000-000000000000"), defaultWinUiXamlValue(Guid::class))
-        assertEquals(kotlin.time.Duration.ZERO, defaultWinUiXamlValue(kotlin.time.Duration::class))
-        assertEquals(ProjectedPoint(0f, 0f), defaultWinUiXamlValue(ProjectedPoint::class))
-        assertEquals(TestPriority.entries.first { it.abiValue == 0 }, defaultWinUiXamlValue(TestPriority::class))
+        assertEquals(0u, defaultWinUIXamlValue(UInt::class))
+        assertEquals(Guid("00000000-0000-0000-0000-000000000000"), defaultWinUIXamlValue(Guid::class))
+        assertEquals(kotlin.time.Duration.ZERO, defaultWinUIXamlValue(kotlin.time.Duration::class))
+        assertEquals(ProjectedPoint(0f, 0f), defaultWinUIXamlValue(ProjectedPoint::class))
+        assertEquals(TestPriority.entries.first { it.abiValue == 0 }, defaultWinUIXamlValue(TestPriority::class))
     }
 
     @Test

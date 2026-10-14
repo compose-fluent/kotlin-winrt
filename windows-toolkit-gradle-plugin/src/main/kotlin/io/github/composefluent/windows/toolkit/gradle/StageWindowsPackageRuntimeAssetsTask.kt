@@ -1,12 +1,12 @@
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.metadata.WinRTNuGetPackageIdentity
-import io.github.composefluent.winrt.metadata.winUiXamlMetadataProviderTypes
+import io.github.composefluent.winrt.metadata.winUIXamlMetadataProviderTypes
 import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
 import io.github.composefluent.winrt.metadata.WinRTTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRTTypeKind
-import io.github.composefluent.winrt.runtime.WinUiRuntimeAssetManifests
+import io.github.composefluent.winrt.runtime.WinUIRuntimeAssetManifests
 import io.github.composefluent.winrt.runtime.XamlFramework
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -264,7 +264,7 @@ abstract class StageWindowsPackageRuntimeAssetsTask @Inject constructor(
     abstract val includeJvmAuthoringArtifacts: Property<Boolean>
 
     init {
-        xamlFramework.convention(XamlFramework.WinUi)
+        xamlFramework.convention(XamlFramework.WinUI)
         applicationCompilationTasks.convention(emptySet())
         generateProjectPri.convention(true)
         projectPriIndexName.convention("")
@@ -666,16 +666,16 @@ abstract class StageWindowsPackageRuntimeAssetsTask @Inject constructor(
                     emptyList()
                 }
             }
-        val providers = WinRTMetadataModel(namespaces).winUiXamlMetadataProviderTypes(xamlFramework.get())
+        val providers = WinRTMetadataModel(namespaces).winUIXamlMetadataProviderTypes(xamlFramework.get())
             // WinUI 3's bootstrap owns this provider; WinUI 2 exposes the same
             // class name through the UWP provider ABI and needs ordinary discovery.
-            .filterNot { xamlFramework.get() == XamlFramework.WinUi &&
+            .filterNot { xamlFramework.get() == XamlFramework.WinUI &&
                 it == "Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider" }
         if (providers.isEmpty()) {
             return
         }
         Files.writeString(
-            outputRoot.resolve(WinUiRuntimeAssetManifests.xamlMetadataProvidersFileName),
+            outputRoot.resolve(WinUIRuntimeAssetManifests.xamlMetadataProvidersFileName),
             providers.joinToString(separator = System.lineSeparator(), postfix = System.lineSeparator()),
         )
     }

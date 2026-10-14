@@ -93,7 +93,7 @@ jobs:
       - name: Test
         # Pass winmd.nugetComponents so that:
         #   - :generated-winrt-bindings:restoreNuGetWinMdPackages restores Microsoft.WindowsAppSDK
-        #   - :sample-jvm-winui3:collectWinUiRuntimeAssets stages the runtime DLLs for tests
+        #   - :sample-jvm-winui3:collectWinUIRuntimeAssets stages the runtime DLLs for tests
         # WINDOWS_KITS_10_DIR lets WindowsSdkReferences.discoverReferencesRoot() find the SDK
         # installed by the step above through the env-var fallback path.
         shell: bash

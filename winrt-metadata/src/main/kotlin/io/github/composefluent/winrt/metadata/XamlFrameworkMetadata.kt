@@ -12,8 +12,8 @@ import kotlinx.serialization.encoding.Encoder
  */
 val XamlFramework.xamlNamespace: String
     get() = when (this) {
-        XamlFramework.WinUi -> "Microsoft.UI.Xaml"
-        XamlFramework.Uwp -> "Windows.UI.Xaml"
+        XamlFramework.WinUI -> "Microsoft.UI.Xaml"
+        XamlFramework.UWP -> "Windows.UI.Xaml"
     }
 
 val XamlFramework.xamlKotlinNamespace: String get() = xamlNamespace.lowercase()
@@ -25,7 +25,7 @@ fun XamlFramework.xamlKotlinTypeName(relativeName: String): String =
  * Windows SDK windows.ui.xaml.markup.h defines Connect and GetBindingConnector separately.
  */
 val XamlFramework.xamlBindingConnectorTypeName: String
-    get() = xamlTypeName(if (this == XamlFramework.Uwp) "Markup.IComponentConnector2" else "Markup.IComponentConnector")
+    get() = xamlTypeName(if (this == XamlFramework.UWP) "Markup.IComponentConnector2" else "Markup.IComponentConnector")
 
 val XamlFramework.xamlComponentInterfaceNames: List<String>
     get() = listOf(xamlTypeName("Markup.IComponentConnector"), xamlBindingConnectorTypeName).distinct()
@@ -42,8 +42,8 @@ fun XamlFramework.xamlMappedTypeName(typeName: String): String {
 }
 
 fun parseXamlFramework(value: String): XamlFramework = when (value.lowercase()) {
-    "winui" -> XamlFramework.WinUi
-    "uwp" -> XamlFramework.Uwp
+    "winui" -> XamlFramework.WinUI
+    "uwp" -> XamlFramework.UWP
     else -> throw IllegalArgumentException("Unknown XAML framework '$value'; expected winui or uwp.")
 }
 

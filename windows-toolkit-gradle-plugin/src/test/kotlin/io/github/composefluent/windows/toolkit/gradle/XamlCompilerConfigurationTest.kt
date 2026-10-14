@@ -27,8 +27,8 @@ class XamlCompilerConfigurationTest {
     @Test fun selecting_uwp_does_not_reuse_the_winui_release_or_checksum() {
         val (_, windows) = configuration()
         assertFalse(windows.xaml.archiveUrl.get().isEmpty())
-        windows.application.applicationModel.set(WindowsApplicationModel.Uwp)
-        assertEquals(XamlFramework.Uwp, windows.xaml.framework.get())
+        windows.application.applicationModel.set(WindowsApplicationModel.UWP)
+        assertEquals(XamlFramework.UWP, windows.xaml.framework.get())
         assertEquals("0.1.0-preview.7", windows.xaml.compilerVersion.get())
         assertEquals("c771ea8a7875500ed293e8da7d9de0b27d87695d9b4a8999143d50a2e63696d2", windows.xaml.archiveSha256.get())
         assertEquals("https://github.com/compose-fluent/microsoft-ui-xaml/releases/download/" +
@@ -37,7 +37,7 @@ class XamlCompilerConfigurationTest {
 
     @Test fun explicit_uwp_release_requires_its_own_checksum_and_uses_the_uwp_archive() {
         val (project, windows) = configuration()
-        windows.xaml.framework.set(XamlFramework.Uwp)
+        windows.xaml.framework.set(XamlFramework.UWP)
         windows.xaml.compilerVersion.set("1.2.3")
         assertEquals("", windows.xaml.archiveSha256.get())
         assertTrue(resolveFailure(project, windows).contains("windows.xaml.archiveSha256"))
@@ -49,7 +49,7 @@ class XamlCompilerConfigurationTest {
 
     @Test fun explicitly_empty_uwp_version_is_rejected_even_with_a_checksum() {
         val (project, windows) = configuration()
-        windows.xaml.framework.set(XamlFramework.Uwp)
+        windows.xaml.framework.set(XamlFramework.UWP)
         windows.xaml.compilerVersion.set("")
         windows.xaml.archiveSha256.set("b".repeat(64))
         assertTrue(resolveFailure(project, windows).contains("windows.xaml.compilerVersion"))
@@ -84,7 +84,7 @@ class XamlCompilerConfigurationTest {
                 id 'io.github.compose-fluent.windows-toolkit'
             }
             windows.xaml {
-                framework = io.github.composefluent.winrt.runtime.XamlFramework.Uwp
+                framework = io.github.composefluent.winrt.runtime.XamlFramework.UWP
                 compilerDirectory = layout.projectDirectory.dir('compiler')
             }
         """.trimIndent())
@@ -97,7 +97,7 @@ class XamlCompilerConfigurationTest {
     }
 
     private fun resolveFailure(project: Project, windows: WindowsExtension): String {
-        val task = project.tasks.create("resolveCompilerForTest", ResolveWinUiXamlCompilerTask::class.java)
+        val task = project.tasks.create("resolveCompilerForTest", ResolveWinUIXamlCompilerTask::class.java)
         task.compilerVersion.set(windows.xaml.compilerVersion)
         task.archiveSha256.set(windows.xaml.archiveSha256)
         task.archiveUrl.set(windows.xaml.archiveUrl)

@@ -18,7 +18,7 @@ class GalleryApplication : Application() {
                 val uri = protocol.uri
                 galleryLog("Activation: protocol; uri=${uri?.absoluteUri}; previous=${protocol.previousExecutionState}")
                 val route = uri?.host?.let(GalleryNavigationHost::resolveRoute)
-                showShell(route ?: "UwpActivation")
+                showShell(route ?: "UWPActivation")
             }
             ActivationKind.ToastNotification -> {
                 val toast = args.asWinRT<ToastNotificationActivatedEventArgs>()
@@ -31,7 +31,7 @@ class GalleryApplication : Application() {
     override fun onFileActivated(args: FileActivatedEventArgs?) = try {
         galleryLog("Activation: file callback entered")
         galleryLog("Activation: file; names=${args?.files?.map { it?.name }}; previous=${args?.previousExecutionState}")
-        showShell("UwpActivation")
+        showShell("UWPActivation")
     } catch (error: Throwable) {
         galleryLog("File activation failed: ${error.stackTraceToString()}")
         throw error
@@ -74,7 +74,7 @@ class GalleryApplication : Application() {
             currentShell = it
             window.content = it
             // SetTitleBar needs the drag element to belong to this window's visual tree.
-            it.configureUwpTitleBar()
+            it.configureUWPTitleBar()
             GalleryWindows.track(window)
         }
         checkNotNull(ApplicationView.getForCurrentView()).title = if (galleryTargetName == "mingw") "Kotlin/Native" else "Kotlin/JVM"

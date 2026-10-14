@@ -25,8 +25,8 @@ import org.jetbrains.kotlin.name.*
 internal class XamlCompiledBindingBodies(
     private val pluginContext: IrPluginContext,
     private val classes: Map<String?, IrClass>,
-    private val pages: Map<String, WinUiXamlPageDeclaration> = emptyMap(),
-    private val framework: XamlFramework = XamlFramework.WinUi,
+    private val pages: Map<String, WinUIXamlPageDeclaration> = emptyMap(),
+    private val framework: XamlFramework = XamlFramework.WinUI,
 ) {
     private fun projection(name: String): IrClass = if (name == "System.Object") pluginContext.irBuiltIns.anyClass.owner
         else classes[name] ?: requireNotNull(pluginContext.referenceClass(
@@ -42,7 +42,7 @@ internal class XamlCompiledBindingBodies(
     private fun staticOwner(klass: IrClass): IrClass =
         if (klass.kind == ClassKind.OBJECT) klass else requireNotNull(klass.companionObject())
 
-    private fun targetAccessor(binding: WinUiXamlBindingDeclaration, write: Boolean): IrSimpleFunction {
+    private fun targetAccessor(binding: WinUIXamlBindingDeclaration, write: Boolean): IrSimpleFunction {
         val owner = projection(binding.declaringTypeName)
         return if (binding.isAttachable) {
             functions(staticOwner(owner), "${if (write) "Set" else "Get"}${binding.name}").single()
@@ -51,7 +51,7 @@ internal class XamlCompiledBindingBodies(
         }
     }
 
-    private fun targetAssignment(builder: IrBuilderWithScope, binding: WinUiXamlBindingDeclaration,
+    private fun targetAssignment(builder: IrBuilderWithScope, binding: WinUIXamlBindingDeclaration,
         setter: IrSimpleFunction, target: IrExpression, value: IrExpression): IrExpression = with(builder) {
         irCall(setter.symbol).apply {
             if (binding.isAttachable) {
@@ -61,7 +61,7 @@ internal class XamlCompiledBindingBodies(
         }
     }
 
-    private fun targetValue(builder: IrBuilderWithScope, binding: WinUiXamlBindingDeclaration,
+    private fun targetValue(builder: IrBuilderWithScope, binding: WinUIXamlBindingDeclaration,
         target: IrExpression): IrExpression = with(builder) {
         val getter = targetAccessor(binding, false)
         irCall(getter.symbol).apply {
@@ -76,7 +76,7 @@ internal class XamlCompiledBindingBodies(
     /** CSharpPagePass2.DisconnectUnloadedObject preserves the current typed target values.
      * In particular, OneTime values must survive unload/reload without reevaluating the source.
      */
-    private fun preserveDeferredBindings(builder: IrStatementsBuilder<*>, connection: WinUiXamlConnectionDeclaration,
+    private fun preserveDeferredBindings(builder: IrStatementsBuilder<*>, connection: WinUIXamlConnectionDeclaration,
         state: () -> IrExpression, current: () -> IrExpression,
         target: (IrBuilderWithScope) -> IrExpression) = with(builder) {
         val bindings = connection.bindings.filterNot { it.isLoad || it.isEvent }
@@ -100,8 +100,8 @@ internal class XamlCompiledBindingBodies(
         }
     }
 
-    private fun emitBinding(builder: IrStatementsBuilder<*>, klass: IrClass, page: WinUiXamlPageDeclaration,
-        connection: WinUiXamlConnectionDeclaration, binding: WinUiXamlBindingDeclaration,
+    private fun emitBinding(builder: IrStatementsBuilder<*>, klass: IrClass, page: WinUIXamlPageDeclaration,
+        connection: WinUIXamlConnectionDeclaration, binding: WinUIXamlBindingDeclaration,
         root: () -> IrExpression, converterRoot: () -> IrExpression, target: () -> IrExpression,
         state: () -> IrExpression, observerClass: IrClass, observer: () -> IrExpression,
         changed: IrSimpleFunction, initial: IrExpression, back: IrSimpleFunction? = null,
@@ -214,7 +214,7 @@ internal class XamlCompiledBindingBodies(
         if (binding.mode == "OneTime") +irIfThen(pluginContext.irBuiltIns.unitType, initial, body) else +body
     }
 
-    private fun generateTemplateScopes(klass: IrClass, page: WinUiXamlPageDeclaration) {
+    private fun generateTemplateScopes(klass: IrClass, page: WinUIXamlPageDeclaration) {
         val scopeClass = requireNotNull(pluginContext.referenceClass(xamlBindingScopeId)).owner
         val scopeId = requireNotNull(property(scopeClass, "scopeId")?.getter)
         val dataRoot = requireNotNull(property(scopeClass, "dataRoot")?.getter)
@@ -231,12 +231,12 @@ internal class XamlCompiledBindingBodies(
         }.sortedWith(compareBy({ it.first.id }, { it.second.name })).withIndex()
             .associate { (index, pair) -> (pair.first.id to pair.second.name) to index + 1 }
 
-        fun IrBuilderWithScope.source(scope: IrValueParameter, connections: List<WinUiXamlConnectionDeclaration>): IrExpression {
+        fun IrBuilderWithScope.source(scope: IrValueParameter, connections: List<WinUIXamlConnectionDeclaration>): IrExpression {
             val typeName = connections.first { it.isScopeRoot }.dataTypeName ?: "System.Object"
             val value = irCall(dataRoot.symbol).apply { dispatchReceiver = irGet(scope) }
             return convert(value, projection(typeName).defaultType, this, page.resourcePath)
         }
-        fun IrBuilderWithScope.target(scope: IrValueParameter, connection: WinUiXamlConnectionDeclaration): IrExpression =
+        fun IrBuilderWithScope.target(scope: IrValueParameter, connection: WinUIXamlConnectionDeclaration): IrExpression =
             convert(irCall(getTarget.symbol).apply {
                 dispatchReceiver = irGet(scope); arguments[1] = irInt(connection.id)
             }, projection(connection.typeName).defaultType, this, page.resourcePath)
@@ -353,7 +353,7 @@ internal class XamlCompiledBindingBodies(
         }
     }
 
-    fun generate(klass: IrClass, page: WinUiXamlPageDeclaration, properties: Map<String, IrProperty>) {
+    fun generate(klass: IrClass, page: WinUIXamlPageDeclaration, properties: Map<String, IrProperty>) {
         val bindings = page.connections.filter { !it.isTemplateChild && it.bindings.isNotEmpty() }
         val state = requireNotNull(properties.getValue(xamlBindingStateName.asString()).backingField)
         val stateClass = requireNotNull(pluginContext.referenceClass(xamlBindingStateId)).owner
@@ -423,7 +423,7 @@ internal class XamlCompiledBindingBodies(
         if (page.hasTemplateScopes()) generateTemplateScopes(klass, page)
     }
 
-    private fun loadElement(builder: IrBuilderWithScope, connection: WinUiXamlConnectionDeclaration,
+    private fun loadElement(builder: IrBuilderWithScope, connection: WinUIXamlConnectionDeclaration,
         value: IrExpression, root: () -> IrExpression, current: () -> IrExpression,
         disconnect: (IrStatementsBuilder<*>) -> Unit): IrExpression = with(builder) {
         val frameworkElement = projection(framework.xamlTypeName("FrameworkElement"))
@@ -447,7 +447,7 @@ internal class XamlCompiledBindingBodies(
             })
     }
 
-    fun lifecycleSubscription(builder: IrBuilderWithScope, klass: IrClass, page: WinUiXamlPageDeclaration,
+    fun lifecycleSubscription(builder: IrBuilderWithScope, klass: IrClass, page: WinUIXamlPageDeclaration,
         callback: IrSimpleFunction, receiver: IrExpression, loading: Boolean): IrExpression = with(builder) {
         val window = klass.defaultType.isSubtypeOfClass(projection(framework.xamlTypeName("Window")).symbol)
         if (!window && !klass.defaultType.isSubtypeOfClass(projection(framework.xamlTypeName("FrameworkElement")).symbol)) {
@@ -568,7 +568,7 @@ internal class XamlCompiledBindingBodies(
             function, IrStatementOrigin.LAMBDA)
     }
 
-    fun eventSubscription(builder: IrBuilderWithScope, klass: IrClass, binding: WinUiXamlBindingDeclaration,
+    fun eventSubscription(builder: IrBuilderWithScope, klass: IrClass, binding: WinUIXamlBindingDeclaration,
         receiver: IrExpression, target: IrExpression, scope: IrExpression? = null,
         dataType: IrType? = null): IrExpression = with(builder) {
         val add = projection(binding.declaringTypeName).functions.single { it.name.asString() == "add${binding.name}" }
@@ -608,7 +608,7 @@ internal class XamlCompiledBindingBodies(
     }
 
     private fun converter(builder: IrBuilderWithScope, klass: IrClass, receiver: IrExpression,
-        binding: WinUiXamlBindingDeclaration, value: IrExpression, targetType: IrType,
+        binding: WinUIXamlBindingDeclaration, value: IrExpression, targetType: IrType,
         back: Boolean = false): IrExpression = with(builder) {
         val dictionary = projection(framework.xamlTypeName("ResourceDictionary"))
         val applicationType = projection(framework.xamlTypeName("Application"))
@@ -656,7 +656,7 @@ internal class XamlCompiledBindingBodies(
         }
     }
 
-    private fun writeBack(binding: WinUiXamlBindingDeclaration, target: IrExpression, builder: IrBuilderWithScope,
+    private fun writeBack(binding: WinUIXamlBindingDeclaration, target: IrExpression, builder: IrBuilderWithScope,
         klass: IrClass, root: () -> IrExpression, converterRoot: () -> IrExpression = root,
         namedTargets: ((String, IrBuilderWithScope) -> IrExpression?)? = null): IrExpression = with(builder) {
         val path = binding.bindBack ?: binding.expression
@@ -694,11 +694,11 @@ internal class XamlCompiledBindingBodies(
         } }
     }
 
-    private fun trackedPaths(expression: WinUiXamlBindingExpression): List<WinUiXamlBindingExpression> =
+    private fun trackedPaths(expression: WinUIXamlBindingExpression): List<WinUIXamlBindingExpression> =
         (if (expression.kind in setOf("member", "index", "attached")) listOf(expression) else emptyList()) +
             expression.receiver?.let(::trackedPaths).orEmpty() + expression.arguments.flatMap(::trackedPaths)
 
-    private fun evaluate(expression: WinUiXamlBindingExpression, builder: IrBuilderWithScope, klass: IrClass,
+    private fun evaluate(expression: WinUIXamlBindingExpression, builder: IrBuilderWithScope, klass: IrClass,
         root: () -> IrExpression, expected: IrType? = null,
         namedTargets: ((String, IrBuilderWithScope) -> IrExpression?)? = null,
         pathAvailable: IrVariable? = null): IrExpression = with(builder) {
@@ -834,7 +834,7 @@ internal class XamlCompiledBindingBodies(
         }
     }
 
-    private fun alternativeValue(expression: WinUiXamlBindingExpression, expected: IrType,
+    private fun alternativeValue(expression: WinUIXamlBindingExpression, expected: IrType,
         builder: IrBuilderWithScope, location: String): IrExpression = with(builder) {
         require(expression.kind == "literal") { "$location: compiled binding alternatives require a XAML literal" }
         if (expression.typeName == "null") return@with irNull(expected.makeNullable())
@@ -842,7 +842,7 @@ internal class XamlCompiledBindingBodies(
         // convert option text to the target member type. Reuse the same literal
         // bridge as x:Property defaults; function arguments stay in evaluate().
         val convert = pluginContext.referenceFunctions(CallableId(FqName("io.github.composefluent.winrt.generated.xaml"),
-            Name.identifier("kotlinWinUiXamlMemberValue"))).single()
+            Name.identifier("kotlinWinUIXamlMemberValue"))).single()
         irCall(convert).apply {
             type = expected; typeArguments[0] = expected
             arguments[0] = irString(requireNotNull(expression.value) { "$location: missing binding alternative literal" })

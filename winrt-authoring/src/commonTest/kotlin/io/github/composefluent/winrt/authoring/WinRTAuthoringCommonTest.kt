@@ -15,9 +15,9 @@ import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRTComInterfaceBaseKind
 import io.github.composefluent.winrt.runtime.WinRTNotImplementedException
-import io.github.composefluent.winrt.runtime.WinUiXamlComponent
-import io.github.composefluent.winrt.runtime.WinUiXamlLoadState
-import io.github.composefluent.winrt.runtime.initializeWinUiXamlComponent
+import io.github.composefluent.winrt.runtime.WinUIXamlComponent
+import io.github.composefluent.winrt.runtime.WinUIXamlLoadState
+import io.github.composefluent.winrt.runtime.initializeWinUIXamlComponent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -39,7 +39,7 @@ class WinRTAuthoringCommonTest {
         for (alreadyInitialized in listOf(false, true)) {
             val name = "Sample.Authoring.XamlActivationComponent.$alreadyInitialized"
             WinRTAuthoring.registerActivationFactory<XamlActivationComponent>(name, createInstance = {
-                XamlActivationComponent().also { if (alreadyInitialized) initializeWinUiXamlComponent(it) }
+                XamlActivationComponent().also { if (alreadyInitialized) initializeWinUIXamlComponent(it) }
             })
             ActivationFactory.get(name).use { factory ->
                 factory.activateInstance().use { reference ->
@@ -634,9 +634,9 @@ class WinRTAuthoringCommonTest {
 
     private class ActivatableComponent
 
-    private class XamlActivationComponent : WinUiXamlComponent {
-        private val construction = WinUiXamlLoadState()
-        private val markup = WinUiXamlLoadState()
+    private class XamlActivationComponent : WinUIXamlComponent {
+        private val construction = WinUIXamlLoadState()
+        private val markup = WinUIXamlLoadState()
         var initializations = 0
         var loads = 0
         override fun initializeComponent() {

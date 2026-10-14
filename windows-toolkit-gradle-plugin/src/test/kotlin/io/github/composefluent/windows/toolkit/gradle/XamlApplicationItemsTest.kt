@@ -1,6 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
-import io.github.composefluent.winrt.metadata.WinUiXamlDeclarations
+import io.github.composefluent.winrt.metadata.WinUIXamlDeclarations
 import io.github.composefluent.winrt.runtime.XamlFramework
 import kotlinx.serialization.json.*
 import org.gradle.testfixtures.ProjectBuilder
@@ -16,7 +16,7 @@ class XamlApplicationItemsTest {
             for (path in listOf("views/CustomApplication.xaml", "views/CustomApplication.xbf", "views/MainPage.xbf")) {
                 root.resolve(path).apply { parentFile.mkdirs(); writeText(path) }
             }
-            fun plan(framework: String) = WinUiXamlDeclarations.parse("""{"SchemaVersion":3,"Framework":"$framework","Pages":[{"ClassName":"sample.App","ResourcePath":"views/CustomApplication.xaml","BaseTypeName":"${if (framework == "uwp") "Windows" else "Microsoft"}.UI.Xaml.Application","IsApplication":true,"Features":[],"Connections":[]}],"Resources":[]}""")
+            fun plan(framework: String) = WinUIXamlDeclarations.parse("""{"SchemaVersion":3,"Framework":"$framework","Pages":[{"ClassName":"sample.App","ResourcePath":"views/CustomApplication.xaml","BaseTypeName":"${if (framework == "uwp") "Windows" else "Microsoft"}.UI.Xaml.Application","IsApplication":true,"Features":[],"Connections":[]}],"Resources":[]}""")
             // Windows SDK CppWinRT_AppPass1 leaves InitializeComponent empty;
             // the UWP runtime itself resolves Files/App.xaml during startup.
             assertEquals(setOf("App.xaml", "App.xbf", "views/MainPage.xbf"),
@@ -53,13 +53,13 @@ class XamlApplicationItemsTest {
     @Test
     fun application_classification_invalidates_old_page_cache_and_keeps_header_producer() {
         val project = ProjectBuilder.builder().build()
-        val header = project.tasks.register("header", GenerateWinUiXamlApplicationHeaderTask::class.java) {
+        val header = project.tasks.register("header", GenerateWinUIXamlApplicationHeaderTask::class.java) {
             it.sourceOutputDirectory.set(project.layout.buildDirectory.dir("header"))
         }
-        val compile = project.tasks.create("compileMarkup", CompileWinUiXamlTask::class.java)
+        val compile = project.tasks.create("compileMarkup", CompileWinUIXamlTask::class.java)
         compile.outputDirectory.set(project.layout.buildDirectory.dir("markup"))
         assertEquals(project.file("build/markup/compiled"), compile.packageResourcesDirectory.get().asFile)
-        compile.xamlFramework.set(XamlFramework.Uwp)
+        compile.xamlFramework.set(XamlFramework.UWP)
         assertEquals(project.file("build/markup/resources"), compile.packageResourcesDirectory.get().asFile)
         compile.applicationItemsFile.set(header.flatMap { it.applicationItemsFile })
         assertTrue(project.files(compile.applicationItemsFile).buildDependencies.getDependencies(compile).contains(header.get()))
@@ -68,11 +68,11 @@ class XamlApplicationItemsTest {
         val sources = mapOf("CustomApplication.xaml" to app)
         val pageInput = xamlCompilerSourceItems(sources, emptyList())
         val appInput = xamlCompilerSourceItems(sources, listOf(app))
-        assertNotEquals(WinUiXamlPageCache.context(pageInput, emptyList()),
-            WinUiXamlPageCache.context(appInput, emptyList()))
+        assertNotEquals(WinUIXamlPageCache.context(pageInput, emptyList()),
+            WinUIXamlPageCache.context(appInput, emptyList()))
         for ((namespace, framework) in listOf("Windows.UI.Xaml" to ",\"Framework\":\"uwp\"", "Microsoft.UI.Xaml" to "")) {
-            val plan = WinUiXamlDeclarations.parse("""{"SchemaVersion":3,"Pages":[{"ClassName":"sample.App","ResourcePath":"CustomApplication.xaml","BaseTypeName":"$namespace.Application","IsApplication":true,"Features":[],"Connections":[]}],"Resources":[]$framework}""")
-            assertFalse(WinUiXamlPageCache.canIsolate(plan))
+            val plan = WinUIXamlDeclarations.parse("""{"SchemaVersion":3,"Pages":[{"ClassName":"sample.App","ResourcePath":"CustomApplication.xaml","BaseTypeName":"$namespace.Application","IsApplication":true,"Features":[],"Connections":[]}],"Resources":[]$framework}""")
+            assertFalse(WinUIXamlPageCache.canIsolate(plan))
         }
     }
 

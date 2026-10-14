@@ -153,7 +153,7 @@ object WebView2Sample {
     private var activeApplication: WebView2SampleApp? = null
 
     fun start() {
-        val autoExit = winRTSampleOption("kotlin.winrt.samples.autoExitWinUi")
+        val autoExit = winRTSampleOption("kotlin.winrt.samples.autoExitWinUI")
         val failures = WebView2SampleFailures(autoExit)
         try {
             configureWebView2TransparentBackground()

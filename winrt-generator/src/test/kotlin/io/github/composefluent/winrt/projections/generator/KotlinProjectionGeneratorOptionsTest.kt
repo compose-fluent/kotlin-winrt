@@ -9,16 +9,16 @@ import org.junit.Test
 class KotlinProjectionGeneratorOptionsTest {
     @Test
     fun defaults_to_winui_for_existing_cli_invocations() {
-        assertEquals(XamlFramework.WinUi, parse().xamlFramework)
+        assertEquals(XamlFramework.WinUI, parse().xamlFramework)
     }
 
     @Test
     fun accepts_both_xaml_frameworks_using_the_shared_parser() {
         // CsWinRT Projections.cs selects WUX/MUX mappings by framework, including
         // UWP applications that consume Microsoft.UI.Xaml WinUI 2 control types.
-        assertEquals(XamlFramework.Uwp, parse("--xaml-framework", "uwp").xamlFramework)
-        assertEquals(XamlFramework.WinUi, parse("--xaml-framework", "winui").xamlFramework)
-        assertEquals(XamlFramework.Uwp, parse("--xaml-framework", "Uwp").xamlFramework)
+        assertEquals(XamlFramework.UWP, parse("--xaml-framework", "uwp").xamlFramework)
+        assertEquals(XamlFramework.WinUI, parse("--xaml-framework", "winui").xamlFramework)
+        assertEquals(XamlFramework.UWP, parse("--xaml-framework", "UWP").xamlFramework)
     }
 
     @Test

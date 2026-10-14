@@ -128,7 +128,7 @@ class WinRTInvalidWindowHandleException(
     restrictedErrorInfo: WinRTRestrictedErrorInfo? = null,
 ) : WinRTRuntimeException(message, hResult, restrictedErrorInfo = restrictedErrorInfo)
 
-class WinUiXamlParseException(
+class WinUIXamlParseException(
     message: String,
     hResult: HResult,
     restrictedErrorInfo: WinRTRestrictedErrorInfo? = null,

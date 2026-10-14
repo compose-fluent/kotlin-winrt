@@ -22,7 +22,7 @@ On the Gallery's **UWP activation** page, register the Native background compone
 For deterministic callback validation without changing the machine's time zone:
 
 ```powershell
-.\winui-gallery\tools\Invoke-UwpGalleryBackgroundTask.ps1 `
+.\winui-gallery\tools\Invoke-UWPGalleryBackgroundTask.ps1 `
     -TaskName KotlinGallery.Component -Activate
 ```
 

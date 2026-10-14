@@ -229,7 +229,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
         packageIdentity.convention(WinAppPackageIdentity.Packaged)
         windowsAppSdkDeployment.convention(WindowsAppSdkDeploymentMode.None)
         applicationModel.convention(WindowsApplicationModel.Desktop)
-        xamlFramework.convention(XamlFramework.WinUi)
+        xamlFramework.convention(XamlFramework.WinUI)
         jvmRuntimeJavaMajor.convention(25)
         generateProjectPri.convention(true)
         developmentIdentity.convention(false)
@@ -304,7 +304,7 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             }
         stageAppxManifest(outputRoot)
         AppxManifestPackageSupport.applyApplicationModel(outputRoot.resolve("AppxManifest.xml"), applicationModel.get())
-        if (applicationModel.get() == WindowsApplicationModel.Uwp && jvmLauncherExecutable.isPresent) {
+        if (applicationModel.get() == WindowsApplicationModel.UWP && jvmLauncherExecutable.isPresent) {
             // LoadPackagedLibrary resolves dependencies through the manifest's package search
             // paths. Keep the root and the directories present in the bundled JVM layout.
             AppxManifestPackageSupport.mergeLoaderSearchPaths(

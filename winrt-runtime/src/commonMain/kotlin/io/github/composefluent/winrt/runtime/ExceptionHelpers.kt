@@ -67,7 +67,7 @@ object ExceptionHelpers {
             RPC_E_CHANGED_MODE,
             -> WinRTIllegalStateException(message, hResult, restrictedErrorInfo)
 
-            E_XAMLPARSEFAILED -> WinUiXamlParseException(message, hResult, restrictedErrorInfo)
+            E_XAMLPARSEFAILED -> WinUIXamlParseException(message, hResult, restrictedErrorInfo)
             E_LAYOUTCYCLE -> WinRTLayoutCycleException(message, hResult, restrictedErrorInfo)
             E_ELEMENTNOTAVAILABLE -> WinRTElementNotAvailableException(message, hResult, restrictedErrorInfo)
             E_ELEMENTNOTENABLED -> WinRTElementNotEnabledException(message, hResult, restrictedErrorInfo)

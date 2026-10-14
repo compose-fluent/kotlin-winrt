@@ -8,14 +8,14 @@ import microsoft.ui.xaml.input.KeyboardAccelerator
 import windows.system.VirtualKey
 import windows.system.VirtualKeyModifiers
 // #if WINUI2
-import windows.ui.windowmanagement.AppWindow as UwpAppWindow
+import windows.ui.windowmanagement.AppWindow as UWPAppWindow
 // #endif
 
 internal object GalleryWindows {
     private val windows = mutableListOf<Window>()
 // #if WINUI2
-    private val appWindows = mutableListOf<UwpAppWindow>()
-    fun track(window: UwpAppWindow, content: Page) {
+    private val appWindows = mutableListOf<UWPAppWindow>()
+    fun track(window: UWPAppWindow, content: Page) {
         appWindows.add(window)
         window.closed.add { _, _ ->
             // Release the hosted page's tree; a closed AppWindow cannot accept new content.

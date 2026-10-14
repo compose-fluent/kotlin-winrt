@@ -86,11 +86,11 @@ class KotlinWinRTAuthoringScannerCliTest {
     @Test
     fun uwp_development_sources_use_core_window_and_the_system_dispatcher() {
         val root = Files.createTempDirectory("kotlin-winrt-uwp-inspector-")
-        io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.Uwp)
-        val host = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinUiXamlPreviewHost.kt").readText()
+        io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.UWP)
+        val host = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost.kt").readText()
         val inspector = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_preview.kt").readText()
         assertTrue(host.contains("requireNotNull(Window.current)"))
-        assertTrue(host.contains("XamlRuntime.initialize(XamlFramework.Uwp)"))
+        assertTrue(host.contains("XamlRuntime.initialize(XamlFramework.UWP)"))
         assertTrue(host.contains("windows.applicationmodel.activation.LaunchActivatedEventArgs"))
         assertTrue(inspector.contains("windows.system.DispatcherQueue.getForCurrentThread()"))
         assertTrue(inspector.contains("windows.ui.viewmanagement.ApplicationView.getForCurrentView()"))
@@ -110,7 +110,7 @@ class KotlinWinRTAuthoringScannerCliTest {
         KotlinWinRTAuthoringScannerCli.main(arrayOf("--metadata-index", index.toString(),
             "--source-root", root.toString(), "--output", output.toString()))
         val candidate = KotlinWinRTAuthoringCandidateFile.read(output).single()
-        assertEquals("io.github.composefluent.winrt.generated.xaml.KotlinWinUiXamlPreviewApplication", candidate.sourceTypeName)
+        assertEquals("io.github.composefluent.winrt.generated.xaml.KotlinWinUIXamlPreviewApplication", candidate.sourceTypeName)
         assertEquals(listOf("Microsoft.UI.Xaml.IApplicationOverrides"), candidate.overridableInterfaceNames)
         assertTrue(!candidate.isPublic)
     }

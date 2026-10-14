@@ -5,16 +5,16 @@ import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.Key
-import io.github.composefluent.winrt.ide.gradle.WinUiXamlHotReloadLaunchData
+import io.github.composefluent.winrt.ide.gradle.WinUIXamlHotReloadLaunchData
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
-import io.github.composefluent.winrt.ide.hotreload.WinUiXamlHotReloadService
-import io.github.composefluent.winrt.ide.preview.WinUiXamlVisualInspectionSelection
+import io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadService
+import io.github.composefluent.winrt.ide.preview.WinUIXamlVisualInspectionSelection
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import java.nio.file.Path
 
 /** A single IDE execution owns its transport directory; saved run settings do
  * not retain it. Gradle still owns launch, debugging, logs and cancellation. */
-internal data class WinRTApplicationHotReload(val module: WinRTModuleData, val launch: WinUiXamlHotReloadLaunchData, val directory: Path) {
+internal data class WinRTApplicationHotReload(val module: WinRTModuleData, val launch: WinUIXamlHotReloadLaunchData, val directory: Path) {
     companion object {
         val KEY = Key.create<WinRTApplicationHotReload>("KotlinWinRT.ApplicationHotReload")
         val ACTIVE_KEY = Key.create<WinRTApplicationHotReload>("KotlinWinRT.ActiveApplicationHotReload")
@@ -29,8 +29,8 @@ class WinRTApplicationExecutionListener : ExecutionListener {
         val project = environment.project
         if (project.isDisposed) return
         project.service<WinRTProjectService>().selectedModuleDirectory.value = launch.module.projectDirectory
-        project.service<WinUiXamlVisualInspectionSelection>().reset()
-        project.service<WinUiXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory)
+        project.service<WinUIXamlVisualInspectionSelection>().reset()
+        project.service<WinUIXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory)
     }
 
     override fun processTerminated(executorId: String, environment: ExecutionEnvironment, handler: ProcessHandler, exitCode: Int) {
@@ -39,7 +39,7 @@ class WinRTApplicationExecutionListener : ExecutionListener {
         // A successful packaged task can return before the activated app
         // publishes its session. Only a failed/cancelled build ends the wait.
         if (exitCode != 0 && !environment.project.isDisposed)
-            environment.project.service<WinUiXamlHotReloadService>().launchFailed(launch.directory)
+            environment.project.service<WinUIXamlHotReloadService>().launchFailed(launch.directory)
     }
 
     override fun processNotStarted(executorId: String, environment: ExecutionEnvironment) {

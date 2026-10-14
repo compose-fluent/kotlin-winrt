@@ -17,9 +17,9 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.github.composefluent.winrt.ide.gradle.*
 import io.github.composefluent.winrt.ide.hotreload.WinRTStaticPreviewService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
-import io.github.composefluent.winrt.ide.xaml.WinUiXamlCatalogService
-import io.github.composefluent.winrt.runtime.WinUiXamlHotReloadProtocol
-import io.github.composefluent.winrt.runtime.WinUiXamlInspectionRequest
+import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalogService
+import io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol
+import io.github.composefluent.winrt.runtime.WinUIXamlInspectionRequest
 import kotlinx.coroutines.*
 import org.jetbrains.jewel.bridge.theme.SwingBridgeTheme
 import org.jetbrains.plugins.gradle.settings.DistributionType
@@ -73,7 +73,7 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
                 val module = WinRTModuleData(":app", app.toString(), app.resolve("build").toString(), "2.4.0", "10.0.26100.0",
                     listOf(WinRTSourceSetData("winuiJvmMain", listOf(sources.toString()), emptyList(), emptyList())),
                     emptyList(), emptyList(), emptyList(), staticPreview = WinRTStaticPreviewData("runWinRTXamlSdkPreview",
-                        host.resolve("KotlinWinUiXamlPreview.exe").toString(), host.toString(), host.parent.resolve("references.json").toString()))
+                        host.resolve("KotlinWinUIXamlPreview.exe").toString(), host.toString(), host.parent.resolve("references.json").toString()))
                 opened.service<WinRTProjectService>().replaceBuildModels(root.toString(), listOf(module))
                 assertNotNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(source))
                 opened.service<WinRTStaticPreviewService>()
@@ -81,7 +81,7 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
             EdtTestUtil.runInEdtAndWait<Exception>({
                 assertFalse(ApplicationManager.getApplication().isWriteIntentLockAcquired)
                 scene = ImageComposeScene(800, 700, Density(1f)).also { renderer ->
-                    renderer.setContent { SwingBridgeTheme { WinUiXamlPreviewPanel(opened, staticFile = source.toString()) } }
+                    renderer.setContent { SwingBridgeTheme { WinUIXamlPreviewPanel(opened, staticFile = source.toString()) } }
                 }
             }, false)
             runBlocking {
@@ -96,7 +96,7 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
                 }
             }
             assertTrue(design.state.value.message, design.state.value.connected)
-            assertEquals(WinUiXamlHotReloadProtocol.PREVIEW_CLASS, design.state.value.roots.single().className)
+            assertEquals(WinUIXamlHotReloadProtocol.PREVIEW_CLASS, design.state.value.roots.single().className)
             assertTrue(design.state.value.inspection!!.image!!.pixels.isNotEmpty())
             assertEquals("The SDK designer must stay hidden while it renders inside the IDE", "false",
                 design.state.value.inspection!!.properties.single { it.name == "XamlRoot.IsHostVisible" }.value)
@@ -117,12 +117,12 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
             val base = gallerySources.first().resolve("io/github/composefluent/winrt/gallery")
             val module = opened.service<WinRTProjectService>().modules.value.single().copy(
                 projectDirectory = gallery.toString(), sourceSets = listOf(WinRTSourceSetData("winuiMain", gallerySources.map(Path::toString), emptyList(), emptyList())))
-            val catalog = requireNotNull(opened.service<WinUiXamlCatalogService>().forDesigner(module))
+            val catalog = requireNotNull(opened.service<WinUIXamlCatalogService>().forDesigner(module))
             for ((relative, expected) in listOf("basicinput/ToggleButtonPage.xaml" to "ToggleButton", "MainWindow.xaml" to "NavigationView")) {
                 val page = base.resolve(relative).toString()
-                val documents = WinUiXamlPreviewSources(opened, module, files, page)
+                val documents = WinUIXamlPreviewSources(opened, module, files, page)
                 val application = documents.application()!!
-                val prepared = WinUiXamlDesignDocument.prepare(documents.read(page), documents.read(application),
+                val prepared = WinUIXamlDesignDocument.prepare(documents.read(page), documents.read(application),
                     documents.target(page), documents.target(application), documents::resolve,
                     sdkType = { uri, type -> catalog.resolve(uri, type) != null },
                     visualType = { uri, type -> catalog.resolve(uri, type)?.let(catalog::isVisual) == true }) { uri, type, attribute ->
@@ -132,7 +132,7 @@ class WinRTPreviewLaunchIntegrationTest : BasePlatformTestCase() {
                 assertTrue("$relative must retain its SDK visual content", prepared.markup.contains("<$expected"))
                 val previous = design.state.value.inspection
                 val previewRoot = design.state.value.roots.single()
-                design.inspect(WinUiXamlInspectionRequest(previewRoot.className, previewRoot.resourcePath, previewMarkup = prepared.markup))
+                design.inspect(WinUIXamlInspectionRequest(previewRoot.className, previewRoot.resourcePath, previewMarkup = prepared.markup))
                 runBlocking { withTimeout(15_000) { while (design.state.value.inspecting) delay(100) } }
                 assertNotNull("$relative: ${design.state.value.message}", design.state.value.inspection)
                 assertNotSame("$relative: ${design.state.value.message}", previous, design.state.value.inspection)
