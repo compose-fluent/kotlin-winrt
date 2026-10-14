@@ -62,7 +62,7 @@ private class JvmNonAgileObjectPerf : NonAgileObjectPerf {
                     try {
                         while (true) {
                             JvmWindowsWait.waitWithComDispatch(handles, signaledIndex)
-                            if (JvmWindowsWait.isSignaled(exitThread, 1)) {
+                            if (JvmWindowsWait.isSignaled(exitThread, 0)) {
                                 return
                             }
                             JvmWindowsWait.resetEvent(createObject)

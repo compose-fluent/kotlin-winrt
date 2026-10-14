@@ -44,12 +44,22 @@ function Memory-Summary($Records) {
         retainedHeapDeltaBytes = Median @($memory.retainedHeapDeltaBytes)
     }
 }
+function Scenario-Version($Run, [string]$Scenario) {
+    $versions = $Run.snapshot.PSObject.Properties['scenarioVersions']
+    if ($null -eq $versions) { return 1 }
+    $version = $versions.Value.PSObject.Properties[$Scenario]
+    if ($null -eq $version) { return 1 }
+    return [int]$version.Value
+}
 $left = Read-Run $Before
 $right = Read-Run $After
 if ($left.run.mode -ne $right.run.mode) { throw 'Do not compare timing runs with memory diagnostic runs.' }
 if (@(Compare-Object @($left.groups.Keys) @($right.groups.Keys)).Count) { throw 'Scenario/runner sets differ.' }
 $rows = foreach ($key in ($left.groups.Keys | Sort-Object)) {
     $a = $left.groups[$key]; $b = $right.groups[$key]
+    if ((Scenario-Version $left.run $a[0].scenario) -ne (Scenario-Version $right.run $b[0].scenario)) {
+        throw "Workload version mismatch: $key. Collect a matching baseline instead of treating workload changes as runtime gains."
+    }
     foreach ($row in @($a) + @($b)) {
         if ($row.result.measurementRounds -ne $a[0].result.measurementRounds -or
             $row.result.warmupRounds -ne $a[0].result.warmupRounds -or

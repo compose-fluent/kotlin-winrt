@@ -32,7 +32,7 @@ namespace Benchmarks
 
         private void ObjectAllocationLoop()
         {
-            while (createObject.WaitOne() && !exitThread.WaitOne(1))
+            while (createObject.WaitOne() && !exitThread.WaitOne(0))
             {
                 createObject.Reset();
                 nonAgileObject = new Windows.UI.Popups.PopupMenu();

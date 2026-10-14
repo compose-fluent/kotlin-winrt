@@ -891,7 +891,7 @@ namespace benchmark
                 {
                     thread_stage = "wait for object creation with COM dispatch";
                     wait_with_com_dispatch(create_object);
-                    if (WaitForSingleObject(exit_thread, 1) == WAIT_OBJECT_0)
+                    if (WaitForSingleObject(exit_thread, 0) == WAIT_OBJECT_0)
                     {
                         break;
                     }

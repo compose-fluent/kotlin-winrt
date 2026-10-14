@@ -438,7 +438,13 @@ tasks.register("benchmarkSnapshot") {
         val status = providers.exec { commandLine("git", "status", "--porcelain", "--untracked-files=no") }
             .standardOutput.asText.get().trim()
         destination.resolve("snapshot.json").writeText(JsonOutput.prettyPrint(JsonOutput.toJson(
-            mapOf("schemaVersion" to 1, "revision" to revision, "trackedChanges" to status, "runners" to runners))))
+            mapOf(
+                "schemaVersion" to 1, "revision" to revision, "trackedChanges" to status, "runners" to runners,
+                "scenarioVersions" to mapOf(
+                    "NonAgileObjectPerf.ConstructNonAgileObject" to 2,
+                    "NonAgileObjectPerf.ConstructAndQueryNonAgileObject" to 2,
+                ),
+            ))))
         logger.lifecycle("Benchmark snapshot: ${destination.absolutePath}")
     }
 }

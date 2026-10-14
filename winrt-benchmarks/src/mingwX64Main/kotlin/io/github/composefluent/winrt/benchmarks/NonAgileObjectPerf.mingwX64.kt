@@ -100,7 +100,7 @@ private class NativeNonAgileObjectPerf : NonAgileObjectPerf {
                             check(signaledIndex.value == 0u) {
                                 "CoWaitForMultipleHandles returned an unexpected handle index."
                             }
-                            if (WaitForSingleObject(exitThread, 1u) == WAIT_OBJECT_0) {
+                            if (WaitForSingleObject(exitThread, 0u) == WAIT_OBJECT_0) {
                                 return
                             }
                             ResetEvent(createObject)
