@@ -6,6 +6,7 @@ import io.github.composefluent.winrt.runtime.WinRTOut
 import io.github.composefluent.winrt.runtime.WinRTRuntimeException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
@@ -18,8 +19,10 @@ class GeneratedModuleRouteParityTest {
     @Test
     fun generated_json_routes_preserve_values_and_projected_ownership() {
         RuntimeScope.initializeSingleThreaded().use {
-            val root = JsonObject.parse(
-                """{"text":"module-route","number":17.25,"flag":true,"child":{"value":"alive"}}""",
+            val root = assertNotNull(
+                JsonObject.parse(
+                    """{"text":"module-route","number":17.25,"flag":true,"child":{"value":"alive"}}""",
+                ),
             )
             var rootClosed = false
             try {
@@ -28,7 +31,7 @@ class GeneratedModuleRouteParityTest {
                 assertTrue(root.getNamedBoolean("flag"))
                 assertTrue(root.stringify().contains("\"text\":\"module-route\""))
 
-                JsonValue.createStringValue("inserted").also { inserted ->
+                assertNotNull(JsonValue.createStringValue("inserted")).also { inserted ->
                     try {
                         root.setNamedValue("inserted", inserted)
                         assertEquals("inserted", root.getNamedString("inserted"))
@@ -37,7 +40,7 @@ class GeneratedModuleRouteParityTest {
                     }
                 }
 
-                JsonValue.createBooleanValue(true).also { booleanValue ->
+                assertNotNull(JsonValue.createBooleanValue(true)).also { booleanValue ->
                     try {
                         assertTrue(booleanValue.getBoolean())
                     } finally {
@@ -45,7 +48,7 @@ class GeneratedModuleRouteParityTest {
                     }
                 }
 
-                JsonValue.createNumberValue(-123.5).also { numberValue ->
+                assertNotNull(JsonValue.createNumberValue(-123.5)).also { numberValue ->
                     try {
                         assertEquals(-123.5, numberValue.getNumber())
                     } finally {
@@ -53,10 +56,10 @@ class GeneratedModuleRouteParityTest {
                     }
                 }
 
-                val parsedOut = WinRTOut<JsonObject>()
+                val parsedOut = WinRTOut<JsonObject?>()
                 assertTrue(JsonObject.tryParse("""{"out":"initialized"}""", parsedOut))
                 assertTrue(parsedOut.isInitialized)
-                parsedOut.value.also { parsed ->
+                assertNotNull(parsedOut.value).also { parsed ->
                     try {
                         assertEquals("initialized", parsed.getNamedString("out"))
                     } finally {
@@ -64,7 +67,7 @@ class GeneratedModuleRouteParityTest {
                     }
                 }
 
-                root.getNamedObject("child").also { child ->
+                assertNotNull(root.getNamedObject("child")).also { child ->
                     try {
                         root.nativeObject.close()
                         rootClosed = true
@@ -95,7 +98,7 @@ class GeneratedModuleRouteParityTest {
     @Test
     fun generated_hstring_route_propagates_the_exact_hresult() {
         RuntimeScope.initializeSingleThreaded().use {
-            val json = JsonObject.parse("{}")
+            val json = assertNotNull(JsonObject.parse("{}"))
             try {
                 val failure = assertFailsWith<WinRTRuntimeException> {
                     json.getNamedString("missing")
