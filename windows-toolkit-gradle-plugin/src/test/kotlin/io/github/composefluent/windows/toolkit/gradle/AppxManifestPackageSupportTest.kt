@@ -410,6 +410,40 @@ class AppxManifestPackageSupportTest {
         assertTrue(error?.message.orEmpty().contains("CN=Framework"))
     }
 
+    @Test
+    fun merges_authored_host_targets_into_appx_without_matching_winmd_file_names() {
+        // .cswinrt/src/Samples/BgTaskComponent/WpfApp.Package/Package.appxmanifest:
+        // background entry points require package-level in-process registration.
+        val root = Files.createTempDirectory("kotlin-winrt-authored-appx-")
+        val manifest = root.resolve("AppxManifest.xml")
+        Files.writeString(manifest, """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Sample" Publisher="CN=Sample" Version="1.0.0.0" />
+              <Applications><Application Id="App" Executable="Sample.exe" EntryPoint="Sample.App" /></Applications>
+            </Package>
+        """.trimIndent())
+        Files.writeString(root.resolve("background_task.dll"), "native host")
+        Files.writeString(root.resolve("background-task.host.json"), """
+            {"assemblyName":"background-task","targetArtifact":"background_task.dll",
+             "activatableClasses":["Sample.BackgroundTask"],
+             "activatableClassTargets":{"Sample.BackgroundTask":"background_task.dll","Sample.Missing":"missing.dll"}}
+        """.trimIndent())
+        Files.writeString(root.resolve("managed-host.dll"), "JVM host")
+        Files.writeString(root.resolve("managed-host.runtimeconfig.json"),
+            """{"activatableClasses":{"Sample.JvmTask":"managed.jar"}}""")
+        repeat(2) {
+            AppxManifestPackageSupport.mergeRuntimeDependenciesAndExtensions(
+                manifest, root, emptyList(), runtimeIdentifier = "win-x64",
+            )
+        }
+        val output = Files.readString(manifest)
+        assertTrue(output.contains("<Path>background_task.dll</Path>"))
+        assertTrue(output.contains("<Path>managed-host.dll</Path>"))
+        assertEquals(1, Regex("ActivatableClassId=\"Sample\\.BackgroundTask\"").findAll(output).count())
+        assertEquals(1, Regex("ActivatableClassId=\"Sample\\.JvmTask\"").findAll(output).count())
+        assertTrue(!output.contains("Sample.Missing"))
+    }
+
     private fun frameworkManifest(
         processorArchitecture: String,
         version: String = "2.2.0.0",

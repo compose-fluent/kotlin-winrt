@@ -148,7 +148,7 @@ internal object WinAppManifestGenerator {
         return entries
     }
 
-    private fun readAuthoredHostManifestRegistrations(outputRoot: Path): List<LiftedRegistrationEntry> {
+    internal fun readAuthoredHostManifestRegistrations(outputRoot: Path): List<LiftedRegistrationEntry> {
         val jvmRegistrations = readJvmAuthoringHostRuntimeConfigRegistrations(outputRoot)
         val jvmAuthoredClasses = jvmRegistrations
             .flatMap { entry -> entry.activatableClasses }
@@ -220,7 +220,7 @@ internal object WinAppManifestGenerator {
 private fun manifestPathKey(path: String): String =
     path.trim().replace('\\', '/').trimStart('/').lowercase()
 
-private data class LiftedRegistrationEntry(
+internal data class LiftedRegistrationEntry(
     val path: String,
     val activatableClasses: List<String>,
 )

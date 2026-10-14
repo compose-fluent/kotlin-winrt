@@ -568,6 +568,16 @@ internal object AppxManifestPackageSupport {
                     }
                 }
         }
+        // CsWinRT's BgTaskComponent package registers the authored host in the
+        // package manifest. UWP activation does not use the desktop SxS manifest.
+        // Share its target mapping (including JVM host preference) with SxS output.
+        WinAppManifestGenerator.readAuthoredHostManifestRegistrations(packageRoot).forEach { entry ->
+            val path = entry.path.replace('/', '\\').trimStart('\\')
+            val target = packageRoot.resolve(path.replace('\\', java.io.File.separatorChar)).normalize()
+            if (target.startsWith(packageRoot) && target.isRegularFile()) {
+                registrations.getOrPut(path) { linkedSetOf() }.addAll(entry.activatableClasses)
+            }
+        }
         return registrations
     }
 
