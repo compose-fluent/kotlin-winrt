@@ -10,7 +10,11 @@
     mc:Ignorable="d">
 
     <Grid
+<!-- #if WINUI3 -->
         Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+<!-- #else -->
+        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+<!-- #endif -->
         BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}"
         CornerRadius="8">
         <Grid.Resources>
