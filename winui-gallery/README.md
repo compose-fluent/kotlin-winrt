@@ -14,6 +14,20 @@ with a separate package identity, so it can coexist with the desktop Gallery.
     '-PkotlinWinRT.gallery.winuiVersion=2'
 ```
 
+For the full Native Debug Gallery, use an 8 GB G1 build heap and release idle
+heap while LLVM generates machine code. The default 4 GB Serial GC build heap
+can spend most of the link in GC, and retaining Java heap also increases LLVM's
+peak memory pressure. Run one full Gallery build at a time:
+
+```powershell
+.\gradlew.bat :winui-gallery:runWinAppPackageMingwX64MainDebugExecutable --detach `
+    '-PkotlinWinRT.gallery.winuiVersion=2' --max-workers=1 `
+    '-Dorg.gradle.jvmargs=-Xmx8g -XX:+UseG1GC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:G1PeriodicGCInterval=30000 -Dfile.encoding=UTF-8'
+```
+
+These settings retain all pages and Native debug information. LLVM also allocates
+memory outside the Java heap, so `-Xmx` is not the build's total memory limit.
+
 The UWP compiler downloads automatically; see [UWP support](../docs/UWP.md). Native is
 the runnable UWP target. The JVM source/compilation path is also maintained, but
 the OpenJDK AppContainer startup limitation documented there still applies.
