@@ -118,7 +118,7 @@ internal class WinRTInspectableComObject(
     borrowReady: Boolean = weakManagedValue,
     private val queryInterfaceFallback: ((Guid) -> RawAddress?)? = null,
     initialQueryInterfaceForwardTarget: ComObjectReference? = null,
-    private val cleanupAction: (() -> Unit)? = null,
+    private var cleanupAction: (() -> Unit)? = null,
     shapeCacheKey: WinRTCcwDefinition? = null,
 ) : ManagedReferenceHost, AutoCloseable {
     private val ccwShape = shapeCacheKey?.let(::cachedShape)
@@ -670,6 +670,19 @@ internal class WinRTInspectableComObject(
             ccwShape.interfaceIndexById.getValue(interfaceId)
         ].methods[methodIndex]
 
+    // Store optional lifetime hooks on the ABI host itself. A delegate without a
+    // hook needs no separate cleanup state or bound-method object. Hooks must not
+    // capture the managed target: COM/tracker ownership lives in the inbound binding.
+    internal fun addCleanupAction(action: () -> Unit) {
+        val previous = cleanupAction
+        cleanupAction = if (previous == null) action else {
+            {
+                previous()
+                action()
+            }
+        }
+    }
+
     private fun cleanup() {
         externalPointerAliases?.forEach { key ->
             try {
@@ -695,7 +708,9 @@ internal class WinRTInspectableComObject(
         queryInterfaceTablePublisher?.close()
         inboundBinding.close()
         hostOwnedMemory.close()
-        cleanupAction?.invoke()
+        val action = cleanupAction
+        cleanupAction = null
+        action?.invoke()
     }
 
     private data class StaticCallLeaseEntry(

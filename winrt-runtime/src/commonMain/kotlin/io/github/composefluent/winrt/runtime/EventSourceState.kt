@@ -1,7 +1,5 @@
 package io.github.composefluent.winrt.runtime
 
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import windows.foundation.EventRegistrationToken
 
 /**
@@ -20,13 +18,12 @@ internal class EventSourceHandlerSnapshot<T : Any>(
 )
 
 /**
- * Kotlin event-state owner corresponding to `.cswinrt/src/WinRT.Runtime/Interop/EventSourceState{TDelegate}.cs`.
+ * Kotlin event-state owner corresponding to CsWinRT 3's InteropServices/Events/EventSourceState<T>.
  *
  * `.cswinrt` stores a combined CLR multicast delegate. Kotlin does not have a matching
  * `MulticastDelegate` abstraction, so this owner keeps an ordered immutable handler list
  * and lets subclasses expose an event-invoke delegate that iterates over snapshots.
  */
-@OptIn(ExperimentalAtomicApi::class)
 abstract class EventSourceState<T : Any> protected constructor(
     thisPtr: RawAddress,
     private val index: Int,
@@ -38,8 +35,12 @@ abstract class EventSourceState<T : Any> protected constructor(
     private val cacheEntry = PlatformManagedWeakReference<Any>(this)
     private val cacheCleanupRegistration = finalizationHook.register(this, CacheCleanup(objectPointerKey, index, cacheEntry)::run)
     private var disposed = false
+    // Mutations hold lock, just as CsWinRT serializes updates to its multicast
+    // delegate. Publish the immutable snapshot directly; readers need no atomic wrapper.
     @PublishedApi
-    internal val handlerSnapshot = AtomicReference(EventSourceHandlerSnapshot<T>())
+    @kotlin.concurrent.Volatile
+    internal var handlerSnapshot: EventSourceHandlerSnapshot<T>? = null
+        private set
     private var eventInvokePointer: RawAddress = PlatformAbi.nullPointer
     private var managedReferenceCount = 1u
     private var shutdownRegistration: AutoCloseable? = null
@@ -55,7 +56,7 @@ abstract class EventSourceState<T : Any> protected constructor(
      * invokes use [forEachHandler] so the common one-handler branch remains iterator-free.
      */
     protected fun snapshotHandlers(): List<T> {
-        val snapshot = handlerSnapshot.load()
+        val snapshot = handlerSnapshot ?: return emptyList()
         snapshot.manyHandlers?.let { return it }
         snapshot.singleHandler?.let { return listOf(it) }
         return emptyList()
@@ -66,7 +67,7 @@ abstract class EventSourceState<T : Any> protected constructor(
      * generated intrinsic and runtime-owned call sites so their hot dispatch shape stays equal.
      */
     protected inline fun forEachHandler(action: (T) -> Unit) {
-        val snapshot = handlerSnapshot.load()
+        val snapshot = handlerSnapshot ?: return
         val singleHandler = snapshot.singleHandler
         if (singleHandler != null) {
             action(singleHandler)
@@ -84,25 +85,25 @@ abstract class EventSourceState<T : Any> protected constructor(
 
     internal fun addHandler(handler: T) {
         lock.withLock {
-            val current = handlerSnapshot.load()
+            val current = handlerSnapshot
             val next =
-                current.singleHandler?.let { singleHandler ->
+                current?.singleHandler?.let { singleHandler ->
                     EventSourceHandlerSnapshot(manyHandlers = listOf(singleHandler, handler))
-                } ?: current.manyHandlers?.let { manyHandlers ->
+                } ?: current?.manyHandlers?.let { manyHandlers ->
                     EventSourceHandlerSnapshot(manyHandlers = manyHandlers + handler)
                 } ?: EventSourceHandlerSnapshot(singleHandler = handler)
-            handlerSnapshot.store(next)
+            handlerSnapshot = next
         }
     }
 
     internal fun removeHandler(handler: T): Boolean {
         var removed = false
         lock.withLock {
-            val current = handlerSnapshot.load()
+            val current = handlerSnapshot ?: return@withLock
             val singleHandler = current.singleHandler
             if (singleHandler != null) {
                 if (singleHandler == handler) {
-                    handlerSnapshot.store(EventSourceHandlerSnapshot())
+                    handlerSnapshot = null
                     removed = true
                 }
             } else {
@@ -112,18 +113,16 @@ abstract class EventSourceState<T : Any> protected constructor(
                     if (index >= 0) {
                         if (manyHandlers.size == 2) {
                             val remaining = if (index == 0) manyHandlers[1] else manyHandlers[0]
-                            handlerSnapshot.store(EventSourceHandlerSnapshot(singleHandler = remaining))
+                            handlerSnapshot = EventSourceHandlerSnapshot(singleHandler = remaining)
                         } else {
-                            handlerSnapshot.store(
-                                EventSourceHandlerSnapshot(
-                                    manyHandlers = buildList(manyHandlers.size - 1) {
-                                        manyHandlers.forEachIndexed { handlerIndex, value ->
-                                            if (handlerIndex != index) {
-                                                add(value)
-                                            }
+                            handlerSnapshot = EventSourceHandlerSnapshot(
+                                manyHandlers = buildList(manyHandlers.size - 1) {
+                                    manyHandlers.forEachIndexed { handlerIndex, value ->
+                                        if (handlerIndex != index) {
+                                            add(value)
                                         }
-                                    },
-                                ),
+                                    }
+                                },
                             )
                         }
                         removed = true
@@ -135,7 +134,7 @@ abstract class EventSourceState<T : Any> protected constructor(
     }
 
     internal fun hasHandlers(): Boolean {
-        val snapshot = handlerSnapshot.load()
+        val snapshot = handlerSnapshot ?: return false
         return snapshot.singleHandler != null || snapshot.manyHandlers?.isNotEmpty() == true
     }
 
@@ -201,7 +200,7 @@ abstract class EventSourceState<T : Any> protected constructor(
                     return@withLock null
                 }
                 disposed = true
-                handlerSnapshot.store(EventSourceHandlerSnapshot())
+                handlerSnapshot = null
                 EventSourceCache.remove(objectPointerKey, index, cacheEntry)
                 cacheCleanupRegistration.close()
                 eventInvokePointer = PlatformAbi.nullPointer

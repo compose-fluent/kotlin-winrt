@@ -1,11 +1,44 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ManagedComHostStateTest {
+    @Test
+    fun concurrent_tracker_references_preserve_the_independent_com_owner() = runBlocking {
+        // CsWinRT ComWrappers tracks COM and tracker ownership independently.
+        // Concurrent tracker mutations must not lose counts or release the COM baseline.
+        var cleanupCalls = 0
+        val state = ManagedComHostState { cleanupCalls++ }
+        try {
+            val start = CompletableDeferred<Unit>()
+            val workers = List(4) {
+                async(Dispatchers.Default) {
+                    start.await()
+                    repeat(128) {
+                        assertTrue(state.addTrackerReference() > 0)
+                        state.releaseTrackerReference()
+                    }
+                }
+            }
+            start.complete(Unit)
+            workers.awaitAll()
+            assertEquals(0, state.currentTrackerReferenceCount())
+            assertEquals(1, state.currentReferenceCount())
+            assertEquals(0, cleanupCalls)
+        } finally {
+            state.releaseBaselineReference()
+        }
+        assertEquals(1, cleanupCalls)
+    }
+
     @Test
     fun `queryInterface success increments ref count`() {
         var cleaned = 0

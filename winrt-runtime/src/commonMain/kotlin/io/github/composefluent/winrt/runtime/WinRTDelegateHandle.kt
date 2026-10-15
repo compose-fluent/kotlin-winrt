@@ -6,19 +6,19 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 @OptIn(ExperimentalAtomicApi::class)
 class WinRTDelegateHandle internal constructor(
     val descriptor: WinRTDelegateDescriptor,
-    callback: (List<Any?>) -> Any?,
+    callback: ((List<Any?>) -> Any?)?,
     managedTarget: Any,
     private val comObject: WinRTDelegateComObject,
-    private val releaseAction: () -> Unit = {},
 ) : AutoCloseable {
-    private val closed = AtomicInt(0)
-    private val managedReferenceReleased = AtomicInt(0)
+    // CsWinRT 3 object references pack disposal and ownership state into one
+    // atomic word. Keep these independent claims without allocating two atomics.
+    private val lifecycle = AtomicInt(0)
     private var ownedCallback: ((List<Any?>) -> Any?)? = callback
     private var ownedTarget: Any? = managedTarget
     private fun callback(): (List<Any?>) -> Any? = ownedCallback ?: comObject.callback()
 
     fun invokeForTesting(arguments: List<Any?>): Any? {
-        check(closed.load() == 0) { "Delegate handle is already closed." }
+        check(lifecycle.load() and closedFlag == 0) { "Delegate handle is already closed." }
         require(arguments.size == descriptor.parameterKinds.size) {
             "Argument count ${arguments.size} must match delegate parameter count ${descriptor.parameterKinds.size}."
         }
@@ -26,7 +26,7 @@ class WinRTDelegateHandle internal constructor(
     }
 
     fun invokeAbiForTesting(arguments: List<Any?>): Any? {
-        check(closed.load() == 0) { "Delegate handle is already closed." }
+        check(lifecycle.load() and closedFlag == 0) { "Delegate handle is already closed." }
         return callback()(
             WinRTDelegateAbiMarshaller.decodeArguments(
                 descriptor = descriptor,
@@ -41,16 +41,16 @@ class WinRTDelegateHandle internal constructor(
     }
 
     internal fun tryCreateReference(): WinRTDelegateReference? =
-        if (closed.load() == 0) comObject.tryCreateReference(ownedTarget) else null
+        if (lifecycle.load() and closedFlag == 0) comObject.tryCreateReference(ownedTarget) else null
 
     internal fun tryAcquireMarshalingReference(): RawAddress? =
-        if (closed.load() == 0) comObject.tryAcquireMarshalingReference(ownedTarget) else null
+        if (lifecycle.load() and closedFlag == 0) comObject.tryAcquireMarshalingReference(ownedTarget) else null
 
     internal fun releaseManagedReferenceForNativeOwnership() {
-        if (managedReferenceReleased.compareAndSet(0, 1)) {
+        if (claim(managedReferenceReleasedFlag)) {
             ownedCallback = null
             ownedTarget = null
-            releaseAction()
+            comObject.releaseManagedReference()
         }
     }
 
@@ -59,11 +59,24 @@ class WinRTDelegateHandle internal constructor(
     }
 
     internal fun markClosedAfterNativeCleanup() {
-        closed.compareAndSet(0, 1)
+        claim(closedFlag)
+    }
+
+    private fun claim(flag: Int): Boolean {
+        while (true) {
+            val current = lifecycle.load()
+            if (current and flag != 0) return false
+            if (lifecycle.compareAndSet(current, current or flag)) return true
+        }
+    }
+
+    private companion object {
+        const val closedFlag = 1
+        const val managedReferenceReleasedFlag = 2
     }
 
     override fun close() {
-        if (closed.compareAndSet(0, 1)) {
+        if (claim(closedFlag)) {
             releaseManagedReferenceForNativeOwnership()
         }
     }

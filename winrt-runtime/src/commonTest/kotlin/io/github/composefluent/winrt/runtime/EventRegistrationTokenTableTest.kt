@@ -148,7 +148,7 @@ class EventRegistrationTokenTableTest {
         val calls = mutableListOf<String>()
 
         table.addEventHandler(handler)
-        val snapshot = requireNotNull(table.handlerSnapshot).load()
+        val snapshot = requireNotNull(table.handlerSnapshot)
         table.forEachHandler { calls += it.name }
 
         assertSame(handler, snapshot.singleHandler)
@@ -211,14 +211,12 @@ class EventRegistrationTokenTableTest {
         val secondToken = table.addEventHandler(second)
 
         assertSame(first, table.removeEventHandler(firstToken))
-        val remainingSnapshot = requireNotNull(table.handlerSnapshot).load()
+        val remainingSnapshot = requireNotNull(table.handlerSnapshot)
         assertSame(second, remainingSnapshot.singleHandler)
         assertNull(remainingSnapshot.manyHandlers)
 
         assertSame(second, table.removeEventHandler(secondToken))
-        val emptySnapshot = requireNotNull(table.handlerSnapshot).load()
-        assertNull(emptySnapshot.singleHandler)
-        assertNull(emptySnapshot.manyHandlers)
+        assertNull(table.handlerSnapshot)
     }
 
     private fun upper32Bits(token: EventRegistrationToken): Int =

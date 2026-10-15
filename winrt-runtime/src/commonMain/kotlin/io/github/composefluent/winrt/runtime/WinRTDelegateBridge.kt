@@ -64,7 +64,7 @@ object WinRTDelegateBridge {
         abiEntryPoint: RawAddress,
     ): WinRTDelegateHandle = createDelegateCore(
         descriptor = descriptor,
-        callback = staticEntryCompatibilityCallback,
+        callback = null,
         managedTarget = managedTarget,
         abiEntryPoint = abiEntryPoint,
         rawWordCallback = null,
@@ -129,7 +129,7 @@ object WinRTDelegateBridge {
         abiEntryPoint: RawAddress,
     ): WinRTDelegateHandle = createDelegateCore(
         descriptor = descriptor,
-        callback = staticEntryCompatibilityCallback,
+        callback = null,
         managedTarget = managedTarget,
         abiEntryPoint = abiEntryPoint,
         rawWordCallback = null,
@@ -156,14 +156,10 @@ object WinRTDelegateBridge {
         rawWordCallback = null,
     )
 
-    private val staticEntryCompatibilityCallback: (List<Any?>) -> Any? = {
-        error("Static delegate entry must invoke the compiler-generated ABI entry point.")
-    }
-
     private fun createDelegateCore(
         descriptor: WinRTDelegateDescriptor,
-        callback: (List<Any?>) -> Any?,
-        managedTarget: Any = callback,
+        callback: ((List<Any?>) -> Any?)?,
+        managedTarget: Any = requireNotNull(callback),
         abiEntryPoint: RawAddress? = null,
         rawWordCallback: ComRawWordCallback?,
     ): WinRTDelegateHandle {
@@ -188,7 +184,6 @@ object WinRTDelegateBridge {
             callback = callback,
             managedTarget = managedTarget,
             comObject = comObject,
-            releaseAction = comObject::releaseManagedReference,
         )
     }
 

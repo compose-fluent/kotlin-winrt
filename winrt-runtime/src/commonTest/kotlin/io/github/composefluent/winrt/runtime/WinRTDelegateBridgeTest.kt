@@ -75,7 +75,7 @@ class WinRTDelegateBridgeTest {
         val callback: (List<Any?>) -> Any? = { 17 }
         val target: (List<Any?>) -> Any? = { 99 }
         val comObject = WinRTDelegateComObject(descriptor, callback, target)
-        val handle = WinRTDelegateHandle(descriptor, callback, target, comObject, comObject::releaseManagedReference)
+        val handle = WinRTDelegateHandle(descriptor, callback, target, comObject)
         try {
             handle.createReference().use { reference ->
                 handle.releaseManagedReferenceForNativeOwnership()
@@ -695,7 +695,10 @@ class WinRTDelegateBridgeTest {
             managedTarget = { 42 },
             abiEntryPoint = entryPoint,
         ).use { handle ->
+            assertFailsWith<IllegalStateException> { handle.invokeForTesting(emptyList()) }
             handle.createReference().use { reference ->
+                handle.releaseManagedReferenceForNativeOwnership()
+                assertFailsWith<IllegalStateException> { handle.invokeForTesting(emptyList()) }
                 assertEquals(42, reference.invoke(emptyList()))
             }
         }

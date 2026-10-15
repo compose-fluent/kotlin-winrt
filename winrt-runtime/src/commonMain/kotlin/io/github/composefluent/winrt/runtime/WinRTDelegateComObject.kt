@@ -2,22 +2,18 @@ package io.github.composefluent.winrt.runtime
 
 internal class WinRTDelegateComObject(
     private val descriptor: WinRTDelegateDescriptor,
-    callback: (List<Any?>) -> Any?,
-    managedTarget: Any = callback,
+    callback: ((List<Any?>) -> Any?)?,
+    managedTarget: Any = requireNotNull(callback),
     private val abiEntryPoint: RawAddress? = null,
     private val rawWordCallback: ComRawWordCallback? = null,
     private val definitionTemplate: WinRTCcwDefinition? = null,
 ) {
-    // A delegate host currently has one lifecycle hook (the event-state release). Keep the
-    // common path as a nullable callback instead of allocating a synchronized SnapshotList for
-    // every delegate instance. If another owner ever needs a second hook, compose it here without
-    // changing the host/lifetime contract.
-    // CsWinRT EventHandler.Do_Abi_Invoke recovers its delegate from the CCW's
-    // managed binding. Reuse that lifetime state when the callback is the target;
-    // only a distinct compatibility callback needs its own weak reference.
-    private val callbackReference = callback.takeUnless { it === managedTarget }
+    // CsWinRT 3 retrieves the delegate target from its CCW. Only a compatibility
+    // callback distinct from that target needs another weak reference; generated
+    // static entries have no compatibility callback to retain.
+    private val hasCompatibilityCallback = callback != null
+    private val callbackReference = callback?.takeUnless { it === managedTarget }
         ?.let(::PlatformManagedWeakReference)
-    private val cleanupState = CleanupState()
     private val host = createHost(managedTarget, callback)
 
     fun createReference(): WinRTDelegateReference =
@@ -33,24 +29,20 @@ internal class WinRTDelegateComObject(
         (knownManagedValue ?: host.managedValue)?.let { host.tryAcquireReference(descriptor.interfaceId, it) }
 
     @Suppress("UNCHECKED_CAST")
-    internal fun callback(): (List<Any?>) -> Any? =
-        (if (callbackReference == null) host.managedValue as? ((List<Any?>) -> Any?) else callbackReference.get())
+    internal fun callback(): (List<Any?>) -> Any? {
+        check(hasCompatibilityCallback) {
+            "Static delegate entry must invoke the compiler-generated ABI entry point."
+        }
+        return (if (callbackReference == null) host.managedValue as? ((List<Any?>) -> Any?) else callbackReference.get())
             ?: throw WinRTObjectDisposedException("Delegate target was collected.")
+    }
 
     fun releaseManagedReference() {
         if (host.state.borrowReady) host.releaseInitialReference() else host.releaseManagedReference()
     }
 
     fun addCleanupAction(action: () -> Unit) {
-        val previous = cleanupState.action
-        cleanupState.action = if (previous == null) {
-            action
-        } else {
-            {
-                previous()
-                action()
-            }
-        }
+        host.addCleanupAction(action)
     }
 
     private fun invoke(rawArguments: List<Any?>): Int =
@@ -60,7 +52,7 @@ internal class WinRTDelegateComObject(
             rawArguments,
         )
 
-    private fun createHost(managedTarget: Any, callback: (List<Any?>) -> Any?): WinRTInspectableComObject {
+    private fun createHost(managedTarget: Any, callback: ((List<Any?>) -> Any?)?): WinRTInspectableComObject {
         val delegateReferenceInterfaceId = descriptor.referenceInterfaceId
         val definition = definitionTemplate ?: InteropRuntimeHooks.augmentInspectableDefinition(
             definition = WinRTCcwDefinition(
@@ -86,7 +78,7 @@ internal class WinRTDelegateComObject(
                             ),
                         ),
                     ),
-                    createPropertyValueInterfaceDefinition(callback),
+                    createPropertyValueInterfaceDefinition(callback ?: managedTarget),
                     WinRTInspectableInterfaceDefinition(
                         interfaceId = delegateReferenceInterfaceId,
                         methods = listOf(
@@ -117,21 +109,8 @@ internal class WinRTDelegateComObject(
             runtimeClassName = descriptor.runtimeClassName ?: definition.runtimeClassName,
             managedValue = managedTarget,
             weakManagedValue = definition.supportsWeakManagedValue,
-            cleanupAction = cleanupState::run,
             shapeCacheKey = definition,
         )
-    }
-
-    // The ABI host must not capture the delegate handle or its managed callback in its cleanup.
-    // COM/tracker roots in ManagedComInboundBinding are the only native-owned strong roots.
-    private class CleanupState {
-        var action: (() -> Unit)? = null
-
-        fun run() {
-            val cleanup = action
-            action = null
-            cleanup?.invoke()
-        }
     }
 }
 

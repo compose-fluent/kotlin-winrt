@@ -2,8 +2,6 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.random.Random
 import kotlin.reflect.KClass
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import windows.foundation.EventRegistrationToken
 
 /**
@@ -27,7 +25,6 @@ internal class EventRegistrationTokenTableSnapshot<T : Any>(
  * name on every table creation. Tokens are opaque runtime values; their type hash need not
  * be stable across processes or targets. The upper 32 bits must remain non-zero.
  */
-@OptIn(ExperimentalAtomicApi::class)
 class EventRegistrationTokenTable<T : Any> private constructor(
     private val delegateTypeHash: Int,
 ) {
@@ -44,10 +41,11 @@ class EventRegistrationTokenTable<T : Any> private constructor(
      *
      * This is the Kotlin equivalent of the multicast delegate field behind a C# event: raising
      * an event only loads the already-composed snapshot and never copies the token map.
+     * Mutations hold the table lock; volatile publication makes the snapshot visible to readers.
      */
     @PublishedApi
     @kotlin.concurrent.Volatile
-    internal var handlerSnapshot: AtomicReference<EventRegistrationTokenTableSnapshot<T>>? = null
+    internal var handlerSnapshot: EventRegistrationTokenTableSnapshot<T>? = null
         private set
     private var nextLow32Bits: Int = 0
 
@@ -71,7 +69,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
                 tokenLow32Bits = nextLow32Bits++
             } while (tokens.containsKey(tokenLow32Bits))
             tokens[tokenLow32Bits] = handler
-            snapshotReference().store(composeHandlerSnapshot())
+            handlerSnapshot = composeHandlerSnapshot()
             EventRegistrationToken(composeTokenValue(delegateTypeHash, tokenLow32Bits))
         }
     }
@@ -84,7 +82,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         return lockForMutation().withLock {
             tokens?.remove(lower32Bits(token)).also {
                 if (it != null) {
-                    snapshotReference().store(composeHandlerSnapshot())
+                    handlerSnapshot = composeHandlerSnapshot()
                 }
             }
         }
@@ -96,7 +94,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
      * site, matching the update-time composition used by `.cswinrt`.
      */
     inline fun forEachHandler(action: (T) -> Unit) {
-        val snapshot = handlerSnapshot?.load() ?: return
+        val snapshot = handlerSnapshot ?: return
         val singleHandler = snapshot.singleHandler
         if (singleHandler != null) {
             action(singleHandler)
@@ -112,19 +110,14 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         }
     }
 
-    private fun composeHandlerSnapshot(): EventRegistrationTokenTableSnapshot<T> {
-        val tokens = tokens ?: return EventRegistrationTokenTableSnapshot()
+    private fun composeHandlerSnapshot(): EventRegistrationTokenTableSnapshot<T>? {
+        val tokens = tokens ?: return null
         return when (tokens.size) {
-            0 -> EventRegistrationTokenTableSnapshot()
+            0 -> null
             1 -> EventRegistrationTokenTableSnapshot(singleHandler = tokens.values.first())
             else -> EventRegistrationTokenTableSnapshot(manyHandlers = tokens.values.toList())
         }
     }
-
-    private fun snapshotReference(): AtomicReference<EventRegistrationTokenTableSnapshot<T>> =
-        handlerSnapshot ?: AtomicReference(EventRegistrationTokenTableSnapshot<T>()).also { reference ->
-            handlerSnapshot = reference
-        }
 
     companion object {
         // A CLR monitor needs no per-event lazy owner. Share only initialization
