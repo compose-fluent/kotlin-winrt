@@ -1,16 +1,14 @@
 package io.github.composefluent.winrt.runtime
 
 internal object InteropRuntimeHooks {
-    private val augmentedDefinitionCache =
-        WeakKeyStateMap<WinRTCcwDefinition, CachedAugmentedDefinition>()
     @kotlin.concurrent.Volatile
-    private var lastAugmentation: LastAugmentation? = null
+    private var augmentationGeneration: Any = Any()
 
     fun augmentInspectableDefinition(
         definition: WinRTCcwDefinition,
     ): WinRTCcwDefinition {
-        val last = lastAugmentation
-        val sameBase = definition === last?.base
+        val generation = augmentationGeneration
+        val cached = definition.preparedAugmentation
         val customPropertyProvider =
             XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
                 existingInterfaceDefinitions = definition.interfaceDefinitions,
@@ -18,56 +16,55 @@ internal object InteropRuntimeHooks {
         val defaultCustomTypeMappings = FeatureSwitches.enableDefaultCustomTypeMappings
         val customPropertyProviderSupport = FeatureSwitches.enableICustomPropertyProviderSupport
         val customPropertyProviderIncluded = customPropertyProvider != null
-        val configuration = last?.configuration?.takeIf {
-            it.defaultCustomTypeMappings == defaultCustomTypeMappings &&
-                it.customPropertyProviderSupport == customPropertyProviderSupport &&
-                it.customPropertyProviderIncluded == customPropertyProviderIncluded
-        } ?: AugmentationConfiguration(
-            defaultCustomTypeMappings = defaultCustomTypeMappings,
-            customPropertyProviderSupport = customPropertyProviderSupport,
-            customPropertyProviderIncluded = customPropertyProviderIncluded,
-        )
-        if (sameBase && last != null && last.configuration === configuration) {
-            return last.definition
+        if (cached != null && cached.generation === generation &&
+            cached.defaultCustomTypeMappings == defaultCustomTypeMappings &&
+            cached.customPropertyProviderSupport == customPropertyProviderSupport &&
+            cached.customPropertyProviderIncluded == customPropertyProviderIncluded
+        ) {
+            return cached.definition
         }
+        return initializeAugmentedDefinition(
+            definition,
+            generation,
+            customPropertyProvider,
+            defaultCustomTypeMappings,
+            customPropertyProviderSupport,
+        )
+    }
+
+    // CsWinRT GetVtableInfo keeps initialization separate from the cached lookup.
+    private fun initializeAugmentedDefinition(
+        definition: WinRTCcwDefinition,
+        generation: Any,
+        customPropertyProvider: WinRTInspectableInterfaceDefinition?,
+        defaultCustomTypeMappings: Boolean,
+        customPropertyProviderSupport: Boolean,
+    ): WinRTCcwDefinition {
         val cacheable =
             definition.queryInterfaceFallback == null &&
                 definition.interfaceDefinitions.all(::isHostValueHandler) &&
                 definition.hiddenInterfaceDefinitions.all(::isHostValueHandler)
-        if (cacheable) {
-            augmentedDefinitionCache[definition]
-                ?.takeIf { it.configuration == configuration }
-                ?.let { return rememberAugmented(definition, configuration, it.definition) }
-            return augmentInspectableDefinitionUncached(
-                definition = definition,
-                customPropertyProvider = customPropertyProvider,
-            ).also { augmented ->
-                augmentedDefinitionCache.remove(definition)
-                augmentedDefinitionCache.getOrPut(definition) {
-                    CachedAugmentedDefinition(configuration, augmented)
-                }
-            }.let { rememberAugmented(definition, configuration, it) }
-        }
-        // CsWinRT caches type-level vtables, not instance-bound callbacks. Retaining an
-        // uncacheable definition here would keep its captured managed value alive globally.
-        return augmentInspectableDefinitionUncached(
+        val augmented = augmentInspectableDefinitionUncached(
             definition = definition,
             customPropertyProvider = customPropertyProvider,
         )
-    }
-
-    private fun rememberAugmented(
-        base: WinRTCcwDefinition,
-        configuration: AugmentationConfiguration,
-        definition: WinRTCcwDefinition,
-    ): WinRTCcwDefinition {
-        lastAugmentation = LastAugmentation(base, configuration, definition)
-        return definition
+        if (cacheable) {
+            // As in CsWinRT GetVtableInfo, concurrent initialization may compute equivalent
+            // metadata; publish it as one immutable entry owned by the source definition.
+            definition.preparedAugmentation = CachedAugmentedDefinition(
+                generation,
+                defaultCustomTypeMappings,
+                customPropertyProviderSupport,
+                customPropertyProvider != null,
+                augmented,
+            )
+        }
+        return augmented
     }
 
     internal fun clearForTests() {
-        augmentedDefinitionCache.clear()
-        lastAugmentation = null
+        // Retained definitions must not reuse metadata from a previous registry/test generation.
+        augmentationGeneration = Any()
     }
 
     private fun augmentInspectableDefinitionUncached(
@@ -103,23 +100,12 @@ internal object InteropRuntimeHooks {
             method.readsHostManagedValue || method.abiEntryPoint != null || method.rawWordHandler != null
         }
 
-    private data class CachedAugmentedDefinition(
-        val configuration: AugmentationConfiguration,
-        val definition: WinRTCcwDefinition,
-    )
-
-    // This replaces the existing single-entry hot cache with one coherent publication. The weak-map
-    // value deliberately does not retain the base definition; only this last-entry owner does.
-    private class LastAugmentation(
-        val base: WinRTCcwDefinition,
-        val configuration: AugmentationConfiguration,
-        val definition: WinRTCcwDefinition,
-    )
-
-    private data class AugmentationConfiguration(
+    internal class CachedAugmentedDefinition(
+        val generation: Any,
         val defaultCustomTypeMappings: Boolean,
         val customPropertyProviderSupport: Boolean,
         val customPropertyProviderIncluded: Boolean,
+        val definition: WinRTCcwDefinition,
     )
 
     private val referenceAppendedInterfaceIds = setOf(

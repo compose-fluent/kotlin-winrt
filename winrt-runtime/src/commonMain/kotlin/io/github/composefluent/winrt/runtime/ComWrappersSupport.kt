@@ -21,6 +21,11 @@ data class WinRTCcwDefinition(
     @OptIn(ExperimentalAtomicApi::class)
     internal val preparedShape = AtomicReference<Any?>(null)
 
+    // CsWinRT 3 WindowsRuntimeMarshallingInfo owns its cached vtable metadata. Keep
+    // augmentation on this definition too, so no global cache can root the owner.
+    @kotlin.concurrent.Volatile
+    internal var preparedAugmentation: InteropRuntimeHooks.CachedAugmentedDefinition? = null
+
     internal val supportsWeakManagedValue: Boolean =
         queryInterfaceFallback == null &&
             interfaceDefinitions.all { definition ->

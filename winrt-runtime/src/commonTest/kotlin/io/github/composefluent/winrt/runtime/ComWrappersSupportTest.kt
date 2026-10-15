@@ -1593,6 +1593,8 @@ class ComWrappersSupportTest {
         val interleaved = definition.copy(runtimeClassName = "test.Interleaved")
         InteropRuntimeHooks.augmentInspectableDefinition(interleaved)
         assertSame(first, InteropRuntimeHooks.augmentInspectableDefinition(definition))
+        InteropRuntimeHooks.clearForTests()
+        assertNotSame(first, InteropRuntimeHooks.augmentInspectableDefinition(definition))
         val firstById = (first.interfaceDefinitions + first.hiddenInterfaceDefinitions).associateBy { it.interfaceId }
         val secondById = (second.interfaceDefinitions + second.hiddenInterfaceDefinitions).associateBy { it.interfaceId }
 
@@ -1611,6 +1613,28 @@ class ComWrappersSupportTest {
             firstById.getValue(IID.IReferenceTrackerTarget),
             secondById.getValue(IID.IReferenceTrackerTarget),
         )
+    }
+
+    @Test
+    fun ccw_augmentation_does_not_root_an_unused_type_definition() {
+        InteropRuntimeHooks.clearForTests()
+        try {
+            drainUntilCleared(augmentUnrootedTypeDefinition())
+        } finally {
+            InteropRuntimeHooks.clearForTests()
+        }
+    }
+
+    private fun augmentUnrootedTypeDefinition(): PlatformManagedWeakReference<WinRTCcwDefinition> {
+        // CsWinRT GetVtableInfo stores the result on WindowsRuntimeMarshallingInfo itself.
+        // The metadata cache must not independently root its otherwise unused owner.
+        val interfaceId = Guid("68686868-6868-6868-6868-686868686872")
+        val definition = WinRTCcwDefinition(
+            listOf(WinRTInspectableInterfaceDefinition(interfaceId, methods = emptyList())),
+            defaultInterfaceId = interfaceId,
+        )
+        InteropRuntimeHooks.augmentInspectableDefinition(definition)
+        return PlatformManagedWeakReference(definition)
     }
 
     @Test
