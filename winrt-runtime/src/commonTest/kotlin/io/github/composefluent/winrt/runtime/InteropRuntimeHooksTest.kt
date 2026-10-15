@@ -53,6 +53,33 @@ class InteropRuntimeHooksTest {
         }
     }
 
+    @Test
+    fun weak_reference_callbacks_resolve_their_own_managed_instance() {
+        if (!PlatformRuntime.isWindows) return
+        ComWrappersSupport.clearRegistriesForTests()
+
+        // CsWinRT 3 IWeakReferenceSourceImpl.GetWeakReference / ManagedWeakReference.Resolve:
+        // shared ABI entry points must recover state from thisPtr, not the first host.
+        val first = ManagedInteropTarget("first")
+        val second = ManagedInteropTarget("second")
+        ComWrappersSupport.createCCWForObject(first, IID.IInspectable).use { firstHost ->
+            ComWrappersSupport.createCCWForObject(second, IID.IInspectable).use { secondHost ->
+                assertNotNull(firstHost.tryGetWeakReference()).use { firstWeak ->
+                    assertNotNull(secondHost.tryGetWeakReference()).use { secondWeak ->
+                        repeat(3) {
+                            assertNotNull(firstWeak.resolve(IID.IUnknown)).use { resolved ->
+                                assertSame(first, ComWrappersSupport.findObject(resolved.pointer.asRawAddress(), ManagedInteropTarget::class))
+                            }
+                            assertNotNull(secondWeak.resolve(IID.IInspectable)).use { resolved ->
+                                assertSame(second, ComWrappersSupport.findObject(resolved.pointer.asRawAddress(), ManagedInteropTarget::class))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private data class ManagedInteropTarget(
         val name: String,
     )

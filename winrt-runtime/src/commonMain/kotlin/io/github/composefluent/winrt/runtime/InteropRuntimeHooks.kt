@@ -162,25 +162,52 @@ internal object InteropRuntimeHooks {
             methods = emptyList(),
         )
 
-    private val weakReferenceSourceInterfaceDefinition =
+    // CsWinRT 3 IWeakReferenceSourceImpl recovers the managed instance directly at
+    // the ABI entry point. These shared callbacks avoid generic method lookup and
+    // argument boxing; the binding still owns each individual instance's state.
+    private val getWeakReferenceCallback by lazy {
+        ComAbiInteropBridge.createRawWordComMethodCallback(
+            ComMethodSignatures.HResult_Ptr,
+        ) { thisWord, resultWord, _, _, _, _, _ ->
+            if (resultWord == 0L) return@createRawWordComMethodCallback KnownHResults.E_POINTER.value
+            val resultOut = RawAddress(resultWord)
+            PlatformAbi.writePointer(resultOut, RawAddress.Null)
+            val target = winRTProjectionInboundManagedValue(thisWord)
+                ?: return@createRawWordComMethodCallback KnownHResults.E_POINTER.value
+            PlatformAbi.writePointer(resultOut, createManagedWeakReferencePointer(target))
+            KnownHResults.S_OK.value
+        }
+    }
+
+    private val resolveWeakReferenceCallback by lazy {
+        ComAbiInteropBridge.createRawWordComMethodCallback(
+            ComMethodSignatures.HResult_Ptr_Ptr,
+        ) { thisWord, iidWord, resultWord, _, _, _, _ ->
+            if (resultWord == 0L) return@createRawWordComMethodCallback KnownHResults.E_POINTER.value
+            val resultOut = RawAddress(resultWord)
+            PlatformAbi.writePointer(resultOut, RawAddress.Null)
+            if (iidWord == 0L) return@createRawWordComMethodCallback KnownHResults.E_POINTER.value
+            val state = winRTProjectionInboundManagedValue(thisWord) as? ManagedWeakReferenceState
+                ?: return@createRawWordComMethodCallback KnownHResults.E_POINTER.value
+            PlatformAbi.writePointer(resultOut, state.resolve(PlatformAbi.readGuid(RawAddress(iidWord))))
+            KnownHResults.S_OK.value
+        }
+    }
+
+    private val weakReferenceSourceInterfaceDefinition by lazy {
         WinRTInspectableInterfaceDefinition(
             interfaceId = IID.IWeakReferenceSource,
             baseKind = WinRTComInterfaceBaseKind.IUnknown,
             methods = listOf(
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignatures.HResult_Ptr,
-                ) { managedValue, rawArgs ->
-                    val resultOut = rawArgs[0] as RawAddress
-                    PlatformAbi.writePointer(
-                        resultOut,
-                        createManagedWeakReferencePointer(requireNotNull(managedValue)),
-                    )
-                    KnownHResults.S_OK.value
-                },
+                    abiEntryPoint = getWeakReferenceCallback.pointer,
+                ),
             ),
         )
+    }
 
-    private val managedWeakReferenceDefinition =
+    private val managedWeakReferenceDefinition by lazy {
         WinRTCcwDefinition(
             interfaceDefinitions = listOf(
                 WinRTInspectableInterfaceDefinition(
@@ -189,21 +216,14 @@ internal object InteropRuntimeHooks {
                     methods = listOf(
                         WinRTInspectableMethodDefinition(
                             signature = ComMethodSignatures.HResult_Ptr_Ptr,
-                        ) { managedValue, rawArgs ->
-                            val state = requireNotNull(managedValue) as ManagedWeakReferenceState
-                            val requestedInterfaceId = PlatformAbi.readGuid(rawArgs[0] as RawAddress)
-                            val resultOut = rawArgs[1] as RawAddress
-                            PlatformAbi.writePointer(
-                                resultOut,
-                                state.resolve(requestedInterfaceId),
-                            )
-                            KnownHResults.S_OK.value
-                        },
+                            abiEntryPoint = resolveWeakReferenceCallback.pointer,
+                        ),
                     ),
                 ),
             ),
             defaultInterfaceId = IID.IWeakReference,
         )
+    }
 
     private val marshalInterfaceDefinition =
         WinRTInspectableInterfaceDefinition(
