@@ -1,27 +1,21 @@
 package io.github.composefluent.winrt.runtime
 
-internal data class BorrowableWinRTObject<T>(
-    val hasUnwrappableNativeObject: Boolean,
-    val nativeObject: T,
-    val isInterfaceImplemented: (WinRTTypeHandle) -> Boolean,
-    val getObjectReferenceForType: (WinRTTypeHandle) -> T,
-)
-
 internal object WinRTBorrowedReferenceSupport {
-    fun <T> tryBorrowReference(
+    // CsWinRT 3 WindowsRuntimeObjectMarshaller / WindowsRuntimeInterfaceMarshaller<T> access
+    // the projected object's reference directly. Do not allocate an adapter and bound callbacks.
+    // This returns a borrowed reference; callers retain it when they need independent ownership.
+    fun tryGetReference(
         value: Any?,
         interfaceType: WinRTTypeHandle?,
-        unwrapWinRTObject: (Any) -> BorrowableWinRTObject<T>?,
-        cloneReference: (T) -> T,
-    ): T? {
-        val winrtObject = value?.let(unwrapWinRTObject) ?: return null
+    ): ComObjectReference? {
+        val winrtObject = value as? IWinRTObject ?: return null
         if (!winrtObject.hasUnwrappableNativeObject) {
             return null
         }
         return when {
-            interfaceType == null -> cloneReference(winrtObject.nativeObject)
-            winrtObject.isInterfaceImplemented(interfaceType) ->
-                cloneReference(winrtObject.getObjectReferenceForType(interfaceType))
+            interfaceType == null -> winrtObject.nativeObject
+            winrtObject.isInterfaceImplemented(interfaceType, false) ->
+                winrtObject.getObjectReferenceForType(interfaceType)
 
             else -> null
         }

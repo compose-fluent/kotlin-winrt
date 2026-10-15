@@ -50,11 +50,9 @@ object WinRTObjectMarshaller {
         if (value is ComObjectReference || value is WinRTComposableObject) {
             return ComWrappersSupport.tryUnwrapObject(value)?.let(::createUnwrappedInspectableMarshaler)
         }
-        val reference = WinRTBorrowedReferenceSupport.tryBorrowReference(
+        val reference = WinRTBorrowedReferenceSupport.tryGetReference(
             value = value,
             interfaceType = null,
-            unwrapWinRTObject = ::borrowableWinRTObject,
-            cloneReference = { it },
         ) ?: return null
         val lease = reference.comPtr.tryAcquireScopedQueryInterfaceLease(IID.IInspectable)
             ?: return createUnwrappedInspectableMarshaler(cloneComReference(reference))

@@ -450,11 +450,19 @@ class MarshalersTest {
             inspectable = IInspectableReference(host.detachReference(typeHandle.interfaceId).asRawComPtr(), typeHandle.interfaceId),
         )
 
-        val reference = marshaler.createMarshaler(projected) as ComObjectReference
+        val pointer = projected.nativeObject.pointer.asRawAddress()
+        val originalReferenceCount = assertNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
         try {
-            assertEquals(projected.nativeObject.pointer.asRawAddress(), marshaler.getAbi(reference))
+            val reference = marshaler.createMarshaler(projected) as ComObjectReference
+            try {
+                assertEquals(pointer, marshaler.getAbi(reference))
+                assertEquals(originalReferenceCount + 1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            } finally {
+                marshaler.disposeMarshaler(reference)
+            }
+            assertEquals(originalReferenceCount, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+            assertEquals(pointer, projected.nativeObject.pointer.asRawAddress())
         } finally {
-            marshaler.disposeMarshaler(reference)
             projected.nativeObject.close()
         }
     }

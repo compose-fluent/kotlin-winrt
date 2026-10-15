@@ -1049,6 +1049,20 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun non_unwrappable_projection_does_not_access_native_identity() {
+        // CsWinRT 3 WindowsRuntimeObjectMarshaller tests HasUnwrappableNativeObjectReference
+        // before accessing the reference. Authored projections need not have an RCW identity.
+        val projected = object : IWinRTObject {
+            override val hasUnwrappableNativeObject: Boolean = false
+            override val nativeObject: ComObjectReference
+                get() = error("An authored projection has no native identity to unwrap.")
+        }
+
+        assertNull(ComWrappersSupport.tryUnwrapObject(projected))
+        assertNull(ComWrappersSupport.tryUnwrapObject(projected, WinRTTypeHandle("test.IInspectable", IID.IInspectable)))
+    }
+
+    @Test
     fun projection_marshaler_creates_ccw_for_non_unwrappable_winrt_object() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("48484848-4848-4848-4848-484848484848")

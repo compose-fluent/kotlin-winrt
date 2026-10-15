@@ -342,21 +342,7 @@ private fun borrowedProjectionReference(
     value: Any,
     typeHandle: WinRTTypeHandle,
 ): ComObjectReference? =
-    WinRTBorrowedReferenceSupport.tryBorrowReference(
+    WinRTBorrowedReferenceSupport.tryGetReference(
         value = value,
         interfaceType = typeHandle,
-        unwrapWinRTObject = ::borrowableWinRTObject,
-        cloneReference = ::cloneComReference,
-    )
-
-internal fun borrowableWinRTObject(value: Any): BorrowableWinRTObject<ComObjectReference>? {
-    val winrtObject = value as? IWinRTObject ?: return null
-    return BorrowableWinRTObject(
-        hasUnwrappableNativeObject = winrtObject.hasUnwrappableNativeObject,
-        nativeObject = winrtObject.nativeObject,
-        isInterfaceImplemented = { interfaceType ->
-            winrtObject.isInterfaceImplemented(interfaceType, false)
-        },
-        getObjectReferenceForType = winrtObject::getObjectReferenceForType,
-    )
-}
+    )?.let(::cloneComReference)

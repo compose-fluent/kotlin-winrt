@@ -295,12 +295,10 @@ object ComWrappersSupport {
                 value.tryQueryInterface(interfaceType.interfaceId)
             }
         }
-        return WinRTBorrowedReferenceSupport.tryBorrowReference(
+        return WinRTBorrowedReferenceSupport.tryGetReference(
             value = value,
             interfaceType = interfaceType,
-            unwrapWinRTObject = ::borrowableWinRTObject,
-            cloneReference = ::cloneComReference,
-        )
+        )?.let(::cloneComReference)
     }
 
     fun createRcwForComObject(
