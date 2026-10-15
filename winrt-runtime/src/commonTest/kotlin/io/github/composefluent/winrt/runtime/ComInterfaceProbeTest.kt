@@ -42,13 +42,25 @@ class ComInterfaceProbeTest {
                     assertEquals(result, releasedPointer)
                     assertEquals(3, releases)
 
+                    // Object-reference initialization consumes its optional QI result;
+                    // it must stay owned until the caller attaches or releases it.
+                    assertEquals(result, tryQueryComInterface(source, interfaceId))
+                    assertEquals(3, releases)
+                    WinRTPlatformApi.releaseRaw(result)
+                    assertEquals(4, releases)
+
                     returnedPointer = RawAddress.Null
                     hResult = KnownHResults.E_NOINTERFACE.value
                     assertFalse(supportsComInterface(source, interfaceId))
+                    assertEquals(RawAddress.Null, tryQueryComInterface(source, interfaceId))
+                    hResult = KnownHResults.E_FAIL.value
+                    assertEquals(RawAddress.Null, tryQueryComInterface(source, interfaceId))
                     hResult = KnownHResults.S_OK.value
                     assertFalse(supportsComInterface(source, interfaceId))
+                    assertEquals(RawAddress.Null, tryQueryComInterface(source, interfaceId))
                     assertFalse(supportsComInterface(RawAddress.Null, interfaceId))
-                    assertEquals(3, releases)
+                    assertEquals(RawAddress.Null, tryQueryComInterface(RawAddress.Null, interfaceId))
+                    assertEquals(4, releases)
                 }
             }
         }

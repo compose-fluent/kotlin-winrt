@@ -8,6 +8,7 @@ package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_invoke_ref_count
 import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_supports_interface
+import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_try_query_interface
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.COpaque
@@ -1421,6 +1422,15 @@ internal actual fun supportsComInterface(unknown: RawAddress, interfaceId: Guid)
         interfaceId.abiLowBits.toULong(),
         interfaceId.abiHighBits.toULong(),
     ) != 0
+
+internal actual fun tryQueryComInterface(unknown: RawAddress, interfaceId: Guid): RawAddress =
+    RawAddress(
+        kotlin_winrt_try_query_interface(
+            unknown.value.toULong(),
+            interfaceId.abiLowBits.toULong(),
+            interfaceId.abiHighBits.toULong(),
+        ).toLong(),
+    )
 
 @Suppress("NOTHING_TO_INLINE")
 @PublishedApi

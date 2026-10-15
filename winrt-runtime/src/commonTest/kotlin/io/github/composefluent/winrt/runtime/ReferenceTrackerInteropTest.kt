@@ -3,11 +3,31 @@ package io.github.composefluent.winrt.runtime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ReferenceTrackerInteropTest {
+    @Test
+    fun failed_optional_tracker_query_does_not_attach_or_release_a_tracker() {
+        // CsWinRT 3 WindowsRuntimeObjectReference.Initialization treats any failed
+        // optional tracker QI as absent, with no tracker-source lifetime to attach.
+        FakeReferenceTrackerHost.create().use { host ->
+            ComPtr.create(host.objectPointer.asRawComPtr(), IID.IInspectable, trackContext = false).use { reference ->
+                for (failure in listOf(KnownHResults.E_NOINTERFACE, KnownHResults.E_FAIL)) {
+                    host.forcedQueryHResult = failure.value
+                    assertFalse(reference.tryInitializeReferenceTracker())
+                    assertFalse(reference.hasReferenceTracker)
+                }
+                assertEquals(0, host.trackerConnectCalls)
+                assertEquals(0, host.trackerAddRefFromSourceCalls)
+                assertEquals(0, host.trackerReleaseCalls)
+            }
+            assertEquals(1, host.objectReleaseCalls)
+        }
+    }
+
     @Test
     fun tracking_completion_releases_apartment_bound_borrowed_wrappers_and_native_owners() {
         // CsWinRT ObjectReferenceWithContext releases in its original apartment. Kotlin

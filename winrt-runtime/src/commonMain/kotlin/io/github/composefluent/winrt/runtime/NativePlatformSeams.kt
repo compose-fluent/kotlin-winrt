@@ -324,6 +324,13 @@ inline fun PlatformAbi.pointerKey(pointer: RawComPtr): Long = pointer.value
 /** Queries a live COM pointer and releases the returned interface before returning. */
 internal expect fun supportsComInterface(unknown: RawAddress, interfaceId: Guid): Boolean
 
+/**
+ * Returns the owned result of an optional QI, or null for any failed HRESULT.
+ * CsWinRT 3 WindowsRuntimeObjectReference.Initialization uses this contract for
+ * IReferenceTracker discovery. Native keeps the IID and output on the C stack.
+ */
+internal expect fun tryQueryComInterface(unknown: RawAddress, interfaceId: Guid): RawAddress
+
 private const val queryInterfaceScratchSizeBytes = Guid.BYTE_SIZE + Long.SIZE_BYTES
 
 internal fun queryInterfaceWithReusableScratch(

@@ -173,12 +173,13 @@ internal class RawComObjectReferenceSupport(
             return true
         }
 
-        val result = WinRTPlatformApi.queryInterfaceRaw(pointerForCurrentContext().asNativePointer(), IID.IReferenceTracker)
-        val trackerPointer = result.pointer.asRawComPtr()
-        if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(trackerPointer)) {
+        val trackerPointer = tryQueryComInterface(
+            pointerForCurrentContext().asNativePointer(),
+            IID.IReferenceTracker,
+        ).asRawComPtr()
+        if (PlatformAbi.isNull(trackerPointer)) {
             return false
         }
-        WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
         try {
             attachReferenceTracker(
                 trackerPointer = trackerPointer,
@@ -190,7 +191,7 @@ internal class RawComObjectReferenceSupport(
                 ownsTrackerPointer = ownsTrackerPointer,
             )
         } finally {
-            WinRTPlatformApi.releaseRaw(result.pointer)
+            WinRTPlatformApi.releaseRaw(trackerPointer.asRawAddress())
         }
         return true
     }

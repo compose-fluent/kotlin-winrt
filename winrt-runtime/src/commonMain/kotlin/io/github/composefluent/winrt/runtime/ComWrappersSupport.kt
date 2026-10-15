@@ -1688,16 +1688,8 @@ object ComWrappersSupport {
             close()
         }
 
-    private fun hasReferenceTracker(pointer: RawAddress): Boolean {
-        val result = WinRTPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTracker)
-        val trackerPointer = result.pointer
-        if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(trackerPointer)) {
-            return false
-        }
-        WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
-        WinRTPlatformApi.releaseRaw(trackerPointer)
-        return true
-    }
+    private fun hasReferenceTracker(pointer: RawAddress): Boolean =
+        supportsComInterface(pointer, IID.IReferenceTracker)
 
     private fun queryInterfacePointerForAbi(
         reference: ComObjectReference,
