@@ -17,27 +17,7 @@ import platform.windows.EnterCriticalSection
 import platform.windows.InitializeCriticalSection
 import platform.windows.LeaveCriticalSection
 
-internal actual class PlatformManagedWeakReference<T : Any> actual constructor(target: T?) {
-    private var delegate: NativeManagedWeakReference<T>? = target?.let(::NativeManagedWeakReference)
-
-    actual fun get(): T? = delegate?.get()
-
-    actual fun set(target: T?) {
-        delegate = target?.let(::NativeManagedWeakReference)
-    }
-}
-
-internal actual class PlatformWeakReferenceLock actual constructor() {
-    private val delegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) { PlatformLock() }
-
-    actual fun enter() {
-        delegate.value.enter()
-    }
-
-    actual fun exit() {
-        delegate.value.exit()
-    }
-}
+internal actual typealias PlatformManagedWeakReference<T> = NativeManagedWeakReference<T>
 
 internal actual class PlatformLock actual constructor() {
     private val section = nativeHeap.alloc<CRITICAL_SECTION>().ptr

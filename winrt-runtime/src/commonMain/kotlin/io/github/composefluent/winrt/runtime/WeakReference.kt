@@ -1,32 +1,20 @@
 package io.github.composefluent.winrt.runtime
 
 /**
- * KMP equivalent of `.cswinrt/src/WinRT.Runtime/WeakReference.netstandard2.0.cs`.
- *
- * The public weak-reference owner is common. Managed weak-reference storage and
- * native weak-reference interop remain platform-owned behind explicit seams.
+ * Combines a platform managed weak reference with a shared IWeakReference RCW.
+ * CsWinRT 3 delegates RCW resurrection to ComWrappers; Kotlin keeps the equivalent
+ * managed-first lookup and native fallback here, with platform-owned weak storage.
  */
 class WeakReference<T : Any>(
     target: T? = null,
 ) {
-    private val ownerState = WeakReferenceOwnerState(target)
-
-    fun setTarget(target: T?) = ownerState.setTarget(target)
-
-    @Suppress("UNCHECKED_CAST")
-    fun tryGetTarget(): T? = ownerState.tryGetTarget()
-}
-
-private class WeakReferenceOwnerState<T : Any>(
-    target: T?,
-) {
     private val lock = PlatformWeakReferenceLock()
-    private val managedWeakReference = PlatformManagedWeakReference(target)
+    private var managedWeakReference = target?.let(::PlatformManagedWeakReference)
     private var nativeWeakReference = target?.let(WeakReferenceInterop::tryCreateNativeWeakReference)
 
     fun setTarget(target: T?) {
         val previous = lock.withWeakReferenceLock {
-            managedWeakReference.set(target)
+            managedWeakReference = target?.let(::PlatformManagedWeakReference)
             nativeWeakReference.also {
                 nativeWeakReference = target?.let(WeakReferenceInterop::tryCreateNativeWeakReference)
             }
@@ -37,21 +25,21 @@ private class WeakReferenceOwnerState<T : Any>(
     @Suppress("UNCHECKED_CAST")
     fun tryGetTarget(): T? =
         lock.withWeakReferenceLock {
-            managedWeakReference.get()?.let { return@withWeakReferenceLock it }
+            managedWeakReference?.get()?.let { return@withWeakReferenceLock it }
             val resolved = nativeWeakReference
                 ?.let(WeakReferenceInterop::resolveNativeWeakReference) as? T
             if (resolved != null) {
-                managedWeakReference.set(resolved)
+                managedWeakReference = PlatformManagedWeakReference(resolved)
             }
             resolved
         }
 
 }
 
-internal expect class PlatformManagedWeakReference<T : Any>(target: T? = null) {
+// CsWinRT 3 ManagedWeakReference stores the platform weak reference directly.
+// Mutability belongs to the owner; immutable handles need no extra wrapper on either target.
+internal expect class PlatformManagedWeakReference<T : Any>(referred: T) {
     fun get(): T?
-
-    fun set(target: T?)
 }
 
 internal expect class PlatformLock() {
@@ -60,14 +48,26 @@ internal expect class PlatformLock() {
     fun exit()
 }
 
-/**
- * Lock seam dedicated to weak-reference owners. Native can defer its OS lock allocation until the
- * first operation, while JVM remains an exact alias of the existing eager lock implementation.
- */
-internal expect class PlatformWeakReferenceLock() {
-    fun enter()
+/** Allocates a platform lock only when a weak-reference owner is first read or retargeted. */
+internal class PlatformWeakReferenceLock {
+    @kotlin.concurrent.Volatile
+    private var delegate: PlatformLock? = null
 
-    fun exit()
+    fun enter() {
+        (delegate ?: initialize()).enter()
+    }
+
+    fun exit() {
+        checkNotNull(delegate).exit()
+    }
+
+    private fun initialize(): PlatformLock = Initialization.lock.withLock {
+        delegate ?: PlatformLock().also { delegate = it }
+    }
+
+    private object Initialization {
+        val lock = PlatformLock()
+    }
 }
 
 internal inline fun <R> PlatformLock.withLock(block: () -> R): R {

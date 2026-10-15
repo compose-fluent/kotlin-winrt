@@ -136,6 +136,12 @@ kotlin {
             implementation(kotlin("test"))
         }
 
+        mingwX64Test {
+            // Friend tests use the internal platform weak handle, which aliases Native's
+            // experimental WeakReference directly instead of allocating another wrapper.
+            languageSettings.optIn("kotlin.experimental.ExperimentalNativeApi")
+        }
+
         jvmTest {
             dependencies {
                 implementation(kotlin("test-junit"))
