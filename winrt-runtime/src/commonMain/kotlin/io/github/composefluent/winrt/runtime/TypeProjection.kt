@@ -43,6 +43,11 @@ internal object TypeProjection {
             NativeScalarFieldSpec("kind", NativeStructScalarKind.INT32),
         )
 
+    // CsWinRT 3 ABI.System.Type accesses its Name/Kind fields directly. Resolve our
+    // immutable layout once, without field-name lookups on each ABI call.
+    private val nameOffsetBytes = LAYOUT.field("name").offsetBytes
+    private val kindOffsetBytes = LAYOUT.field("kind").offsetBytes
+
     fun fromAbi(value: TypeAbi): KClass<*>? {
         val name = NativeStringMarshaller.fromAbi(value.name)
         if (name.isBlank()) {
@@ -110,10 +115,10 @@ internal object TypeProjection {
                 val pointer = frame.pointer
                 PlatformAbi.writePointer(
                     pointer,
-                    LAYOUT.field("name").offsetBytes,
+                    nameOffsetBytes,
                     scopedNativeHStringReferenceHandle(nameFrame, length),
                 )
-                PlatformAbi.writeInt32(pointer, LAYOUT.field("kind").offsetBytes, kind.ordinal)
+                PlatformAbi.writeInt32(pointer, kindOffsetBytes, kind.ordinal)
                 WinRTProjectionMarshaler(
                     abi = pointer,
                     ownedReference = TypeNameInputScope(frame, nameFrame, pinnedName),
@@ -173,26 +178,32 @@ internal object TypeProjection {
         destination: RawAddress,
     ) {
         val abi = fromManaged(value)
-        PlatformAbi.writePointer(destination, LAYOUT.field("name").offsetBytes, abi.name)
-        PlatformAbi.writeInt32(destination, LAYOUT.field("kind").offsetBytes, abi.kind)
+        PlatformAbi.writePointer(destination, nameOffsetBytes, abi.name)
+        PlatformAbi.writeInt32(destination, kindOffsetBytes, abi.kind)
     }
 
     /** Generated XAML schema can retain a closed generic identity after KClass erasure. */
     fun copyMetadataNameTo(name: String, destination: RawAddress) {
-        PlatformAbi.writePointer(destination, LAYOUT.field("name").offsetBytes, HString.create(name).handle)
-        PlatformAbi.writeInt32(destination, LAYOUT.field("kind").offsetBytes, WinRTTypeKind.Metadata.ordinal)
+        PlatformAbi.writePointer(destination, nameOffsetBytes, HString.create(name).handle)
+        PlatformAbi.writeInt32(destination, kindOffsetBytes, WinRTTypeKind.Metadata.ordinal)
     }
 
     fun fromAbi(source: RawAddress): KClass<*>? =
         fromAbi(
             TypeAbi(
-                name = PlatformAbi.readPointer(LAYOUT.slice(source, "name")),
-                kind = PlatformAbi.readInt32(LAYOUT.slice(source, "kind")),
+                name = PlatformAbi.readPointer(
+                    PlatformAbi.slice(source, nameOffsetBytes, NativeStructScalarKind.ADDRESS.sizeBytes),
+                ),
+                kind = PlatformAbi.readInt32(
+                    PlatformAbi.slice(source, kindOffsetBytes, NativeStructScalarKind.INT32.sizeBytes),
+                ),
             ),
         )
 
     fun disposeAbi(source: RawAddress) {
-        val name = PlatformAbi.readPointer(LAYOUT.slice(source, "name"))
+        val name = PlatformAbi.readPointer(
+            PlatformAbi.slice(source, nameOffsetBytes, NativeStructScalarKind.ADDRESS.sizeBytes),
+        )
         if (!PlatformAbi.isNull(name)) {
             WinRTPlatformApi.windowsDeleteStringRaw(name)
         }
