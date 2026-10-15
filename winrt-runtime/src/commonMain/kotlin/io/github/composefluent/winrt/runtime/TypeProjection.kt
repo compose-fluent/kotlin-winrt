@@ -1,6 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import windows.foundation.FoundationBuiltInProjectionMappings
 
 internal enum class WinRTTypeKind {
@@ -8,6 +10,30 @@ internal enum class WinRTTypeKind {
     Metadata,
     Custom,
 }
+
+private data class ManagedTypeName(val name: String, val kind: WinRTTypeKind)
+
+@OptIn(ExperimentalAtomicApi::class)
+private object ManagedTypeNameCache {
+    // Do not initialize TypeProjection's ABI layout or an OS-backed map on registration.
+    private val entries = AtomicReference<ConcurrentCacheMap<KClass<*>, ManagedTypeName>?>(null)
+
+    fun getOrCreate(): ConcurrentCacheMap<KClass<*>, ManagedTypeName> {
+        while (true) {
+            entries.load()?.let { return it }
+            val candidate = ConcurrentCacheMap<KClass<*>, ManagedTypeName>()
+            if (entries.compareAndSet(null, candidate)) return candidate
+        }
+    }
+
+    fun invalidate() {
+        // Replace, rather than clear: a classification already in progress must not
+        // repopulate the new generation with metadata from before registration.
+        entries.store(null)
+    }
+}
+
+internal fun invalidateTypeProjectionNameCache() = ManagedTypeNameCache.invalidate()
 
 @WindowsRuntimeType("struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))")
 internal object TypeProjection {
@@ -45,6 +71,15 @@ internal object TypeProjection {
         if (value == null) {
             return action("", WinRTTypeKind.Primitive)
         }
+        // CsWinRT 3 ABI.System.TypeMarshaller caches ManagedTypeReference (name/kind).
+        // Pinning and native scratch frames remain scoped to each individual ABI call.
+        val cache = ManagedTypeNameCache.getOrCreate()
+        val reference = cache[value] ?: cache.computeIfAbsent(value, ::computeManagedTypeName)
+        if (FeatureSwitches.traceCcw) println("winrt-typename: $value -> ${reference.name} (${reference.kind})")
+        return action(reference.name, reference.kind)
+    }
+
+    private fun computeManagedTypeName(value: KClass<*>): ManagedTypeName {
         val intrinsic = WinRTTypeClassifier.classify(value)
         val kind =
             when {
@@ -59,8 +94,7 @@ internal object TypeProjection {
             } else {
                 intrinsic?.canonicalRuntimeName ?: TypeNameSupport.getNameForType(value)
             }
-        if (FeatureSwitches.traceCcw) println("winrt-typename: $value -> $typeName ($kind)")
-        return action(typeName, kind)
+        return ManagedTypeName(typeName, kind)
     }
 
     /** CsWinRT Type.Pinnable/GetAbi(ref) borrow the name only for the synchronous input call. */

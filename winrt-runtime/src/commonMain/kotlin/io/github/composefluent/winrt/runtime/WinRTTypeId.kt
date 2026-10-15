@@ -56,6 +56,7 @@ object WinRTTypeRegistry {
                 isProjectedRuntimeClass = typeId.isRuntimeClass,
             )
         }
+        invalidateTypeProjectionNameCache()
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -172,6 +173,7 @@ object WinRTTypeRegistry {
         byHelperClass.clear()
         runtimeClassInfoByName.clear()
         clearProjectionMappingsForTests()
+        invalidateTypeProjectionNameCache()
     }
 
     private fun removeIndexes(typeId: WinRTTypeId<*>) {

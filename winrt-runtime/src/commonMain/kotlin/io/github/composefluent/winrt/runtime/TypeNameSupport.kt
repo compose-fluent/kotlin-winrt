@@ -114,6 +114,7 @@ object TypeNameSupport {
                 }
             }
         }
+        invalidateTypeProjectionNameCache()
     }
 
     internal fun registeredReferenceArrayElementType(arrayType: KClass<*>): KClass<*>? =
@@ -200,6 +201,7 @@ object TypeNameSupport {
         }
         typeNameCache.clear()
         baseRcwTypeCache.clear()
+        invalidateTypeProjectionNameCache()
     }
 
     private fun resolveTypeByName(
