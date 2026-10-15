@@ -73,13 +73,22 @@ internal actual inline fun tryConsumeOwnedRuntimeClassRcw(
 actual class NativeScope internal constructor(
     private val ownsAllocations: Boolean,
 ) : AutoCloseable {
-    private val allocations = mutableListOf<COpaquePointer>()
+    // Scalar out slots need no allocation-record collection. Shared scopes do not
+    // own allocations, so they never need one either.
+    private var firstAllocation: COpaquePointer? = null
+    private var additionalAllocations: MutableList<COpaquePointer>? = null
 
     internal fun allocate(sizeBytes: Long): RawAddress {
         require(sizeBytes >= 0) { "Native allocation size must be non-negative." }
         val pointer = nativeHeap.allocArray<ByteVar>(sizeBytes.toInt()).reinterpret<COpaque>()
         if (ownsAllocations) {
-            allocations += pointer
+            if (firstAllocation == null) {
+                firstAllocation = pointer
+            } else {
+                val additional = additionalAllocations
+                    ?: mutableListOf<COpaquePointer>().also { additionalAllocations = it }
+                additional += pointer
+            }
         }
         return pointer.asRawAddress()
     }
@@ -88,8 +97,16 @@ actual class NativeScope internal constructor(
         if (!ownsAllocations) {
             return
         }
-        allocations.asReversed().forEach { pointer -> nativeHeap.free(pointer.rawValue) }
-        allocations.clear()
+        additionalAllocations?.let { allocations ->
+            var index = allocations.lastIndex
+            while (index >= 0) {
+                nativeHeap.free(allocations[index].rawValue)
+                index--
+            }
+            allocations.clear()
+        }
+        firstAllocation?.let { nativeHeap.free(it.rawValue) }
+        firstAllocation = null
     }
 }
 
