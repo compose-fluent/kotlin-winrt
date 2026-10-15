@@ -1016,10 +1016,17 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         .add("val __factory = %L\n", composableFactoryCachePropertyName(factory))
         .add("val __baseInterface = %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
         .add("val __factoryResult = %L\n", call)
-        .add(
-            "return %T.attachComposableFactoryResult(__factoryResult, DEFAULT_INTERFACE_IID)\n",
-            COM_WRAPPERS_SUPPORT_CLASS_NAME,
-        )
+        .add("return %T.attachComposableFactoryResult(__factoryResult, DEFAULT_INTERFACE_IID", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+        .apply {
+            if (plan.activationMarshalingType != WinRTObjectReferenceMarshalingType.Unknown) {
+                add(
+                    ", %T.%L",
+                    WinRTObjectReferenceMarshalingType::class,
+                    plan.activationMarshalingType.name,
+                )
+            }
+        }
+        .add(")\n")
         .build()
 }
 

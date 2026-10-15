@@ -955,13 +955,26 @@ object ComWrappersSupport {
     fun attachComposableFactoryResult(
         result: WinRTComposableFactoryResult,
         defaultInterfaceId: Guid,
+    ): IInspectableReference =
+        attachComposableFactoryResult(result, defaultInterfaceId, WinRTObjectReferenceMarshalingType.Unknown)
+
+    /** Attaches a non-aggregated factory result using the runtime class's metadata. */
+    fun attachComposableFactoryResult(
+        result: WinRTComposableFactoryResult,
+        defaultInterfaceId: Guid,
+        marshalingType: WinRTObjectReferenceMarshalingType,
     ): IInspectableReference {
-        val instance = IInspectableReference(result.instance, defaultInterfaceId)
+        // CsWinRT 3 write_composable_constructors passes the same marshaling hint
+        // as ordinary activation. This applies to a native instance, not a CCW's outer.
+        val inner = result.inner.asRawAddress()
+        val instance = try {
+            InspectableReference(ComPtr.createForOwnedAbi(result.instance, defaultInterfaceId, marshalingType))
+        } catch (error: Throwable) {
+            if (!PlatformAbi.isNull(inner)) WinRTPlatformApi.releaseRaw(inner)
+            throw error
+        }
         return try {
-            val inner = PlatformAbi.fromRawComPtr(result.inner)
-            if (!PlatformAbi.isNull(inner)) {
-                WinRTPlatformApi.releaseRaw(inner)
-            }
+            if (!PlatformAbi.isNull(inner)) WinRTPlatformApi.releaseRaw(inner)
             instance.also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
         } catch (error: Throwable) {
             instance.close()
