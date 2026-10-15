@@ -619,14 +619,19 @@ object MarshalDelegate {
         )
     }
 
-    fun fromManaged(value: WinRTDelegateHandle?): RawAddress =
-        value?.createReference()?.useAndGetRef() ?: PlatformAbi.nullPointer
+    fun fromManaged(value: WinRTDelegateHandle?): RawAddress {
+        if (value == null) return PlatformAbi.nullPointer
+        // CsWinRT 3 WindowsRuntimeDelegateMarshaller + ObjectReferenceValue.DetachThisPtrUnsafe:
+        // transfer the owned CCW reference without registering a temporary object wrapper.
+        return value.tryAcquireMarshalingReference()
+            ?: throw WinRTObjectDisposedException("Delegate handle is already closed.")
+    }
 
     fun fromProjected(value: WinRTProjectedDelegate?): RawAddress {
         ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
             return reference.getRefPointer().asRawAddress()
         }
-        return value?.let { ProjectedDelegateCcwCache.createReference(it).useAndGetRef() }
+        return value?.let { ProjectedDelegateCcwCache.acquireMarshalingReference(it) }
             ?: PlatformAbi.nullPointer
     }
 
@@ -651,7 +656,7 @@ object MarshalDelegate {
         createPointerArrayFromAbiValues(
             values = values,
             fromManagedPointer = ::fromManaged,
-            disposeAbiPointer = { _ -> },
+            disposeAbiPointer = ::disposeComAbi,
         )
 
     fun fromAbiArray(

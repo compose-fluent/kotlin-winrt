@@ -15,6 +15,98 @@ import kotlin.test.assertNull
 @OptIn(ExperimentalAtomicApi::class)
 class WinRTDelegateHandleLifecycleTest {
     @Test
+    fun delegate_output_references_keep_independent_ownership_after_handle_close() {
+        // CsWinRT 3 ObjectReferenceValue.DetachThisPtrUnsafe transfers one native reference.
+        // Each ABI recipient must keep the callback alive independently of the managed handle.
+        val cleanupCalls = AtomicInt(0)
+        val handle = WinRTDelegateBridge.createDelegate(
+            iid = Guid("b2602874-f9cb-4074-a3c9-14279f64c776"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT32,
+        ) { 37 }.also { it.addCleanupAction { cleanupCalls.fetchAndAdd(1) } }
+        val first = requireNotNull(
+            WinRTDelegateReference.fromAbi(MarshalDelegate.fromManaged(handle), handle.descriptor),
+        )
+        try {
+            val second = requireNotNull(
+                WinRTDelegateReference.fromAbi(MarshalDelegate.fromManaged(handle), handle.descriptor),
+            )
+            second.use {
+                handle.close()
+                PlatformFinalization.drain()
+                assertEquals(0, cleanupCalls.load())
+                assertEquals(37, first.invoke(emptyList()))
+                first.close()
+                assertEquals(0, cleanupCalls.load())
+                assertEquals(37, second.invoke(emptyList()))
+            }
+            assertEquals(1, cleanupCalls.load())
+        } finally {
+            first.close()
+            handle.close()
+        }
+        assertEquals(1, cleanupCalls.load())
+    }
+
+    @Test
+    fun delegate_output_rejects_closed_handles_and_preserves_null() {
+        assertEquals(PlatformAbi.nullPointer, MarshalDelegate.fromManaged(null))
+        assertEquals(PlatformAbi.nullPointer, MarshalDelegate.fromProjected(null))
+        val handle = WinRTDelegateBridge.createUnitDelegate(
+            iid = Guid("b2602874-f9cb-4074-a3c9-14279f64c777"),
+            parameterKinds = emptyList(),
+        ) {}
+        handle.close()
+        assertFailsWith<WinRTObjectDisposedException> { MarshalDelegate.fromManaged(handle) }
+    }
+
+    @Test
+    fun delegate_array_releases_each_owned_reference_on_close() {
+        // CsWinRT 3 WindowsRuntimeUnknownArrayMarshaller.Free releases every element.
+        val cleanupCalls = AtomicInt(0)
+        val handle = WinRTDelegateBridge.createUnitDelegate(
+            iid = Guid("b2602874-f9cb-4074-a3c9-14279f64c778"),
+            parameterKinds = emptyList(),
+        ) {}.also { it.addCleanupAction { cleanupCalls.fetchAndAdd(1) } }
+        try {
+            requireNotNull(MarshalDelegate.fromManagedArray(arrayOf(handle, null, handle))).use { array ->
+                assertEquals(3, array.length)
+                assertEquals(PlatformAbi.nullPointer, PlatformAbi.readPointerAt(array.data, 1))
+                handle.close()
+                assertEquals(0, cleanupCalls.load())
+            }
+            assertEquals(1, cleanupCalls.load())
+        } finally {
+            handle.close()
+        }
+    }
+
+    @Test
+    fun delegate_array_rolls_back_references_when_a_later_element_is_closed() {
+        // CsWinRT 3 WindowsRuntimeReferenceTypeArrayMarshaller.ConvertToUnmanaged releases
+        // the completed prefix if a later element cannot be marshaled.
+        val cleanupCalls = AtomicInt(0)
+        val handle = WinRTDelegateBridge.createUnitDelegate(
+            iid = Guid("b2602874-f9cb-4074-a3c9-14279f64c779"),
+            parameterKinds = emptyList(),
+        ) {}.also { it.addCleanupAction { cleanupCalls.fetchAndAdd(1) } }
+        val closedHandle = WinRTDelegateBridge.createUnitDelegate(
+            iid = Guid("b2602874-f9cb-4074-a3c9-14279f64c77a"),
+            parameterKinds = emptyList(),
+        ) {}
+        closedHandle.close()
+        try {
+            assertFailsWith<WinRTObjectDisposedException> {
+                MarshalDelegate.fromManagedArray(arrayOf(handle, null, handle, closedHandle))?.close()
+            }
+            assertEquals(0, cleanupCalls.load())
+        } finally {
+            handle.close()
+        }
+        assertEquals(1, cleanupCalls.load())
+    }
+
+    @Test
     fun object_delegate_marshaler_preserves_escaped_ownership_after_close() {
         // CsWinRT 3 WindowsRuntimeObjectMarshaller requests IInspectable from the managed CCW.
         // Disposing that input owner must leave another interface's native reference callable.
