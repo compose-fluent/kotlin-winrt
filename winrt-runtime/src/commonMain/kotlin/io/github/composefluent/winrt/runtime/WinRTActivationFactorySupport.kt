@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 fun interface WinRTActivationFactory {
+    /** Returns an owned reference to the runtime class's default interface. */
     fun activateInstance(): ComObjectReference
 }
 

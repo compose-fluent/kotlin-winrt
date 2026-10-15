@@ -6484,7 +6484,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             widgetContents,
             widgetContents.contains(
-                "_activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID)",
+                "_activationFactory.activateDefaultInstance(Metadata.DEFAULT_INTERFACE_IID)",
             ),
         )
         assertFalse(widgetContents.contains("ActivationFactoryReference by lazy"))
@@ -24027,7 +24027,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             setterContents,
             setterContents.contains(
-                "_activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID)",
+                "_activationFactory.activateDefaultInstance(Metadata.DEFAULT_INTERFACE_IID)",
             ),
         )
         assertFalse(setterContents.contains("ActivationFactoryReference by lazy"))

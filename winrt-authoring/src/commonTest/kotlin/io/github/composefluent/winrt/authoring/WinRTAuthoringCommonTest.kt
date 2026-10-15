@@ -103,7 +103,13 @@ class WinRTAuthoringCommonTest {
                 interfaces = listOf(
                     WinRTAuthoredInterfaceDefinition(
                         interfaceId = interfaceId,
-                        methods = emptyList(),
+                        methods = listOf(WinRTAuthoredMethodDefinition(
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                            handler = { args ->
+                                PlatformAbi.writeInt32(args.single() as RawAddress, 42)
+                                KnownHResults.S_OK.value
+                            },
+                        )),
                         isDefault = true,
                     ),
                 ),
@@ -115,7 +121,14 @@ class WinRTAuthoringCommonTest {
         )
 
         ActivationFactory.get("Sample.Authoring.ActivatableComponent").use { factory ->
-            factory.activateInstance().use { instance ->
+            // Generated constructors attach this default interface directly, like
+            // CsWinRT 3 WindowsRuntimeActivationHelper and C++/WinRT fast_activate.
+            factory.activateDefaultInstance(interfaceId).use { instance ->
+                PlatformAbi.confinedScope().use { scope ->
+                    val result = PlatformAbi.allocateInt32Slot(scope)
+                    assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invokeArgs(instance.pointer, 6, result))
+                    assertEquals(42, PlatformAbi.readInt32(result))
+                }
                 assertNotNull(
                     ComWrappersSupport.findObject(
                         PlatformAbi.fromRawComPtr(instance.pointer),

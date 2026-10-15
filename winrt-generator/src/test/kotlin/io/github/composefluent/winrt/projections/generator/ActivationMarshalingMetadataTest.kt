@@ -41,7 +41,7 @@ class ActivationMarshalingMetadataTest {
             val source = KotlinProjectionGenerator().generate(model)
                 .single { it.relativePath.endsWith("/Widget.kt") }.contents.replace(Regex("\\s+"), " ")
             val hint = if (type == WinRTObjectReferenceMarshalingType.Unknown) "" else ", WinRTObjectReferenceMarshalingType.${type.name}"
-            assertTrue(source, source.contains("_activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID$hint)"))
+            assertTrue(source, source.contains("_activationFactory.activateDefaultInstance(Metadata.DEFAULT_INTERFACE_IID$hint)"))
         }
     }
 }

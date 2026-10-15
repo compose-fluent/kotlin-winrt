@@ -11,6 +11,13 @@ internal object ActivationFactoryReferenceSupport {
     ): IInspectableReference =
         activateInstance(comPtr, interfaceId, requireQueryInterface = true, marshalingType = marshalingType)
 
+    fun activateDefaultInstance(
+        comPtr: ComPtr,
+        defaultInterfaceId: Guid,
+        marshalingType: WinRTObjectReferenceMarshalingType,
+    ): IInspectableReference =
+        activateInstance(comPtr, defaultInterfaceId, requireQueryInterface = false, marshalingType = marshalingType)
+
     private fun activateInstance(
         comPtr: ComPtr,
         interfaceId: Guid,
@@ -31,7 +38,9 @@ internal object ActivationFactoryReferenceSupport {
                 return@use wrapActivatedInstance(activatedPointer, interfaceId, marshalingType)
             }
 
-            // Mirrors CsWinRT's generated ActivateInstanceUnsafe(factory, defaultInterfaceIid) path.
+            // Generic activation can request any interface, like C++/WinRT's
+            // IActivationFactory.ActivateInstance<T>. Generated constructors instead
+            // attach the factory's default interface directly through the branch above.
             try {
                 val queryResult = WinRTPlatformApi.queryInterfaceRaw(activatedPointer, interfaceId)
                 WinRTPlatformApi.checkSucceededRaw(queryResult.hResultValue)

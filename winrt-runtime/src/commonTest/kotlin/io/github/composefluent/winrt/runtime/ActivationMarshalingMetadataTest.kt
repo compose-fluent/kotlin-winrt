@@ -23,7 +23,7 @@ class ActivationMarshalingMetadataTest {
                     ActivationFactoryReference(
                         checkNotNull(factoryHost.tryCreateDetachedReference(IID.IActivationFactory)).asRawComPtr(),
                     ).use { factory ->
-                        factory.activateInstance(IID.IInspectable, type).use { instance ->
+                        factory.activateDefaultInstance(IID.IInspectable, type).use { instance ->
                             assertEquals(type == WinRTObjectReferenceMarshalingType.Agile, instance.comPtr.support.callsAreFreeThreaded)
                             assertEquals(if (type == WinRTObjectReferenceMarshalingType.Unknown) 2 else 0, probes)
                             assertEquals(2, instanceHost.state.currentReferenceCount())
@@ -36,10 +36,10 @@ class ActivationMarshalingMetadataTest {
     }
 
     @Test
-    fun failed_unknown_classification_releases_both_activation_and_query_results() {
+    fun failed_unknown_classification_releases_owned_activation_results() {
         if (!PlatformRuntime.isWindows) return
-        // The new hint must not weaken InitializeObjectReferenceUnsafe's ownership:
-        // both owned references must be released when GetUnmarshalClass fails.
+        // Both activation routes must preserve CsWinRT 3 initialization's ownership
+        // when GetUnmarshalClass fails, including directly attached default interfaces.
         WinRTInspectableComObject(
             interfaceDefinitions = listOf(
                 WinRTInspectableInterfaceDefinition(IID.IInspectable, emptyList()),
@@ -61,11 +61,14 @@ class ActivationMarshalingMetadataTest {
                 ActivationFactoryReference(
                     checkNotNull(factoryHost.tryCreateDetachedReference(IID.IActivationFactory)).asRawComPtr(),
                 ).use { factory ->
-                    val failure = assertFailsWith<WinRTRuntimeException> {
-                        factory.activateInstance(IID.IInspectable)
+                    for (defaultInterface in listOf(false, true)) {
+                        val failure = assertFailsWith<WinRTRuntimeException> {
+                            if (defaultInterface) factory.activateDefaultInstance(IID.IInspectable)
+                            else factory.activateInstance(IID.IInspectable)
+                        }
+                        assertEquals(KnownHResults.E_FAIL, failure.hResult)
+                        assertEquals(1, instanceHost.state.currentReferenceCount())
                     }
-                    assertEquals(KnownHResults.E_FAIL, failure.hResult)
-                    assertEquals(1, instanceHost.state.currentReferenceCount())
                 }
             }
         }

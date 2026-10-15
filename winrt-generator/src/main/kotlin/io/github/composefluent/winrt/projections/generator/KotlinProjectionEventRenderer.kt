@@ -610,10 +610,10 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                     .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
                     .apply {
                         if (plan.activationMarshalingType == WinRTObjectReferenceMarshalingType.Unknown) {
-                            addStatement("return _activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID)")
+                            addStatement("return _activationFactory.activateDefaultInstance(Metadata.DEFAULT_INTERFACE_IID)")
                         } else {
                             addStatement(
-                                "return _activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID, %T.%L)",
+                                "return _activationFactory.activateDefaultInstance(Metadata.DEFAULT_INTERFACE_IID, %T.%L)",
                                 WinRTObjectReferenceMarshalingType::class,
                                 plan.activationMarshalingType.name,
                             )

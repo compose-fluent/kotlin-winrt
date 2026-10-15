@@ -240,6 +240,18 @@ class ActivationFactoryReference internal constructor(
         marshalingType: WinRTObjectReferenceMarshalingType,
     ): IInspectableReference =
         ActivationFactoryReferenceSupport.activateInstance(comPtr, interfaceId, marshalingType)
+
+    /**
+     * Activates a class whose default interface is known from metadata. The factory's
+     * result already carries that interface, matching C++/WinRT fast_activate and
+     * CsWinRT 3 WindowsRuntimeActivationHelper. Use activateInstance(interfaceId)
+     * when requesting an interface other than the class's default interface.
+     */
+    fun activateDefaultInstance(
+        defaultInterfaceId: Guid,
+        marshalingType: WinRTObjectReferenceMarshalingType = WinRTObjectReferenceMarshalingType.Unknown,
+    ): IInspectableReference =
+        ActivationFactoryReferenceSupport.activateDefaultInstance(comPtr, defaultInterfaceId, marshalingType)
 }
 
 class InspectableReference internal constructor(
