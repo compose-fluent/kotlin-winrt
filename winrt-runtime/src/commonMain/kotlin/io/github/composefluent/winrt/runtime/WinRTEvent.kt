@@ -7,9 +7,10 @@ class WinRTEvent<T : Any>(
     private val unsubscribe: (EventRegistrationToken) -> Unit,
     private val unsubscribeHandler: ((T) -> Unit)? = null,
 ) {
-    // Like CsWinRT EventSource.Subscribe, allocate subscription bookkeeping on first use.
-    private var tokensByHandler: MutableMap<T, MutableList<EventRegistrationToken>>? = null
-    private var handlersByToken: MutableMap<EventRegistrationToken, T>? = null
+    // CsWinRT 3 EventSourceState<T> stores its target delegate and token directly.
+    // Kotlin also exposes token-based removal, so keep one registration directly
+    // and create the two lookup maps only when multiple registrations need them.
+    private var registrations: Registrations<T>? = null
 
     constructor(eventSource: EventSource<T>) : this(EventSourceSubscription(eventSource))
 
@@ -23,12 +24,17 @@ class WinRTEvent<T : Any>(
         // CsWinRT EventRegistrationTokenTable<T>.AddEventHandler(null) is a no-op.
         if (handler == null) return EventRegistrationToken()
         val token = subscribe(handler)
-        val tokensByHandler = tokensByHandler
-            ?: mutableMapOf<T, MutableList<EventRegistrationToken>>().also { this.tokensByHandler = it }
-        val handlersByToken = handlersByToken
-            ?: mutableMapOf<EventRegistrationToken, T>().also { this.handlersByToken = it }
-        tokensByHandler.getOrPut(handler) { mutableListOf() }.add(token)
-        handlersByToken[token] = handler
+        // Subscribe can reenter add/remove, so read the current state afterwards.
+        when (val current = registrations) {
+            null -> registrations = SingleRegistration(handler, token)
+            is SingleRegistration -> {
+                val multiple = MultipleRegistrations<T>()
+                multiple.add(current.handler, current.token)
+                multiple.add(handler, token)
+                registrations = multiple
+            }
+            is MultipleRegistrations -> current.add(handler, token)
+        }
         return token
     }
 
@@ -38,16 +44,20 @@ class WinRTEvent<T : Any>(
 
     fun remove(token: EventRegistrationToken) {
         if (token == EventRegistrationToken()) return
-        val handler = handlersByToken?.remove(token)
-        if (handler != null) {
-            val tokens = tokensByHandler?.get(handler)
-            tokens?.remove(token)
-            if (tokens.isNullOrEmpty()) tokensByHandler?.remove(handler)
-            // CsWinRT EventSource.Unsubscribe releases the delegate before native removal.
-            // Drop empty bookkeeping as well, including handlers removed by native token.
-            if (tokensByHandler.isNullOrEmpty()) tokensByHandler = null
-            if (handlersByToken.isNullOrEmpty()) handlersByToken = null
+        val handler = when (val current = registrations) {
+            null -> null
+            is SingleRegistration -> if (current.token == token) {
+                registrations = null
+                current.handler
+            } else {
+                null
+            }
+            is MultipleRegistrations -> current.remove(token).also {
+                if (current.tokensByHandler.isEmpty()) registrations = null
+            }
         }
+        // CsWinRT EventSource.Unsubscribe drops the handler before native removal.
+        // This also lets a reentrant unsubscribe install a fresh registration.
         if (handler != null && unsubscribeHandler != null) {
             unsubscribeHandler.invoke(handler)
         } else {
@@ -57,15 +67,41 @@ class WinRTEvent<T : Any>(
 
     fun remove(handler: T?): Boolean {
         if (handler == null) return false
-        val tokensByHandler = tokensByHandler ?: return false
-        val tokens = tokensByHandler[handler] ?: return false
-        val token = tokens.lastOrNull() ?: return false
+        val token = when (val current = registrations) {
+            null -> null
+            is SingleRegistration -> current.token.takeIf { handler == current.handler }
+            is MultipleRegistrations -> current.tokensByHandler[handler]?.lastOrNull()
+        } ?: return false
         remove(token)
         return true
     }
 
     operator fun minusAssign(handler: T?) {
         remove(handler)
+    }
+
+    private sealed interface Registrations<T : Any>
+
+    private class SingleRegistration<T : Any>(
+        val handler: T,
+        val token: EventRegistrationToken,
+    ) : Registrations<T>
+
+    private class MultipleRegistrations<T : Any> : Registrations<T> {
+        val tokensByHandler = mutableMapOf<T, MutableList<EventRegistrationToken>>()
+        private val handlersByToken = mutableMapOf<EventRegistrationToken, T>()
+
+        fun add(handler: T, token: EventRegistrationToken) {
+            tokensByHandler.getOrPut(handler) { mutableListOf() }.add(token)
+            handlersByToken[token] = handler
+        }
+
+        fun remove(token: EventRegistrationToken): T? =
+            handlersByToken.remove(token)?.also { handler ->
+                val tokens = tokensByHandler[handler]
+                tokens?.remove(token)
+                if (tokens.isNullOrEmpty()) tokensByHandler.remove(handler)
+            }
     }
 
     private class EventSourceSubscription<T : Any>(

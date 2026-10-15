@@ -61,4 +61,47 @@ class WinRTEventTest {
         assertTrue(event.remove("outer"))
         assertEquals(listOf(EventRegistrationToken(1L), EventRegistrationToken(2L)), removed)
     }
+
+    @Test
+    fun multiple_handlers_and_duplicates_preserve_last_registration_removal_after_promotion() {
+        var nextToken = 1L
+        val removed = mutableListOf<EventRegistrationToken>()
+        val event = WinRTEvent<String>(
+            subscribe = { EventRegistrationToken(nextToken++) },
+            unsubscribe = removed::add,
+        )
+        val first = event.add("a")
+        val second = event.add("b")
+        val duplicate = event.add("a")
+        assertTrue(event.remove("a"))
+        event.remove(second)
+        assertTrue(event.remove("a"))
+        assertFalse(event.remove("b"))
+        val next = event.add("c")
+        assertTrue(event.remove("c"))
+        assertEquals(listOf(duplicate, second, first, next), removed)
+    }
+
+    @Test
+    fun reentrant_removal_preserves_the_new_subscription_for_single_and_multiple_handlers() {
+        for (multiple in listOf(false, true)) {
+            var nextToken = 1L
+            val removed = mutableListOf<EventRegistrationToken>()
+            lateinit var event: WinRTEvent<String>
+            event = WinRTEvent(
+                subscribe = { EventRegistrationToken(nextToken++) },
+                unsubscribe = { token ->
+                    removed += token
+                    if (token.value == 1L) event.add("next")
+                },
+            )
+            val first = event.add("first")
+            val other = if (multiple) event.add("other") else null
+            event.remove(first)
+            assertFalse(event.remove("first"))
+            assertTrue(event.remove("next"))
+            if (other != null) assertTrue(event.remove("other"))
+            assertEquals(if (multiple) listOf(1L, 3L, 2L) else listOf(1L, 2L), removed.map { it.value })
+        }
+    }
 }

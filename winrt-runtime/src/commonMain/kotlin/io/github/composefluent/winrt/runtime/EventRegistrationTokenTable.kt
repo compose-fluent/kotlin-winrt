@@ -33,7 +33,9 @@ class EventRegistrationTokenTable<T : Any> private constructor(
 ) {
     // CsWinRT locks the token dictionary only when a registration changes. Empty authored
     // events need no native synchronization resource until their first add/remove operation.
-    private val lock by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { PlatformLock() }
+    @kotlin.concurrent.Volatile
+    private var lock: PlatformLock? = null
+
     // Kotlin/Native's empty LinkedHashMap allocates backing storage. Keep CsWinRT's token
     // dictionary and random counter semantics, but initialize them only on first registration.
     private var tokens: MutableMap<Int, T>? = null
@@ -49,12 +51,17 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         private set
     private var nextLow32Bits: Int = 0
 
+    private fun lockForMutation(): PlatformLock =
+        lock ?: lockInitialization.withLock {
+            lock ?: PlatformLock().also { lock = it }
+        }
+
     fun addEventHandler(handler: T?): EventRegistrationToken {
         if (handler == null) {
             return EventRegistrationToken()
         }
 
-        return lock.withLock {
+        return lockForMutation().withLock {
             val tokens = tokens ?: linkedMapOf<Int, T>().also {
                 nextLow32Bits = Random.nextInt()
                 this.tokens = it
@@ -74,7 +81,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
             return null
         }
 
-        return lock.withLock {
+        return lockForMutation().withLock {
             tokens?.remove(lower32Bits(token)).also {
                 if (it != null) {
                     snapshotReference().store(composeHandlerSnapshot())
@@ -120,6 +127,9 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         }
 
     companion object {
+        // A CLR monitor needs no per-event lazy owner. Share only initialization
+        // synchronization; subsequent mutations still use each table's own lock.
+        private val lockInitialization = PlatformLock()
         private const val zeroHashReplacement = 0x5FC74196
 
         inline fun <reified T : Any> create(): EventRegistrationTokenTable<T> =
