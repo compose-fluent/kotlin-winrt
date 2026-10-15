@@ -67,18 +67,16 @@ internal class WinRTReferenceReference(
         alignmentBytes: Long,
         readValue: (RawAddress) -> T,
         disposeValue: (RawAddress) -> Unit = {},
-    ): T =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateBytes(scope, sizeBytes, alignmentBytes)
-            comPtr.throwIfDisposed()
-            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, resultOut)
-            WinRTPlatformApi.checkSucceededRaw(hr)
-            try {
-                readValue(resultOut)
-            } finally {
-                disposeValue(resultOut)
-            }
-        }
+    ): T {
+        comPtr.throwIfDisposed()
+        return WinRTReferenceProjection.readValue(
+            pointer = comPtr.raw.asRawAddress(),
+            sizeBytes = sizeBytes,
+            alignmentBytes = alignmentBytes,
+            readValue = readValue,
+            disposeValue = disposeValue,
+        )
+    }
 }
 
 internal class WinRTReferenceArrayReference(

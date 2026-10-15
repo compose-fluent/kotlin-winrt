@@ -4038,7 +4038,7 @@ class KotlinProjectionSupportRenderer private constructor(
                 PLATFORM_ABI_CLASS_NAME,
             )
         }
-        val elementSize = typeRenderer.nativeArrayElementSizeExpression(elementBinding)
+        val elementSize = typeRenderer.nativeValueSizeExpression(elementBinding)
             ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI array return ${binding.describeAbiKind()}")
         val elementWrite = typeRenderer.nativeArrayElementWriteCode(
             elementBinding = elementBinding,

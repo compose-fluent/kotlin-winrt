@@ -183,7 +183,7 @@ internal fun KotlinProjectionRenderer.customObjectReturnReadback(
     }
 }
 
-internal fun KotlinProjectionRenderer.nativeArrayElementSizeExpression(
+internal fun KotlinProjectionRenderer.nativeValueSizeExpression(
     elementBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? =
     when (elementBinding.kind) {
@@ -216,7 +216,7 @@ internal fun KotlinProjectionRenderer.nativeArrayElementSliceCode(
     dataExpression: CodeBlock,
     indexExpression: CodeBlock,
 ): CodeBlock? {
-    val elementSize = nativeArrayElementSizeExpression(elementBinding) ?: return null
+    val elementSize = nativeValueSizeExpression(elementBinding) ?: return null
     return CodeBlock.of("%T.slice(%L, %L.toLong() * %L, %L)", PLATFORM_ABI_CLASS_NAME, dataExpression, indexExpression, elementSize, elementSize)
 }
 
@@ -226,7 +226,14 @@ internal fun KotlinProjectionRenderer.nativeArrayElementReadCode(
     indexExpression: CodeBlock,
 ): CodeBlock? {
     val slice = nativeArrayElementSliceCode(elementBinding, dataExpression, indexExpression) ?: return null
-    return when (elementBinding.kind) {
+    return nativeValueReadCode(elementBinding, slice)
+}
+
+internal fun KotlinProjectionRenderer.nativeValueReadCode(
+    elementBinding: KotlinProjectionAbiTypeBinding,
+    slice: CodeBlock,
+): CodeBlock? =
+    when (elementBinding.kind) {
         KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.readInt8(%L).toInt() != 0", PLATFORM_ABI_CLASS_NAME, slice)
         KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
         KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.readInt8(%L).toUByte()", PLATFORM_ABI_CLASS_NAME, slice)
@@ -247,7 +254,6 @@ internal fun KotlinProjectionRenderer.nativeArrayElementReadCode(
                 ?: nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.fromAbi(%L)", it, slice) }
         else -> null
     }
-}
 
 internal fun KotlinProjectionRenderer.nativeArrayEnumElementReadCode(
     elementBinding: KotlinProjectionAbiTypeBinding,

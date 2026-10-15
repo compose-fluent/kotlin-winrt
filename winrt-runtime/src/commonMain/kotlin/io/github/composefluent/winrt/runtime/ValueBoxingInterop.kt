@@ -548,19 +548,13 @@ internal object ValueBoxingInterop {
     fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? {
         val adapter = adapterForReferenceInterface(interfaceId)
             ?: throw WinRTInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
-        return acquireNativeStructScratchFrame(
+        return WinRTReferenceProjection.readValue(
+            pointer = pointer,
             sizeBytes = adapter.abiLayout.byteSize,
             alignmentBytes = adapter.abiLayout.byteAlignment,
-        ).use { frame ->
-            val resultOut = frame.pointer
-            val hr = ComVtableInvoker.invokeArgs(pointer.asRawComPtr(), 6, resultOut)
-            WinRTPlatformApi.checkSucceededRaw(hr)
-            try {
-                adapter.readValue(resultOut)
-            } finally {
-                adapter.disposeValue(resultOut)
-            }
-        }
+            readValue = { adapter.readValue(it) },
+            disposeValue = { adapter.disposeValue(it) },
+        )
     }
 
     fun readReferenceArrayValue(interfaceId: Guid, pointer: RawAddress): Array<Any?>? {

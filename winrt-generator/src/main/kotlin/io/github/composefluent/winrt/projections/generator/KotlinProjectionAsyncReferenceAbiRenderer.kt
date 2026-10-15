@@ -349,6 +349,10 @@ internal fun KotlinProjectionRenderer.referenceReadbackExpression(
     resultOutName: String,
     hoistMetadata: Boolean = false,
 ): CodeBlock? {
+    typedReferenceReadbackExpression(
+        typeBinding,
+        CodeBlock.of("%T.readPointer(%L)", PLATFORM_ABI_CLASS_NAME, resultOutName),
+    )?.let { return it }
     val projectedType = resolveValueTypeName(typeBinding)
     val interfaceId = referenceInterfaceIdCode(typeBinding, hoistMetadata) ?: return null
     return CodeBlock.of(

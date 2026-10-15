@@ -854,6 +854,44 @@ private fun KotlinProjectionRenderer.renderProjectionOutputCodecBody(
     }
 }
 
+/** CsWinRT 3 typed unboxing uses the known value layout, not an IID adapter lookup. */
+internal fun KotlinProjectionRenderer.typedReferenceReadbackExpression(
+    binding: KotlinProjectionAbiTypeBinding,
+    pointer: CodeBlock,
+): CodeBlock? {
+    if (binding.kind != KotlinProjectionAbiValueKind.Reference) return null
+    val element = binding.typeArguments.singleOrNull() ?: return null
+    // Nullable projections also accept externally supplied declarations whose ABI
+    // layout has not been resolved. Keep their registered adapter path until the
+    // metadata pipeline can provide the same layout required by storage recipes.
+    if (element.kind == KotlinProjectionAbiValueKind.Struct && customStructAbi(element) == null &&
+        (element.abiSize == null || element.abiAlignment == null)
+    ) return null
+    val resultOut = CodeBlock.of("__valueOut")
+    val read = nativeValueReadCode(element, resultOut) ?: return null
+    val size = nativeValueSizeExpression(element) ?: return null
+    val storage = buildStorageRecipe(element)
+    // Primitive ABI values have their natural alignment. Struct and GUID recipes
+    // carry their declared alignment, which may differ from the total size.
+    val alignment = storage.alignmentBytes.takeIf { it > 0 }?.let { CodeBlock.of("%LL", it) } ?: size
+    val callables = storage.callables
+    return CodeBlock.builder()
+        .add("%T.fromAbi<%T>(\n", WINRT_REFERENCE_PROJECTION_CLASS_NAME, resolveValueTypeName(element))
+        .indent()
+        .add("pointer = %L,\n", pointer)
+        .add("sizeBytes = %L,\n", size)
+        .add("alignmentBytes = %L,\n", alignment)
+        .add("readValue = { __valueOut -> %L },\n", read)
+        .apply {
+            callables?.disposeAbi?.takeIf(String::isNotBlank)?.let { dispose ->
+                add("disposeValue = { __valueOut -> %T.%L(__valueOut) },\n", ClassName.bestGuess(callables.ownerFqName), dispose)
+            }
+        }
+        .unindent()
+        .add(")")
+        .build()
+}
+
 private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
     binding: KotlinProjectionAbiTypeBinding,
     recipe: WinRTProjectionCallSiteRecipe,
@@ -891,12 +929,15 @@ private fun KotlinProjectionRenderer.renderMappedProjectionOutputCodec(
     }
 
     if (owned && adapter.outputConsumesAbi) {
-        val interfaceId = referenceInterfaceIdCode(binding, hoistMetadata = true)
-            ?: error("Closed mapped projection '${binding.typeName}' has no parameterized IID.")
+        val expression = typedReferenceReadbackExpression(binding, CodeBlock.of("__abi")) ?: run {
+            val interfaceId = referenceInterfaceIdCode(binding, hoistMetadata = true)
+                ?: error("Closed mapped projection '${binding.typeName}' has no parameterized IID.")
+            CodeBlock.of("%T.%L(__abi, %L) as %T", owner, adapter.outputFromAbiFunctionName, interfaceId, returnType)
+        }
         return CodeBlock.builder()
             .add("return try {\n")
             .indent()
-            .add("%T.%L(__abi, %L) as %T\n", owner, adapter.outputFromAbiFunctionName, interfaceId, returnType)
+            .add("%L\n", expression)
             .unindent()
             .add("} finally {\n")
             .indent()

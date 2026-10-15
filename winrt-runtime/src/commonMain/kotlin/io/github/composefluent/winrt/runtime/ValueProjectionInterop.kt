@@ -56,6 +56,50 @@ object WinRTReferenceProjection {
                 ?: createReferenceHost(interfaceId, value).detachReference(interfaceId)
         }
 
+    /**
+     * Reads an IReference<T> using its statically known ABI layout and value codec.
+     * The caller retains ownership of [pointer]; [disposeValue] releases only the
+     * ABI value returned by get_Value, including when [readValue] throws.
+     *
+     * Mirrors CsWinRT 3 WindowsRuntimeValueTypeMarshaller.UnboxToManaged<T>:
+     * generated calls do not need the dynamic IID-to-value-adapter lookup.
+     */
+    inline fun <T> fromAbi(
+        pointer: RawAddress,
+        sizeBytes: Long,
+        alignmentBytes: Long,
+        readValue: (RawAddress) -> T,
+        disposeValue: (RawAddress) -> Unit = {},
+    ): T? {
+        if (PlatformAbi.isNull(pointer)) return null
+        return WinRTReferenceProjection.readValue(pointer, sizeBytes, alignmentBytes, readValue, disposeValue)
+    }
+
+    @PublishedApi
+    internal inline fun <T> readValue(
+        pointer: RawAddress,
+        sizeBytes: Long,
+        alignmentBytes: Long,
+        readValue: (RawAddress) -> T,
+        disposeValue: (RawAddress) -> Unit,
+    ): T =
+        acquireNativeStructScratchFrame(
+            sizeBytes = sizeBytes,
+            alignmentBytes = alignmentBytes,
+            // A successful get_Value initializes the entire value. Failed calls
+            // do not transfer an output value to the caller.
+            clear = false,
+        ).use { frame ->
+            val resultOut = frame.pointer
+            val hr = ComVtableInvoker.invokeArgs(pointer.asRawComPtr(), 6, resultOut)
+            WinRTPlatformApi.checkSucceededRaw(hr)
+            try {
+                readValue(resultOut)
+            } finally {
+                disposeValue(resultOut)
+            }
+        }
+
     fun fromAbi(
         pointer: RawAddress,
         interfaceId: Guid,
@@ -74,8 +118,8 @@ object WinRTReferenceProjectionInterop {
         slot: Int,
         interfaceId: Guid,
     ): T =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+        acquireNativeScalarScratchFrame().use { frame ->
+            val resultOut = frame.pointer
             val hr = ComVtableInvoker.invokeArgs(
                 instance = reference.pointer,
                 slot = slot,
