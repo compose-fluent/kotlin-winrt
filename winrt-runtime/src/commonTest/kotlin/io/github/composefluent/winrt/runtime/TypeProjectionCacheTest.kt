@@ -43,6 +43,36 @@ class TypeProjectionCacheTest {
         }
     }
 
+    @Test
+    fun nested_type_names_and_string_scopes_preserve_their_abi_storage() {
+        if (!PlatformRuntime.isWindows) return
+        // CsWinRT TypeReference's HSTRING and TypeName share a call-scoped lifetime.
+        // Exercise both embedded and overflow frames, including reuse after null input.
+        ComWrappersSupport.clearRegistriesForTests()
+        try {
+            Projections.registerCustomAbiTypeMapping(CacheProbe::class, CacheProbe::class, "Test.ScratchProbe")
+            fun verify(depth: Int) {
+                if (depth == 0) return
+                val isNull = depth % 2 == 0
+                val name = if (isNull) "" else "Test.ScratchProbe"
+                val kind = if (isNull) WinRTTypeKind.Primitive else WinRTTypeKind.Metadata
+                TypeProjection.createInputMarshaler(if (isNull) null else CacheProbe::class).use { type ->
+                    withNativeHStringReferenceAbi("string-$depth") { string, output ->
+                        PlatformAbi.writePointer(output, string)
+                        verify(depth - 1)
+                        assertEquals("string-$depth", PlatformAbi.readHString(string))
+                        assertEquals(string, PlatformAbi.readPointer(output))
+                        assertEquals(name, PlatformAbi.readHString(PlatformAbi.readPointer(type.abi)))
+                        assertEquals(kind.ordinal, PlatformAbi.readInt32(TypeProjection.LAYOUT.slice(type.abi, "kind")))
+                    }
+                }
+            }
+            repeat(2) { verify(8) }
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
+        }
+    }
+
     private fun readType(type: KClass<*>): Pair<String, Int> =
         TypeProjection.createInputMarshaler(type).use { marshaler ->
             PlatformAbi.readHString(PlatformAbi.readPointer(marshaler.abi)) to

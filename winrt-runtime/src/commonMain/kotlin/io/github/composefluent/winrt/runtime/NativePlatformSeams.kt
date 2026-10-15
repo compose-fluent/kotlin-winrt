@@ -110,6 +110,9 @@ internal expect inline fun scopedNativeHStringReferenceHandle(
 
 internal expect inline fun scopedNativeHStringReferenceOut(frame: RawAddress): RawAddress
 
+/** A 16-byte, 8-byte-aligned ABI value sharing this HSTRING scope's lifetime. */
+internal expect inline fun scopedNativeHStringReferenceScratch(frame: RawAddress): RawAddress
+
 internal expect inline fun releaseScopedNativeHStringReferenceFrame(frame: RawAddress)
 
 internal fun interface RawAddressPairAction<R> {

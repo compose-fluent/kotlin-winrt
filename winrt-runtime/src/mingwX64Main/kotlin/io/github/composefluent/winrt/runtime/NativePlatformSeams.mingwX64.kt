@@ -567,6 +567,9 @@ internal actual inline fun scopedNativeHStringReferenceHandle(
 internal actual inline fun scopedNativeHStringReferenceOut(frame: RawAddress): RawAddress =
     RawAddress(frame.value + scopedNativeHStringResultOffsetBytes)
 
+internal actual inline fun scopedNativeHStringReferenceScratch(frame: RawAddress): RawAddress =
+    RawAddress(frame.value + scopedNativeHStringHeaderOffsetBytes + hStringHeaderSizeBytes)
+
 internal actual inline fun releaseScopedNativeHStringReferenceFrame(frame: RawAddress) {
     releaseScopedNativeHStringFrame(frame)
 }
@@ -734,7 +737,8 @@ private const val scopedNativeHStringInitialOverflowCapacity: Int = 4
 private const val scopedNativeHStringFrameOwnerWord: Int = 0
 private const val scopedNativeHStringFrameResultWord: Int = 1
 private const val scopedNativeHStringFrameHeaderWord: Int = 2
-private const val scopedNativeHStringFrameWordCount: Int = 5
+// Owner, transient output, three HSTRING_HEADER words, and two ABI scratch words.
+private const val scopedNativeHStringFrameWordCount: Int = 7
 private const val scopedNativeHStringFrameSizeBytes: Int = scopedNativeHStringFrameWordCount * Long.SIZE_BYTES
 private const val scopedNativeHStringPoolWordCount: Int =
     scopedNativeHStringEmbeddedFramesWord +

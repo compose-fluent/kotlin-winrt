@@ -116,24 +116,27 @@ internal object TypeProjection {
             val pinnedName = reference.pinnedName
             val kind = reference.kind
             val nameFrame = acquireScopedNativeHStringReferenceFrame(pinnedName, length)
-            var structFrame: NativeStructScratchFrame? = null
             try {
-                val frame = acquireNativeStructScratchFrame(LAYOUT.sizeBytes, LAYOUT.alignmentBytes, clear = true)
-                structFrame = frame
-                val pointer = frame.pointer
+                // CsWinRT TypeReference keeps the value and HSTRING reference in one scope.
+                // Reuse this scope's ABI storage instead of borrowing a second scratch frame.
+                val pointer = scopedNativeHStringReferenceScratch(nameFrame)
                 PlatformAbi.writePointer(
                     pointer,
                     nameOffsetBytes,
                     scopedNativeHStringReferenceHandle(nameFrame, length),
                 )
-                PlatformAbi.writeInt32(pointer, kindOffsetBytes, kind.ordinal)
+                // The Win64 TypeName has an Int32 kind followed by four padding bytes.
+                PlatformAbi.writeInt64(
+                    PlatformAbi.slice(pointer, kindOffsetBytes, Long.SIZE_BYTES.toLong()),
+                    kind.ordinal.toLong(),
+                )
                 WinRTProjectionMarshaler(
                     abi = pointer,
-                    ownedReference = TypeNameInputScope(frame, nameFrame, pinnedName),
+                    ownedReference = TypeNameInputScope(nameFrame, pinnedName),
                 )
             } catch (error: Throwable) {
                 try {
-                    releaseInputFrames(structFrame, nameFrame, pinnedName)
+                    releaseInputFrame(nameFrame, pinnedName)
                 } catch (cleanupError: Throwable) {
                     if (cleanupError !== error) error.addSuppressed(cleanupError)
                 }
@@ -142,43 +145,22 @@ internal object TypeProjection {
         }
 
     private class TypeNameInputScope(
-        private val structFrame: NativeStructScratchFrame,
         private val nameFrame: RawAddress,
         private var pinnedName: String?,
     ) : AutoCloseable {
-        private var closed = false
-
         override fun close() {
-            if (closed) return
-            closed = true
-            val name = requireNotNull(pinnedName)
+            val name = pinnedName ?: return
             pinnedName = null
-            releaseInputFrames(structFrame, nameFrame, name)
+            releaseInputFrame(nameFrame, name)
         }
     }
 
-    private fun releaseInputFrames(
-        structFrame: NativeStructScratchFrame?,
-        nameFrame: RawAddress,
-        pinnedName: String,
-    ) {
-        var failure: Throwable? = null
+    private fun releaseInputFrame(nameFrame: RawAddress, pinnedName: String) {
         try {
-            structFrame?.close()
-        } catch (error: Throwable) {
-            failure = error
+            winRTKeepAlive(pinnedName)
+        } finally {
+            releaseScopedNativeHStringReferenceFrame(nameFrame)
         }
-        try {
-            try {
-                winRTKeepAlive(pinnedName)
-            } finally {
-                releaseScopedNativeHStringReferenceFrame(nameFrame)
-            }
-        } catch (error: Throwable) {
-            val original = failure
-            if (original == null) failure = error else if (original !== error) original.addSuppressed(error)
-        }
-        failure?.let { throw it }
     }
 
     fun copyTo(

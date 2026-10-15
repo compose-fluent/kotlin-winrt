@@ -454,6 +454,9 @@ internal actual inline fun scopedNativeHStringReferenceHandle(
 
 internal actual inline fun scopedNativeHStringReferenceOut(frame: RawAddress): RawAddress = frame
 
+internal actual inline fun scopedNativeHStringReferenceScratch(frame: RawAddress): RawAddress =
+    RawAddress(frame.value + hStringHeaderOffsetBytes + hStringHeaderSizeBytes)
+
 internal actual inline fun releaseScopedNativeHStringReferenceFrame(frame: RawAddress) {
     releaseJvmScopedNativeHStringReferenceFrame(frame)
 }
@@ -469,7 +472,8 @@ internal actual inline fun winRTPinString(value: String, length: Int): String = 
 @PublishedApi
 internal actual inline fun winRTStringAddress(value: String, length: Int): RawAddress = RawAddress.Null
 
-private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes
+// Reserve the same 16-byte ABI scratch region as Native, after the HSTRING header.
+private const val hStringCharsOffsetBytes: Long = hStringHeaderOffsetBytes + hStringHeaderSizeBytes + 16L
 private const val hStringFlagsOffsetBytes: Long = 0L
 private const val hStringInitialFrameSizeBytes: Long = 64L
 private const val hStringInitialCharCapacity: Int = 16
