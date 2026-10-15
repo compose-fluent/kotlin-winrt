@@ -11,7 +11,14 @@ internal enum class WinRTTypeKind {
     Custom,
 }
 
-private data class ManagedTypeName(val name: String, val kind: WinRTTypeKind)
+private data class ManagedTypeName(val name: String, val kind: WinRTTypeKind) {
+    val length = winRTStringLength(name)
+    // CsWinRT TypeNameCache retains a string that is already UTF-16 and NUL-terminated.
+    // Prepare Kotlin/Native's equivalent once per cache entry, not on every input call.
+    val pinnedName = winRTPinString(name, length)
+}
+
+private val emptyManagedTypeName = ManagedTypeName("", WinRTTypeKind.Primitive)
 
 @OptIn(ExperimentalAtomicApi::class)
 private object ManagedTypeNameCache {
@@ -60,10 +67,10 @@ internal object TypeProjection {
         if (value == null) {
             return TypeAbi()
         }
-        return withManagedTypeName(value) { typeName, kind ->
+        return withManagedTypeName(value) { reference ->
             TypeAbi(
-                name = NativeStringMarshaller.fromManaged(typeName)?.handle ?: PlatformAbi.nullPointer,
-                kind = kind.ordinal,
+                name = NativeStringMarshaller.fromManaged(reference.name)?.handle ?: PlatformAbi.nullPointer,
+                kind = reference.kind.ordinal,
             )
         }
     }
@@ -71,17 +78,17 @@ internal object TypeProjection {
     // Non-null classification follows ABI.System.Type.ToAbi; nullable Kotlin input keeps a cleared TypeAbi.
     private inline fun <R> withManagedTypeName(
         value: KClass<*>?,
-        action: (String, WinRTTypeKind) -> R,
+        action: (ManagedTypeName) -> R,
     ): R {
         if (value == null) {
-            return action("", WinRTTypeKind.Primitive)
+            return action(emptyManagedTypeName)
         }
         // CsWinRT 3 ABI.System.TypeMarshaller caches ManagedTypeReference (name/kind).
-        // Pinning and native scratch frames remain scoped to each individual ABI call.
+        // Native scratch frames and the strong string root remain scoped to each ABI call.
         val cache = ManagedTypeNameCache.getOrCreate()
         val reference = cache[value] ?: cache.computeIfAbsent(value, ::computeManagedTypeName)
         if (FeatureSwitches.traceCcw) println("winrt-typename: $value -> ${reference.name} (${reference.kind})")
-        return action(reference.name, reference.kind)
+        return action(reference)
     }
 
     private fun computeManagedTypeName(value: KClass<*>): ManagedTypeName {
@@ -104,9 +111,10 @@ internal object TypeProjection {
 
     /** CsWinRT Type.Pinnable/GetAbi(ref) borrow the name only for the synchronous input call. */
     fun createInputMarshaler(value: KClass<*>?): WinRTProjectionMarshaler =
-        withManagedTypeName(value) { name, kind ->
-            val length = winRTStringLength(name)
-            val pinnedName = winRTPinString(name, length)
+        withManagedTypeName(value) { reference ->
+            val length = reference.length
+            val pinnedName = reference.pinnedName
+            val kind = reference.kind
             val nameFrame = acquireScopedNativeHStringReferenceFrame(pinnedName, length)
             var structFrame: NativeStructScratchFrame? = null
             try {
