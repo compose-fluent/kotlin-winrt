@@ -147,13 +147,6 @@ internal object XamlSystemProjectionRuntimeHooks {
     }
 
     internal fun defaultCustomPropertyProviderInterfaceDefinition(
-        existingInterfaceIds: Set<Guid>,
-    ): WinRTInspectableInterfaceDefinition? =
-        defaultCustomPropertyProviderInterfaceDefinition {
-            IID.ICustomPropertyProvider in existingInterfaceIds
-        }
-
-    internal fun defaultCustomPropertyProviderInterfaceDefinition(
         existingInterfaceDefinitions: List<WinRTInspectableInterfaceDefinition>,
     ): WinRTInspectableInterfaceDefinition? {
         // WinRTCcwDefinition accepts a caller-owned List. Recheck the same membership used by the

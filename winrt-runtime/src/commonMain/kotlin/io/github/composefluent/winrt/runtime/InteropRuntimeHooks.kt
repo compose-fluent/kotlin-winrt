@@ -12,34 +12,28 @@ internal object InteropRuntimeHooks {
         val last = lastAugmentation
         val sameBase = definition === last?.base
         val customPropertyProvider =
-            if (sameBase) {
-                XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
-                    existingInterfaceDefinitions = definition.interfaceDefinitions,
-                )
-            } else {
-                XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
-                    existingInterfaceIds = definition.interfaceDefinitions.mapTo(linkedSetOf()) { it.interfaceId },
-                )
-            }
+            XamlSystemProjectionRuntimeHooks.defaultCustomPropertyProviderInterfaceDefinition(
+                existingInterfaceDefinitions = definition.interfaceDefinitions,
+            )
         val defaultCustomTypeMappings = FeatureSwitches.enableDefaultCustomTypeMappings
         val customPropertyProviderSupport = FeatureSwitches.enableICustomPropertyProviderSupport
         val customPropertyProviderIncluded = customPropertyProvider != null
-        if (sameBase && last != null &&
-            last.configuration.defaultCustomTypeMappings == defaultCustomTypeMappings &&
-            last.configuration.customPropertyProviderSupport == customPropertyProviderSupport &&
-            last.configuration.customPropertyProviderIncluded == customPropertyProviderIncluded
-        ) {
-            return last.definition
-        }
-        val configuration = AugmentationConfiguration(
+        val configuration = last?.configuration?.takeIf {
+            it.defaultCustomTypeMappings == defaultCustomTypeMappings &&
+                it.customPropertyProviderSupport == customPropertyProviderSupport &&
+                it.customPropertyProviderIncluded == customPropertyProviderIncluded
+        } ?: AugmentationConfiguration(
             defaultCustomTypeMappings = defaultCustomTypeMappings,
             customPropertyProviderSupport = customPropertyProviderSupport,
             customPropertyProviderIncluded = customPropertyProviderIncluded,
         )
+        if (sameBase && last != null && last.configuration === configuration) {
+            return last.definition
+        }
         val cacheable =
             definition.queryInterfaceFallback == null &&
-                (definition.interfaceDefinitions + definition.hiddenInterfaceDefinitions)
-                    .all(::isHostValueHandler)
+                definition.interfaceDefinitions.all(::isHostValueHandler) &&
+                definition.hiddenInterfaceDefinitions.all(::isHostValueHandler)
         if (cacheable) {
             augmentedDefinitionCache[definition]
                 ?.takeIf { it.configuration == configuration }
@@ -82,7 +76,7 @@ internal object InteropRuntimeHooks {
         definition: WinRTCcwDefinition,
         customPropertyProvider: WinRTInspectableInterfaceDefinition?,
     ): WinRTCcwDefinition {
-        val existingInterfaceIds = definition.interfaceDefinitions.mapTo(linkedSetOf()) { it.interfaceId }
+        val hasAuthoredMarshal = definition.interfaceDefinitions.any { it.interfaceId == IID.IMarshal }
         val authoredInterfaces = definition.interfaceDefinitions.filterNot {
             it.interfaceId in referenceAppendedInterfaceIds && it.interfaceId != IID.IMarshal
         }
@@ -91,7 +85,7 @@ internal object InteropRuntimeHooks {
             add(stringableInterfaceDefinition)
             customPropertyProvider?.let(::add)
             add(weakReferenceSourceInterfaceDefinition)
-            if (IID.IMarshal !in existingInterfaceIds) {
+            if (!hasAuthoredMarshal) {
                 add(marshalInterfaceDefinition)
             }
             add(agileObjectInterfaceDefinition)

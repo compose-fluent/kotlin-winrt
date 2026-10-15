@@ -1588,6 +1588,11 @@ class ComWrappersSupportTest {
         assertSame(definition, XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(definition))
         val first = InteropRuntimeHooks.augmentInspectableDefinition(definition)
         val second = InteropRuntimeHooks.augmentInspectableDefinition(definition)
+        // CsWinRT 3 WindowsRuntimeComWrappers.ComputeVtables reuses each type's vtable,
+        // including after a different type has displaced the single-entry hot cache.
+        val interleaved = definition.copy(runtimeClassName = "test.Interleaved")
+        InteropRuntimeHooks.augmentInspectableDefinition(interleaved)
+        assertSame(first, InteropRuntimeHooks.augmentInspectableDefinition(definition))
         val firstById = (first.interfaceDefinitions + first.hiddenInterfaceDefinitions).associateBy { it.interfaceId }
         val secondById = (second.interfaceDefinitions + second.hiddenInterfaceDefinitions).associateBy { it.interfaceId }
 
