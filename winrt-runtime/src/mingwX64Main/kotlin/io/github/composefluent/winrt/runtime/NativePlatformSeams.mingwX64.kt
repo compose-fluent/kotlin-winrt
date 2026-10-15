@@ -659,23 +659,17 @@ private const val scopedNativeHStringPoolSizeBytes: Int = scopedNativeHStringPoo
 private const val scopedNativeHStringResultOffsetBytes: Long = 8L
 private const val scopedNativeHStringHeaderOffsetBytes: Long = 16L
 
+@OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,
     private val onClose: () -> Unit,
 ) : AutoCloseable {
-    private val lock = PlatformLock()
-    private var closed: Boolean = false
+    // Match the JVM handle and CsWinRT's atomic disposal claim: cleanup runs outside
+    // the state transition and may reenter close. No recursive OS lock is needed.
+    private val closed = kotlin.concurrent.atomics.AtomicInt(0)
 
     actual override fun close() {
-        val shouldClose = lock.withLock {
-            if (closed) {
-                false
-            } else {
-                closed = true
-                true
-            }
-        }
-        if (shouldClose) {
+        if (closed.compareAndSet(0, 1)) {
             onClose()
         }
     }
