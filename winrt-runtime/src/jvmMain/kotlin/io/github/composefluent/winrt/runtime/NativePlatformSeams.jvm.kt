@@ -155,7 +155,7 @@ private class JvmNativeScalarScratchFramePool {
 
     private fun createFrame(): NativeScalarScratchFrame =
         NativeScalarScratchFrame(
-            segment = Arena.global().allocate(ValueLayout.JAVA_LONG),
+            segment = Arena.ofAuto().allocate(ValueLayout.JAVA_LONG),
             release = ::release,
         )
 
@@ -348,6 +348,16 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         if (active) {
             release(this)
             active = false
+            if (capacityBytes > hStringMaxRetainedCapacityBytes) {
+                // Keep ordinary conversion buffers warm without retaining a single
+                // unusually large string's native buffer and CharArray on the thread.
+                arena = null
+                segment = MemorySegment.NULL
+                headerSegment = MemorySegment.NULL
+                utf16Segment = MemorySegment.NULL
+                capacityBytes = 0L
+                chars = CharArray(0)
+            }
         }
     }
 
@@ -359,8 +369,9 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         while (newCapacity < requiredBytes) {
             newCapacity = Math.multiplyExact(newCapacity, 2L)
         }
-        arena?.close()
-        arena = Arena.ofConfined()
+        // The pool can become unreachable when its thread exits. A confined arena
+        // requires explicit close on that thread and would otherwise leak this buffer.
+        arena = Arena.ofAuto()
         segment = requireNotNull(arena).allocate(newCapacity, ValueLayout.JAVA_LONG.byteAlignment())
         headerSegment = segment.asSlice(hStringHeaderOffsetBytes, hStringHeaderSizeBytes)
         utf16Segment = segment.asSlice(hStringCharsOffsetBytes, newCapacity - hStringCharsOffsetBytes)
@@ -378,6 +389,8 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         chars = CharArray(newCapacity)
     }
 }
+
+private const val hStringMaxRetainedCapacityBytes = 64L * 1024L
 
 private class JvmNativeHStringReferenceFramePool {
     private val primaryFrame = createFrame()

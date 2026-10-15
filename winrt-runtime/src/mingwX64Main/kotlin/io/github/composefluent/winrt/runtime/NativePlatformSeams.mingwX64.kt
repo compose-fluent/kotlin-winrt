@@ -1,4 +1,5 @@
 @file:OptIn(
+    kotlin.experimental.ExperimentalNativeApi::class,
     kotlinx.cinterop.ExperimentalForeignApi::class,
     kotlin.native.internal.InternalForKotlinNative::class,
 )
@@ -43,6 +44,8 @@ import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
 import kotlinx.io.files.Path
 import kotlin.native.concurrent.ThreadLocal
+import kotlin.native.ref.createCleaner
+import kotlin.concurrent.Volatile
 import kotlin.native.internal.GCUnsafeCall
 import kotlin.reflect.KClass
 import platform.posix.getenv
@@ -137,11 +140,55 @@ internal actual class NativeMemoryView internal constructor(
     }
 }
 
+/** Owns only native bytes, never the frame or its thread-local pool. */
+internal class NativeScratchAllocation(initialAddress: Long = 0L) {
+    @Volatile
+    var address: Long = initialAddress
+        private set
+
+    fun allocate(sizeBytes: Long): COpaquePointer {
+        require(sizeBytes in 1..Int.MAX_VALUE.toLong()) { "Native scratch allocation size is out of range." }
+        val replacement = nativeHeap.allocArray<ByteVar>(sizeBytes.toInt()).reinterpret<COpaque>()
+        release()
+        address = replacement.rawValue.toLong()
+        return replacement
+    }
+
+    fun release() {
+        val pointer = address.toCPointer<ByteVar>() ?: return
+        address = 0L
+        nativeHeap.free(pointer.rawValue)
+    }
+}
+
+/** Cleanup state contains allocation records only; frames keep their owning pool alive. */
+internal class NativeScratchAllocations {
+    private val allocations = mutableListOf<NativeScratchAllocation>()
+
+    @Suppress("unused")
+    private val cleaner = createCleaner(allocations) { records ->
+        records.forEach { it.release() }
+    }
+
+    fun allocate(sizeBytes: Long, previous: COpaquePointer? = null): COpaquePointer {
+        val allocation = if (previous == null) NativeScratchAllocation() else owner(previous.asRawAddress())
+        val pointer = allocation.allocate(sizeBytes)
+        if (previous == null) allocations += allocation
+        return pointer
+    }
+
+    fun owner(pointer: RawAddress): NativeScratchAllocation =
+        allocations.first { it.address == pointer.value }
+}
+
 @PublishedApi
 internal actual class NativeScalarScratchFrame internal constructor(
     @PublishedApi internal val storage: CPointer<LongVar>,
-    private val release: (NativeScalarScratchFrame) -> Unit,
+    private val owner: MingwNativeScalarScratchFramePool,
 ) : AutoCloseable {
+    internal val allocationOwner: NativeScratchAllocation
+        get() = owner.allocationOwner(pointer)
+
     actual val pointer: RawAddress = storage.reinterpret<COpaque>().asRawAddress()
 
     private var active: Boolean = false
@@ -194,13 +241,14 @@ internal actual class NativeScalarScratchFrame internal constructor(
 
     actual override fun close() {
         if (active) {
-            release(this)
+            owner.release(this)
             active = false
         }
     }
 }
 
-private class MingwNativeScalarScratchFramePool {
+internal class MingwNativeScalarScratchFramePool {
+    private val allocations = NativeScratchAllocations()
     private val primaryFrame = createFrame()
     private val nestedFrames = mutableListOf<NativeScalarScratchFrame>()
     private var depth: Int = 0
@@ -218,14 +266,14 @@ private class MingwNativeScalarScratchFramePool {
 
     private fun createFrame(): NativeScalarScratchFrame =
         NativeScalarScratchFrame(
-            storage = nativeHeap.alloc<LongVar>().ptr,
-            release = ::release,
+            storage = allocations.allocate(Long.SIZE_BYTES.toLong()).reinterpret<LongVar>(),
+            owner = this,
         )
 
     private fun createNestedFrame(): NativeScalarScratchFrame =
         createFrame().also(nestedFrames::add)
 
-    private fun release(frame: NativeScalarScratchFrame) {
+    internal fun release(frame: NativeScalarScratchFrame) {
         check(
             depth > 0 &&
                 if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
@@ -234,6 +282,8 @@ private class MingwNativeScalarScratchFramePool {
         }
         depth -= 1
     }
+
+    internal fun allocationOwner(pointer: RawAddress): NativeScratchAllocation = allocations.owner(pointer)
 }
 
 @ThreadLocal
@@ -247,8 +297,11 @@ internal actual fun acquireNativeScalarScratchFrame(clear: Boolean): NativeScala
 
 @PublishedApi
 internal actual class NativeStructScratchFrame internal constructor(
-    private val release: (NativeStructScratchFrame) -> Unit,
+    private val owner: MingwNativeStructScratchFramePool,
 ) : AutoCloseable {
+    internal val allocationOwner: NativeScratchAllocation
+        get() = owner.allocationOwner(pointer)
+
     private var allocation: COpaquePointer? = null
     private var capacityBytes: Long = 0L
     private var active: Boolean = false
@@ -268,8 +321,7 @@ internal actual class NativeStructScratchFrame internal constructor(
             "Native struct scratch alignment $alignmentBytes exceeds the Windows x64 heap alignment."
         }
         if (capacityBytes < sizeBytes) {
-            allocation?.let { pointer -> nativeHeap.free(pointer.rawValue) }
-            allocation = nativeHeap.allocArray<ByteVar>(sizeBytes.toInt()).reinterpret<COpaque>()
+            allocation = owner.allocate(sizeBytes, allocation)
             capacityBytes = sizeBytes
         }
         if (clear) {
@@ -302,13 +354,14 @@ internal actual class NativeStructScratchFrame internal constructor(
 
     actual override fun close() {
         if (active) {
-            release(this)
+            owner.release(this)
             active = false
         }
     }
 }
 
-private class MingwNativeStructScratchFramePool {
+internal class MingwNativeStructScratchFramePool {
+    private val allocations = NativeScratchAllocations()
     private val primaryFrame = createFrame()
     private val nestedFrames = mutableListOf<NativeStructScratchFrame>()
     private var depth: Int = 0
@@ -329,12 +382,12 @@ private class MingwNativeStructScratchFramePool {
     }
 
     private fun createFrame(): NativeStructScratchFrame =
-        NativeStructScratchFrame(release = ::release)
+        NativeStructScratchFrame(owner = this)
 
     private fun createNestedFrame(): NativeStructScratchFrame =
         createFrame().also(nestedFrames::add)
 
-    private fun release(frame: NativeStructScratchFrame) {
+    internal fun release(frame: NativeStructScratchFrame) {
         check(
             depth > 0 &&
                 if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
@@ -343,6 +396,11 @@ private class MingwNativeStructScratchFramePool {
         }
         depth -= 1
     }
+
+    internal fun allocationOwner(pointer: RawAddress): NativeScratchAllocation = allocations.owner(pointer)
+
+    internal fun allocate(sizeBytes: Long, previous: COpaquePointer?): COpaquePointer =
+        allocations.allocate(sizeBytes, previous)
 }
 
 @ThreadLocal
@@ -360,8 +418,11 @@ internal actual fun acquireNativeStructScratchFrame(
 
 @PublishedApi
 internal actual class NativeHStringReferenceFrame internal constructor(
-    private val release: (NativeHStringReferenceFrame) -> Unit,
+    private val owner: MingwNativeHStringReferenceFramePool,
 ) : AutoCloseable {
+    internal val allocationOwner: NativeScratchAllocation
+        get() = owner.allocationOwner(pointer = base)
+
     private var allocation: COpaquePointer? = null
     private var base: RawAddress = RawAddress.Null
     private var capacityBytes: Long = 0L
@@ -409,7 +470,7 @@ internal actual class NativeHStringReferenceFrame internal constructor(
 
     actual override fun close() {
         if (active) {
-            release(this)
+            owner.release(this)
             pinnedValue = null
             active = false
         }
@@ -426,15 +487,15 @@ internal actual class NativeHStringReferenceFrame internal constructor(
         while (newCapacity < requiredBytes) {
             newCapacity = minOf(newCapacity * 2L, Int.MAX_VALUE.toLong())
         }
-        allocation?.let { nativeHeap.free(it.rawValue) }
-        allocation = nativeHeap.allocArray<ByteVar>(newCapacity.toInt()).reinterpret<COpaque>()
+        allocation = owner.allocate(newCapacity, allocation)
         base = requireNotNull(allocation).asRawAddress()
         capacityBytes = newCapacity
         memset(base.toOpaquePointer(), 0, capacityBytes.toULong())
     }
 }
 
-private class MingwNativeHStringReferenceFramePool {
+internal class MingwNativeHStringReferenceFramePool {
+    private val allocations = NativeScratchAllocations()
     private val primaryFrame = createFrame()
     private val nestedFrames = mutableListOf<NativeHStringReferenceFrame>()
     private var depth: Int = 0
@@ -451,12 +512,12 @@ private class MingwNativeHStringReferenceFramePool {
     }
 
     private fun createFrame(): NativeHStringReferenceFrame =
-        NativeHStringReferenceFrame(release = ::release)
+        NativeHStringReferenceFrame(owner = this)
 
     private fun createNestedFrame(): NativeHStringReferenceFrame =
         createFrame().also(nestedFrames::add)
 
-    private fun release(frame: NativeHStringReferenceFrame) {
+    internal fun release(frame: NativeHStringReferenceFrame) {
         check(
             depth > 0 &&
                 if (depth == 1) primaryFrame === frame else nestedFrames[depth - 2] === frame,
@@ -465,6 +526,11 @@ private class MingwNativeHStringReferenceFramePool {
         }
         depth -= 1
     }
+
+    internal fun allocationOwner(pointer: RawAddress): NativeScratchAllocation = allocations.owner(pointer)
+
+    internal fun allocate(sizeBytes: Long, previous: COpaquePointer?): COpaquePointer =
+        allocations.allocate(sizeBytes, previous)
 }
 
 @ThreadLocal

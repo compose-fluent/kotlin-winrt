@@ -74,7 +74,7 @@ class HStringInteropTest {
     fun owned_hstring_handles_outlive_reused_conversion_storage() {
         // CsWinRT's owned HSTRING marshaller returns independent copies, even
         // when its pinned input or temporary output storage is reused later.
-        val values = listOf("", "first", "汉字", "\ud83d\ude80", "left\u0000right", "\ud800", "x".repeat(4097))
+        val values = listOf("", "first", "汉字", "\ud83d\ude80", "left\u0000right", "\ud800", "x".repeat(100_000))
         val handles = mutableListOf<RawAddress>()
         try {
             acquireNativeScalarScratchFrame().use { outer ->
