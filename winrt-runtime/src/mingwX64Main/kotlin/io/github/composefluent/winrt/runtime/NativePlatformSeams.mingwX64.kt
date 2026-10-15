@@ -7,7 +7,6 @@
 
 package io.github.composefluent.winrt.runtime
 
-import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_invoke_ref_count
 import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_supports_interface
 import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_try_query_interface
 import kotlinx.cinterop.ByteVar
@@ -1524,15 +1523,15 @@ internal inline fun invokeUnknownRefCountMethod(
     unknown: RawAddress,
     slot: Int,
 ): UInt {
-    // CsWinRT ObjectReference delegates AddRef/Release to the platform Marshal boundary.
-    // Passing address bits avoids repeated NativePtr conversions before that boundary.
-    val result = kotlin_winrt_invoke_ref_count(unknown.value.toULong(), slot)
-    return when (result shr 32) {
-        0uL -> result.toUInt()
-        1uL -> error("COM object pointer is null.")
-        2uL -> nativeNullComVtable()
-        else -> nativeNullComVtableSlot(slot)
-    }
+    // Ordinary CFunction calls preserve the Native/managed transition: COM may
+    // reenter Kotlin, including during the final Release.
+    val objectMemory = unknown.value.toCPointer<COpaquePointerVar>()
+        ?: error("COM object pointer is null.")
+    val vtable = objectMemory.pointed.value ?: nativeNullComVtable()
+    val function = vtable.reinterpret<COpaquePointerVar>()[slot]
+        ?.reinterpret<CFunction<(COpaquePointer?) -> UInt>>()
+        ?: nativeNullComVtableSlot(slot)
+    return function.invoke(objectMemory.reinterpret<COpaque>())
 }
 
 private const val runtimeAssetsDirectoryName = "windows-package-runtime-assets"
