@@ -5,6 +5,9 @@ internal expect fun consumeOwnedHString(
     handle: RawAddress,
 ): String
 
+/** Returns an owned HSTRING; the ABI recipient must release it. */
+internal expect fun createOwnedHString(value: String): RawAddress
+
 class HString private constructor(
     val handle: RawAddress,
     private val owner: Boolean,
@@ -18,24 +21,7 @@ class HString private constructor(
     }
 
     companion object {
-        fun create(value: String): HString {
-            if (!PlatformRuntime.isWindows) {
-                error("HSTRING is only available on Windows.")
-            }
-
-            PlatformAbi.confinedScope().use { scope ->
-                val utf16 = PlatformAbi.allocateUtf16(scope, value)
-                val out = PlatformAbi.allocatePointerSlot(scope)
-                WinRTPlatformApi.checkSucceededRaw(
-                    WinRTPlatformApi.windowsCreateStringRaw(
-                        utf16,
-                        value.length,
-                        out,
-                    ),
-                )
-                return HString(PlatformAbi.readPointer(out), owner = true)
-            }
-        }
+        fun create(value: String): HString = HString(createOwnedHString(value), owner = true)
 
         fun createReference(value: String): ReferencedHString {
             val frame = acquireInitializedNativeHStringReferenceFrame(value)

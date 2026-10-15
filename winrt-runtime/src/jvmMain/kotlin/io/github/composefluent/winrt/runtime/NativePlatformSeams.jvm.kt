@@ -15,6 +15,19 @@ internal actual inline fun tryConsumeOwnedRuntimeClassRcw(
     expectedType: KClass<*>,
 ): Any? = null
 
+internal actual fun createOwnedHString(value: String): RawAddress {
+    if (!PlatformRuntime.isWindows) error("HSTRING is only available on Windows.")
+    if (value.isEmpty()) return RawAddress.Null
+    // FFM cannot borrow JVM String storage. Reuse the existing UTF-16 frame;
+    // WindowsCreateString copies its contents before the frame is released.
+    return acquireNativeHStringReferenceFrame(value).use { frame ->
+        WinRTPlatformApi.checkSucceededRaw(
+            WinRTPlatformApi.windowsCreateStringRaw(frame.utf16Chars, value.length, frame.transientOut),
+        )
+        PlatformAbi.readPointer(frame.transientOut)
+    }
+}
+
 @PublishedApi
 internal actual fun consumeOwnedHString(handle: RawAddress): String {
     if (PlatformAbi.isNull(handle)) {

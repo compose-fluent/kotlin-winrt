@@ -424,7 +424,7 @@ object MarshalString {
                 }
             },
             fromAbiPointer = NativeStringMarshaller::fromAbi,
-            fromManagedPointer = { value -> NativeStringMarshaller.fromManaged(value)?.handle ?: PlatformAbi.nullPointer },
+            fromManagedPointer = { value -> value?.let(::createOwnedHString) ?: PlatformAbi.nullPointer },
             disposeMarshaler = { value ->
                 when (value) {
                     null -> Unit

@@ -179,7 +179,7 @@ internal object ValueBoxingInterop {
             propertyTypeArray = PropertyType.StringArray,
             exactUnbox = { it as String },
             propertyValueCoerce = ::coerceString,
-            createPointer = { value -> NativeStringMarshaller.fromManaged(value)?.handle ?: PlatformAbi.nullPointer },
+            createPointer = ::createOwnedHString,
             readOwnedPointer = { pointer -> NativeStringMarshaller.fromAbi(pointer) },
             disposeOwnedPointer = { pointer -> NativeStringMarshaller.disposeAbi(pointer) },
         )

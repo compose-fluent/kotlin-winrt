@@ -887,6 +887,26 @@ internal inline fun nativeReadHString(handle: RawAddress): String {
     return utf16.toLengthAwareKString(length)
 }
 
+internal actual fun createOwnedHString(value: String): RawAddress {
+    if (value.isEmpty()) return RawAddress.Null
+    // CsWinRT HStringMarshaller.ConvertToUnmanaged pins UTF-16 only for
+    // WindowsCreateString. Unlike a fast-pass reference, this API does not
+    // need a trailing NUL, and the returned HSTRING owns a separate copy.
+    val pinnedValue = value.toNativePinnable()
+    try {
+        return acquireNativeScalarScratchFrame(clear = false).use { frame ->
+            WinRTPlatformApi.checkSucceededRaw(
+                WinRTPlatformApi.windowsCreateStringRaw(
+                    winRTStringAddress(pinnedValue, value.length), value.length, frame.pointer,
+                ),
+            )
+            frame.readPointer()
+        }
+    } finally {
+        winRTKeepAlive(pinnedValue)
+    }
+}
+
 @PublishedApi
 internal actual fun consumeOwnedHString(handle: RawAddress): String {
     if (handle.value == 0L) {

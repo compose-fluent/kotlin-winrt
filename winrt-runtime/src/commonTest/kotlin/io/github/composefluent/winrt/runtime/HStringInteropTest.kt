@@ -71,6 +71,27 @@ class HStringInteropTest {
     }
 
     @Test
+    fun owned_hstring_handles_outlive_reused_conversion_storage() {
+        // CsWinRT's owned HSTRING marshaller returns independent copies, even
+        // when its pinned input or temporary output storage is reused later.
+        val values = listOf("", "first", "汉字", "\ud83d\ude80", "left\u0000right", "\ud800", "x".repeat(4097))
+        val handles = mutableListOf<RawAddress>()
+        try {
+            acquireNativeScalarScratchFrame().use { outer ->
+                PlatformAbi.writeInt64(outer.pointer, 0x1122334455667788L)
+                values.forEach { handles += createOwnedHString(it) }
+                assertEquals(0x1122334455667788L, outer.readInt64())
+            }
+            assertTrue(PlatformAbi.isNull(handles.first()))
+            values.zip(handles).forEach { (expected, handle) ->
+                assertEquals(expected, NativeStringMarshaller.fromAbi(handle))
+            }
+        } finally {
+            handles.forEach(NativeStringMarshaller::disposeAbi)
+        }
+    }
+
+    @Test
     fun owned_hstring_frame_consumption_transfers_and_clears_state_once() {
         acquireNativeScalarScratchFrame(clear = false).use { frame ->
             val transferredHandle = HString.create("owned-once").handle
