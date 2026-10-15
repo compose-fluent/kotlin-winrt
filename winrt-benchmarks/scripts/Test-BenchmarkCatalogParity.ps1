@@ -98,6 +98,10 @@ if ($referenceSourceDifference.Count -ne 0) {
     throw "CsWinRT must compile the benchmark family sources directly from .cswinrt/src/Benchmarks: $($details -join '; ')."
 }
 
+# Preserve the 97 pinned reference operations and check supplemental workloads separately.
+$supplemental = @('ProjectionStressPerf.SetMixedNullableValues')
+$expected = @($expected) + $supplemental
+
 $catalogs = [ordered]@{
     'Kotlin/JVM' = $KotlinJvmCatalog
     'Kotlin/Native' = $KotlinNativeCatalog
@@ -128,8 +132,8 @@ foreach ($runner in $catalogs.Keys) {
         $details = $difference | ForEach-Object {
             if ($_.SideIndicator -eq '<=') { "missing $($_.InputObject)" } else { "unexpected $($_.InputObject)" }
         }
-        throw "$runner catalog does not match .cswinrt/src/Benchmarks: $($details -join '; ')."
+        throw "$runner catalog does not match the reference and supplemental catalogs: $($details -join '; ')."
     }
 }
 
-Write-Output "Benchmark catalog parity passed: 6 families and 97 scenarios match on all four runners."
+Write-Output "Benchmark catalog parity passed: 97 reference scenarios and $($supplemental.Count) supplemental scenario match on all four runners."

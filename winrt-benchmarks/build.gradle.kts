@@ -256,6 +256,7 @@ val benchmarkKotlinNativeCatalog by tasks.registering(Exec::class) {
     description = "Exports the Kotlin/Native executable benchmark catalog."
     dependsOn("linkReleaseExecutableMingwX64")
     dependsOn(buildReferenceBenchmarkComponent)
+    inputs.file(layout.buildDirectory.file("bin/mingwX64/releaseExecutable/winrt-benchmarks.exe"))
     workingDir(layout.projectDirectory)
     executable(
         layout.buildDirectory

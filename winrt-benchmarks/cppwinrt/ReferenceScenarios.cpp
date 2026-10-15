@@ -720,6 +720,12 @@ namespace benchmark
                 void_scenario<ReflectionPerf>("ReflectionPerf.GetWeakReferenceOfManagedObject", setup, [](auto& value) { value.GetWeakReferenceOfManagedObject(); }),
                 object_scenario<ReflectionPerf>("ReflectionPerf.GetAndResolveWeakReferenceOfManagedObject", setup, [](auto& value) { return value.GetAndResolveWeakReferenceOfManagedObject(); }),
                 object_scenario<ReflectionPerf>("ReflectionPerf.GetWeakReferenceOfNativeObject", setup, [](auto& value) { return value.GetWeakReferenceOfNativeObject(); }),
+                void_scenario<ReflectionPerf>("ProjectionStressPerf.SetMixedNullableValues", setup, [](auto& value)
+                {
+                    value.SetNullableInt();
+                    value.SetNullableBittableStruct();
+                    value.SetNullableTimeSpan();
+                }),
             };
         }
 

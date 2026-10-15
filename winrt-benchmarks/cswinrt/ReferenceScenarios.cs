@@ -7,7 +7,7 @@ internal static class ReferenceScenarios
     private static object? objectResultSink;
     internal static void ClearResultSink() => Volatile.Write(ref objectResultSink, null);
 
-    internal const int ExpectedScenarioCount = 97;
+    internal const int ExpectedScenarioCount = 97 + 1; // Reference + supplemental workloads.
 
     internal static IReadOnlyList<BenchmarkScenarioDefinition> Definitions { get; } =
         QueryInterfaceDefinitions()
@@ -127,6 +127,12 @@ internal static class ReferenceScenarios
         yield return Void<ReflectionPerf>("ReflectionPerf.GetWeakReferenceOfManagedObject", Setup, value => value.GetWeakReferenceOfManagedObject());
         yield return Object<ReflectionPerf>("ReflectionPerf.GetAndResolveWeakReferenceOfManagedObject", Setup, value => value.GetAndResolveWeakReferenceOfManagedObject());
         yield return Object<ReflectionPerf>("ReflectionPerf.GetWeakReferenceOfNativeObject", Setup, value => value.GetWeakReferenceOfNativeObject());
+        yield return Void<ReflectionPerf>("ProjectionStressPerf.SetMixedNullableValues", Setup, value =>
+        {
+            value.SetNullableInt();
+            value.SetNullableBittableStruct();
+            value.SetNullableTimeSpan();
+        });
 
         static void Setup(ReflectionPerf value) => value.Setup();
     }

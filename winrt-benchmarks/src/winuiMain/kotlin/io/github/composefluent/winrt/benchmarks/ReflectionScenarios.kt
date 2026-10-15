@@ -200,6 +200,18 @@ internal fun reflectionScenarios(): List<BenchmarkScenario> =
         voidScenario("GetWeakReferenceOfManagedObject") { it.getWeakReferenceOfManagedObject() },
         objectScenario("GetAndResolveWeakReferenceOfManagedObject") { it.getAndResolveWeakReferenceOfManagedObject() },
         objectScenario("GetWeakReferenceOfNativeObject") { it.getWeakReferenceOfNativeObject() },
+        // One operation writes three different boxed types, keeping the per-type cache warm
+        // while exercising the path that cannot reuse a single last-type entry.
+        referenceVoidScenario(
+            name = "ProjectionStressPerf.SetMixedNullableValues",
+            create = ::ReflectionPerf,
+            setup = ReflectionPerf::setup,
+            invoke = {
+                it.setNullableInt()
+                it.setNullableBittableStruct()
+                it.setNullableTimeSpan()
+            },
+        ),
     )
 
 private inline fun objectScenario(method: String, crossinline invoke: (ReflectionPerf) -> Any?): BenchmarkScenario =

@@ -14,8 +14,8 @@ fun main(args: Array<String>) {
             addAll(asyncScenarios())
             addAll(nonAgileObjectScenarios())
         }
-        check(scenarios.size == REFERENCE_SCENARIO_COUNT) {
-            "Expected $REFERENCE_SCENARIO_COUNT .cswinrt reference scenarios, got ${scenarios.size}."
+        check(scenarios.size == EXPECTED_SCENARIO_COUNT) {
+            "Expected $EXPECTED_SCENARIO_COUNT total scenarios, got ${scenarios.size}."
         }
         val duplicateNames = scenarios.groupingBy(BenchmarkScenario::name).eachCount().filterValues { it > 1 }.keys
         check(duplicateNames.isEmpty()) {
@@ -28,4 +28,4 @@ fun main(args: Array<String>) {
     }
 }
 
-private const val REFERENCE_SCENARIO_COUNT: Int = 97
+private const val EXPECTED_SCENARIO_COUNT: Int = 97 + 1 // Reference + supplemental workloads.

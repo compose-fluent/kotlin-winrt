@@ -45,7 +45,7 @@ internal static class Program
         if (definitions.Count != ReferenceScenarios.ExpectedScenarioCount)
         {
             throw new InvalidOperationException(
-                $"Expected {ReferenceScenarios.ExpectedScenarioCount} reference scenarios, got {definitions.Count}.");
+                $"Expected {ReferenceScenarios.ExpectedScenarioCount} total scenarios, got {definitions.Count}.");
         }
 
         if (options.ListScenarios)

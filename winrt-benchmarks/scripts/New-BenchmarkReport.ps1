@@ -160,7 +160,7 @@ $report = [ordered]@{
 $markdown = @(
     "# WinRT Projection Benchmark",
     "",
-    "All runners execute the selected scenarios from the 97-method .cswinrt/src/Benchmarks reference catalog in x64 Release mode. Each runner calibrates every scenario toward an approximately 5 ms batch, capped at 100,000 operations. Warmup is adaptive so managed runners reach steady-state code before measurement, while a one-second threshold caps slow scenarios. Values are median nanoseconds per operation; lower is better.",
+    "All runners execute the selected scenarios from the 97-method .cswinrt/src/Benchmarks reference catalog and the documented supplemental catalog in x64 Release mode. Each runner calibrates every scenario toward an approximately 5 ms batch, capped at 100,000 operations. Warmup is adaptive so managed runners reach steady-state code before measurement, while a one-second threshold caps slow scenarios. Values are median nanoseconds per operation; lower is better.",
     "",
     "- Minimum warmup rounds: $($referenceConfiguration.warmupRounds)",
     "- Adaptive warmup: at least 100,000 operations and 500 ms, or 1,000 ms for slow scenarios, followed by 5 settling batches",

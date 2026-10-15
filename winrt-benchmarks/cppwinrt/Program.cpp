@@ -22,7 +22,7 @@
 namespace
 {
     constexpr int schema_version = 3;
-    constexpr std::size_t expected_scenario_count = 97;
+    constexpr std::size_t expected_scenario_count = 97 + 1; // Reference + supplemental workloads.
     constexpr double target_batch_nanoseconds = 5'000'000.0;
     constexpr int max_calibrated_iterations = 100'000;
     constexpr int max_calibration_steps = 8;
@@ -389,7 +389,7 @@ int wmain(int argc, wchar_t** argv)
         {
             throw std::runtime_error(
                 "Expected " + std::to_string(expected_scenario_count) +
-                " reference scenarios, got " + std::to_string(scenarios.size()) + ".");
+                " total scenarios, got " + std::to_string(scenarios.size()) + ".");
         }
 
         std::set<std::string> known_names;
