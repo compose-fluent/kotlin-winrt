@@ -15,6 +15,79 @@ import kotlin.test.assertNull
 @OptIn(ExperimentalAtomicApi::class)
 class WinRTDelegateHandleLifecycleTest {
     @Test
+    fun object_delegate_marshaler_preserves_escaped_ownership_after_close() {
+        // CsWinRT 3 WindowsRuntimeObjectMarshaller requests IInspectable from the managed CCW.
+        // Disposing that input owner must leave another interface's native reference callable.
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("b2602874-f9cb-4074-a3c9-14279f64c774"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT32,
+        )
+        val cleanupCalls = AtomicInt(0)
+        val marshaler = WinRTObjectMarshaller.createMarshaler(projectedDelegate(descriptor, cleanupCalls))
+        try {
+            ComObjectReference(marshaler.abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { borrowed ->
+                borrowed.queryInterface(IID.IInspectable).getOrThrow().use { inspectable ->
+                    assertEquals(marshaler.abi, inspectable.pointer.asRawAddress())
+                }
+                borrowed.queryInterface(descriptor.interfaceId).getOrThrow().use { retained ->
+                    marshaler.close()
+                    marshaler.close()
+                    PlatformFinalization.drain()
+                    assertEquals(0, cleanupCalls.load())
+                    WinRTDelegateReference(retained.comPtr, descriptor).use { callable ->
+                        assertEquals(37, callable.invoke(emptyList()))
+                    }
+                }
+            }
+            assertEquals(1, cleanupCalls.load())
+        } finally {
+            marshaler.close()
+        }
+        assertEquals(1, cleanupCalls.load())
+    }
+
+    @Test
+    fun abandoned_object_delegate_marshaler_releases_its_owned_reference() {
+        // Kotlin's public AutoCloseable marshaler preserves its existing Cleaner fallback
+        // in addition to CsWinRT ObjectReferenceValue's deterministic Dispose contract.
+        val cleanupCalls = AtomicInt(0)
+        val abandoned = abandonObjectDelegateMarshaler(cleanupCalls)
+        for (attempt in 0 until 20) {
+            PlatformFinalization.drain()
+            if (abandoned.get() == null && cleanupCalls.load() == 1) break
+        }
+        assertNull(abandoned.get())
+        assertEquals(1, cleanupCalls.load())
+    }
+
+    private fun abandonObjectDelegateMarshaler(
+        cleanupCalls: AtomicInt,
+    ): PlatformManagedWeakReference<WinRTObjectMarshaler> {
+        val descriptor = WinRTDelegateDescriptor(
+            interfaceId = Guid("b2602874-f9cb-4074-a3c9-14279f64c775"),
+            parameterKinds = emptyList(),
+            returnKind = WinRTDelegateValueKind.INT32,
+        )
+        val marshaler = WinRTObjectMarshaller.createMarshaler(projectedDelegate(descriptor, cleanupCalls))
+        return PlatformManagedWeakReference(marshaler)
+    }
+
+    private fun projectedDelegate(
+        descriptor: WinRTDelegateDescriptor,
+        cleanupCalls: AtomicInt,
+    ): WinRTProjectedDelegate = object : WinRTProjectedDelegate {
+        override fun createWinRTDelegateHandle(): WinRTDelegateHandle =
+            WinRTDelegateBridge.createDelegate(
+                iid = descriptor.interfaceId,
+                parameterKinds = descriptor.parameterKinds,
+                returnKind = descriptor.returnKind,
+            ) { 37 }.also { handle ->
+                handle.addCleanupAction { cleanupCalls.fetchAndAdd(1) }
+            }
+    }
+
+    @Test
     fun concurrent_close_and_native_handoff_release_the_managed_ownership_once() = runBlocking {
         // CsWinRT 3 WindowsRuntimeObjectReference.Lifecycle uses independent bits
         // in one atomic word. Disposal must preserve a native caller's COM owner.

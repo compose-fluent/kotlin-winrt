@@ -209,45 +209,31 @@ object WinRTObjectMarshaller {
         reference.use(::createInspectableMarshaler)
 
     private fun createDelegateMarshaler(value: WinRTProjectedDelegate): WinRTObjectMarshaler {
-        val reference = ProjectedDelegateCcwCache.createReference(value)
-        val inspectableReference = try {
-            reference.asInspectable()
-        } catch (throwable: Throwable) {
-            reference.close()
-            throw throwable
-        }
-        return WinRTObjectMarshaler(inspectableReference.pointer.asRawAddress()) {
-            try {
-                inspectableReference.close()
-            } finally {
-                reference.close()
-            }
-        }
+        // CsWinRT 3 WindowsRuntimeObjectMarshaller requests IInspectable directly from the CCW.
+        // Keep one owned wrapper here so the public marshaler retains its finalization fallback.
+        val reference = ProjectedDelegateCcwCache.createReference(value, IID.IInspectable)
+        return WinRTObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
     }
 
-    private fun fromManagedDelegate(value: WinRTProjectedDelegate): RawAddress {
-        val reference = ProjectedDelegateCcwCache.createReference(value)
-        return try {
-            reference.asInspectable().useAndGetRef()
-        } finally {
-            reference.close()
-        }
-    }
+    private fun fromManagedDelegate(value: WinRTProjectedDelegate): RawAddress =
+        ProjectedDelegateCcwCache.acquireMarshalingReference(value, IID.IInspectable)
 }
 
 internal object ProjectedDelegateCcwCache {
     private val handles = WeakKeyStateMap<WinRTProjectedDelegate, WinRTDelegateHandle>()
 
     /**
-     * Acquires the raw reference owned only for one synchronous ABI call. This is the Kotlin
-     * equivalent of CsWinRT's `ObjectReferenceValue`: deterministic marshaling does not need a
-     * context-capturing object-reference wrapper, while a callee that retains the pointer must
-     * still AddRef it before the call returns.
+     * Acquires one owned ABI reference from the managed CCW, as in CsWinRT's
+     * WindowsRuntimeObjectReferenceValue. The caller either releases it after a synchronous
+     * call or transfers ownership to an ABI result; another owner must acquire its own reference.
      */
-    fun acquireMarshalingReference(value: WinRTProjectedDelegate): RawAddress {
+    fun acquireMarshalingReference(
+        value: WinRTProjectedDelegate,
+        interfaceId: Guid? = null,
+    ): RawAddress {
         while (true) {
             val handle = getOrCreate(value)
-            handle.tryAcquireMarshalingReference()?.let { reference ->
+            handle.tryAcquireMarshalingReference(interfaceId ?: handle.descriptor.interfaceId)?.let { reference ->
                 try {
                     handle.releaseManagedReferenceForNativeOwnership()
                 } catch (failure: Throwable) {
@@ -260,11 +246,19 @@ internal object ProjectedDelegateCcwCache {
         }
     }
 
-    fun createReference(value: WinRTProjectedDelegate): WinRTDelegateReference {
+    fun createReference(
+        value: WinRTProjectedDelegate,
+        interfaceId: Guid? = null,
+    ): ComObjectReference {
         while (true) {
             val handle = getOrCreate(value)
-            handle.tryCreateReference()?.let { reference ->
-                handle.releaseManagedReferenceForNativeOwnership()
+            handle.tryCreateInterfaceReference(interfaceId ?: handle.descriptor.interfaceId)?.let { reference ->
+                try {
+                    handle.releaseManagedReferenceForNativeOwnership()
+                } catch (failure: Throwable) {
+                    reference.close()
+                    throw failure
+                }
                 return reference
             }
             handles.remove(value, handle)

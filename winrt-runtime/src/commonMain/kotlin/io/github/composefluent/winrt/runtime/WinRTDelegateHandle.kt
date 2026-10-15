@@ -43,8 +43,11 @@ class WinRTDelegateHandle internal constructor(
     internal fun tryCreateReference(): WinRTDelegateReference? =
         if (lifecycle.load() and closedFlag == 0) comObject.tryCreateReference(ownedTarget) else null
 
-    internal fun tryAcquireMarshalingReference(): RawAddress? =
-        if (lifecycle.load() and closedFlag == 0) comObject.tryAcquireMarshalingReference(ownedTarget) else null
+    internal fun tryCreateInterfaceReference(interfaceId: Guid): ComObjectReference? =
+        if (lifecycle.load() and closedFlag == 0) comObject.tryCreateInterfaceReference(interfaceId, ownedTarget) else null
+
+    internal fun tryAcquireMarshalingReference(interfaceId: Guid = descriptor.interfaceId): RawAddress? =
+        if (lifecycle.load() and closedFlag == 0) comObject.tryAcquireMarshalingReference(ownedTarget, interfaceId) else null
 
     internal fun releaseManagedReferenceForNativeOwnership() {
         if (claim(managedReferenceReleasedFlag)) {

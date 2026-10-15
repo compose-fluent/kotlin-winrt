@@ -21,12 +21,21 @@ internal class WinRTDelegateComObject(
             ?: throw WinRTObjectDisposedException("Delegate COM host is already closed.")
 
     fun tryCreateReference(knownManagedValue: Any? = null): WinRTDelegateReference? =
-        host.tryCreateReference(descriptor.interfaceId, knownManagedValue ?: host.managedValue)?.let { reference ->
+        tryCreateInterfaceReference(descriptor.interfaceId, knownManagedValue)?.let { reference ->
             WinRTDelegateReference(reference.comPtr, descriptor)
         }
 
-    internal fun tryAcquireMarshalingReference(knownManagedValue: Any? = null): RawAddress? =
-        (knownManagedValue ?: host.managedValue)?.let { host.tryAcquireReference(descriptor.interfaceId, it) }
+    internal fun tryCreateInterfaceReference(
+        interfaceId: Guid,
+        knownManagedValue: Any? = null,
+    ): ComObjectReference? =
+        host.tryCreateReference(interfaceId, knownManagedValue ?: host.managedValue)
+
+    internal fun tryAcquireMarshalingReference(
+        knownManagedValue: Any? = null,
+        interfaceId: Guid = descriptor.interfaceId,
+    ): RawAddress? =
+        (knownManagedValue ?: host.managedValue)?.let { host.tryAcquireReference(interfaceId, it) }
 
     @Suppress("UNCHECKED_CAST")
     internal fun callback(): (List<Any?>) -> Any? {
