@@ -5,9 +5,11 @@
 - Kotlin/JVM through `kotlin-winrt`
 - Kotlin/Native `mingwX64` through `kotlin-winrt`
 - .NET 8 through CsWinRT 2.2.0
-- Native C++ through C++/WinRT 2.0.201113.7
+- Native C++ through C++/WinRT 3.0.260818.1
 
 The module belongs to the validation layer. It does not define runtime contracts or generator policy.
+
+The C++ runner's component and Windows SDK projection headers are generated together with the pinned C++/WinRT version. The shared `BenchmarkComponent.dll` retains the original TestWinRT producer, keeping its ABI workload identical across runners. Snapshots record the consumer version in `projectionVersions.cppwinrt`. Earlier 2.x snapshots remain historical baselines and must not be labeled as 3.0 results.
 
 ## Reference Mapping
 

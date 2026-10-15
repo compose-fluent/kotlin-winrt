@@ -8,7 +8,9 @@ param(
 
     [string]$SourceDirectory = "",
 
-    [string]$TestWinRTCommit = "aa4edcd52542cfe036473d008d3f66c8a220d59d"
+    [string]$TestWinRTCommit = "aa4edcd52542cfe036473d008d3f66c8a220d59d",
+
+    [string]$CppWinRTVersion = "3.0.260818.1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -164,21 +166,29 @@ foreach ($required in @($componentDll, $componentWinmd, $generatedFiles)) {
 
 Copy-Item -LiteralPath $componentDll -Destination (Join-Path $outputRoot "BenchmarkComponent.dll") -Force
 Copy-Item -LiteralPath $componentWinmd -Destination (Join-Path $outputRoot "BenchmarkComponent.winmd") -Force
-$referenceIncludeDirectory = Join-Path $outputRoot "cppwinrt-reference-include"
-New-Item -ItemType Directory -Path $referenceIncludeDirectory -Force | Out-Null
-Copy-Item -Path (Join-Path $generatedFiles "*") -Destination $referenceIncludeDirectory -Recurse -Force
-$cppWinRT = Join-Path $packagesDirectory "Microsoft.Windows.CppWinRT.2.0.201113.7\bin\cppwinrt.exe"
+$cppWinRT = Join-Path $packagesDirectory "Microsoft.Windows.CppWinRT.$CppWinRTVersion\bin\cppwinrt.exe"
+if (-not (Test-Path -LiteralPath $cppWinRT -PathType Leaf)) {
+    Invoke-Checked -FilePath $nuget -ArgumentList @(
+        "install", "Microsoft.Windows.CppWinRT",
+        "-Version", $CppWinRTVersion,
+        "-OutputDirectory", $packagesDirectory,
+        "-Source", "https://api.nuget.org/v3/index.json",
+        "-NonInteractive"
+    )
+}
 if (-not (Test-Path -LiteralPath $cppWinRT -PathType Leaf)) {
     throw "The pinned C++/WinRT projection tool was not restored at '$cppWinRT'."
 }
+# Keep the shared ABI component on its original producer. Generate the C++ consumer
+# and all SDK headers with one current projection version, without old-header fallback.
 $consumerIncludeDirectory = Join-Path $outputRoot "cppwinrt-include"
 Invoke-Checked -FilePath $cppWinRT -ArgumentList @(
     "-input",
     $componentWinmd,
-    "-reference",
     $WindowsSdkVersion,
     "-output",
     $consumerIncludeDirectory,
     "-overwrite"
 )
+Set-Content -LiteralPath (Join-Path $outputRoot "CppWinRT.version") -Value $CppWinRTVersion -Encoding ascii
 Set-Content -LiteralPath (Join-Path $outputRoot "TestWinRT.commit") -Value $TestWinRTCommit -Encoding ascii

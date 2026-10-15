@@ -68,8 +68,8 @@ val buildReferenceBenchmarkComponent by tasks.registering(Exec::class) {
     outputs.file(referenceBenchmarkComponentDll)
     outputs.file(referenceBenchmarkComponentWinmd)
     outputs.file(referenceBenchmarkComponentDirectory.map { it.file("TestWinRT.commit") })
+    outputs.file(referenceBenchmarkComponentDirectory.map { it.file("CppWinRT.version") })
     outputs.dir(referenceBenchmarkComponentDirectory.map { it.dir("cppwinrt-include") })
-    outputs.dir(referenceBenchmarkComponentDirectory.map { it.dir("cppwinrt-reference-include") })
     commandLine(
         "powershell",
         "-NoProfile",
@@ -440,6 +440,7 @@ tasks.register("benchmarkSnapshot") {
         destination.resolve("snapshot.json").writeText(JsonOutput.prettyPrint(JsonOutput.toJson(
             mapOf(
                 "schemaVersion" to 1, "revision" to revision, "trackedChanges" to status, "runners" to runners,
+                "projectionVersions" to mapOf("cppwinrt" to assets.resolve("CppWinRT.version").readText().trim()),
                 "scenarioVersions" to mapOf(
                     "NonAgileObjectPerf.ConstructNonAgileObject" to 2,
                     "NonAgileObjectPerf.ConstructAndQueryNonAgileObject" to 2,
