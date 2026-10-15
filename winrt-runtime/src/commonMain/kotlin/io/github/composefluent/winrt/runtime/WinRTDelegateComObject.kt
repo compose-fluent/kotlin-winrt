@@ -144,22 +144,42 @@ internal class WinRTDelegateComObject(
  */
 internal object WinRTDelegateCcwTemplates {
     private val definitions = ConcurrentCacheMap<TemplateKey, WinRTCcwDefinition>()
+    @kotlin.concurrent.Volatile
+    private var generation = Any()
+
+    internal class CachedDefinition(
+        val generation: Any,
+        val abiEntryPoint: RawAddress?,
+        val definition: WinRTCcwDefinition,
+    )
 
     fun compatibility(descriptor: WinRTDelegateDescriptor): WinRTCcwDefinition =
-        definitions.computeIfAbsent(TemplateKey(descriptor, abiEntryPoint = null)) { key ->
-            createDefinition(key.descriptor, key.abiEntryPoint)
-        }
+        definition(descriptor, abiEntryPoint = null)
 
     fun static(
         descriptor: WinRTDelegateDescriptor,
         abiEntryPoint: RawAddress,
-    ): WinRTCcwDefinition =
-        definitions.computeIfAbsent(TemplateKey(descriptor, abiEntryPoint)) { key ->
+    ): WinRTCcwDefinition = definition(descriptor, abiEntryPoint)
+
+    private fun definition(
+        descriptor: WinRTDelegateDescriptor,
+        abiEntryPoint: RawAddress?,
+    ): WinRTCcwDefinition {
+        val currentGeneration = generation
+        val cached = descriptor.cachedCcwDefinition
+        if (cached != null && cached.generation === currentGeneration && cached.abiEntryPoint == abiEntryPoint) {
+            return cached.definition
+        }
+        val definition = definitions.computeIfAbsent(TemplateKey(descriptor, abiEntryPoint)) { key ->
             createDefinition(key.descriptor, key.abiEntryPoint)
         }
+        descriptor.cachedCcwDefinition = CachedDefinition(currentGeneration, abiEntryPoint, definition)
+        return definition
+    }
 
     internal fun clearForTests() {
         definitions.clear()
+        generation = Any()
     }
 
     private fun createDefinition(

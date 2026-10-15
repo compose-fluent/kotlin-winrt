@@ -9,6 +9,11 @@ data class WinRTDelegateDescriptor(
     val runtimeClassName: String? = null,
     val parameterTypeHandles: List<WinRTTypeHandle?> = emptyList(),
 ) {
+    // Like CsWinRT's closed EventHandlerInterfaceEntries, reuse the type-level table
+    // without building a structural cache key on every managed delegate instance.
+    @kotlin.concurrent.Volatile
+    internal var cachedCcwDefinition: WinRTDelegateCcwTemplates.CachedDefinition? = null
+
     /** Closed ABI signature reused by the delegate vtable and every invocation of this type. */
     val functionSignature: ComMethodSignature =
         WinRTDelegateAbiMarshaller.functionSignature(this)
