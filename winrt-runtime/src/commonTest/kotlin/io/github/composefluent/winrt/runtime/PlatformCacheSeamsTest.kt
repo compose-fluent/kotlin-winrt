@@ -8,6 +8,23 @@ import kotlin.test.assertTrue
 
 class PlatformCacheSeamsTest {
     @Test
+    fun small_per_object_cache_grows_without_losing_entries_or_compute_semantics() {
+        // CsWinRT's RCW dictionaries grow normally; the Kotlin capacity hint must
+        // not turn the common one-interface case into a limit on supported interfaces.
+        val cache = ConcurrentCacheMap<Int, String>(1)
+        repeat(64) { index -> assertNull(cache.putIfAbsent(index, "value-$index")) }
+        repeat(64) { index -> assertEquals("value-$index", cache[index]) }
+        assertEquals(64, cache.size)
+        assertEquals("value-0", cache.putIfAbsent(0, "replacement"))
+        assertEquals("updated", cache.compute(0) { _, _ -> "updated" })
+        assertNull(cache.compute(1) { _, _ -> null })
+        assertEquals("new", cache.computeIfAbsent(1) { "new" })
+        assertEquals(64, cache.entries.size)
+        cache.clear()
+        assertEquals(0, cache.size)
+    }
+
+    @Test
     fun concurrent_cache_map_supports_put_if_absent_and_compute() {
         val cache = ConcurrentCacheMap<String, Int>()
 

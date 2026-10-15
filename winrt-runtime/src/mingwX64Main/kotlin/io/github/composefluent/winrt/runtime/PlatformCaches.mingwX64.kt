@@ -9,9 +9,17 @@ import kotlin.native.ref.createCleaner
 import kotlin.native.ref.WeakReference as NativeWeakReference
 import kotlin.native.identityHashCode
 
-actual class ConcurrentCacheMap<K, V> actual constructor() {
+actual class ConcurrentCacheMap<K, V> {
     private val lock = PlatformLock()
-    private val delegate = linkedMapOf<K, V>()
+    private val delegate: LinkedHashMap<K, V>
+
+    actual constructor() {
+        delegate = linkedMapOf()
+    }
+
+    internal actual constructor(initialCapacity: Int) {
+        delegate = LinkedHashMap(initialCapacity)
+    }
 
     actual operator fun get(key: K): V? =
         lock.withLock {

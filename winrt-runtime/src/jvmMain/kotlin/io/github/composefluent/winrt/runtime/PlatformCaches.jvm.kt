@@ -5,8 +5,16 @@ import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 
-actual class ConcurrentCacheMap<K, V> actual constructor() {
-    private val delegate = ConcurrentHashMap<K, V>()
+actual class ConcurrentCacheMap<K, V> {
+    private val delegate: ConcurrentHashMap<K, V>
+
+    actual constructor() {
+        delegate = ConcurrentHashMap()
+    }
+
+    internal actual constructor(initialCapacity: Int) {
+        delegate = ConcurrentHashMap(initialCapacity)
+    }
 
     actual operator fun get(key: K): V? = delegate[key]
 

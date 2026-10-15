@@ -4,6 +4,8 @@ import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 expect class ConcurrentCacheMap<K, V>() {
+    internal constructor(initialCapacity: Int)
+
     operator fun get(key: K): V?
 
     operator fun set(
