@@ -51,17 +51,19 @@ expect class ConcurrentCacheSet<T>() {
  * Weak-value storage with lookup-local reads. Stale-entry reclamation is amortized by
  * mutations and explicit size inspection; a read only validates and removes its requested key.
  */
-internal interface WeakValueCacheReference<out V : Any> {
+internal interface WeakValueCacheReference<out K, out V : Any> {
+    val key: K
+
     fun get(): V?
 }
 
 /** Reads a cache-owned weak reference at a target hot path without changing its lifetime semantics. */
-internal expect inline fun <V : Any> WeakValueCacheReference<V>.getHotValue(): V?
+internal expect inline fun <K, V : Any> WeakValueCacheReference<K, V>.getHotValue(): V?
 
 expect class WeakValueCache<K, V : Any>() {
     operator fun get(key: K): V?
 
-    internal fun reference(key: K): WeakValueCacheReference<V>?
+    internal fun reference(key: K): WeakValueCacheReference<K, V>?
 
     operator fun set(
         key: K,
@@ -71,7 +73,7 @@ expect class WeakValueCache<K, V : Any>() {
     internal fun put(
         key: K,
         value: V,
-    ): WeakValueCacheReference<V>
+    ): WeakValueCacheReference<K, V>
 
     fun remove(key: K): V?
 

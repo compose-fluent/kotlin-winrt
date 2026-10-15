@@ -43,6 +43,8 @@ class PlatformCacheSeamsTest {
         val holder = Holder("value")
 
         val weakValueReference = weakValues.put("key", holder)
+        assertEquals("key", weakValueReference.key)
+        assertSame(weakValueReference, weakValues.reference("key"))
         assertSame(holder, weakValueReference.get())
         assertEquals(holder, weakValues["key"])
         assertEquals("state", weakKeys.getOrPut(holder) { "state" })

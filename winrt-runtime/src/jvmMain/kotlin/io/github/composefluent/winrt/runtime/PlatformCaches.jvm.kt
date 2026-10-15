@@ -76,7 +76,7 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
 
     actual operator fun get(key: K): V? = reference(key)?.get()
 
-    internal actual fun reference(key: K): WeakValueCacheReference<V>? {
+    internal actual fun reference(key: K): WeakValueCacheReference<K, V>? {
         val entry = delegate[key] ?: return null
         if (entry.get() == null) {
             delegate.remove(key, entry)
@@ -95,7 +95,7 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
     internal actual fun put(
         key: K,
         value: V,
-    ): WeakValueCacheReference<V> {
+    ): WeakValueCacheReference<K, V> {
         drainClearedValues()
         return WeakValueCacheEntry(key, value, referenceQueue).also { entry ->
             delegate[key] = entry
@@ -130,12 +130,12 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
 }
 
 private class WeakValueCacheEntry<K, V : Any>(
-    val key: K,
+    override val key: K,
     value: V,
     referenceQueue: ReferenceQueue<V>,
-) : WeakReference<V>(value, referenceQueue), WeakValueCacheReference<V>
+) : WeakReference<V>(value, referenceQueue), WeakValueCacheReference<K, V>
 
-internal actual inline fun <V : Any> WeakValueCacheReference<V>.getHotValue(): V? = get()
+internal actual inline fun <K, V : Any> WeakValueCacheReference<K, V>.getHotValue(): V? = get()
 
 actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
     private val onValueEvicted: (V) -> Unit,

@@ -477,7 +477,7 @@ class WinRTCallSiteLoweringContractTest {
     fun rcw_hot_identity_key_comparison_stays_primitive_and_map_fallback_boxes_once() {
         val bytecode = javap("io.github.composefluent.winrt.runtime.RcwIdentityCache")
         val getHot = bytecode.methodBytecode(
-            "io.github.composefluent.winrt.runtime.RcwIdentityCacheEntry getHotEntry(long)",
+            "io.github.composefluent.winrt.runtime.WeakValueCacheReference<java.lang.Long, java.lang.Object> getHotEntry(long)",
         )
         val get = bytecode.methodBytecode("java.lang.Object get(long)")
 

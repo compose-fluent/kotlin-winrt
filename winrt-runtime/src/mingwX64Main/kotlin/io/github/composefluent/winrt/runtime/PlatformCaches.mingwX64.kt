@@ -134,7 +134,7 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
 
     actual operator fun get(key: K): V? = reference(key)?.get()
 
-    internal actual fun reference(key: K): WeakValueCacheReference<V>? =
+    internal actual fun reference(key: K): WeakValueCacheReference<K, V>? =
         lock.withLock {
             val entry = delegate[key] ?: return@withLock null
             val value = entry.value.get()
@@ -158,7 +158,7 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
     internal actual fun put(
         key: K,
         value: V,
-    ): WeakValueCacheReference<V> =
+    ): WeakValueCacheReference<K, V> =
         lock.withLock {
             sweepOneEntry()
             WeakValueCacheEntry(key, value).also { entry ->
@@ -212,16 +212,16 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
 }
 
 internal class WeakValueCacheEntry<K, V : Any>(
-    val key: K,
+    override val key: K,
     value: V,
-) : WeakValueCacheReference<V> {
+) : WeakValueCacheReference<K, V> {
     val value: NativeWeakReference<V> = NativeWeakReference(value)
 
     override fun get(): V? = value.get()
 }
 
 @Suppress("UNCHECKED_CAST")
-internal actual inline fun <V : Any> WeakValueCacheReference<V>.getHotValue(): V? =
+internal actual inline fun <K, V : Any> WeakValueCacheReference<K, V>.getHotValue(): V? =
     (this as WeakValueCacheEntry<*, V>).value.get()
 
 actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
