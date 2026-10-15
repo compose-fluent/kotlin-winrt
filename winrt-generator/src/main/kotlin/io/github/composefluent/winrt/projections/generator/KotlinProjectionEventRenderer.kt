@@ -74,6 +74,7 @@ import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
+import io.github.composefluent.winrt.runtime.WinRTObjectReferenceMarshalingType
 import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRTDelegateReference
@@ -607,7 +608,17 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
             .addFunction(
                 FunSpec.builder("activate")
                     .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
-                    .addStatement("return _activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID)")
+                    .apply {
+                        if (plan.activationMarshalingType == WinRTObjectReferenceMarshalingType.Unknown) {
+                            addStatement("return _activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID)")
+                        } else {
+                            addStatement(
+                                "return _activationFactory.activateInstance(Metadata.DEFAULT_INTERFACE_IID, %T.%L)",
+                                WinRTObjectReferenceMarshalingType::class,
+                                plan.activationMarshalingType.name,
+                            )
+                        }
+                    }
                     .build(),
             )
             .build()

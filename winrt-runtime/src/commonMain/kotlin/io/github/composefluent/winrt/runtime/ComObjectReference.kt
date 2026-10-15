@@ -234,6 +234,12 @@ class ActivationFactoryReference internal constructor(
 
     fun activateInstance(interfaceId: Guid): IInspectableReference =
         ActivationFactoryReferenceSupport.activateInstance(comPtr, interfaceId)
+
+    fun activateInstance(
+        interfaceId: Guid,
+        marshalingType: WinRTObjectReferenceMarshalingType,
+    ): IInspectableReference =
+        ActivationFactoryReferenceSupport.activateInstance(comPtr, interfaceId, marshalingType)
 }
 
 class InspectableReference internal constructor(

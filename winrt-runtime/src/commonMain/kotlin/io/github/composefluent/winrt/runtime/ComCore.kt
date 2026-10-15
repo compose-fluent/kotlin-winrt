@@ -348,7 +348,11 @@ internal class ComPtr private constructor(
          * Unlike create(), callers must not release the input again after an exception.
          * This is the runtime's explicit counterpart of CsWinRT Attach plus caller cleanup.
          */
-        internal fun createForOwnedAbi(raw: RawComPtr, interfaceId: Guid): ComPtr = create(
+        internal fun createForOwnedAbi(
+            raw: RawComPtr,
+            interfaceId: Guid,
+            marshalingType: WinRTObjectReferenceMarshalingType = WinRTObjectReferenceMarshalingType.Unknown,
+        ): ComPtr = create(
             raw = raw,
             interfaceIdLowBits = interfaceId.abiLowBits,
             interfaceIdHighBits = interfaceId.abiHighBits,
@@ -360,6 +364,7 @@ internal class ComPtr private constructor(
             managedCcwReleaseIdentity = RawAddress.Null,
             nativeObjectLifetime = null,
             consumeOnFailure = true,
+            marshalingType = marshalingType,
         )
 
         private fun create(
@@ -375,6 +380,7 @@ internal class ComPtr private constructor(
             nativeObjectLifetime: WinRTNativeObjectLifetime?,
             consumeOnFailure: Boolean = false,
             knownFreeThreaded: Boolean = false,
+            marshalingType: WinRTObjectReferenceMarshalingType = WinRTObjectReferenceMarshalingType.Unknown,
         ): ComPtr {
             require(!PlatformAbi.isNull(raw)) {
                 "COM object reference cannot wrap a null pointer."
@@ -392,6 +398,7 @@ internal class ComPtr private constructor(
                     managedCcwReleaseIdentity = managedCcwReleaseIdentity,
                     nativeObjectLifetime = nativeObjectLifetime,
                     knownFreeThreaded = knownFreeThreaded,
+                    marshalingType = marshalingType,
                 )
                 createdSupport = support
                 return ComPtr(

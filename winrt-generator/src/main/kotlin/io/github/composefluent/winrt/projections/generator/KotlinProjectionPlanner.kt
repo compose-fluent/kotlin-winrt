@@ -85,6 +85,7 @@ import io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
+import io.github.composefluent.winrt.runtime.WinRTObjectReferenceMarshalingType
 import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRTDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRTDelegateReference
@@ -280,6 +281,13 @@ class KotlinProjectionPlanner(
             interfaceIid = type.iid,
             defaultInterfaceName = type.defaultInterfaceName,
             defaultInterfaceIid = interfaceIidFor(type.defaultInterface),
+            // CsWinRT 3 helpers.h:get_marshaling_type_name trusts only Agile (2)
+            // and Standard (3); missing, None and Invalid all require a runtime probe.
+            activationMarshalingType = when (type.availability.marshalingBehavior) {
+                2L -> WinRTObjectReferenceMarshalingType.Agile
+                3L -> WinRTObjectReferenceMarshalingType.Standard
+                else -> WinRTObjectReferenceMarshalingType.Unknown
+            },
             staticInterfaceNames = type.activation.staticInterfaceNames,
             staticInterfaceBindings = type.activation.staticInterfaceNames.map { interfaceName ->
                 KotlinProjectionInterfaceBinding(

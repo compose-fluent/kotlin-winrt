@@ -394,9 +394,7 @@ internal object ComThreadingSupport {
             return true
         }
 
-        val agileResult = WinRTPlatformApi.queryInterfaceRaw(pointer.asRawAddress(), IID.IAgileObject)
-        if (agileResult.hResultValue >= 0 && !PlatformAbi.isNull(agileResult.pointer)) {
-            WinRTPlatformApi.releaseRaw(agileResult.pointer)
+        if (supportsComInterface(pointer.asRawAddress(), IID.IAgileObject)) {
             return true
         }
 

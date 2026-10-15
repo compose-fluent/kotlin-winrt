@@ -7,6 +7,7 @@
 package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_invoke_ref_count
+import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_supports_interface
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.COpaque
@@ -1396,6 +1397,13 @@ actual object WinRTPlatformApi {
             ?.let(::absolutePath)
             ?: fileName
 }
+
+internal actual fun supportsComInterface(unknown: RawAddress, interfaceId: Guid): Boolean =
+    kotlin_winrt_supports_interface(
+        unknown.value.toULong(),
+        interfaceId.abiLowBits.toULong(),
+        interfaceId.abiHighBits.toULong(),
+    ) != 0
 
 @Suppress("NOTHING_TO_INLINE")
 @PublishedApi

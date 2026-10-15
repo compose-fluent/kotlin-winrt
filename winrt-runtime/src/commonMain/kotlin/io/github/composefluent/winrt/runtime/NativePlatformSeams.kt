@@ -321,6 +321,9 @@ inline fun PlatformAbi.pointerKey(pointer: RawAddress): Long = pointer.value
 @Suppress("NOTHING_TO_INLINE")
 inline fun PlatformAbi.pointerKey(pointer: RawComPtr): Long = pointer.value
 
+/** Queries a live COM pointer and releases the returned interface before returning. */
+internal expect fun supportsComInterface(unknown: RawAddress, interfaceId: Guid): Boolean
+
 private const val queryInterfaceScratchSizeBytes = Guid.BYTE_SIZE + Long.SIZE_BYTES
 
 internal fun queryInterfaceWithReusableScratch(

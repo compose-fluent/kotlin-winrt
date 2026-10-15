@@ -1044,6 +1044,13 @@ actual object WinRTPlatformApi {
 
 internal val WindowsRuntimePlatform = WinRTPlatformApi
 
+internal actual fun supportsComInterface(unknown: RawAddress, interfaceId: Guid): Boolean {
+    val result = WinRTPlatformApi.queryInterfaceRaw(unknown, interfaceId)
+    if (result.hResultValue < 0 || PlatformAbi.isNull(result.pointer)) return false
+    WinRTPlatformApi.releaseRaw(result.pointer)
+    return true
+}
+
 internal data class PointerResult(
     val hResult: HResult,
     val pointer: MemorySegment,

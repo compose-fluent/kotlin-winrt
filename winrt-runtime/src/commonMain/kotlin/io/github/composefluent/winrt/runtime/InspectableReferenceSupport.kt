@@ -7,13 +7,15 @@ internal object ActivationFactoryReferenceSupport {
     fun activateInstance(
         comPtr: ComPtr,
         interfaceId: Guid,
+        marshalingType: WinRTObjectReferenceMarshalingType = WinRTObjectReferenceMarshalingType.Unknown,
     ): IInspectableReference =
-        activateInstance(comPtr, interfaceId, requireQueryInterface = true)
+        activateInstance(comPtr, interfaceId, requireQueryInterface = true, marshalingType = marshalingType)
 
     private fun activateInstance(
         comPtr: ComPtr,
         interfaceId: Guid,
         requireQueryInterface: Boolean,
+        marshalingType: WinRTObjectReferenceMarshalingType = WinRTObjectReferenceMarshalingType.Unknown,
     ): IInspectableReference =
         acquireNativeScalarScratchFrame().use { resultOut ->
             comPtr.throwIfDisposed()
@@ -26,14 +28,14 @@ internal object ActivationFactoryReferenceSupport {
             WinRTPlatformApi.checkSucceededRaw(hResult)
             val activatedPointer = resultOut.readPointer()
             if (!requireQueryInterface) {
-                return@use wrapActivatedInstance(activatedPointer, interfaceId)
+                return@use wrapActivatedInstance(activatedPointer, interfaceId, marshalingType)
             }
 
             // Mirrors CsWinRT's generated ActivateInstanceUnsafe(factory, defaultInterfaceIid) path.
             try {
                 val queryResult = WinRTPlatformApi.queryInterfaceRaw(activatedPointer, interfaceId)
                 WinRTPlatformApi.checkSucceededRaw(queryResult.hResultValue)
-                wrapActivatedInstance(queryResult.pointer, interfaceId)
+                wrapActivatedInstance(queryResult.pointer, interfaceId, marshalingType)
             } finally {
                 WinRTPlatformApi.releaseRaw(activatedPointer)
             }
@@ -42,13 +44,22 @@ internal object ActivationFactoryReferenceSupport {
     private fun wrapActivatedInstance(
         pointer: RawAddress,
         interfaceId: Guid,
+        marshalingType: WinRTObjectReferenceMarshalingType,
     ): IInspectableReference =
         InspectableReference(
-            ComPtr.create(
+            ComPtr.createForOwnedAbi(
                 pointer.asRawComPtr(),
                 interfaceId,
+                marshalingType,
             ),
-        ).also { it.tryInitializeReferenceTracker() }
+        ).also { reference ->
+            try {
+                reference.tryInitializeReferenceTracker()
+            } catch (failure: Throwable) {
+                reference.close()
+                throw failure
+            }
+        }
 }
 
 internal object InspectableReferenceSupport {

@@ -105,6 +105,7 @@ import io.github.composefluent.winrt.runtime.WinRTProjectedInterface
 import io.github.composefluent.winrt.runtime.WinRTSystemProjectionMarshalers
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
 import io.github.composefluent.winrt.runtime.WinRTTypeHandle
+import io.github.composefluent.winrt.runtime.WinRTObjectReferenceMarshalingType
 import io.github.composefluent.winrt.runtime.WinRTValueBoxingRegistration
 import io.github.composefluent.winrt.runtime.WinRTDelegateBridge
 import io.github.composefluent.winrt.runtime.WinRTDelegateArgumentMarshaler
@@ -489,6 +490,7 @@ data class KotlinTypeProjectionPlan(
     val interfaceIid: Guid? = null,
     val defaultInterfaceName: String? = null,
     val defaultInterfaceIid: Guid? = null,
+    val activationMarshalingType: WinRTObjectReferenceMarshalingType = WinRTObjectReferenceMarshalingType.Unknown,
     val staticInterfaceNames: List<String> = emptyList(),
     val staticInterfaceBindings: List<KotlinProjectionInterfaceBinding> = emptyList(),
     val implementedInterfaceBindings: List<KotlinProjectionInterfaceBinding> = emptyList(),
