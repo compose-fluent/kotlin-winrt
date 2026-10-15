@@ -6,7 +6,7 @@ param(
     [ValidateRange(1, 20)][int]$Forks = 3,
     [string[]]$Runners = @('kotlin-native', 'cppwinrt', 'cswinrt', 'kotlin-jvm'),
     [string[]]$Scenarios = @(),
-    [ValidateRange(1, 100)][int]$MeasurementRounds = 25,
+    [ValidateRange(1, 10000)][int]$MeasurementRounds = 25,
     [ValidateRange(1, 3600)][int]$TimeoutSeconds = 180,
     [switch]$Memory
 )

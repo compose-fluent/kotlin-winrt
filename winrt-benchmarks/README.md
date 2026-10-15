@@ -91,6 +91,8 @@ The script runs all 97 scenarios on all four runners, with three fresh process f
 
 Compare completed runs with `Compare-BenchmarkSnapshots.ps1 -Before <before-results> -After <after-results> -OutputPath <comparison.json>`. It rejects incomplete matrices, duplicate forks, protocol/checksum mismatches, and mixing timing with memory mode. It reports medians across forks plus the individual fork values; overlapping ranges require more runs before claiming a gain or regression.
 
+For very short operations, use more samples, for example `-MeasurementRounds 1000` (up to 10,000). The runners cap calibrated batches at 100,000 operations, including an `iterations` request above that limit; check the recorded `iterations` rather than assuming a larger request lengthened the measurement. Use identical sample counts on both snapshots, and keep extended diagnostic runs separate from the standard matrix.
+
 `measurements.jsonl` contains timings and 50 ms samples of process working set and private bytes. These include process startup, runtime, native COM allocations, and allocator reserve; they are not live object size. In `-Memory` mode a separate, checksum-validated batch after timing records:
 
 * JVM and CsWinRT: current-thread managed allocated bytes and operation count. Divide to obtain B/op; worker-thread and native allocations are excluded.
