@@ -2,6 +2,7 @@ import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.testing.Test
+import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
 import groovy.json.JsonOutput
 
 plugins {
@@ -147,6 +148,14 @@ tasks.named<Test>("jvmTest") {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     systemProperty(
         "kotlin.winrt.runtimeAssetsRoot",
+        referenceBenchmarkComponentDirectory.get().asFile.absolutePath,
+    )
+}
+
+tasks.named<KotlinNativeTest>("mingwX64Test") {
+    dependsOn(buildReferenceBenchmarkComponent)
+    environment(
+        "KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
         referenceBenchmarkComponentDirectory.get().asFile.absolutePath,
     )
 }
