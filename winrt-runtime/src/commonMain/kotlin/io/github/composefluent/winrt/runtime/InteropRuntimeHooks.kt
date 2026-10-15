@@ -345,7 +345,22 @@ internal object InteropRuntimeHooks {
 
         fun resolve(interfaceId: Guid): RawAddress =
             weakReference.get()?.let { target ->
-                ComWrappersSupport.createCCWForObject(target, interfaceId).useAndGetRef()
+                // CsWinRT 3 ManagedWeakReference.Resolve returns an owned ABI reference,
+                // without creating an RCW for the managed target. Acquire the escaping
+                // reference before ending the call lease so the CCW keeps its target alive.
+                var owned = RawAddress.Null
+                try {
+                    ComWrappersSupport.createCCWForObjectForMarshaling(target, interfaceId).use { marshaler ->
+                        WinRTPlatformApi.addRefRaw(marshaler.abi)
+                        owned = marshaler.abi
+                    }
+                    owned
+                } catch (error: Throwable) {
+                    if (!PlatformAbi.isNull(owned)) {
+                        runCatching { disposeComAbi(owned) }.exceptionOrNull()?.let(error::addSuppressed)
+                    }
+                    throw error
+                }
             } ?: PlatformAbi.nullPointer
     }
 }

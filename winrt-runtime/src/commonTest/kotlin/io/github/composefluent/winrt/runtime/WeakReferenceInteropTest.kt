@@ -199,6 +199,44 @@ class WeakReferenceInteropTest {
         }
     }
 
+    @Test
+    fun resolved_managed_weak_reference_owns_target_after_original_reference_closes() {
+        if (!PlatformRuntime.isWindows) return
+        ComWrappersSupport.clearRegistriesForTests()
+        // CsWinRT 3 ManagedWeakReference.Resolve transfers one owned reference to its caller.
+        // In particular, ending a borrowed CCW call lease must not release that target.
+        val (target, resolved) = resolveWithoutOriginalOwner()
+        resolved.use {
+            verifyResolvedTarget(target, it)
+        }
+        repeat(10) {
+            PlatformFinalization.drain()
+            if (target.get() == null) return
+        }
+        assertNull(target.get())
+    }
+
+    private fun verifyResolvedTarget(
+        target: PlatformManagedWeakReference<ManagedWeakReferenceTarget>,
+        resolved: IUnknownReference,
+    ) {
+        // Keep the strong local in a separate frame so it cannot affect the collection check.
+        PlatformFinalization.drain()
+        val retained = assertNotNull(target.get())
+        assertTrue(ComWrappersSupport.findObject(resolved.pointer.asRawAddress(), ManagedWeakReferenceTarget::class) === retained)
+        resolved.queryInterface(IID.IInspectable).getOrThrow().close()
+    }
+
+    private fun resolveWithoutOriginalOwner(): Pair<PlatformManagedWeakReference<ManagedWeakReferenceTarget>, IUnknownReference> {
+        val target = ManagedWeakReferenceTarget("owned resolve")
+        val resolved = ComWrappersSupport.createCCWForObject(target, IID.IInspectable).use { original ->
+            assertNotNull(original.tryGetWeakReference()).use { weak ->
+                assertNotNull(weak.resolve(IID.IUnknown))
+            }
+        }
+        return PlatformManagedWeakReference(target) to resolved
+    }
+
     private data class ManagedWeakReferenceTarget(
         val name: String,
     )
