@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -42,6 +43,40 @@ class ValueBoxingTest {
             assertEquals(listOf(7, 11), adapter.readOwnedArray(2, data)?.toList())
         } finally {
             adapter.disposeOwnedArray(2, data)
+        }
+    }
+
+    @Test
+    fun invariant_reference_metadata_preserves_scalar_and_array_distinctions() {
+        // CsWinRT exact marshalling info is type-scoped. Memoizing Kotlin's
+        // primitive-array classification must not give arrays a scalar host shape.
+        ComWrappersSupport.clearRegistriesForTests()
+        try {
+            repeat(2) {
+                assertNotNull(ValueBoxingMetadata.invariantReferenceHostMetadata(IID.NullableInt, 42))
+                assertNull(ValueBoxingMetadata.invariantReferenceHostMetadata(IID.NullableInt, "value"))
+            }
+            val arrayValues = listOf(intArrayOf(1, 2), arrayOf("one", "two"))
+            val interfaceIds = listOf(
+                Guid("28f01428-2ab7-42fa-9441-29f67457af89"),
+                Guid("6456e681-1e18-4594-b34c-95ae366b7357"),
+            )
+            arrayValues.zip(interfaceIds).forEach { (value, iid) ->
+                ValueBoxingMetadata.registerDescriptor(
+                    WinRTValueTypeMetadata(
+                        projectedClass = value::class,
+                        nullableInterfaceId = iid,
+                        referenceArrayInterfaceId = null,
+                        propertyType = null,
+                        propertyTypeArray = null,
+                    ),
+                )
+                repeat(2) {
+                    assertNull(ValueBoxingMetadata.invariantReferenceHostMetadata(iid, value))
+                }
+            }
+        } finally {
+            ComWrappersSupport.clearRegistriesForTests()
         }
     }
 

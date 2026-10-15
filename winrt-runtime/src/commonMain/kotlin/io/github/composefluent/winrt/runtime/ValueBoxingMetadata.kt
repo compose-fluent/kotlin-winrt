@@ -22,7 +22,22 @@ internal data class WinRTValueTypeMetadata(
      * value shape without scanning every registered descriptor.
      */
     val projectedTypeName: String? = null,
-)
+) {
+    // CsWinRT 3 WindowsRuntimeMarshallingInfo retains exact per-type facts.
+    // Classify lazily to avoid initializing the intrinsic registry while its
+    // metadata is being built. Concurrent initializers compute the same result.
+    @kotlin.concurrent.Volatile
+    private var primitiveArrayClassification: Int = -1
+
+    internal val isPrimitiveArrayType: Boolean
+        get() {
+            val cached = primitiveArrayClassification
+            if (cached >= 0) return cached != 0
+            val result = WinRTTypeClassifier.primitiveArrayElementType(projectedClass) != null
+            primitiveArrayClassification = if (result) 1 else 0
+            return result
+        }
+}
 
 private data class ManagedArrayMetadata(
     val elements: Array<*>,
@@ -227,7 +242,7 @@ internal object ValueBoxingMetadata {
         val valueClass = value::class
         return descriptor.takeIf {
             it.projectedClass == valueClass &&
-                !isSupportedArrayValue(value, valueClass) &&
+                value !is Array<*> && !it.isPrimitiveArrayType &&
                 descriptorForClass(valueClass) === it
         }
     }
