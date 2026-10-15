@@ -24,6 +24,7 @@ private class CachedReferenceHostDefinition(
 )
 
 private val referenceHostDefinitions = ConcurrentCacheMap<Guid, CachedReferenceHostDefinition>()
+private val referenceMarshalerHostDefinitions = ConcurrentCacheMap<Guid, CachedReferenceHostDefinition>()
 
 internal fun cachedValueHostDefinition(
     key: ValueHostShapeKey,
@@ -77,9 +78,9 @@ internal fun createReferenceHost(
 /**
  * Creates the short-lived host used by an outbound IReference marshaler.
  *
- * The host is short lived, but it still exposes the complete CsWinRT-compatible boxed-value
- * interface table because WinUI dependency-property code queries IPropertyValue while validating
- * the value passed to an IReference<T> setter.
+ * Dependency-property callers request the complete boxed-value interface table because WinUI
+ * queries IPropertyValue while validating the value. Ordinary closed-reference calls use the
+ * narrower reference shape selected below.
  */
 internal fun createReferenceMarshalerHost(
     interfaceId: Guid,
@@ -103,16 +104,17 @@ private fun createReferenceHost(
     includePropertyValueInterface: Boolean,
     augmentRuntimeInterfaces: Boolean,
 ): WinRTInspectableComObject {
-    // Cache only the complete closed-value base shape. The common CCW augmentation owner still
-    // selects standard interfaces for the current configuration, and each value owns a new host.
-    val metadata = if (includePropertyValueInterface) {
-        ValueBoxingMetadata.invariantReferenceHostMetadata(interfaceId, value)
+    // Cache each closed-value base shape independently. The common CCW augmentation owner
+    // still selects standard interfaces for the current configuration; each value owns its host.
+    val metadata = ValueBoxingMetadata.invariantReferenceHostMetadata(interfaceId, value)
+    val definitions = if (includePropertyValueInterface) {
+        referenceHostDefinitions
     } else {
-        null
+        referenceMarshalerHostDefinitions
     }
     val registeredType = metadata?.projectedClass?.registeredWinRTType()
     if (metadata != null) {
-        referenceHostDefinitions[interfaceId]?.let { cached ->
+        definitions[interfaceId]?.let { cached ->
             if (cached.metadata === metadata && cached.registeredType === registeredType) {
                 return createValueHost(value, cached.definition, augmentRuntimeInterfaces)
             }
@@ -151,7 +153,7 @@ private fun createReferenceHost(
         metadata === ValueBoxingMetadata.invariantReferenceHostMetadata(interfaceId, value) &&
         registeredType === metadata.projectedClass.registeredWinRTType()
     ) {
-        referenceHostDefinitions[interfaceId] = CachedReferenceHostDefinition(metadata, registeredType, definition)
+        definitions[interfaceId] = CachedReferenceHostDefinition(metadata, registeredType, definition)
     }
     return createValueHost(value, definition, augmentRuntimeInterfaces = augmentRuntimeInterfaces)
 }

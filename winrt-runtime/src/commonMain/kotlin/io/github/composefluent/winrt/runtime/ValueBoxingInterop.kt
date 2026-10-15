@@ -644,14 +644,19 @@ internal object ValueBoxingInterop {
         WinRTInspectableInterfaceDefinition(
             interfaceId = interfaceId,
             methods = listOf(
+                // CsWinRT 3 IReferenceImpl writes through typed ABI out parameters.
+                // Keep the value on the host; the shared shape captures only the IID.
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                ) { _, managedValue, rawArgs ->
-                    val destination = rawArgs.singleOrNull() as? RawAddress
-                        ?: throw IllegalStateException("IReference host requires one out-argument.")
-                    writeReferenceValue(interfaceId, requireNotNull(managedValue), destination)
-                    KnownHResults.S_OK.value
-                },
+                    managedRawWordHandler = ManagedComRawWordCallback { managedValue, destination, _, _, _, _, _ ->
+                        if (destination == 0L) {
+                            KnownHResults.E_POINTER.value
+                        } else {
+                            writeReferenceValue(interfaceId, requireNotNull(managedValue), RawAddress(destination))
+                            KnownHResults.S_OK.value
+                        }
+                    },
+                ),
             ),
         )
 
@@ -706,18 +711,20 @@ internal object ValueBoxingInterop {
             methods = listOf(
                 WinRTInspectableMethodDefinition(
                     signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
-                ) { _, managedValue, rawArgs ->
-                    if (rawArgs.size != 2) {
-                        throw IllegalStateException("IReferenceArray host requires count and data out-arguments.")
-                    }
-                    writeReferenceArrayValue(
-                        interfaceId = interfaceId,
-                        value = requireNotNull(managedValue),
-                        countOut = rawArgs[0] as RawAddress,
-                        dataOut = rawArgs[1] as RawAddress,
-                    )
-                    KnownHResults.S_OK.value
-                },
+                    managedRawWordHandler = ManagedComRawWordCallback { managedValue, count, data, _, _, _, _ ->
+                        if (count == 0L || data == 0L) {
+                            KnownHResults.E_POINTER.value
+                        } else {
+                            writeReferenceArrayValue(
+                                interfaceId = interfaceId,
+                                value = requireNotNull(managedValue),
+                                countOut = RawAddress(count),
+                                dataOut = RawAddress(data),
+                            )
+                            KnownHResults.S_OK.value
+                        }
+                    },
+                ),
             ),
         )
 

@@ -453,6 +453,66 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun boxed_value_getters_use_typed_outputs_and_reject_null_destinations() {
+        // CsWinRT 3 IReferenceImpl.get_Value validates the typed result pointer.
+        // IReferenceArrayVftbl likewise passes count and data as separate ABI outputs.
+        if (!PlatformRuntime.isWindows) return
+        ComWrappersSupport.clearRegistriesForTests()
+        for (value in listOf(42, 77)) {
+            createReferenceMarshalerHost(IID.NullableInt, value).use { host ->
+                host.createReference(IID.NullableInt).use { reference ->
+                    assertEquals(
+                        KnownHResults.E_POINTER.value,
+                        ComVtableInvoker.invokeArgs(reference.pointer, 6, RawAddress.Null),
+                    )
+                    PlatformAbi.confinedScope().use { scope ->
+                        val result = PlatformAbi.allocateInt32Slot(scope)
+                        assertEquals(
+                            KnownHResults.S_OK.value,
+                            ComVtableInvoker.invokeArgs(reference.pointer, 6, result),
+                        )
+                        assertEquals(value, PlatformAbi.readInt32(result))
+                    }
+                }
+            }
+        }
+        requireNotNull(
+            WinRTReferenceArrayProjection.createMarshaler(arrayOf("value"), IID.IReferenceArrayOfString),
+        ).use { marshaler ->
+            PlatformAbi.confinedScope().use { scope ->
+                val count = PlatformAbi.allocateInt32Slot(scope)
+                val data = PlatformAbi.allocatePointerSlot(scope)
+                PlatformAbi.writeInt32(count, -1)
+                PlatformAbi.writePointer(data, RawAddress(1234L))
+                assertEquals(
+                    KnownHResults.E_POINTER.value,
+                    ComVtableInvoker.invokeArgs(marshaler.abi.asRawComPtr(), 6, RawAddress.Null, data),
+                )
+                assertEquals(RawAddress(1234L), PlatformAbi.readPointer(data))
+                assertEquals(
+                    KnownHResults.E_POINTER.value,
+                    ComVtableInvoker.invokeArgs(marshaler.abi.asRawComPtr(), 6, count, RawAddress.Null),
+                )
+                assertEquals(-1, PlatformAbi.readInt32(count))
+                assertEquals(
+                    KnownHResults.S_OK.value,
+                    ComVtableInvoker.invokeArgs(marshaler.abi.asRawComPtr(), 6, count, data),
+                )
+                val length = PlatformAbi.readInt32(count)
+                val buffer = PlatformAbi.readPointer(data)
+                val adapter = checkNotNull(
+                    ValueBoxingInterop.adapterForReferenceArrayInterface(IID.IReferenceArrayOfString),
+                )
+                try {
+                    assertEquals(listOf("value"), adapter.readOwnedArray(length, buffer)?.toList())
+                } finally {
+                    adapter.disposeOwnedArray(length, buffer)
+                }
+            }
+        }
+    }
+
+    @Test
     fun temporary_reference_marshaler_reads_value_and_releases_boxed_host() {
         if (!PlatformRuntime.isWindows) {
             return

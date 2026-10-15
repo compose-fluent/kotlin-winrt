@@ -15,6 +15,9 @@ class WinRTInspectableMethodDefinition private constructor(
     internal var rawWordHandler: ComRawWordCallback? = null
         private set
 
+    internal var managedRawWordHandler: ManagedComRawWordCallback? = null
+        private set
+
     constructor(
         signature: ComMethodSignature,
         handler: (List<Any?>) -> Int,
@@ -61,6 +64,18 @@ class WinRTInspectableMethodDefinition private constructor(
         hostHandler = null,
     ) {
         this.rawWordHandler = rawWordHandler
+    }
+
+    internal constructor(
+        signature: ComMethodSignature,
+        managedRawWordHandler: ManagedComRawWordCallback,
+    ) : this(
+        signature = signature,
+        handler = { _, _ -> error("Managed raw-word COM method entered the compatibility callback path.") },
+        readsHostManagedValue = true,
+        hostHandler = null,
+    ) {
+        this.managedRawWordHandler = managedRawWordHandler
     }
 
     constructor(
@@ -1064,6 +1079,12 @@ internal class WinRTInspectableComObject(
                         val binding = findCallbackInboundBinding(RawAddress(thisWord))
                             ?: return@rawWordCallbackOf KnownHResults.E_POINTER.value
                         val method = binding.host.methodDefinition(key.interfaceId, key.methodIndex)
+                        val managedHandler = method.managedRawWordHandler
+                        if (managedHandler != null) {
+                            return@rawWordCallbackOf managedHandler.invoke(
+                                binding.get(), arg0, arg1, arg2, arg3, arg4, arg5,
+                            )
+                        }
                         method.rawWordHandler?.let { handler ->
                             handler.invoke(arg0, arg1, arg2, arg3, arg4, arg5, 0L)
                         } ?: binding.host.invokeMethod(

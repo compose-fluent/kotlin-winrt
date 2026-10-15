@@ -13,6 +13,19 @@ internal fun interface ComRawWordCallback {
     ): Int
 }
 
+/** A CCW method that reads its managed target without boxing its ABI arguments. */
+internal fun interface ManagedComRawWordCallback {
+    fun invoke(
+        managedValue: Any?,
+        arg0: Long,
+        arg1: Long,
+        arg2: Long,
+        arg3: Long,
+        arg4: Long,
+        arg5: Long,
+    ): Int
+}
+
 expect object ComVtableInvoker {
     fun invokePointer(
         instance: RawComPtr,
