@@ -1614,6 +1614,58 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun ccw_augmentation_does_not_retain_instance_query_interface_fallback() {
+        InteropRuntimeHooks.clearForTests()
+        try {
+            drainUntilCleared(augmentInstanceBoundDefinition(useQueryInterfaceFallback = true))
+        } finally {
+            InteropRuntimeHooks.clearForTests()
+        }
+    }
+
+    @Test
+    fun ccw_augmentation_does_not_retain_instance_method_handler() {
+        InteropRuntimeHooks.clearForTests()
+        try {
+            drainUntilCleared(augmentInstanceBoundDefinition(useQueryInterfaceFallback = false))
+        } finally {
+            InteropRuntimeHooks.clearForTests()
+        }
+    }
+
+    private fun augmentInstanceBoundDefinition(
+        useQueryInterfaceFallback: Boolean,
+    ): PlatformManagedWeakReference<TestManagedType> {
+        // CsWinRT 3 WindowsRuntimeComWrappers.ComputeVtables caches type metadata.
+        // Neither the weak map nor the last-entry cache may root an instance callback.
+        val value = TestManagedType("instance-bound")
+        val interfaceId = Guid("68686868-6868-6868-6868-686868686871")
+        val method = WinRTInspectableMethodDefinition(ComMethodSignatures.HResult) { _: List<Any?> ->
+            assertEquals("instance-bound", value.name)
+            KnownHResults.S_OK.value
+        }
+        val definition = WinRTCcwDefinition(
+            interfaceDefinitions = listOf(
+                WinRTInspectableInterfaceDefinition(
+                    interfaceId,
+                    methods = if (useQueryInterfaceFallback) emptyList() else listOf(method),
+                ),
+            ),
+            defaultInterfaceId = interfaceId,
+            queryInterfaceFallback = if (useQueryInterfaceFallback) {
+                { _, _ ->
+                    assertEquals("instance-bound", value.name)
+                    null
+                }
+            } else {
+                null
+            },
+        )
+        InteropRuntimeHooks.augmentInspectableDefinition(definition)
+        return PlatformManagedWeakReference(value)
+    }
+
+    @Test
     fun ccw_augmentation_hot_cache_rechecks_authored_provider_and_feature_switches() {
         // CsWinRT's PregenerateNativeTypeInformation owns cached interface entries; authored
         // ICustomPropertyProvider and feature-switch selection must still precede a hot-cache hit.

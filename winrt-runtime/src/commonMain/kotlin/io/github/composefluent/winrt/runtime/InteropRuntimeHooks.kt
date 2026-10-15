@@ -48,13 +48,11 @@ internal object InteropRuntimeHooks {
                 }
             }.let { rememberAugmented(definition, configuration, it) }
         }
-        return rememberAugmented(
-            definition,
-            configuration,
-            augmentInspectableDefinitionUncached(
+        // CsWinRT caches type-level vtables, not instance-bound callbacks. Retaining an
+        // uncacheable definition here would keep its captured managed value alive globally.
+        return augmentInspectableDefinitionUncached(
             definition = definition,
             customPropertyProvider = customPropertyProvider,
-            ),
         )
     }
 
