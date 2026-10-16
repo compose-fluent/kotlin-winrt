@@ -84,7 +84,7 @@ object ComWrappersSupport {
     private val ccwHostCache =
         WeakKeyStateMap<Any, CachedCcwHosts> { cachedHosts ->
             cachedHosts.releaseCacheRoots()
-        }
+        }.also { it.enableGcReclamation() }
     private val rcwCache = RcwIdentityCache()
     // Explicit registrations can associate a plain managed object with a COM
     // identity. Match CsWinRT's reference-owning registration lifetime without

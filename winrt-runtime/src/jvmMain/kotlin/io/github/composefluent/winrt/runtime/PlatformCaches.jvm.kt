@@ -144,17 +144,41 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
 ) {
     private val lock = Any()
     private val referenceQueue = ReferenceQueue<K>()
+    private var reclamationOwner: WeakReference<WeakKeyStateMap<K, V>>? = null
+    private var finalizerEvictions: MutableList<V>? = null
     private val core = WeakKeyStateMapCore<K, V>(
         entryFactory = object : WeakKeyStateEntryFactory<K, V> {
             override fun create(
                 key: K,
                 value: V,
                 identityHashCode: Int,
-            ): WeakKeyStateEntry<K, V> =
-                JvmWeakKeyStateEntry(key, value, identityHashCode, referenceQueue)
+            ): WeakKeyStateEntry<K, V> {
+                val queue: ReferenceQueue<in K> =
+                    if (reclamationOwner == null) referenceQueue else JvmWeakKeyReclaimer.queue
+                return JvmWeakKeyStateEntry(key, value, identityHashCode, queue, reclamationOwner)
+            }
         },
-        onValueEvicted = onValueEvicted,
+        onValueEvicted = { value ->
+            finalizerEvictions?.add(value) ?: onValueEvicted(value)
+        },
     )
+
+    internal actual fun enableGcReclamation() = synchronized(lock) {
+        reclamationOwner = WeakReference(this)
+    }
+
+    internal fun reclaim(entry: WeakKeyStateEntry<K, V>) {
+        val evicted = mutableListOf<V>()
+        synchronized(lock) {
+            try {
+                finalizerEvictions = evicted
+                core.sweep(entry)
+            } finally {
+                finalizerEvictions = null
+            }
+        }
+        releaseEvictedCacheValues(evicted, onValueEvicted)
+    }
 
     actual operator fun get(key: K): V? {
         val identityHashCode = System.identityHashCode(key)
@@ -216,19 +240,49 @@ private class JvmWeakKeyStateEntry<K : Any, V : Any>(
     key: K,
     override val value: V,
     override val identityHashCode: Int,
-    referenceQueue: ReferenceQueue<K>,
-) : WeakReference<K>(key, referenceQueue), WeakKeyStateEntry<K, V> {
+    referenceQueue: ReferenceQueue<in K>,
+    private val owner: WeakReference<WeakKeyStateMap<K, V>>?,
+) : WeakReference<K>(key, referenceQueue), WeakKeyStateEntry<K, V>, JvmReclaimableWeakKey {
     override var bucketNext: WeakKeyStateEntry<K, V>? = null
 
     override fun keyOrNull(): K? = get()
+
+    override fun reclaim() {
+        owner?.get()?.reclaim(this)
+    }
+}
+
+private interface JvmReclaimableWeakKey {
+    fun reclaim()
+}
+
+// CLR ComWrappers owns CCW identity reclamation. JVM needs one shared queue
+// consumer; entries reuse their existing weak reference rather than adding a
+// second Cleaner/phantom registration for each CCW.
+private object JvmWeakKeyReclaimer {
+    val queue = ReferenceQueue<Any>()
+
+    init {
+        Thread({
+            while (true) {
+                try {
+                    (queue.remove() as JvmReclaimableWeakKey).reclaim()
+                } catch (failure: Throwable) {
+                    val thread = Thread.currentThread()
+                    thread.uncaughtExceptionHandler.uncaughtException(thread, failure)
+                }
+            }
+        }, "KotlinWinRT-IdentityReclaimer").apply {
+            isDaemon = true
+            start()
+        }
+    }
 }
 
 actual class FinalizationHook actual constructor() {
-    private val cleaner = Cleaner.create()
-
     actual fun create(
         cleanup: () -> Unit,
-    ): AutoCloseable = JvmFinalizationRegistration(cleaner, cleanup)
+    ): AutoCloseable = JvmFinalizationRegistration(runtimeCleaner, cleanup)
 }
 
 private class JvmFinalizationRegistration(cleaner: Cleaner, cleanup: () -> Unit) : AutoCloseable {
@@ -251,7 +305,7 @@ private class JvmFinalizationAction(private var cleanup: (() -> Unit)?) : Runnab
 internal actual fun createComPtrFinalizationRegistration(
     target: Any,
     support: RawComObjectReferenceSupport,
-): Any = comPtrCleaner.register(target, ComPtrCleanupAction(support))
+): Any = runtimeCleaner.register(target, ComPtrCleanupAction(support))
 
 private class ComPtrCleanupAction(
     private val support: RawComObjectReferenceSupport,
@@ -268,4 +322,4 @@ internal actual fun closeComPtrFinalizationRegistration(
     (registration as Cleaner.Cleanable).clean()
 }
 
-private val comPtrCleaner: Cleaner = Cleaner.create()
+private val runtimeCleaner: Cleaner = Cleaner.create()

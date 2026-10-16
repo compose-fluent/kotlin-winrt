@@ -942,6 +942,25 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun cached_ccw_releases_native_host_when_managed_owner_dies_without_cache_traffic() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("45454545-4545-4545-4545-454545454547")
+        registerWeakCachedTestManagedType(interfaceId)
+        fun abandonOwner(): RawAddress {
+            val value = TestManagedType("idle-cache")
+            return ComWrappersSupport.createCCWForObject(value, interfaceId).use {
+                it.pointer.asRawAddress()
+            }
+        }
+        val pointer = abandonOwner()
+        for (attempt in 0 until 30) {
+            PlatformFinalization.drain()
+            if (WinRTInspectableComObject.findRegisteredInboundBinding(pointer) == null) break
+        }
+        assertNull(WinRTInspectableComObject.findRegisteredInboundBinding(pointer))
+    }
+
+    @Test
     fun create_rcw_cache_uses_com_identity_across_interface_pointers() {
         ComWrappersSupport.clearRegistriesForTests()
         val defaultInterfaceId = Guid("66666666-6666-6666-6666-666666666666")

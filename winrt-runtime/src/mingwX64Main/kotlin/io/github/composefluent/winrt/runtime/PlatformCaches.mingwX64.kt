@@ -292,7 +292,11 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
     private val onValueEvicted: (V) -> Unit,
 ) {
     private val lock = PlatformLock()
-    private val sweepQueue = ArrayDeque<WeakKeyStateEntry<K, V>>()
+    private var sweepQueue = ArrayDeque<WeakKeyStateEntry<K, V>>()
+    private var gcReclamationEnabled = false
+    private var gcCleanupArmed = false
+    private var finalizerEvictions: MutableList<V>? = null
+    private var collectingFinalizerEvictions = false
     private val core = WeakKeyStateMapCore<K, V>(
         entryFactory = object : WeakKeyStateEntryFactory<K, V> {
             override fun create(
@@ -300,10 +304,87 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
                 value: V,
                 identityHashCode: Int,
             ): WeakKeyStateEntry<K, V> =
-                NativeWeakKeyStateEntry(key, value, identityHashCode).also(sweepQueue::addLast)
+                NativeWeakKeyStateEntry(key, value, identityHashCode).also {
+                    sweepQueue.addLast(it)
+                    if (gcReclamationEnabled && !gcCleanupArmed) {
+                        gcCleanupArmed = true
+                        scheduleGcCleanup()
+                    }
+                }
         },
-        onValueEvicted = onValueEvicted,
+        onValueEvicted = { value ->
+            if (collectingFinalizerEvictions) {
+                (finalizerEvictions ?: mutableListOf<V>().also { finalizerEvictions = it }).add(value)
+            } else {
+                onValueEvicted(value)
+            }
+        },
     )
+
+    internal actual fun enableGcReclamation() = lock.withLock {
+        check(sweepQueue.isEmpty()) { "Configure GC reclamation before inserting identity entries." }
+        gcReclamationEnabled = true
+    }
+
+    private fun scheduleGcCleanup() {
+        createCleaner(NativeWeakReference(this)) { reference ->
+            reference.get()?.collectDeadEntriesAfterGc()
+        }
+    }
+
+    private fun collectDeadEntriesAfterGc() {
+        if (!lock.tryEnter()) {
+            scheduleGcCleanup()
+            return
+        }
+        var remaining = try { sweepQueue.size } finally { lock.exit() }
+        while (remaining > 0) {
+            if (!lock.tryEnter()) {
+                scheduleGcCleanup()
+                return
+            }
+            var evicted: List<V>? = null
+            try {
+                collectingFinalizerEvictions = true
+                val count = minOf(remaining, 128, sweepQueue.size)
+                repeat(count) { sweepOneEntry() }
+                remaining -= count
+                if (sweepQueue.isEmpty()) remaining = 0
+            } finally {
+                evicted = finalizerEvictions
+                finalizerEvictions = null
+                collectingFinalizerEvictions = false
+                lock.exit()
+            }
+            // Releasing a CCW can enter other runtime locks. Do it outside the
+            // identity map lock and after any explicitly waited collection.
+            val pending = evicted
+            if (pending != null) {
+                val release = { releaseEvictedCacheValues(pending, onValueEvicted) }
+                try {
+                    if (!ReferenceTrackerManager.deferFinalizerRelease(release) &&
+                        !WaitedFinalizerReleases.defer(release)) release()
+                } catch (failure: Throwable) {
+                    scheduleGcCleanup()
+                    throw failure
+                }
+            }
+        }
+        if (!lock.tryEnter()) {
+            scheduleGcCleanup()
+            return
+        }
+        try {
+            if (sweepQueue.isEmpty()) {
+                sweepQueue = ArrayDeque()
+                gcCleanupArmed = false
+            } else {
+                scheduleGcCleanup()
+            }
+        } finally {
+            lock.exit()
+        }
+    }
 
     actual operator fun get(key: K): V? {
         val identityHashCode = key.identityHashCode()

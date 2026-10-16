@@ -77,6 +77,31 @@ class PlatformCacheSeamsTest {
     }
 
     @Test
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    fun gc_enabled_weak_key_state_releases_values_without_cache_traffic() {
+        // CsWinRT 3 delegates the CCW identity lifetime to CLR ComWrappers.
+        // Neither a cache lookup nor clear() should be needed to release roots.
+        val evicted = kotlin.concurrent.atomics.AtomicInt(0)
+        val cache = WeakKeyStateMap<Holder, String> { evicted.fetchAndAdd(1) }
+        cache.enableGcReclamation()
+        val live = Holder("live")
+        cache.getOrPut(live) { "live" }
+        fun abandonKeys() {
+            repeat(257) { cache.getOrPut(Holder("dead-$it")) { "dead" } }
+        }
+        abandonKeys()
+        for (attempt in 0 until 30) {
+            PlatformFinalization.drain()
+            if (evicted.load() == 257) break
+        }
+        assertEquals(257, evicted.load())
+        assertEquals("live", cache[live])
+        cache.clear()
+        assertEquals(258, evicted.load())
+        winRTKeepAlive(live)
+    }
+
+    @Test
     fun weak_key_state_uses_object_identity() {
         val cache = WeakKeyStateMap<Holder, String>()
         val first = Holder("equal")

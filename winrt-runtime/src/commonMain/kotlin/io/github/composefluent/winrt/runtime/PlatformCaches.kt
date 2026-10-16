@@ -212,6 +212,9 @@ internal class WeakKeyStateMapCore<K : Any, V : Any>(
             buckets[index] = null
         }
         entryCount = 0
+        if (buckets.size > weakKeyStateInitialCapacity) {
+            buckets = weakKeyStateBuckets(weakKeyStateInitialCapacity)
+        }
     }
 
     private fun findEntry(
@@ -242,6 +245,9 @@ internal class WeakKeyStateMapCore<K : Any, V : Any>(
         entry.bucketNext = null
         entryCount -= 1
         lastEntry.compareAndSet(entry, null)
+        if (entryCount == 0 && buckets.size > weakKeyStateInitialCapacity) {
+            buckets = weakKeyStateBuckets(weakKeyStateInitialCapacity)
+        }
     }
 
     private fun ensureInsertCapacity() {
@@ -292,6 +298,9 @@ private const val weakKeyStateLoadDenominator = 4
 expect class WeakKeyStateMap<K : Any, V : Any>(
     onValueEvicted: (V) -> Unit = {},
 ) {
+    /** Enables idle reclamation for runtime state whose eviction callback is finalizer-safe. */
+    internal fun enableGcReclamation()
+
     operator fun get(key: K): V?
 
     fun getOrPut(
@@ -307,6 +316,18 @@ expect class WeakKeyStateMap<K : Any, V : Any>(
     ): Boolean
 
     fun clear()
+}
+
+internal fun <V> releaseEvictedCacheValues(values: List<V>, release: (V) -> Unit) {
+    var failure: Throwable? = null
+    values.forEach { value ->
+        try {
+            release(value)
+        } catch (error: Throwable) {
+            failure?.addSuppressed(error) ?: run { failure = error }
+        }
+    }
+    failure?.let { throw it }
 }
 
 class SnapshotList<T> {
