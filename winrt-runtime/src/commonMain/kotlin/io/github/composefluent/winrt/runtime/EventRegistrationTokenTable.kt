@@ -29,8 +29,8 @@ internal class EventRegistrationTokenTableSnapshot<T : Any>(
 class EventRegistrationTokenTable<T : Any> private constructor(
     private val delegateTypeHash: Int,
 ) {
-    // CsWinRT locks the token dictionary only when a registration changes. Empty authored
-    // events need no native synchronization resource until their first add/remove operation.
+    // Native needs a synchronization resource only on first mutation. JVM synchronizes
+    // directly on this table, matching CsWinRT's per-dictionary monitor without a lock owner.
     private val lock = atomic<PlatformLock?>(null)
 
     // Kotlin/Native's empty LinkedHashMap allocates backing storage. Keep CsWinRT's token
@@ -49,7 +49,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         private set
     private var nextLow32Bits: Int = 0
 
-    private fun lockForMutation(): PlatformLock =
+    internal fun lockForMutation(): PlatformLock =
         lock.value ?: initializeLock()
 
     private fun initializeLock(): PlatformLock {
@@ -65,7 +65,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
             return EventRegistrationToken()
         }
 
-        return lockForMutation().withLock {
+        return withEventRegistrationLock(this) {
             val tokens = tokens ?: linkedMapOf<Int, T>().also {
                 nextLow32Bits = Random.nextInt()
                 this.tokens = it
@@ -85,7 +85,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
             return null
         }
 
-        return lockForMutation().withLock {
+        return withEventRegistrationLock(this) {
             tokens?.remove(lower32Bits(token)).also {
                 if (it != null) {
                     handlerSnapshot = composeHandlerSnapshot()
