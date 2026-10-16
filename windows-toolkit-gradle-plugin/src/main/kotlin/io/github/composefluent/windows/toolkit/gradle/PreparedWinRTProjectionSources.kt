@@ -86,7 +86,7 @@ internal fun preparedProjectionKey(
 
 private fun preparedStaticImplementationRoots(): List<Path> = listOf(
     KotlinProjectionGenerator::class.java, WinRTMetadataModel::class.java,
-    Guid::class.java, ClassName::class.java,
+    Guid::class.java, io.github.composefluent.winrt.runtime.ComObjectReference::class.java, ClassName::class.java,
     io.github.composefluent.winrt.compiler.callsites.WinRTProjectionCallSiteCatalog::class.java,
 ).map { Path.of(it.protectionDomain.codeSource.location.toURI()) }.distinct()
 

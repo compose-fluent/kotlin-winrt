@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.Guid
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -85,7 +86,7 @@ class CallSiteDiagnosticsTest {
             val source = File(directory, "InvalidCallSite.kt").apply {
                 writeText("import io.github.composefluent.winrt.runtime.*\n$body\n")
             }
-            val classpath = listOf(Guid::class.java, Unit::class.java).map {
+            val classpath = listOf(Guid::class.java, ComObjectReference::class.java, Unit::class.java).map {
                 File(it.protectionDomain.codeSource.location.toURI()).absolutePath
             }.distinct().joinToString(File.pathSeparator)
             val pluginPaths = System.getProperty("winrt.test.callsitePluginClasspath")

@@ -53,7 +53,8 @@ val embeddedTools by configurations.creating {
 }
 val toolProjects = listOf(
     projects.ideModel,
-    projects.winrtAuthoring, projects.winrtRuntime, projects.winrtMetadata, projects.winrtGenerator,
+    projects.winrtAuthoring, projects.winrtRuntime, projects.winrtRuntime.contracts,
+    projects.winrtMetadata, projects.winrtGenerator,
     projects.winrtCompilerPlugin, projects.winrtCompilerPlugin.callsiteContract,
     projects.winrtCompilerPlugin.callsiteLowering,
 )
@@ -142,7 +143,7 @@ tasks.named<ProcessResources>("processResources") {
 val compilerCompatibilityRepository = layout.buildDirectory.dir("compiler-compatibility-repository")
 val compilerCompatibilityProjects = listOf(
     project,
-    project(":winrt-runtime"), project(":winrt-authoring"), project(":winrt-metadata"), project(":winrt-generator"),
+    project(":winrt-runtime:contracts"), project(":winrt-runtime"), project(":winrt-authoring"), project(":winrt-metadata"), project(":winrt-generator"),
     project(":winrt-compiler-plugin"), project(":winrt-compiler-plugin:compiler-kotlin-2-4-20"),
     project(":winrt-compiler-plugin:callsite-contract"), project(":winrt-compiler-plugin:callsite-lowering"),
     project(":winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20"),

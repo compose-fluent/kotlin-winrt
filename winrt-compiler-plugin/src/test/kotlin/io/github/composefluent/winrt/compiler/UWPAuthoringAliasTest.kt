@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringCandidateFile
 import io.github.composefluent.winrt.runtime.Guid
 import org.jetbrains.kotlin.cli.common.ExitCode
@@ -36,7 +37,7 @@ class UWPAuthoringAliasTest {
                 fun register() { }
             }
         """.trimIndent()) }
-        val classpath = listOf(Unit::class.java, Guid::class.java).joinToString(File.pathSeparator) {
+        val classpath = listOf(Unit::class.java, Guid::class.java, ComObjectReference::class.java).joinToString(File.pathSeparator) {
             File(it.protectionDomain.codeSource.location.toURI()).absolutePath
         }
         for (includeWinUI in listOf(false, true)) {

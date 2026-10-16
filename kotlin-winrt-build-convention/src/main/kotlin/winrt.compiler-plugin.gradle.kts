@@ -54,8 +54,9 @@ dependencies {
         add("testImplementation", "org.jetbrains.kotlin:kotlin-test-junit:$defaultCompilerVersion")
     } else {
         add("implementation", project(loweringPath))
-        add("implementation", project(":winrt-authoring"))
-        add("implementation", project(":winrt-runtime"))
+        add("implementation", project(":winrt-runtime:contracts"))
+        add("testImplementation", project(":winrt-runtime"))
+        add("testImplementation", project(":winrt-authoring"))
         add("implementation", project(":winrt-metadata"))
         add("implementation", libs.findLibrary("kotlinpoet").get())
         add("implementation", libs.findLibrary("kotlinx-serialization-json").get())

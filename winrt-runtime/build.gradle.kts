@@ -11,6 +11,11 @@ plugins {
 
 description = "Kotlin/JVM and Kotlin/Native runtime for WinRT and WinUI projection"
 
+// Runtime validation includes the value/signature foundation that it exports.
+tasks.matching { it.name == "jvmTest" || it.name == "mingwX64Test" }.configureEach {
+    dependsOn(":winrt-runtime:contracts:$name")
+}
+
 val callSiteIntegrationSources by configurations.creating {
     isCanBeConsumed = false
     isCanBeResolved = true
@@ -128,6 +133,7 @@ kotlin {
             kotlin.srcDir(callSiteIntegrationSources)
         }
         commonMain.dependencies {
+            api(project(":winrt-runtime:contracts"))
             api(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.io.core)
         }

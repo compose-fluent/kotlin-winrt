@@ -114,6 +114,7 @@ jobs:
         shell: bash
         run: |
           ./gradlew \
+            :winrt-runtime:contracts:publishToMavenLocal \
             :winrt-runtime:publishToMavenLocal \
             :winrt-metadata:publishToMavenLocal \
             :winrt-generator:publishToMavenLocal \
@@ -156,6 +157,7 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
         run: |
           ./gradlew \
+            :winrt-runtime:contracts:publishAllPublicationsToMavenCentralRepository \
             :winrt-runtime:publishAllPublicationsToMavenCentralRepository \
             :winrt-metadata:publishAllPublicationsToMavenCentralRepository \
             :winrt-generator:publishAllPublicationsToMavenCentralRepository \

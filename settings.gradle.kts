@@ -24,6 +24,7 @@ plugins {
 
 include(
     ":winrt-runtime",
+    ":winrt-runtime:contracts",
     ":winrt-metadata",
     ":winrt-generator",
     ":winrt-authoring",

@@ -104,6 +104,7 @@ val prebuiltProjectionModules = listOf(
 val projectReviewRemediationRepository = layout.buildDirectory.dir("project-review-remediation-repository")
 val projectReviewPublicationModules = listOf(
     ":winrt-runtime",
+    ":winrt-runtime:contracts",
     ":winrt-metadata",
     ":winrt-authoring",
     ":winrt-compiler-plugin:callsite-contract",
@@ -141,18 +142,21 @@ val cleanPublishedRuntimeBoundaryRepository by tasks.registering(Delete::class) 
     delete(publishedRuntimeBoundaryRepository)
 }
 
-project(":winrt-runtime").plugins.withId("maven-publish") {
-    project(":winrt-runtime").extensions.getByType(PublishingExtension::class.java).repositories.maven {
-        name = "publishedRuntimeBoundary"
-        url = publishedRuntimeBoundaryRepository.get().asFile.toURI()
-    }
-    project(":winrt-runtime").tasks
-        .withType(PublishToMavenRepository::class.java)
-        .matching { task -> task.name.endsWith("ToPublishedRuntimeBoundaryRepository") }
-        .configureEach {
-            dependsOn(cleanPublishedRuntimeBoundaryRepository)
+listOf(":winrt-runtime", ":winrt-runtime:contracts").forEach { runtimeModule ->
+    project(runtimeModule).plugins.withId("maven-publish") {
+        project(runtimeModule).extensions.getByType(PublishingExtension::class.java).repositories.maven {
+            name = "publishedRuntimeBoundary"
+            url = publishedRuntimeBoundaryRepository.get().asFile.toURI()
         }
+        project(runtimeModule).tasks
+            .withType(PublishToMavenRepository::class.java)
+            .matching { task -> task.name.endsWith("ToPublishedRuntimeBoundaryRepository") }
+            .configureEach {
+                dependsOn(cleanPublishedRuntimeBoundaryRepository)
+            }
+    }
 }
+
 
 val validatePublishedRuntimeOnlyConsumer by tasks.registering(Exec::class) {
     group = "verification"
@@ -177,7 +181,8 @@ val validatePublishedRuntimeOnlyConsumer by tasks.registering(Exec::class) {
     )
     environment("JAVA_HOME", buildJavaHome.get())
     environment("GRADLE_USER_HOME", gradle.gradleUserHomeDir.absolutePath)
-    dependsOn(":winrt-runtime:publishAllPublicationsToPublishedRuntimeBoundaryRepository")
+    dependsOn(":winrt-runtime:publishAllPublicationsToPublishedRuntimeBoundaryRepository",
+        ":winrt-runtime:contracts:publishAllPublicationsToPublishedRuntimeBoundaryRepository")
 }
 
 fun registerPublishedProjectionConsumer(

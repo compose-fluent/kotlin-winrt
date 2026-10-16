@@ -1,10 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
 class Guid private constructor(
-    @PublishedApi
-    internal val abiLowBits: Long,
-    @PublishedApi
-    internal val abiHighBits: Long,
+    val abiLowBits: Long,
+    val abiHighBits: Long,
     private val canonicalValue: String?,
 ) {
     constructor(value: String) : this(parseGuid(value))
@@ -63,7 +61,7 @@ class Guid private constructor(
          * fallback QI.  Keeping the constructor here avoids a temporary byte
          * array when the caller already has the two native words.
          */
-        internal fun fromAbiWords(
+        fun fromAbiWords(
             abiLowBits: Long,
             abiHighBits: Long,
         ): Guid = Guid(abiLowBits, abiHighBits, canonicalValue = null)
@@ -73,7 +71,7 @@ class Guid private constructor(
             return fromNetworkBytesPrefix(bytes)
         }
 
-        internal fun fromNetworkBytesPrefix(bytes: ByteArray): Guid {
+        fun fromNetworkBytesPrefix(bytes: ByteArray): Guid {
             require(bytes.size >= BYTE_SIZE) { "GUID bytes must contain at least $BYTE_SIZE bytes." }
             return Guid(
                 abiLowBits = packAbiWord(
@@ -233,9 +231,3 @@ private val guidRegex = Regex("""[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0
 
 fun guidOf(value: String): Guid = Guid(value)
 
-fun Guid.writeTo(destination: RawAddress) {
-    PlatformAbi.writeGuid(destination, this)
-}
-
-fun Guid.Companion.readFrom(source: RawAddress): Guid =
-    PlatformAbi.readGuid(source)

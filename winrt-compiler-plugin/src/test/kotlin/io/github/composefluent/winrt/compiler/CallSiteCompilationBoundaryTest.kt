@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.Guid
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
@@ -215,7 +216,7 @@ class CallSiteCompilationBoundaryTest {
         friend: Boolean = false, expected: ExitCode = ExitCode.OK, fullPlugin: Boolean = false): File {
         val input = File(root, "$name.kt").apply { writeText(source) }
         val destination = File(root, name)
-        val classpath = (listOf(Guid::class.java, Unit::class.java).map {
+        val classpath = (listOf(Guid::class.java, ComObjectReference::class.java, Unit::class.java).map {
             File(it.protectionDomain.codeSource.location.toURI())
         } + listOfNotNull(library)).distinct().joinToString(File.pathSeparator) { it.absolutePath }
         val plugins = System.getProperty("winrt.test.callsitePluginClasspath").split(File.pathSeparator) +

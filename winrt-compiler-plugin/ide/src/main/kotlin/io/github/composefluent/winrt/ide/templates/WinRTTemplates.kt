@@ -136,6 +136,7 @@ object WinRTTemplates {
                     name = "winrt-toolchain"
                     dependencySubstitution {
                         substitute(module("io.github.compose-fluent:winrt-runtime")).using(project(":winrt-runtime"))
+                        substitute(module("io.github.compose-fluent:winrt-runtime-contracts")).using(project(":winrt-runtime:contracts"))
                         substitute(module("io.github.compose-fluent:winrt-authoring")).using(project(":winrt-authoring"))
                     }
                 }

@@ -36,6 +36,7 @@ dependencyResolutionManagement {
 include(
     ":ide-model",
     ":winrt-runtime",
+    ":winrt-runtime:contracts",
     ":winrt-metadata",
     ":winrt-authoring",
     ":winrt-generator",
@@ -47,6 +48,7 @@ include(
 )
 
 project(":winrt-runtime").projectDir = file("../winrt-runtime")
+project(":winrt-runtime:contracts").projectDir = file("../winrt-runtime/contracts")
 project(":winrt-metadata").projectDir = file("../winrt-metadata")
 project(":winrt-authoring").projectDir = file("../winrt-authoring")
 project(":winrt-generator").projectDir = file("../winrt-generator")

@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.Guid
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -45,7 +46,7 @@ class CallSiteHelperResolutionTest {
         val directory = Files.createTempDirectory("winrt-backend-signatures").toFile()
         try {
             val source = File(directory, "BackendFixture.kt").apply { writeText(text) }
-            val classpath = listOf(Guid::class.java, Unit::class.java).map {
+            val classpath = listOf(Guid::class.java, ComObjectReference::class.java, Unit::class.java).map {
                 File(it.protectionDomain.codeSource.location.toURI()).absolutePath
             }.distinct().joinToString(File.pathSeparator)
             val plugins = System.getProperty("winrt.test.callsitePluginClasspath").split(File.pathSeparator).joinToString(",")
@@ -75,7 +76,7 @@ class CallSiteHelperResolutionTest {
                     fun consumeString(receiver: ComObjectReference, slot: Int, value: String): Unit = TODO("lower")
                 """.trimIndent())
             }
-            val classpath = listOf(Guid::class.java, Unit::class.java).map {
+            val classpath = listOf(Guid::class.java, ComObjectReference::class.java, Unit::class.java).map {
                 File(it.protectionDomain.codeSource.location.toURI()).absolutePath
             }.distinct().joinToString(File.pathSeparator)
             val plugins = System.getProperty("winrt.test.callsitePluginClasspath")
