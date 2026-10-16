@@ -15,6 +15,56 @@ private fun callWithReentrantInputClose(receiver: ComObjectReference, slot: Int,
 
 class ComCallLifetimeTest {
     @Test
+    fun composable_abi_query_keeps_outer_owned_during_reentrant_close() {
+        // CsWinRT TryAs(Guid, out IntPtr): QI returns an owned ABI reference, while
+        // the source stays leased through a custom QI callback that closes it.
+        val primaryId = Guid("431f84cf-428b-42e9-9c63-9494aa1130b1")
+        val queriedId = Guid("431f84cf-428b-42e9-9c63-9494aa1130b2")
+        lateinit var outer: ComObjectReference
+        lateinit var host: WinRTInspectableComObject
+        var countBeforeClose = 0u
+        var source = RawAddress.Null
+        host = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(WinRTInspectableInterfaceDefinition(primaryId, emptyList())),
+            defaultInterfaceId = primaryId,
+            queryInterfaceFallback = { iid ->
+                if (iid != queriedId) null else {
+                    countBeforeClose = WinRTInspectableComObject.tryProbeReferenceCount(source)!!
+                    outer.close()
+                    assertEquals(countBeforeClose, WinRTInspectableComObject.tryProbeReferenceCount(source))
+                    host.acquireReference(primaryId)
+                }
+            },
+        )
+        host.use {
+            outer = host.createPrimaryReference()
+            source = outer.pointer.asRawAddress()
+            WinRTComposableObjectReference(
+                instance = IInspectableReference(host.acquireReference(primaryId).asRawComPtr(), primaryId),
+                inner = null,
+                composed = null,
+                outer = outer,
+                isAggregatedReferenceTrackerObject = false,
+                outerHost = host,
+                cleanup = {},
+            ).use { reference ->
+                val value = object : WinRTComposableObject {
+                    override val winRTComposableObjectReference = reference
+                }
+                val result = ComWrappersSupport.detachCCWForObject(value, queriedId)
+                try {
+                    assertEquals(source, result)
+                    assertTrue(outer.isDisposed)
+                    // QI added one reference; returning from the call released the closed outer.
+                    assertEquals(countBeforeClose, WinRTInspectableComObject.tryProbeReferenceCount(source))
+                } finally {
+                    disposeComAbi(result)
+                }
+            }
+        }
+    }
+
+    @Test
     fun generated_call_leases_direct_input_through_failed_callback() {
         val iid = Guid("1581c4af-8941-41be-a594-38e9a8cbb71f")
         lateinit var receiver: ComObjectReference

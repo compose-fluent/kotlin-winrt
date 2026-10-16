@@ -1329,8 +1329,6 @@ object ComWrappersSupport {
         val outerReference = composableReference.outer
         val detachedPointer = if (interfaceId == null || interfaceId == outerReference.interfaceId) {
             outerReference.acquireOwnedPointer().asRawAddress()
-        } else if (interfaceId == IID.IUnknown || interfaceId == IID.IInspectable) {
-            queryInterfacePointerForAbi(outerReference, interfaceId)
         } else {
             queryInterfacePointerForAbi(outerReference, interfaceId)
         } ?: throw WinRTUnsupportedOperationException(
@@ -1684,10 +1682,9 @@ object ComWrappersSupport {
     ): RawAddress? {
         // Mirrors CsWinRT IObjectReference.TryAs(Guid, out IntPtr) used from ICustomQueryInterface:
         // the QI result is an ABI-owned pointer and must not take the aggregated As<T>() release path.
-        val result = WinRTPlatformApi.queryInterfaceRaw(
-            reference.pointer.asRawAddress(),
-            requestedInterfaceId,
-        )
+        val result = reference.comPtr.withCallPointer { pointer ->
+            WinRTPlatformApi.queryInterfaceRaw(pointer.asRawAddress(), requestedInterfaceId)
+        }
         val queriedPointer = result.pointer
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(queriedPointer)) {
             return null
