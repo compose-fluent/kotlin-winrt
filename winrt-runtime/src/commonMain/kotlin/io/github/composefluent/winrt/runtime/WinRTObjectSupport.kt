@@ -33,11 +33,14 @@ internal class WinRTObjectSupport<K : Any, TReference : AutoCloseable>(
             return true
         }
 
-        val queried = tryQueryInterface(interfaceType.interfaceId)?.let { ownReference(nativeObject, it) }
+        val queried = tryQueryInterface(interfaceType.interfaceId)
         if (queried != null) {
             val existing = queryInterfaceCache.putIfAbsent(interfaceType, queried)
             if (existing != null) {
                 closeReference(queried)
+                validateReference(existing)
+            } else {
+                ownReference(nativeObject, queried)
             }
             return true
         }
@@ -68,14 +71,15 @@ internal class WinRTObjectSupport<K : Any, TReference : AutoCloseable>(
             return it
         }
 
-        val queried = tryQueryInterface(interfaceType.interfaceId)?.let { ownReference(nativeObject, it) }
+        val queried = tryQueryInterface(interfaceType.interfaceId)
         if (queried != null) {
             val existing = queryInterfaceCache.putIfAbsent(interfaceType, queried)
             if (existing != null) {
                 closeReference(queried)
+                validateReference(existing)
                 return existing
             }
-            return queried
+            return ownReference(nativeObject, queried)
         }
 
         throw missingInterfaceError(interfaceType)

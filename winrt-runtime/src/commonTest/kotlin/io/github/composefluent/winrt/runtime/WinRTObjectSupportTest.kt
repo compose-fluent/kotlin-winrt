@@ -8,6 +8,35 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class WinRTObjectSupportTest {
+    @Test
+    fun competing_query_result_is_released_without_retaining_it_in_the_owner() {
+        // CsWinRT keeps only the winning QI result in the RCW graph.
+        val owner = TestOwner()
+        val type = WinRTTypeHandle("test.IRaced", IID.IInspectable)
+        val primary = TestReference(IID.IUnknown)
+        val winner = TestReference(IID.IInspectable)
+        val loser = TestReference(IID.IInspectable)
+        var ownedCount = 0
+        val support = WinRTObjectSupport<TestOwner, TestReference>(
+            queryInterfaceCacheFor = { it.state.queryInterfaceCache },
+            additionalTypeDataFor = { it.state.additionalTypeData },
+            closeReference = TestReference::close,
+            validateReference = { check(it.closeCount == 0) },
+            ownReference = { _, reference -> ownedCount++; reference },
+        )
+        val result = support.getObjectReferenceForType(
+            owner, null, type, primary,
+            tryQueryInterface = {
+                owner.state.queryInterfaceCache[type] = winner
+                loser
+            },
+            missingInterfaceError = ::missingInterfaceError,
+        )
+        assertSame(winner, result)
+        assertEquals(1, loser.closeCount)
+        assertEquals(0, ownedCount)
+    }
+
     private val support = WinRTObjectSupport<TestOwner, TestReference>(
         queryInterfaceCacheFor = { it.state.queryInterfaceCache },
         additionalTypeDataFor = { it.state.additionalTypeData },
