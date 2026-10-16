@@ -1,7 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
-import kotlin.concurrent.atomics.AtomicInt
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlinx.atomicfu.atomic
 
 internal data class ManagedComQueryResult<T>(
     val hResult: HResult,
@@ -24,7 +23,6 @@ private object PermanentlyPinnedManagedComRootReference : ManagedComRootReferenc
     override fun unpin() = Unit
 }
 
-@OptIn(ExperimentalAtomicApi::class)
 @PublishedApi
 internal class ManagedComHostState(
     private val cleanup: () -> Unit,
@@ -36,10 +34,13 @@ internal class ManagedComHostState(
 ) {
     constructor(cleanup: () -> Unit) : this(cleanup, PermanentlyPinnedManagedComRootReference)
 
-    private val cleanupPublicationState = AtomicInt(managedComHostOpenState)
+    private val cleanupPublicationState = atomic(managedComHostOpenState)
 
+    private val baselineReleased = atomic(0)
+
+    // Keep the container private so both targets lower it to an in-object atomic field.
     @PublishedApi
-    internal val baselineReleased = AtomicInt(0)
+    internal fun isBaselineReleased(): Boolean = baselineReleased.value != 0
 
     @PublishedApi
     internal val unpinnedBaselineCount =
@@ -162,7 +163,7 @@ internal class ManagedComHostState(
                     if (!referenceCount.compareAndSet(current, managedComRootTransitionCount)) {
                         continue
                     }
-                    if (baselineReleased.load() != 0) {
+                    if (isBaselineReleased()) {
                         try {
                             rootReference.unpin()
                         } finally {
@@ -181,7 +182,7 @@ internal class ManagedComHostState(
                     if (!referenceCount.compareAndSet(current, managedComRootTransitionCount)) {
                         continue
                     }
-                    baselineReleased.store(1)
+                    baselineReleased.value = 1
                     finishBaselineRelease()
                     return 0
                 }
@@ -214,7 +215,7 @@ internal class ManagedComHostState(
         if (
             borrowReady &&
             referenceCount.load() == unpinnedBaselineCount &&
-            baselineReleased.load() == 0
+            !isBaselineReleased()
         ) {
             return
         }
@@ -236,7 +237,7 @@ internal class ManagedComHostState(
                 else -> {
                     val count = current.managedComReferenceCount()
                     check(count > 0) { "Managed COM borrow-ready reference count is invalid: $count." }
-                    if (count == 1 && baselineReleased.load() == 0) {
+                    if (count == 1 && !isBaselineReleased()) {
                         return
                     }
                     if (!referenceCount.compareAndSet(current, managedComRootTransitionCount)) {
@@ -320,7 +321,7 @@ internal class ManagedComHostState(
             if (next == 0) {
                 rootReference.unpinTracker()
                 ReferenceTrackerManager.unregisterTarget(this)
-                if (current.managedComReferenceCount() == 1 && baselineReleased.load() != 0) {
+                if (current.managedComReferenceCount() == 1 && isBaselineReleased()) {
                     finishBaselineRelease()
                     return 0
                 }
@@ -427,7 +428,7 @@ internal class ManagedComHostState(
 
     internal fun tryBeginInboundCachePublication(): Boolean {
         while (true) {
-            val state = cleanupPublicationState.load()
+            val state = cleanupPublicationState.value
             if (state == managedComHostClosedState) {
                 return false
             }
@@ -447,7 +448,7 @@ internal class ManagedComHostState(
 
     internal fun endInboundCachePublication() {
         while (true) {
-            val state = cleanupPublicationState.load()
+            val state = cleanupPublicationState.value
             check(state > managedComHostPublishedState) {
                 "Managed COM host publication count is invalid: $state."
             }
@@ -477,7 +478,7 @@ internal class ManagedComHostState(
 
     private fun cleanupPublishedOnce() {
         while (true) {
-            val state = cleanupPublicationState.load()
+            val state = cleanupPublicationState.value
             if (state == managedComHostClosedState) {
                 return
             }
@@ -506,7 +507,7 @@ internal class ManagedComHostState(
     private fun visibleReferenceCount(state: Long): Int =
         (
             state.managedComReferenceCount() -
-                baselineReleased.load()
+                baselineReleased.value
         ).coerceAtLeast(0)
 
 }
