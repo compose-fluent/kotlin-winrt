@@ -21,7 +21,7 @@ class KotlinCollectionDelegateOwnershipTest {
                 kind, name, typeArguments = List(if (name.endsWith("`2")) 2 else 1) { string },
             )
             val source = requireNotNull(renderer.collectionReferenceAdapterCode(binding)).toString()
-            assertTrue(source, source.contains("reference.getRefPointer()"))
+            assertTrue(source, source.contains("reference.acquireOwnedPointer()"))
             assertFalse(source, source.contains("reference.pointer"))
         }
     }
@@ -44,7 +44,7 @@ class KotlinCollectionDelegateOwnershipTest {
             )).toString()
         }
         initializers.forEach { source ->
-            assertTrue(source, source.contains("fromAbi(") && source.contains("_owner.getRefPointer()"))
+            assertTrue(source, source.contains("fromAbi(") && source.contains("_owner.acquireOwnedPointer()"))
             assertFalse(source, source.contains("_owner.pointer"))
         }
     }

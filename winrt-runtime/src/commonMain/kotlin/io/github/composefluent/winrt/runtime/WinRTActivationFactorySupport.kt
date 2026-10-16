@@ -19,7 +19,7 @@ internal object WinRTActivationFactorySupport {
                             factory.activateInstance().use { instance ->
                                 PlatformAbi.writePointer(
                                     args[0] as RawAddress,
-                                    PlatformAbi.fromRawComPtr(instance.getRefPointer()),
+                                    instance.acquireOwnedPointer().asRawAddress(),
                                 )
                             }
                             KnownHResults.S_OK.value

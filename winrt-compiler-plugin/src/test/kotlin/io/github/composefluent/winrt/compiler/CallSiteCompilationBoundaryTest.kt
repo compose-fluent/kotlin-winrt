@@ -175,7 +175,7 @@ class CallSiteCompilationBoundaryTest {
                 @WinRTProjectionAbiCodec(role = WinRTProjectionAbiCodecRole.FROM_ABI,
                     type = "boundary.library.Widget", consumesOwnedAbi = true)
                 fun decode(pointer: RawAddress): Widget = Widget(
-                    InspectableReference(PlatformAbi.toRawComPtr(pointer), Widget.Metadata.DEFAULT_INTERFACE_IID))
+                    InspectableReference(pointer.asRawComPtr(), Widget.Metadata.DEFAULT_INTERFACE_IID))
             }
         """.trimIndent())
         val consumer = compile(root, "specialized-default-consumer", """

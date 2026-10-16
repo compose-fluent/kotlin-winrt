@@ -332,16 +332,12 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         platformAbiClass?.propertyGetter("nullComPtr")
     }
 
-    private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "fromRawComPtr", listOf("io.github.composefluent.winrt.runtime.RawComPtr"), "io.github.composefluent.winrt.runtime.RawAddress")
-    }
+    private val rawComPtrAsAddress: IrSimpleFunctionSymbol? by lazy {
+        resolver.function(WINRT_RAW_COM_PTR_FQ_NAME, "asRawAddress", emptyList(), "io.github.composefluent.winrt.runtime.RawAddress")
     }
 
-    private val platformAbiToRawComPtr: IrSimpleFunctionSymbol? by lazy {
-        platformAbiClass?.let {
-            resolver.function(WINRT_PLATFORM_ABI_FQ_NAME, "toRawComPtr", listOf("io.github.composefluent.winrt.runtime.RawAddress"), "io.github.composefluent.winrt.runtime.RawComPtr")
-    }
+    private val rawAddressAsComPtr: IrSimpleFunctionSymbol? by lazy {
+        resolver.function(WINRT_RAW_ADDRESS_FQ_NAME, "asRawComPtr", emptyList(), "io.github.composefluent.winrt.runtime.RawComPtr")
     }
 
     private val platformAbiReadPointer: IrSimpleFunctionSymbol? by lazy {
@@ -3610,10 +3606,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         return when (referenceAccess) {
             WinRTProjectionCallSiteReferenceAccess.RAW_ADDRESS -> address
             WinRTProjectionCallSiteReferenceAccess.RAW_COM_PTR -> {
-                val toRawComPtr = platformAbiToRawComPtr ?: return null
-                builder.irCall(toRawComPtr).apply {
-                    arguments[0] = builder.irGetObject(requireNotNull(platformAbi))
-                    arguments[1] = address
+                val asComPtr = rawAddressAsComPtr ?: return null
+                builder.irCall(asComPtr).apply {
+                    arguments[0] = address
                 }
             }
             WinRTProjectionCallSiteReferenceAccess.UNKNOWN_REFERENCE ->
@@ -3630,10 +3625,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         address: IrExpression,
         interfaceId: IrExpression? = null,
     ): IrExpression? {
-        val toRawComPtr = platformAbiToRawComPtr ?: return null
-        val rawComPtr = builder.irCall(toRawComPtr).apply {
-            arguments[0] = builder.irGetObject(requireNotNull(platformAbi))
-            arguments[1] = address
+        val asComPtr = rawAddressAsComPtr ?: return null
+        val rawComPtr = builder.irCall(asComPtr).apply {
+            arguments[0] = address
         }
         val referenceClass = resolver.classSymbol(classFqName) ?: return null
         val constructor = referenceClass.rawComPtrConstructor() ?: return null
@@ -3985,10 +3979,9 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         }
 
     private fun rawComPtrToAddress(builder: DeclarationIrBuilder, value: IrExpression): IrExpression? {
-        val fromRawComPtr = platformAbiFromRawComPtr ?: return null
-        return builder.irCall(fromRawComPtr).apply {
-            arguments[0] = builder.irGetObject(requireNotNull(platformAbi))
-            arguments[1] = value
+        val asAddress = rawComPtrAsAddress ?: return null
+        return builder.irCall(asAddress).apply {
+            arguments[0] = value
         }
     }
 

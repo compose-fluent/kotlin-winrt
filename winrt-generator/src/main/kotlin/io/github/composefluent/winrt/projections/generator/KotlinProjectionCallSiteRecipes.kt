@@ -242,15 +242,13 @@ private fun KotlinProjectionRenderer.buildCallSiteInputCodec(
                 "return if (__value == null) {\n" +
                     "  %T.nullPointer\n" +
                     "} else {\n" +
-                    "  %T.fromRawComPtr((__value as %T).nativeObject.pointer)\n" +
+                    "  ((__value as %T).nativeObject.pointer).asRawAddress()\n" +
                     "}\n",
-                PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 IWINRT_OBJECT_CLASS_NAME,
             )
         } else CodeBlock.of(
-            "return %T.fromRawComPtr((__value as %T).nativeObject.pointer)\n",
-            PLATFORM_ABI_CLASS_NAME,
+            "return ((__value as %T).nativeObject.pointer).asRawAddress()\n",
             IWINRT_OBJECT_CLASS_NAME,
         )
         else -> null
@@ -988,7 +986,7 @@ private fun KotlinProjectionRenderer.renderProjectedReferenceOutputCodec(
     val owner = ClassName.bestGuess(callables.ownerFqName)
     return CodeBlock.builder()
         .add("%L", projectionNullGuard(binding))
-        .add("val __reference = %T(%T.toRawComPtr(__abi))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+        .add("val __reference = %T(__abi.asRawComPtr())\n", IUNKNOWN_REFERENCE_CLASS_NAME)
         .apply {
             if (inspectable) {
                 add("val __inspectable = try {\n")

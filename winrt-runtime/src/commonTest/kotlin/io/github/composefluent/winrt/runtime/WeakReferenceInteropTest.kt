@@ -174,7 +174,7 @@ class WeakReferenceInteropTest {
         val managed = ManagedWeakReferenceTarget("weak")
         val ccw = ComWrappersSupport.createCCWForObject(managed, IID.IInspectable)
         val target = ProjectedWeakReferenceTarget(
-            pointer = PlatformAbi.fromRawComPtr(ccw.getRefPointer()),
+            pointer = ccw.acquireOwnedPointer().asRawAddress(),
             preventReleaseOnDispose = false,
         )
 

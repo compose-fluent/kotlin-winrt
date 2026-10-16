@@ -129,7 +129,7 @@ class KotlinSharedCallSiteInputTest {
                             host.createPrimaryReference().use { input ->
                                 val one = SharedInputOne(input)
                                 val two = SharedInputTwo(input)
-                                val expected = PlatformAbi.fromRawComPtr(input.pointer)
+                                val expected = input.pointer.asRawAddress()
                                 useSharedInputOne(receiver, 6, one); assertEquals(expected, received)
                                 useSharedInputTwo(receiver, 6, two); assertEquals(expected, received)
                                 useSharedInputOneNullable(receiver, 6, one); assertEquals(expected, received)

@@ -68,7 +68,7 @@ open class WinRTReferenceValueAdapter<T>(
 
     open fun createOutputMarshaler(value: T): WinRTObjectMarshaler =
         marshaller(value).let { reference ->
-            WinRTObjectMarshaler(reference.getRefPointer().asRawAddress(), reference::close)
+            WinRTObjectMarshaler(reference.acquireOwnedPointer().asRawAddress(), reference::close)
         }
 
     open fun projectAbi(pointer: RawAddress): T {
@@ -201,7 +201,7 @@ object WinRTReferenceValueAdapters {
             projector = { reference ->
                 reference?.asInspectable() ?: IInspectableReference(PlatformAbi.nullComPtr, IID.IInspectable)
             },
-            marshaller = { value -> IInspectableReference(value.getRefPointer(), IID.IInspectable) },
+            marshaller = { value -> IInspectableReference(value.acquireOwnedPointer(), IID.IInspectable) },
         )
 
     val object_: WinRTReferenceValueAdapter<Any?> =
@@ -636,7 +636,7 @@ object WinRTIteratorProjection {
     ): FromAbiHelper<T> =
         FromAbiHelper(
             iterable = WinRTIteratorReference(
-                reference.getRefPointer().asRawAddress(),
+                reference.acquireOwnedPointer().asRawAddress(),
                 iteratorInterfaceId(elementAdapter),
             ),
             elementAdapter = elementAdapter,

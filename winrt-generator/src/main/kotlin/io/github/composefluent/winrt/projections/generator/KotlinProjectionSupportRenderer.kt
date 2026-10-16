@@ -2113,11 +2113,10 @@ class KotlinProjectionSupportRenderer private constructor(
                     .addCode(
                         CodeBlock.of(
                             """
-                            return %T.findObject(%T.fromRawComPtr(instance.pointer), %T::class)
+                            return %T.findObject(instance.pointer.asRawAddress(), %T::class)
                                 ?: error(%S)
                             """.trimIndent() + "\n",
                             COM_WRAPPERS_SUPPORT_CLASS_NAME,
-                            PLATFORM_ABI_CLASS_NAME,
                             projectedType,
                             "Authored ABI instance for ${plan.type.qualifiedName} is not backed by a registered Kotlin authored object.",
                         ),
@@ -2132,11 +2131,10 @@ class KotlinProjectionSupportRenderer private constructor(
                         CodeBlock.of(
                             """
                             if (%T.isNull(pointer)) return null
-                            return wrap(%T(%T.toRawComPtr(pointer)))
+                            return wrap(%T(pointer.asRawComPtr()))
                             """.trimIndent() + "\n",
                             PLATFORM_ABI_CLASS_NAME,
                             IINSPECTABLE_REFERENCE_CLASS_NAME,
-                            PLATFORM_ABI_CLASS_NAME,
                         ),
                     )
                     .build(),
@@ -2204,7 +2202,7 @@ class KotlinProjectionSupportRenderer private constructor(
                 FunSpec.builder("GetAbi")
                     .addParameter("marshaler", COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
                     .returns(RAW_ADDRESS_CLASS_NAME)
-                    .addCode("return marshaler?.pointer?.let(%T::fromRawComPtr) ?: %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+                    .addCode("return marshaler?.pointer?.let({ it.asRawAddress() }) ?: %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
                     .build(),
             )
             .addFunction(
@@ -2223,12 +2221,11 @@ class KotlinProjectionSupportRenderer private constructor(
                             """
                             val marshaler = CreateMarshaler(value) ?: return %T.nullPointer
                             return try {
-                                %T.fromRawComPtr(marshaler.getRefPointer())
+                                marshaler.acquireOwnedPointer().asRawAddress()
                             } finally {
                                 marshaler.close()
                             }
                             """.trimIndent() + "\n",
-                            PLATFORM_ABI_CLASS_NAME,
                             PLATFORM_ABI_CLASS_NAME,
                         ),
                     )
@@ -2254,12 +2251,11 @@ class KotlinProjectionSupportRenderer private constructor(
                         CodeBlock.of(
                             """
                             if (!%T.isNull(pointer)) {
-                                %T(%T.toRawComPtr(pointer)).close()
+                                %T(pointer.asRawComPtr()).close()
                             }
                             """.trimIndent() + "\n",
                             PLATFORM_ABI_CLASS_NAME,
                             IUNKNOWN_REFERENCE_CLASS_NAME,
-                            PLATFORM_ABI_CLASS_NAME,
                         ),
                     )
                     .build(),
@@ -2292,7 +2288,7 @@ class KotlinProjectionSupportRenderer private constructor(
                     ) { value ->
                         when (value) {
                             is %T -> value
-                            is %T -> %T.fromAbi(%T.fromRawComPtr(value.nativeObject.pointer))
+                            is %T -> %T.fromAbi(value.nativeObject.pointer.asRawAddress())
                                 ?: error(%S)
                             else -> error(%S)
                         }
@@ -2304,7 +2300,6 @@ class KotlinProjectionSupportRenderer private constructor(
                     projectedType,
                     IWINRT_OBJECT_CLASS_NAME,
                     wrapperType,
-                    PLATFORM_ABI_CLASS_NAME,
                     "Could not wrap ABI instance for authored type ${plan.type.qualifiedName}.",
                     "Could not marshal ABI instance for authored type ${plan.type.qualifiedName}.",
                 ),
@@ -2787,13 +2782,12 @@ class KotlinProjectionSupportRenderer private constructor(
                     val winRTObject = value as? %T ?: return null
                     return winRTObject.nativeObject
                         .tryQueryInterface(requestedInterfaceId)
-                        ?.use { queried -> %T.fromRawComPtr(queried.getRefPointer()) }
+                        ?.use { queried -> queried.acquireOwnedPointer().asRawAddress() }
                     """.trimIndent() + "\n",
                     IID_CLASS_NAME,
                     IID_CLASS_NAME,
                     IID_CLASS_NAME,
                     IWINRT_OBJECT_CLASS_NAME,
-                    PLATFORM_ABI_CLASS_NAME,
                 ),
             )
             .build()
@@ -3435,9 +3429,8 @@ class KotlinProjectionSupportRenderer private constructor(
         KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> authoringCcwDecodeAsyncReferenceArgumentCode(binding, index)
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of(
-            "%T(%T.toRawComPtr(rawArgs[%L] as %T)).asInspectable()",
+            "%T((rawArgs[%L] as %T).asRawComPtr()).asInspectable()",
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             index,
             RAW_ADDRESS_CLASS_NAME,
         )
@@ -4007,7 +4000,7 @@ class KotlinProjectionSupportRenderer private constructor(
         valueExpression: String,
     ): CodeBlock =
         CodeBlock.of(
-            "%T.%L(%L, %T(%S)).use { __returnReference -> %T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer())) }",
+            "%T.%L(%L, %T(%S)).use { __returnReference -> %T.writePointer(%L, __returnReference.acquireOwnedPointer().asRawAddress()) }",
             WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
             if (binding.isNullableAbiReturn) "createObjectReferenceOrNull" else customAbi.createReferenceFunctionName,
             valueExpression,
@@ -4015,7 +4008,6 @@ class KotlinProjectionSupportRenderer private constructor(
             customAbi.interfaceId.toString(),
             PLATFORM_ABI_CLASS_NAME,
             outExpression,
-            PLATFORM_ABI_CLASS_NAME,
         )
 
     private fun authoringCcwWriteArrayReturnCode(
@@ -4073,12 +4065,11 @@ class KotlinProjectionSupportRenderer private constructor(
     ): CodeBlock {
         if (binding.kind == KotlinProjectionAbiValueKind.GenericParameter) {
             return CodeBlock.of(
-                "%T.createReference(%L).use { __returnReference -> %T.writePointer(%L, __returnReference?.getRefPointer()?.let(%T::fromRawComPtr) ?: %T.nullPointer) }",
+                "%T.createReference(%L).use { __returnReference -> %T.writePointer(%L, __returnReference?.acquireOwnedPointer()?.let({ it.asRawAddress() }) ?: %T.nullPointer) }",
                 WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME,
                 valueExpression,
                 PLATFORM_ABI_CLASS_NAME,
                 outExpression,
-                PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
             )
         }
@@ -4194,7 +4185,7 @@ class KotlinProjectionSupportRenderer private constructor(
             public fun getWindowHandle(target: Any): RawAddress =
                 winRTProjectionMarshaler(target, "WinRT.Interop.IWindowNative", I_WINDOW_NATIVE_IID).use { marshaler ->
                     IUnknownReference(
-                        pointer = PlatformAbi.toRawComPtr(marshaler.abi),
+                        pointer = marshaler.abi.asRawComPtr(),
                         interfaceId = I_WINDOW_NATIVE_IID,
                         preventReleaseOnDispose = true,
                     ).use { reference ->
@@ -4230,7 +4221,7 @@ ${invocation.toString().prependIndent("                        ")}
             public fun initialize(target: Any, hwnd: RawAddress) {
                 winRTProjectionMarshaler(target, "WinRT.Interop.IInitializeWithWindow", I_INITIALIZE_WITH_WINDOW_IID).use { marshaler ->
                     IUnknownReference(
-                        pointer = PlatformAbi.toRawComPtr(marshaler.abi),
+                        pointer = marshaler.abi.asRawComPtr(),
                         interfaceId = I_INITIALIZE_WITH_WINDOW_IID,
                         preventReleaseOnDispose = true,
                     ).use { reference ->

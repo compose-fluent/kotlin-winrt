@@ -36,8 +36,9 @@ open class ComObjectReference internal constructor(
         ),
     )
 
+    /** Borrows an address valid in the current COM context; does not acquire ownership. */
     val pointer: RawComPtr
-        inline get() = comPtr.checkedPointer()
+        inline get() = comPtr.resolvePointer()
 
     val interfaceId: Guid
         get() = comPtr.interfaceId
@@ -70,8 +71,9 @@ open class ComObjectReference internal constructor(
     fun release(): UInt =
         comPtr.release()
 
-    fun getRefPointer(): RawComPtr =
-        comPtr.getRefPointer()
+    /** Acquires an ABI reference. The caller must release it or transfer it to another owner. */
+    fun acquireOwnedPointer(): RawComPtr =
+        comPtr.acquireOwnedPointer()
 
     open fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? =
         comPtr.tryQueryInterface(requestedInterfaceId)?.let(::wrapQueriedReference)
@@ -84,7 +86,7 @@ open class ComObjectReference internal constructor(
 
     fun getDefaultInterfaceObjectReference(vtableSlot: Int): IUnknownReference {
         throwIfDisposed()
-        val pointer = ComVtableInvoker.invokePointer(comPtr.raw, vtableSlot)
+        val pointer = ComVtableInvoker.invokePointer(comPtr.resolvePointer(), vtableSlot)
         if (PlatformAbi.isNull(pointer)) {
             throw WinRTUnsupportedOperationException(
                 "Fast ABI default-interface object reference returned a null pointer from vtable slot $vtableSlot",

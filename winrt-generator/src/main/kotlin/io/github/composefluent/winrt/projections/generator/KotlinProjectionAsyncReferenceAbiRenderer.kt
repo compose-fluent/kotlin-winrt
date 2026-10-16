@@ -734,40 +734,36 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
         )
     KotlinProjectionAbiValueKind.InspectableReference ->
         CodeBlock.of(
-            "run {\nval __operationResultRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\nval __operationInspectable = try {\n__operationResultRef.asInspectable()\n} finally {\n__operationResultRef.close()\n}\n__operationInspectable\n}",
+            "run {\nval __operationResultRef = %T((%T.readPointer(__operationResultOut)).asRawComPtr())\nval __operationInspectable = try {\n__operationResultRef.asInspectable()\n} finally {\n__operationResultRef.close()\n}\n__operationInspectable\n}",
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
         )
     KotlinProjectionAbiValueKind.UnknownReference ->
         CodeBlock.of(
-            "%T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))",
+            "%T((%T.readPointer(__operationResultOut)).asRawComPtr())",
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
         )
     KotlinProjectionAbiValueKind.ProjectedInterface ->
         resolvedReturnClassName(resultBinding)?.let { resultType ->
             val nullReadback = asyncNullResultReadbackExpression(resultBinding, "__operationResultPointer")
             CodeBlock.of(
-                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\n%L%T.Metadata.wrap(%T(%T.toRawComPtr(__operationResultPointer)))\n}",
+                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\n%L%T.Metadata.wrap(%T(__operationResultPointer.asRawComPtr()))\n}",
                 PLATFORM_ABI_CLASS_NAME,
                 nullReadback,
                 resultType,
                 IUNKNOWN_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
             )
         }
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
         resolvedReturnClassName(resultBinding)?.let { resultType ->
             val nullReadback = asyncNullResultBranchExpression(resultBinding)
             CodeBlock.of(
-                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\nif (%T.isNull(__operationResultPointer)) %L else {\nval __operationResultRef = %T(%T.toRawComPtr(__operationResultPointer))\nval __operationInspectable = try {\n__operationResultRef.asInspectable()\n} finally {\n__operationResultRef.close()\n}\n%T.Metadata.wrap(__operationInspectable)\n}\n}",
+                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\nif (%T.isNull(__operationResultPointer)) %L else {\nval __operationResultRef = %T(__operationResultPointer.asRawComPtr())\nval __operationInspectable = try {\n__operationResultRef.asInspectable()\n} finally {\n__operationResultRef.close()\n}\n%T.Metadata.wrap(__operationInspectable)\n}\n}",
                 PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 nullReadback,
                 IUNKNOWN_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 resultType,
             )
         }
@@ -859,9 +855,8 @@ private fun KotlinProjectionRenderer.asyncNonNullMappedCollectionResultReadbackE
     readOnlyCollectionBindingForReturn(resultBinding)?.let { binding ->
         asyncRuntimeReadOnlyCollectionResultReadback(binding, hoistMetadata)?.let { return it }
         return CodeBlock.of(
-            "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
+            "run {\nval __collectionRef = %T((%T.readPointer(__operationResultOut)).asRawComPtr())\n%L}\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             renderReadOnlyCollectionDelegateInitializer(binding),
         )
@@ -869,9 +864,8 @@ private fun KotlinProjectionRenderer.asyncNonNullMappedCollectionResultReadbackE
     mutableCollectionBindingForReturn(resultBinding)?.let { binding ->
         asyncRuntimeMutableCollectionResultReadback(binding, hoistMetadata)?.let { return it }
         return CodeBlock.of(
-            "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
+            "run {\nval __collectionRef = %T((%T.readPointer(__operationResultOut)).asRawComPtr())\n%L}\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             renderMutableCollectionDelegateInitializer(binding),
         )
@@ -962,9 +956,8 @@ internal fun KotlinProjectionRenderer.mappedCollectionReturnReadback(
         renderStringReadOnlyListReturnReadback(binding)?.let { return it }
         renderRuntimeReadOnlyCollectionReturnReadback(binding)?.let { return it }
         return CodeBlock.of(
-            "val __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn %L\n",
+            "val __collectionRef = %T((%T.readPointer(__resultOut)).asRawComPtr())\nreturn %L\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             renderReadOnlyCollectionDelegateInitializer(binding),
         )
@@ -973,9 +966,8 @@ internal fun KotlinProjectionRenderer.mappedCollectionReturnReadback(
         renderStringMutableListReturnReadback(binding)?.let { return it }
         renderRuntimeMutableCollectionReturnReadback(binding)?.let { return it }
         return CodeBlock.of(
-            "val __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn %L\n",
+            "val __collectionRef = %T((%T.readPointer(__resultOut)).asRawComPtr())\nreturn %L\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             renderMutableCollectionDelegateInitializer(binding),
         )
@@ -1111,7 +1103,7 @@ internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
     val eventSourceType = WINRT_EVENT_SOURCE_CLASS_NAME.parameterizedBy(vectorChangedHandlerType)
     return CodeBlock.of(
         """
-        val __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))
+        val __collectionRef = %T((%T.readPointer(__resultOut)).asRawComPtr())
         val __observableVectorList = %L
         return object : %T, %T by __observableVectorList, %T {
             override val nativeObject: %T
@@ -1131,7 +1123,6 @@ internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
         }
         """.trimIndent() + "\n",
         IUNKNOWN_REFERENCE_CLASS_NAME,
-        PLATFORM_ABI_CLASS_NAME,
         PLATFORM_ABI_CLASS_NAME,
         renderMutableCollectionDelegateInitializer(binding),
         observableVectorType,
@@ -1232,16 +1223,14 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         val projectedType = mappedCollectionProjectedType(typeBinding)
         val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
         return hoistAdapter(projectedType, CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(%T.fromRawComPtr(reference.getRefPointer()), %L) ?: emptyList() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(reference.acquireOwnedPointer().asRawAddress(), %L) ?: emptyList() }, marshaller = { value -> %T((%T.fromManaged(value, %L)).asRawComPtr(), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
             typeSignature,
             WINRT_ITERABLE_PROJECTION_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             elementAdapter,
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             WINRT_ITERABLE_PROJECTION_CLASS_NAME,
             elementAdapter,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
@@ -1253,16 +1242,14 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         val projectedType = mappedCollectionProjectedType(typeBinding)
         val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
         return hoistAdapter(projectedType, CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(%T.fromRawComPtr(reference.getRefPointer()), %L) ?: emptyList() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyList() else %T.fromAbi(reference.acquireOwnedPointer().asRawAddress(), %L) ?: emptyList() }, marshaller = { value -> %T((%T.fromManaged(value, %L)).asRawComPtr(), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
             typeSignature,
             WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             elementAdapter,
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME,
             elementAdapter,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
@@ -1274,16 +1261,14 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         val projectedType = mappedCollectionProjectedType(typeBinding)
         val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
         return hoistAdapter(projectedType, CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) mutableListOf() else %T.fromAbi(%T.fromRawComPtr(reference.getRefPointer()), %L) ?: mutableListOf() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L)), %T.createFromSignature(%L)) })",
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) mutableListOf() else %T.fromAbi(reference.acquireOwnedPointer().asRawAddress(), %L) ?: mutableListOf() }, marshaller = { value -> %T((%T.fromManaged(value, %L)).asRawComPtr(), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
             typeSignature,
             WINRT_LIST_PROJECTION_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             elementAdapter,
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             WINRT_LIST_PROJECTION_CLASS_NAME,
             elementAdapter,
             PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
@@ -1297,18 +1282,16 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
         val interfaceId = collectionInterfaceIdCode(typeBinding, hoistMetadata) ?: return null
         return hoistAdapter(projectedType, CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyMap() else %T.fromAbi(%T.fromRawComPtr(reference.getRefPointer()), %L, %L, %L) ?: emptyMap() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L, %L)), %T.createFromSignature(%L)) })",
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) emptyMap() else %T.fromAbi(reference.acquireOwnedPointer().asRawAddress(), %L, %L, %L) ?: emptyMap() }, marshaller = { value -> %T((%T.fromManaged(value, %L, %L, %L)).asRawComPtr(), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
             typeSignature,
             WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             keyAdapter,
             valueAdapter,
             interfaceId,
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
             keyAdapter,
             valueAdapter,
@@ -1324,18 +1307,16 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         val typeSignature = abiTypeSignature(typeBinding, hoistMetadata) ?: return null
         val interfaceId = collectionInterfaceIdCode(typeBinding, hoistMetadata) ?: return null
         return hoistAdapter(projectedType, CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) linkedMapOf() else %T.fromAbi(%T.fromRawComPtr(reference.getRefPointer()), %L, %L, %L) ?: linkedMapOf() }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value, %L, %L, %L)), %T.createFromSignature(%L)) })",
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) linkedMapOf() else %T.fromAbi(reference.acquireOwnedPointer().asRawAddress(), %L, %L, %L) ?: linkedMapOf() }, marshaller = { value -> %T((%T.fromManaged(value, %L, %L, %L)).asRawComPtr(), %T.createFromSignature(%L)) })",
             WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME,
             projectedType,
             typeBinding.typeName.trim().removeSuffix("?"),
             typeSignature,
             WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             keyAdapter,
             valueAdapter,
             interfaceId,
             IUNKNOWN_REFERENCE_CLASS_NAME,
-            PLATFORM_ABI_CLASS_NAME,
             WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
             keyAdapter,
             valueAdapter,
@@ -1427,9 +1408,9 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             // The adapter lends its input reference only for the projection call.
             // Like CsWinRT MarshalInterface<T>.FromAbi, retain an independent owner
             // before the collection releases its ABI result.
-            CodeBlock.of("%T.Metadata.wrap(%T(it!!.getRefPointer()))", projectedType, IUNKNOWN_REFERENCE_CLASS_NAME)
+            CodeBlock.of("%T.Metadata.wrap(%T(it!!.acquireOwnedPointer()))", projectedType, IUNKNOWN_REFERENCE_CLASS_NAME)
         KotlinProjectionAbiValueKind.UnknownReference ->
-            CodeBlock.of("%T(it!!.getRefPointer())", IUNKNOWN_REFERENCE_CLASS_NAME)
+            CodeBlock.of("%T(it!!.acquireOwnedPointer())", IUNKNOWN_REFERENCE_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference ->
             CodeBlock.of("it!!.asInspectable()")
         else -> return null
@@ -1437,10 +1418,10 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     val marshaller = when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.ProjectedInterface ->
-            CodeBlock.of("%T((it as %T).nativeObject.getRefPointer())", IUNKNOWN_REFERENCE_CLASS_NAME, IWINRT_OBJECT_CLASS_NAME)
+            CodeBlock.of("%T((it as %T).nativeObject.acquireOwnedPointer())", IUNKNOWN_REFERENCE_CLASS_NAME, IWINRT_OBJECT_CLASS_NAME)
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference ->
-            CodeBlock.of("%T(it.getRefPointer())", IUNKNOWN_REFERENCE_CLASS_NAME)
+            CodeBlock.of("%T(it.acquireOwnedPointer())", IUNKNOWN_REFERENCE_CLASS_NAME)
         else -> return null
     }
     // CsWinRT GuidGenerator.GetSignature preserves interface GUIDs inside nested

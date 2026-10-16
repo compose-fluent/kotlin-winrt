@@ -62,7 +62,7 @@ class WinRTProjectionInboundVtableNativeTest {
             assertEquals(
                 0,
                 ComVtableInvoker.invoke(
-                    instance = PlatformAbi.toRawComPtr(lease.abi),
+                    instance = lease.abi.asRawComPtr(),
                     slot = IUnknownVftblSlots.Release,
                 ),
             )

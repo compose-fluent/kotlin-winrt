@@ -19,7 +19,7 @@ internal object AbiFunctionDescriptor {
     ): ComMethodSignature = ComMethodSignature.of(*argumentLayouts)
 }
 
-internal fun MemorySegment.asNativePointer(): RawAddress = asRawAddress()
+internal fun MemorySegment.asRawAddress(): RawAddress = asRawAddress()
 
 internal fun BooleanMarshaller.copyTo(value: Boolean, destination: MemorySegment) {
     copyTo(value, destination.asRawAddress())

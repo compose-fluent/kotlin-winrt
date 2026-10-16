@@ -223,10 +223,6 @@ expect object PlatformAbi {
     fun isNull(pointer: RawAddress): Boolean
     fun isNull(pointer: RawComPtr): Boolean
 
-    fun toRawComPtr(pointer: RawAddress): RawComPtr
-
-    fun fromRawComPtr(pointer: RawComPtr): RawAddress
-
     fun allocatePointerSlot(scope: NativeScope): RawAddress
 
     fun allocateInt8Slot(scope: NativeScope): RawAddress
@@ -355,7 +351,7 @@ internal fun queryInterfaceWithReusableScratch(
         )
         scratch.writeGuid(interfaceId)
         val hResult = ComVtableInvoker.invokeArgs(
-            instance = PlatformAbi.toRawComPtr(unknown),
+            instance = unknown.asRawComPtr(),
             slot = IUnknownVftblSlots.QueryInterface,
             arg0 = interfaceIdPointer,
             arg1 = resultOut,

@@ -42,7 +42,7 @@ internal class MarshalInterfaceReference(
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(
-                    comPtr.raw,
+                    comPtr.resolvePointer(),
                     MarshalInterfaceVftbl.GetUnmarshalClass,
                     interfaceIdMemory,
                     sourcePointer,
@@ -69,7 +69,7 @@ internal class MarshalInterfaceReference(
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(
-                    comPtr.raw,
+                    comPtr.resolvePointer(),
                     MarshalInterfaceVftbl.GetMarshalSizeMax,
                     interfaceIdMemory,
                     sourcePointer,
@@ -96,7 +96,7 @@ internal class MarshalInterfaceReference(
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(
-                    comPtr.raw,
+                    comPtr.resolvePointer(),
                     MarshalInterfaceVftbl.MarshalInterface,
                     streamPointer,
                     interfaceIdMemory,
@@ -120,7 +120,7 @@ internal class MarshalInterfaceReference(
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(
-                    comPtr.raw,
+                    comPtr.resolvePointer(),
                     MarshalInterfaceVftbl.UnmarshalInterface,
                     streamPointer,
                     interfaceIdMemory,
@@ -138,14 +138,14 @@ internal class MarshalInterfaceReference(
     fun releaseMarshalData(streamPointer: RawAddress) {
         comPtr.throwIfDisposed()
         HResult(
-            ComVtableInvoker.invokeArgs(comPtr.raw, MarshalInterfaceVftbl.ReleaseMarshalData, streamPointer),
+            ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), MarshalInterfaceVftbl.ReleaseMarshalData, streamPointer),
         ).requireSuccess("IMarshal.ReleaseMarshalData")
     }
 
     fun disconnectObject(reserved: Int = 0) {
         comPtr.throwIfDisposed()
         HResult(
-            ComVtableInvoker.invokeArgs(comPtr.raw, MarshalInterfaceVftbl.DisconnectObject, reserved),
+            ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), MarshalInterfaceVftbl.DisconnectObject, reserved),
         ).requireSuccess("IMarshal.DisconnectObject")
     }
 }

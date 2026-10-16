@@ -139,16 +139,16 @@ internal object AuthoringActivationFactoryRegistry {
         val factory = createFactory()
         val requestedFactoryPointer = try {
             if (factory.interfaceId == interfaceId || interfaceId == IID.IUnknown) {
-                factory.getRefPointer()
+                factory.acquireOwnedPointer()
             } else {
                 factory.queryInterface(interfaceId).getOrThrow().use { reference ->
-                    reference.getRefPointer()
+                    reference.acquireOwnedPointer()
                 }
             }
         } finally {
             factory.close()
         }
-        return ActivationResult(KnownHResults.S_OK, PlatformAbi.fromRawComPtr(requestedFactoryPointer))
+        return ActivationResult(KnownHResults.S_OK, requestedFactoryPointer.asRawAddress())
     }
 
     fun registerFallback(

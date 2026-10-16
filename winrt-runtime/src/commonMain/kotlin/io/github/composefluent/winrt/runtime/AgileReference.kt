@@ -25,7 +25,7 @@ internal class AgileReferenceInterfaceReference(
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(comPtr.raw, AgileReferenceInterfaceVftbl.Resolve, iidMemory, resultOut),
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), AgileReferenceInterfaceVftbl.Resolve, iidMemory, resultOut),
             ).requireSuccess("IAgileReference.Resolve")
             val resolvedPointer = PlatformAbi.readPointer(resultOut)
             if (PlatformAbi.isNull(resolvedPointer)) {
@@ -55,7 +55,7 @@ internal class GlobalInterfaceTableReference(
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(
-                    comPtr.raw,
+                    comPtr.resolvePointer(),
                     GlobalInterfaceTableVftbl.RegisterInterfaceInGlobal,
                     interfacePointer,
                     iidMemory,
@@ -69,7 +69,7 @@ internal class GlobalInterfaceTableReference(
         HResult(
             run {
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.raw, GlobalInterfaceTableVftbl.RevokeInterfaceFromGlobal, cookie)
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), GlobalInterfaceTableVftbl.RevokeInterfaceFromGlobal, cookie)
             },
         )
 
@@ -84,7 +84,7 @@ internal class GlobalInterfaceTableReference(
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(
-                    comPtr.raw,
+                    comPtr.resolvePointer(),
                     GlobalInterfaceTableVftbl.GetInterfaceFromGlobal,
                     cookie,
                     iidMemory,

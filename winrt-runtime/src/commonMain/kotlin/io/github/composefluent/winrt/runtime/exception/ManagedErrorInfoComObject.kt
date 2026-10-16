@@ -19,7 +19,6 @@ import io.github.composefluent.winrt.runtime.pointerKey
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTUnsupportedOperationException
-import io.github.composefluent.winrt.runtime.asRawComPtr
 import io.github.composefluent.winrt.runtime.guidOf
 import io.github.composefluent.winrt.runtime.platformHResultFromThrowable
 import io.github.composefluent.winrt.runtime.typeDisplayName

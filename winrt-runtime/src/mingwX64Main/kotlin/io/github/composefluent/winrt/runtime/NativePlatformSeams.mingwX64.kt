@@ -775,10 +775,6 @@ actual object PlatformAbi {
 
     actual fun isNull(pointer: RawComPtr): Boolean = pointer.value == 0L
 
-    actual fun toRawComPtr(pointer: RawAddress): RawComPtr = pointer.asRawComPtr()
-
-    actual fun fromRawComPtr(pointer: RawComPtr): RawAddress = pointer.asRawAddress()
-
     actual fun allocatePointerSlot(scope: NativeScope): RawAddress =
         allocateBytes(scope, sizeOf<COpaquePointerVar>())
 

@@ -424,7 +424,7 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
         ensureNotClosed()
         PlatformAbi.writePointer(
             resultOut,
-            completedHandler?.getRefPointer()?.asRawAddress() ?: PlatformAbi.nullPointer,
+            completedHandler?.acquireOwnedPointer()?.asRawAddress() ?: PlatformAbi.nullPointer,
         )
     }
 
@@ -451,7 +451,7 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
         ensureNotClosed()
         PlatformAbi.writePointer(
             resultOut,
-            progressHandler?.getRefPointer()?.asRawAddress() ?: PlatformAbi.nullPointer,
+            progressHandler?.acquireOwnedPointer()?.asRawAddress() ?: PlatformAbi.nullPointer,
         )
     }
 

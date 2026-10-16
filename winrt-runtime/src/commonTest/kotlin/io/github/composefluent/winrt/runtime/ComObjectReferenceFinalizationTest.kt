@@ -19,8 +19,8 @@ class ComObjectReferenceFinalizationTest {
                     parameterKinds = emptyList(),
                     returnKind = WinRTDelegateValueKind.UNIT,
                 )
-                MarshalInspectable.any().disposeAbi(parent.getRefPointer().asRawAddress())
-                MarshalDelegate.disposeAbi(parent.getRefPointer().asRawAddress(), descriptor)
+                MarshalInspectable.any().disposeAbi(parent.acquireOwnedPointer().asRawAddress())
+                MarshalDelegate.disposeAbi(parent.acquireOwnedPointer().asRawAddress(), descriptor)
                 disposeComAbi(PlatformAbi.nullPointer)
                 assertEquals(0, host.agilityQueries)
                 assertEquals(2, host.releaseCalls)

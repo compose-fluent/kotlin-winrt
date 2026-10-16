@@ -35,10 +35,6 @@ internal class ComPtr private constructor(
         }
     }
 
-    @PublishedApi
-    internal val raw: RawComPtr
-        get() = support.pointerForCurrentContext()
-
     @Suppress("unused")
     private val finalizationRegistration = createComPtrFinalizationRegistration(
         target = this,
@@ -58,20 +54,17 @@ internal class ComPtr private constructor(
         }
     }
 
-    val pointer: RawComPtr
-        get() = raw
-
     val interfaceId: Guid
         get() = support.interfaceId
 
-    /** Combines the lifetime check and raw-pointer load for generated hot call sites. */
+    /** Checks lifetime and resolves a borrowed interface address in the current COM context. */
     @Suppress("NOTHING_TO_INLINE")
     @PublishedApi
-    internal inline fun checkedPointer(): RawComPtr {
+    internal inline fun resolvePointer(): RawComPtr {
         if (support.isDisposed) {
             throw WinRTObjectDisposedException("Object reference is disposed.")
         }
-        return raw
+        return support.pointerForCurrentContext()
     }
 
     val isDisposed: Boolean
@@ -95,7 +88,7 @@ internal class ComPtr private constructor(
     fun release(): UInt =
         support.release(::invokeReferenceTrackerReleaseOnPointer)
 
-    fun getRefPointer(): RawComPtr = support.getRef()
+    fun acquireOwnedPointer(): RawComPtr = support.acquireOwnedPointer()
 
     /** Mirrors CsWinRT's IObjectReference.AsKnownPtr ownership transfer. */
     internal fun attachKnownPointer(
@@ -152,7 +145,7 @@ internal class ComPtr private constructor(
      */
     internal fun <T> tryWithQueryInterfacePointer(interfaceId: Guid, block: (RawComPtr) -> T): T? {
         try {
-            val result = WinRTPlatformApi.queryInterfaceRaw(checkedPointer().asRawAddress(), interfaceId)
+            val result = WinRTPlatformApi.queryInterfaceRaw(resolvePointer().asRawAddress(), interfaceId)
             if (result.hResultValue != KnownHResults.S_OK.value) {
                 return null
             }
@@ -195,7 +188,7 @@ internal class ComPtr private constructor(
     internal fun tryAcquireScopedQueryInterfaceLease(interfaceId: Guid): AbiReferenceLease<AutoCloseable>? {
         if (!support.canUseScopedQueryInterfaceLease) return null
         try {
-            val result = WinRTPlatformApi.queryInterfaceRaw(checkedPointer().asRawAddress(), interfaceId)
+            val result = WinRTPlatformApi.queryInterfaceRaw(resolvePointer().asRawAddress(), interfaceId)
             val scopedPointer = result.pointer
             if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(scopedPointer)) {
                 throw WinRTUnsupportedOperationException(
@@ -255,8 +248,7 @@ internal class ComPtr private constructor(
         signature: ComMethodSignature,
         args: LongArray,
     ): Int {
-        throwIfDisposed()
-        return ComVtableInvoker.invokeGeneric(raw, slot, signature, args)
+        return ComVtableInvoker.invokeGeneric(resolvePointer(), slot, signature, args)
     }
 
     @Suppress("NOTHING_TO_INLINE")

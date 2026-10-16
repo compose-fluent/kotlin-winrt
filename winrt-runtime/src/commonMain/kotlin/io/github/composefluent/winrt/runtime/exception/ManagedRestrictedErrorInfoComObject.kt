@@ -20,7 +20,6 @@ import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTRestrictedErrorInfo
 import io.github.composefluent.winrt.runtime.WinRTUnsupportedOperationException
-import io.github.composefluent.winrt.runtime.asRawComPtr
 import io.github.composefluent.winrt.runtime.platformHResultFromThrowable
 
 /**

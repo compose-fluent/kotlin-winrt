@@ -80,7 +80,7 @@ class WinRTBindableProjectionTest {
                 WinRTBindableInterfaceIds.IBindableIterable,
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                WinRTBindableIterableProjection.fromAbi(borrowed.getRefPointer().asRawAddress())!!.use { projected ->
+                WinRTBindableIterableProjection.fromAbi(borrowed.acquireOwnedPointer().asRawAddress())!!.use { projected ->
                     assertEquals(values, projected.toList())
                     assertEquals(
                         WinRTTypeHandle("kotlin.collections.Iterable<kotlin.Any?>", WinRTBindableInterfaceIds.IBindableIterable),
@@ -103,7 +103,7 @@ class WinRTBindableProjectionTest {
             WinRTBindableInterfaceIds.IBindableVector,
             preventReleaseOnDispose = true,
         ).use { borrowed ->
-            WinRTBindableVectorProjection.fromAbi(borrowed.getRefPointer().asRawAddress())!!.use { projected ->
+            WinRTBindableVectorProjection.fromAbi(borrowed.acquireOwnedPointer().asRawAddress())!!.use { projected ->
                 projected[1] = "two"
                 projected.add("three")
                 assertEquals(listOf("one", "two", null, "three"), projected.toList())
@@ -156,7 +156,7 @@ class WinRTBindableProjectionTest {
         )
         val inspectablePointer = host.createReference(Guid("D8D45091-15A2-46A3-9177-84FAD8A5DE8A")).use { reference ->
             reference.asInspectable().use { inspectable ->
-                inspectable.getRefPointer()
+                inspectable.acquireOwnedPointer()
             }
         }
 

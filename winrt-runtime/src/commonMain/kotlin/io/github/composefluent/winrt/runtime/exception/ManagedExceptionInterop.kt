@@ -5,7 +5,6 @@ import io.github.composefluent.winrt.runtime.PlatformRuntime
 import io.github.composefluent.winrt.runtime.WinRTPlatformApi
 import io.github.composefluent.winrt.runtime.WinRTRestrictedErrorInfo
 import io.github.composefluent.winrt.runtime.WinRTRuntimeException
-import io.github.composefluent.winrt.runtime.asRawAddress
 
 internal object ManagedExceptionInterop {
     private var retainedRestrictedErrorInfo: AutoCloseable? = null

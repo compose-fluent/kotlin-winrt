@@ -256,7 +256,7 @@ class ReferenceTrackerInteropTest {
             assertTrue(reference.tryInitializeReferenceTracker())
             assertEquals(2, host.trackerAddRefFromSourceCalls)
 
-            val pointer = reference.getRefPointer()
+            val pointer = reference.acquireOwnedPointer()
 
             assertEquals(PlatformAbi.pointerKey(host.objectPointer), PlatformAbi.pointerKey(pointer))
             assertEquals(1, host.objectAddRefCalls)

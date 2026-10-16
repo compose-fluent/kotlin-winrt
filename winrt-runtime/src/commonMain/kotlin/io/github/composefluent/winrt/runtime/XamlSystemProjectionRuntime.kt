@@ -1593,7 +1593,7 @@ private abstract class NativeAbiEventHandler<T>(
 
 private fun cloneEventHandlerPointer(handlerPointer: RawAddress): RawAddress =
     IUnknownReference(handlerPointer.asRawComPtr(), preventReleaseOnDispose = true).use { handler ->
-        handler.getRefPointer().asRawAddress()
+        handler.acquireOwnedPointer().asRawAddress()
     }
 
 private class NativeCommandChangedHandler(
@@ -1906,7 +1906,7 @@ private fun decodeDelegateObject(argument: Any?): Any? =
     when (argument) {
         null -> null
         is IUnknownReference -> WinRTBindableObjectMarshaller.fromOwnedReference(argument)
-        is ComObjectReference -> WinRTBindableObjectMarshaller.fromOwnedReference(IUnknownReference(argument.getRefPointer(), argument.interfaceId))
+        is ComObjectReference -> WinRTBindableObjectMarshaller.fromOwnedReference(IUnknownReference(argument.acquireOwnedPointer(), argument.interfaceId))
         else -> argument
     }
 

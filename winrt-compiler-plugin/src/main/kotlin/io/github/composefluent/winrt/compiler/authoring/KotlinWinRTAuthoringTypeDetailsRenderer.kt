@@ -1314,20 +1314,18 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                     )
                 }
                 CodeBlock.of(
-                    "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
+                    "%T.Metadata.wrap(%T((%L as %T).asRawComPtr(), %T.IInspectable, preventReleaseOnDispose = true))",
                     projectionClassName(parameter.typeName, semanticHelpers),
                     iInspectableReferenceType,
-                    platformAbiType,
                     rawArg,
                     rawAddressType,
                     iidType,
                 )
             }
             WinRTTypeKind.Interface -> CodeBlock.of(
-                "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IUnknown, preventReleaseOnDispose = true))",
+                "%T.Metadata.wrap(%T((%L as %T).asRawComPtr(), %T.IUnknown, preventReleaseOnDispose = true))",
                 projectionClassName(parameter.typeName, semanticHelpers),
                 iUnknownReferenceType,
-                platformAbiType,
                 rawArg,
                 rawAddressType,
                 iidType,
@@ -2089,10 +2087,9 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                             )
                         } else {
                             CodeBlock.of(
-                                "%T.Metadata.wrap(%T(%T.toRawComPtr(%L), %T.IInspectable, preventReleaseOnDispose = true))",
+                                "%T.Metadata.wrap(%T((%L).asRawComPtr(), %T.IInspectable, preventReleaseOnDispose = true))",
                                 projectionClassName(elementTypeName, semanticHelpers),
                                 iInspectableReferenceType,
-                                platformAbiType,
                                 elementPointer,
                                 iidType,
                             )
@@ -2375,18 +2372,16 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         val projectedType = descriptor.projectedType.parameterizedBy(nestedProjectedTypes)
         val typeSignature = renderWinRTTypeSignature(elementType, typesByName)
         return CodeBlock.of(
-            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) %L else %T.fromAbi(%T.fromRawComPtr(reference.pointer)%L) ?: %L }, marshaller = { value -> %T(%T.toRawComPtr(%T.fromManaged(value%L)), %T.createFromSignature(%L)) })",
+            "%T<%T>(projectedTypeName = %S, typeSignature = %L, projector = { reference -> if (reference == null) %L else %T.fromAbi(reference.pointer.asRawAddress()%L) ?: %L }, marshaller = { value -> %T((%T.fromManaged(value%L)).asRawComPtr(), %T.createFromSignature(%L)) })",
             winRTReferenceValueAdapterType,
             projectedType,
             elementType.typeName,
             typeSignature,
             descriptor.emptyValueExpression,
             descriptor.projectionType,
-            platformAbiType,
             CodeBlock.of("%L", nestedArgumentAdapters.joinToCodeString(prefix = ", ")),
             descriptor.emptyValueExpression,
             iUnknownReferenceType,
-            platformAbiType,
             descriptor.projectionType,
             CodeBlock.of("%L", nestedArgumentAdapters.joinToCodeString(prefix = ", ")),
             parameterizedInterfaceIdType,

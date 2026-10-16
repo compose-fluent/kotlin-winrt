@@ -77,7 +77,7 @@ class WinRTAuthoringTest {
             factory.activateInstance().use { instance ->
                 assertNotNull(
                     ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        instance.pointer.asRawAddress(),
                         HostManifestComponent::class,
                     ),
                 )
@@ -126,7 +126,7 @@ class WinRTAuthoringTest {
             factory.activateInstance().use { instance ->
                 assertNotNull(
                     ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        instance.pointer.asRawAddress(),
                         HostManifestComponent::class,
                     ),
                 )
@@ -169,7 +169,7 @@ class WinRTAuthoringTest {
             factory.activateInstance().use { instance ->
                 assertNotNull(
                     ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        instance.pointer.asRawAddress(),
                         RuntimeAssetsHostComponent::class,
                     ),
                 )
@@ -215,7 +215,7 @@ class WinRTAuthoringTest {
             factory.activateInstance().use { instance ->
                 assertNotNull(
                     ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        instance.pointer.asRawAddress(),
                         RuntimeAssetsHostComponent::class,
                     ),
                 )

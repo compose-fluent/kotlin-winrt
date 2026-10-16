@@ -35,7 +35,7 @@ internal class ContextCallbackReference(
             comPtr.throwIfDisposed()
             HResult(
                 ComVtableInvoker.invokeArgs(
-                    comPtr.raw,
+                    comPtr.resolvePointer(),
                     ContextCallbackVftbl.ContextCallback,
                     callbackPointer,
                     callDataPointer,

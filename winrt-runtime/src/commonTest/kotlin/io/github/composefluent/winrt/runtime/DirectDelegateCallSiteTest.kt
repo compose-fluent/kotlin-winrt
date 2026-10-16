@@ -30,7 +30,7 @@ class DirectDelegateCallSiteTest {
             val pointer = args[0] as RawAddress
             receivedNull = PlatformAbi.isNull(pointer)
             if (!receivedNull) {
-                IUnknownReference(PlatformAbi.toRawComPtr(pointer), preventReleaseOnDispose = true).use { reference ->
+                IUnknownReference(pointer.asRawComPtr(), preventReleaseOnDispose = true).use { reference ->
                     reference.queryInterface(delegate.iid).getOrThrow().use { queried -> assertTrue(!queried.isDisposed) }
                 }
             }

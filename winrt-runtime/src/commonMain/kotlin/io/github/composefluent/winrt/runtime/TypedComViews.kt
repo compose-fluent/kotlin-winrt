@@ -31,7 +31,7 @@ internal class IInspectableView(
             invokeGetRuntimeClassName = { hStringOut ->
                 comPtr.throwIfDisposed()
                 ComVtableInvoker.invokeArgs(
-                    instance = comPtr.raw,
+                    instance = comPtr.resolvePointer(),
                     slot = IInspectableVftblSlots.GetRuntimeClassName,
                     arg0 = hStringOut,
                 )

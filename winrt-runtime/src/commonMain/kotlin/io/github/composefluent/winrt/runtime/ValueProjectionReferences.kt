@@ -70,7 +70,7 @@ internal class WinRTReferenceReference(
     ): T {
         comPtr.throwIfDisposed()
         return WinRTReferenceProjection.readValue(
-            pointer = comPtr.raw.asRawAddress(),
+            pointer = comPtr.resolvePointer().asRawAddress(),
             sizeBytes = sizeBytes,
             alignmentBytes = alignmentBytes,
             readValue = readValue,
@@ -92,7 +92,7 @@ internal class WinRTReferenceArrayReference(
             val countOut = PlatformAbi.allocateInt32Slot(scope)
             val dataOut = PlatformAbi.allocatePointerSlot(scope)
             comPtr.throwIfDisposed()
-            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, countOut, dataOut)
+            val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, countOut, dataOut)
             WinRTPlatformApi.checkSucceededRaw(hr)
             val length = PlatformAbi.readInt32(countOut)
             val data = PlatformAbi.readPointer(dataOut)
@@ -112,7 +112,7 @@ internal class WinRTPropertyValueReference(
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt32Slot(scope)
             comPtr.throwIfDisposed()
-            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, resultOut)
+            val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, resultOut)
             WinRTPlatformApi.checkSucceededRaw(hr)
             PropertyType.fromCode(PlatformAbi.readInt32(resultOut))
         }
@@ -121,7 +121,7 @@ internal class WinRTPropertyValueReference(
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt8Slot(scope)
             comPtr.throwIfDisposed()
-            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 7, resultOut)
+            val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 7, resultOut)
             WinRTPlatformApi.checkSucceededRaw(hr)
             PlatformAbi.readInt8(resultOut).toInt() != 0
         }

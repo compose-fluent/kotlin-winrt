@@ -106,18 +106,18 @@ class WinRTCollectionProjectionTest {
         try {
             val first = requireNotNull(
                 WinRTDictionaryProjection.fromAbi(
-                    owner.getRefPointer().asRawAddress(),
+                    owner.acquireOwnedPointer().asRawAddress(),
                     adapter,
                     adapter,
                     interfaceId,
                 ),
             )
             projected = first
-            val canonicalPointer = PlatformAbi.fromRawComPtr(first.nativeObject.pointer)
+            val canonicalPointer = first.nativeObject.pointer.asRawAddress()
             val retainedReferenceCount = requireNotNull(
                 WinRTInspectableComObject.tryProbeReferenceCount(canonicalPointer),
             )
-            val duplicatePointer = owner.getRefPointer().asRawAddress()
+            val duplicatePointer = owner.acquireOwnedPointer().asRawAddress()
             assertEquals(
                 retainedReferenceCount + 1u,
                 WinRTInspectableComObject.tryProbeReferenceCount(duplicatePointer),
@@ -143,7 +143,7 @@ class WinRTCollectionProjectionTest {
             projected = null
             val replacement = requireNotNull(
                 WinRTDictionaryProjection.fromAbi(
-                    owner.getRefPointer().asRawAddress(),
+                    owner.acquireOwnedPointer().asRawAddress(),
                     adapter,
                     adapter,
                     interfaceId,
@@ -177,7 +177,7 @@ class WinRTCollectionProjectionTest {
                     iterableInterfaceIdFor(adapter),
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
-                    WinRTIterableProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
+                    WinRTIterableProjection.fromAbi(borrowed.acquireOwnedPointer().asRawAddress(), adapter)!!.use { projected ->
                         assertEquals(listOf("one", "two"), projected.toList())
                     }
                 }
@@ -194,7 +194,7 @@ class WinRTCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRTDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asRawAddress(),
+                        borrowed.acquireOwnedPointer().asRawAddress(),
                         adapter,
                         adapter,
                     )!!.use { projected ->
@@ -230,7 +230,7 @@ class WinRTCollectionProjectionTest {
                 iterableInterfaceIdFor(adapter),
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                WinRTIterableProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
+                WinRTIterableProjection.fromAbi(borrowed.acquireOwnedPointer().asRawAddress(), adapter)!!.use { projected ->
                     assertEquals(listOf("one", "two"), projected.toList())
                     assertEquals(iterableTypeHandleFor(adapter), projected.primaryTypeHandle)
                 }
@@ -250,12 +250,12 @@ class WinRTCollectionProjectionTest {
         try {
             ComObjectReference(abi.asRawComPtr(), vectorViewInterfaceIdFor(adapter)).use { owner ->
                 ComObjectReference(owner.pointer, vectorViewInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRTVectorViewReference(borrowed.getRefPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
+                    WinRTVectorViewReference(borrowed.acquireOwnedPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
                         assertEquals(2u, vectorView.size())
                         assertEquals("one", projectBorrowedForTest(vectorView.getAtOrNull(0u), adapter))
                         vectorView.queryInterface(iterableInterfaceIdFor(adapter)).getOrThrow().use { iterable ->
                             WinRTIterableReference(
-                                iterable.getRefPointer().asRawAddress(),
+                                iterable.acquireOwnedPointer().asRawAddress(),
                                 iterableInterfaceIdFor(adapter),
                             ).use { base ->
                                 val iterator = base.first(iteratorInterfaceIdFor(adapter))
@@ -266,7 +266,7 @@ class WinRTCollectionProjectionTest {
                             }
                         }
                     }
-                    WinRTReadOnlyListProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
+                    WinRTReadOnlyListProjection.fromAbi(borrowed.acquireOwnedPointer().asRawAddress(), adapter)!!.use { projected ->
                         assertEquals(listOf("one", "two"), projected.toList())
                     }
                 }
@@ -289,7 +289,7 @@ class WinRTCollectionProjectionTest {
                 preventReleaseOnDispose = true,
             ).use { owner ->
                 ComObjectReference(owner.pointer, vectorViewInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRTVectorViewReference(borrowed.getRefPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
+                    WinRTVectorViewReference(borrowed.acquireOwnedPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
                         assertEquals(null, vectorView.getAtOrNull(0u))
                         assertEquals(listOf(null), vectorView.getMany(0u, 1))
                     }
@@ -301,7 +301,7 @@ class WinRTCollectionProjectionTest {
                 preventReleaseOnDispose = true,
             ).use { owner ->
                 ComObjectReference(owner.pointer, iterableInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRTIterableReference(borrowed.getRefPointer().asRawAddress(), iterableInterfaceIdFor(adapter)).use { iterable ->
+                    WinRTIterableReference(borrowed.acquireOwnedPointer().asRawAddress(), iterableInterfaceIdFor(adapter)).use { iterable ->
                         iterable.first(iteratorInterfaceIdFor(adapter)).use { iterator ->
                             assertTrue(iterator.hasCurrent())
                             assertEquals(null, iterator.currentOrNull())
@@ -399,7 +399,7 @@ class WinRTCollectionProjectionTest {
                 preventReleaseOnDispose = true,
             ).use { owner ->
                 ComObjectReference(owner.pointer, mapViewInterfaceIdFor(keyAdapter, valueAdapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRTMapViewReference(borrowed.getRefPointer().asRawAddress(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { mapView ->
+                    WinRTMapViewReference(borrowed.acquireOwnedPointer().asRawAddress(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { mapView ->
                         assertTrue(mapView.hasKey(key))
                         assertEquals(null, mapView.lookupOrNull(key))
                         assertEquals(null, mapView.lookupOrNull(LabelInspectableBox.create("missing").also(allocated::add).reference))
@@ -412,7 +412,7 @@ class WinRTCollectionProjectionTest {
                 preventReleaseOnDispose = true,
             ).use { owner ->
                 ComObjectReference(owner.pointer, mapInterfaceIdFor(keyAdapter, valueAdapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRTMapReference(borrowed.getRefPointer().asRawAddress(), mapInterfaceIdFor(keyAdapter, valueAdapter)).use { map ->
+                    WinRTMapReference(borrowed.acquireOwnedPointer().asRawAddress(), mapInterfaceIdFor(keyAdapter, valueAdapter)).use { map ->
                         assertTrue(map.hasKey(key))
                         assertEquals(null, map.lookupOrNull(key))
                         assertEquals(null, map.lookupOrNull(LabelInspectableBox.create("missing").also(allocated::add).reference))
@@ -445,12 +445,12 @@ class WinRTCollectionProjectionTest {
                 preventReleaseOnDispose = true,
             ).use { owner ->
                 ComObjectReference(owner.pointer, mapViewInterfaceIdFor(adapter, adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRTMapViewReference(borrowed.getRefPointer().asRawAddress(), mapViewInterfaceIdFor(adapter, adapter)).use { mapView ->
+                    WinRTMapViewReference(borrowed.acquireOwnedPointer().asRawAddress(), mapViewInterfaceIdFor(adapter, adapter)).use { mapView ->
                         assertTrue(mapView.hasKey(PlatformAbi.nullPointer))
                         assertEquals(null, mapView.lookupOrNull(PlatformAbi.nullPointer))
                     }
                     WinRTReadOnlyDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asRawAddress(),
+                        borrowed.acquireOwnedPointer().asRawAddress(),
                         adapter,
                         adapter,
                     )!!.use { projected ->
@@ -466,7 +466,7 @@ class WinRTCollectionProjectionTest {
             ).use { owner ->
                 ComObjectReference(owner.pointer, mapInterfaceIdFor(adapter, adapter), preventReleaseOnDispose = true).use { borrowed ->
                     WinRTDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asRawAddress(),
+                        borrowed.acquireOwnedPointer().asRawAddress(),
                         adapter,
                         adapter,
                     )!!.use { projected ->
@@ -500,7 +500,7 @@ class WinRTCollectionProjectionTest {
         try {
             ComObjectReference(abi.asRawComPtr(), vectorInterfaceIdFor(adapter)).use { owner ->
                 ComObjectReference(owner.pointer, vectorInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRTVectorReference(borrowed.getRefPointer().asRawAddress(), vectorInterfaceIdFor(adapter)).use { vector ->
+                    WinRTVectorReference(borrowed.acquireOwnedPointer().asRawAddress(), vectorInterfaceIdFor(adapter)).use { vector ->
                         adapter.marshaller("updated").use { value ->
                             vector.setAt(0u, value)
                         }
@@ -512,7 +512,7 @@ class WinRTCollectionProjectionTest {
 
                     assertEquals(listOf("updated", "three"), managed)
 
-                    WinRTListProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
+                    WinRTListProjection.fromAbi(borrowed.acquireOwnedPointer().asRawAddress(), adapter)!!.use { projected ->
                         projected.add("four")
                         assertEquals(listOf("updated", "three", "four"), projected.toList())
                     }
@@ -571,7 +571,7 @@ class WinRTCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRTReadOnlyDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asRawAddress(),
+                        borrowed.acquireOwnedPointer().asRawAddress(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->
@@ -612,7 +612,7 @@ class WinRTCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRTReadOnlyDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asRawAddress(),
+                        borrowed.acquireOwnedPointer().asRawAddress(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->
@@ -644,7 +644,7 @@ class WinRTCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRTDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asRawAddress(),
+                        borrowed.acquireOwnedPointer().asRawAddress(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->

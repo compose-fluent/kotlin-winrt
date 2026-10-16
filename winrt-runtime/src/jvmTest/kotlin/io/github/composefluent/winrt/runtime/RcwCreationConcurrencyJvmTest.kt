@@ -81,5 +81,5 @@ class RcwCreationConcurrencyJvmTest {
     }
 
     private fun WinRTInspectableComObject.ownedPointer(): RawAddress =
-        createReference(IID.IInspectable).use { it.getRefPointer().asRawAddress() }
+        createReference(IID.IInspectable).use { it.acquireOwnedPointer().asRawAddress() }
 }

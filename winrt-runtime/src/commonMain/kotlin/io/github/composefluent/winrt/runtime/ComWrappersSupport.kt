@@ -909,7 +909,7 @@ object ComWrappersSupport {
         value: Any,
         instance: ComObjectReference,
     ) {
-        registerObjectForComInterface(value, PlatformAbi.fromRawComPtr(instance.pointer))
+        registerObjectForComInterface(value, instance.pointer.asRawAddress())
     }
 
     /**
@@ -925,7 +925,7 @@ object ComWrappersSupport {
     ): T {
         var ownershipTransferred = false
         try {
-            findObject(PlatformAbi.fromRawComPtr(instance.pointer), staticallyDeterminedType)?.let { cached ->
+            findObject(instance.pointer.asRawAddress(), staticallyDeterminedType)?.let { cached ->
                 instance.close()
                 ownershipTransferred = true
                 return cached
@@ -952,7 +952,7 @@ object ComWrappersSupport {
         instance: IUnknownReference,
         defaultInterfaceId: Guid,
     ): IInspectableReference =
-        IInspectableReference(instance.getRefPointer(), defaultInterfaceId)
+        IInspectableReference(instance.acquireOwnedPointer(), defaultInterfaceId)
             .also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
 
     fun attachComposableFactoryResult(
@@ -1302,7 +1302,7 @@ object ComWrappersSupport {
         if (winRTObject != null && winRTObject.hasUnwrappableNativeObject) {
             val nativeObject = winRTObject.nativeObject
             if (interfaceId == null || interfaceId == nativeObject.interfaceId) {
-                return PlatformAbi.fromRawComPtr(nativeObject.getRefPointer())
+                return nativeObject.acquireOwnedPointer().asRawAddress()
             }
             return nativeObject.queryInterface(interfaceId).getOrThrow().useAndGetRef()
         }
@@ -1313,7 +1313,7 @@ object ComWrappersSupport {
                 "reference=${reference.interfaceId} aggregated=${reference.isAggregated}"
         }
         return try {
-            PlatformAbi.fromRawComPtr(reference.getRefPointer())
+            reference.acquireOwnedPointer().asRawAddress()
         } finally {
             reference.close()
         }
@@ -1328,7 +1328,7 @@ object ComWrappersSupport {
             ?: return null
         val outerReference = composableReference.outer
         val detachedPointer = if (interfaceId == null || interfaceId == outerReference.interfaceId) {
-            PlatformAbi.fromRawComPtr(outerReference.getRefPointer())
+            outerReference.acquireOwnedPointer().asRawAddress()
         } else if (interfaceId == IID.IUnknown || interfaceId == IID.IInspectable) {
             queryInterfacePointerForAbi(outerReference, interfaceId)
         } else {
@@ -1355,8 +1355,8 @@ object ComWrappersSupport {
                 val instanceOut = PlatformAbi.allocatePointerSlot(scope)
                 HResult(createInstance(baseInterface, innerOut, instanceOut)).requireSuccess()
                 WinRTComposableFactoryResult(
-                    inner = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(innerOut)),
-                    instance = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(instanceOut)),
+                    inner = (PlatformAbi.readPointer(innerOut)).asRawComPtr(),
+                    instance = (PlatformAbi.readPointer(instanceOut)).asRawComPtr(),
                 )
             }
         }
@@ -1385,8 +1385,8 @@ object ComWrappersSupport {
                 val instanceOut = PlatformAbi.allocatePointerSlot(scope)
                 HResult(createInstance(baseInterface, innerOut, instanceOut)).requireSuccess()
                 WinRTComposableFactoryResult(
-                    inner = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(innerOut)),
-                    instance = PlatformAbi.toRawComPtr(PlatformAbi.readPointer(instanceOut)),
+                    inner = (PlatformAbi.readPointer(innerOut)).asRawComPtr(),
+                    instance = (PlatformAbi.readPointer(instanceOut)).asRawComPtr(),
                 )
             }
         }
@@ -1428,15 +1428,15 @@ object ComWrappersSupport {
         return try {
             val baseInspectable = host.createReference(IID.IInspectable)
             val factoryResult = try {
-                createInstance(PlatformAbi.fromRawComPtr(baseInspectable.pointer))
+                createInstance(baseInspectable.pointer.asRawAddress())
             } finally {
                 baseInspectable.close()
             }
-            val innerPointer = PlatformAbi.fromRawComPtr(factoryResult.inner)
+            val innerPointer = factoryResult.inner.asRawAddress()
             if (!PlatformAbi.isNull(innerPointer)) {
                 host.registerExternalPointerAlias(innerPointer)
             }
-            val instancePointer = PlatformAbi.fromRawComPtr(factoryResult.instance)
+            val instancePointer = factoryResult.instance.asRawAddress()
             if (PlatformAbi.isNull(instancePointer)) {
                 throw WinRTUnsupportedOperationException(
                     "Composable factory returned a null instance pointer.",
@@ -1477,7 +1477,7 @@ object ComWrappersSupport {
                 ))
             } else {
                 IInspectableReference(
-                    PlatformAbi.toRawComPtr(innerPointer),
+                    innerPointer.asRawComPtr(),
                     IID.IInspectable,
                     preventReleaseOnDispose = isAggregatedReferenceTrackerObject,
                     isAggregated = isAggregation,
@@ -1502,7 +1502,7 @@ object ComWrappersSupport {
                         nativeObjectLifetime = nativeLifetime,
                     ))
                 } else IInspectableReference(
-                    PlatformAbi.toRawComPtr(projectedInstancePointer),
+                    projectedInstancePointer.asRawComPtr(),
                     requestedInstanceInterfaceId,
                     preventReleaseOnDispose = isAggregation || isAggregatedReferenceTrackerObject,
                 )
@@ -1670,7 +1670,7 @@ object ComWrappersSupport {
 
     private fun ComObjectReference.asUnknownReference(interfaceId: Guid): IUnknownReference =
         this as? IUnknownReference ?: try {
-            IUnknownReference(getRefPointer(), interfaceId)
+            IUnknownReference(acquireOwnedPointer(), interfaceId)
         } finally {
             close()
         }
@@ -1685,7 +1685,7 @@ object ComWrappersSupport {
         // Mirrors CsWinRT IObjectReference.TryAs(Guid, out IntPtr) used from ICustomQueryInterface:
         // the QI result is an ABI-owned pointer and must not take the aggregated As<T>() release path.
         val result = WinRTPlatformApi.queryInterfaceRaw(
-            PlatformAbi.fromRawComPtr(reference.pointer),
+            reference.pointer.asRawAddress(),
             requestedInterfaceId,
         )
         val queriedPointer = result.pointer

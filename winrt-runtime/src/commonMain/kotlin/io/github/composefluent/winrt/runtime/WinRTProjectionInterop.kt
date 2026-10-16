@@ -130,7 +130,7 @@ fun acquireBorrowedInterfaceReference(
 ): IUnknownReference? {
     if (PlatformAbi.isNull(pointer)) return null
     return IUnknownReference(
-        retainBorrowedComPointer(PlatformAbi.toRawComPtr(pointer)),
+        retainBorrowedComPointer(pointer.asRawComPtr()),
         interfaceId,
     )
 }
@@ -144,7 +144,7 @@ internal fun acquireBorrowedInterfaceReference(
     if (PlatformAbi.isNull(pointer)) return null
     return IUnknownReference(
         ComPtr.create(
-            raw = retainBorrowedComPointer(PlatformAbi.toRawComPtr(pointer)),
+            raw = retainBorrowedComPointer(pointer.asRawComPtr()),
             interfaceIdLowBits = interfaceIdLowBits,
             interfaceIdHighBits = interfaceIdHighBits,
         ),
@@ -154,7 +154,7 @@ internal fun acquireBorrowedInterfaceReference(
 fun acquireBorrowedInspectableReference(pointer: RawAddress): IInspectableReference? {
     if (PlatformAbi.isNull(pointer)) return null
     return IUnknownReference(
-        PlatformAbi.toRawComPtr(pointer),
+        pointer.asRawComPtr(),
         preventReleaseOnDispose = true,
     ).tryAsInspectable()
 }
@@ -329,14 +329,14 @@ public inline fun tryBorrowWinRTManagedInspectableAbi(value: Any?): RawAddress {
 internal fun cloneComReference(reference: ComObjectReference): ComObjectReference =
     ComReferenceWrapperSupport.wrap(
         kind = reference.wrapperKind,
-        pointer = reference.getRefPointer(),
+        pointer = reference.acquireOwnedPointer(),
         interfaceId = reference.interfaceId,
         wrapUnknown = ::IUnknownReference,
         wrapInspectable = ::IInspectableReference,
         wrapActivationFactory = ::ActivationFactoryReference,
     )
 
-internal fun <T : ComObjectReference> T.useAndGetRef(): RawAddress = use { it.getRefPointer().asRawAddress() }
+internal fun <T : ComObjectReference> T.useAndGetRef(): RawAddress = use { it.acquireOwnedPointer().asRawAddress() }
 
 private fun borrowedProjectionReference(
     value: Any,

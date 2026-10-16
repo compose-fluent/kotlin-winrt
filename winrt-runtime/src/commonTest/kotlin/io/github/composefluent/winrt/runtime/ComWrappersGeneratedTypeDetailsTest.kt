@@ -13,7 +13,7 @@ class ComWrappersGeneratedTypeDetailsTest {
         val managed = GeneratedDetailsComponent("payload")
 
         ComWrappersSupport.createCCWForObject(managed, GENERATED_DETAILS_INTERFACE_ID).use { ccw ->
-            val pointer = PlatformAbi.fromRawComPtr(ccw.pointer)
+            val pointer = ccw.pointer.asRawAddress()
             val found = ComWrappersSupport.findObject(pointer, GeneratedDetailsComponent::class)
             val info = ComWrappersSupport.getInspectableInfo(pointer)
 

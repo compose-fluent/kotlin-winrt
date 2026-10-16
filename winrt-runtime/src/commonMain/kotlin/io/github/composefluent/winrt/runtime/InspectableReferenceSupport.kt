@@ -27,7 +27,7 @@ internal object ActivationFactoryReferenceSupport {
         acquireNativeScalarScratchFrame().use { resultOut ->
             comPtr.throwIfDisposed()
             val hResult = ComVtableInvoker.invokeArgs(
-                instance = comPtr.raw,
+                instance = comPtr.resolvePointer(),
                 slot = IActivationFactoryVftblSlots.ActivateInstance,
                 arg0 = resultOut,
             )

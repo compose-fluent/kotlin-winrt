@@ -39,7 +39,7 @@ internal object ReferenceTrackerManager {
         source: PlatformManagedWeakReference<ReferenceTrackerSource>,
     ): Long {
         ensureManager(trackerPointer)
-        val key = PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(trackerPointer))
+        val key = PlatformAbi.pointerKey(trackerPointer.asRawAddress())
         var connect = false
         val registrationKey = lock.withLock {
             val entry = trackers.getOrPut(key) {
@@ -71,7 +71,7 @@ internal object ReferenceTrackerManager {
             if (entry.sources.isNotEmpty()) {
                 return@withLock null
             }
-            trackers.remove(PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(entry.pointer)))
+            trackers.remove(PlatformAbi.pointerKey(entry.pointer.asRawAddress()))
             disconnectedReleases += disconnectedRelease
             entry
         } ?: return false
@@ -115,7 +115,7 @@ internal object ReferenceTrackerManager {
             trackers.clear()
             registrations.clear()
             if (!PlatformAbi.isNull(managerPointer)) {
-                WinRTPlatformApi.releaseRaw(PlatformAbi.fromRawComPtr(managerPointer))
+                WinRTPlatformApi.releaseRaw(managerPointer.asRawAddress())
                 managerPointer = PlatformAbi.nullComPtr
             }
         }
@@ -139,7 +139,7 @@ internal object ReferenceTrackerManager {
                 }
                 managerPointer = candidate
             } catch (failure: Throwable) {
-                WinRTPlatformApi.releaseRaw(PlatformAbi.fromRawComPtr(candidate))
+                WinRTPlatformApi.releaseRaw(candidate.asRawAddress())
                 throw failure
             }
         }
@@ -157,7 +157,7 @@ internal object ReferenceTrackerManager {
             )
             PlatformAbi.readPointer(resultOut)
                 .takeUnless(PlatformAbi::isNull)
-                ?.let(PlatformAbi::toRawComPtr)
+                ?.let({ it.asRawComPtr() })
                 ?: throw WinRTNullReferenceException(
                     "IReferenceTracker.GetReferenceTrackerManager returned a null pointer.",
                     KnownHResults.E_POINTER,
@@ -284,7 +284,7 @@ internal object ReferenceTrackerManager {
 
         platformTryWinRTProjectionInboundBinding(unknown.value)?.host?.let { host ->
             host.createReference(IID.IReferenceTrackerTarget).use { target ->
-                PlatformAbi.writePointer(resultOut, target.getRefPointer().asRawAddress())
+                PlatformAbi.writePointer(resultOut, target.acquireOwnedPointer().asRawAddress())
             }
             return KnownHResults.S_OK.value
         }
@@ -297,7 +297,7 @@ internal object ReferenceTrackerManager {
             val proxy = ComWrappersSupport.createRcwForComObject(identityResult.pointer)
                 ?: return KnownHResults.E_NOINTERFACE.value
             ComWrappersSupport.createReferenceTrackerTargetForObject(proxy).use { target ->
-                PlatformAbi.writePointer(resultOut, target.getRefPointer().asRawAddress())
+                PlatformAbi.writePointer(resultOut, target.acquireOwnedPointer().asRawAddress())
             }
             KnownHResults.S_OK.value
         } finally {

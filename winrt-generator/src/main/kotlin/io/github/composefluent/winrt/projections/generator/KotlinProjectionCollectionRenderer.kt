@@ -198,9 +198,8 @@ private fun KotlinProjectionRenderer.runtimeMutableCollectionDelegateInitializer
             // consumes an owned reference, so never transfer the cache's borrowed pointer.
             val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
             CodeBlock.of(
-                "%T.fromAbi(%T.fromRawComPtr(%L.getRefPointer()), %L) ?: error(%S)\n",
+                "%T.fromAbi(%L.acquireOwnedPointer().asRawAddress(), %L) ?: error(%S)\n",
                 WINRT_LIST_PROJECTION_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 binding.ownerCachePropertyName,
                 elementAdapter,
                 "WINRT_E_NULL_ABI_RETURN",
@@ -210,9 +209,8 @@ private fun KotlinProjectionRenderer.runtimeMutableCollectionDelegateInitializer
             val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
             val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
             CodeBlock.of(
-                "%T.fromAbi(%T.fromRawComPtr(%L.getRefPointer()), %L, %L) ?: error(%S)\n",
+                "%T.fromAbi(%L.acquireOwnedPointer().asRawAddress(), %L, %L) ?: error(%S)\n",
                 WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 binding.ownerCachePropertyName,
                 keyAdapter,
                 valueAdapter,
@@ -297,9 +295,8 @@ private fun KotlinProjectionRenderer.runtimeReadOnlyCollectionDelegateInitialize
         KotlinProjectionReadOnlyCollectionKind.Iterable -> {
             val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
             CodeBlock.of(
-                "%T.fromAbi(%T.fromRawComPtr(%L.getRefPointer()), %L) ?: error(%S)\n",
+                "%T.fromAbi(%L.acquireOwnedPointer().asRawAddress(), %L) ?: error(%S)\n",
                 WINRT_ITERABLE_PROJECTION_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 binding.ownerCachePropertyName,
                 elementAdapter,
                 "WINRT_E_NULL_ABI_RETURN",
@@ -308,9 +305,8 @@ private fun KotlinProjectionRenderer.runtimeReadOnlyCollectionDelegateInitialize
         KotlinProjectionReadOnlyCollectionKind.VectorView -> {
             val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
             CodeBlock.of(
-                "%T.fromAbi(%T.fromRawComPtr(%L.getRefPointer()), %L) ?: error(%S)\n",
+                "%T.fromAbi(%L.acquireOwnedPointer().asRawAddress(), %L) ?: error(%S)\n",
                 WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 binding.ownerCachePropertyName,
                 elementAdapter,
                 "WINRT_E_NULL_ABI_RETURN",
@@ -320,9 +316,8 @@ private fun KotlinProjectionRenderer.runtimeReadOnlyCollectionDelegateInitialize
             val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
             val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
             CodeBlock.of(
-                "%T.fromAbi(%T.fromRawComPtr(%L.getRefPointer()), %L, %L) ?: error(%S)\n",
+                "%T.fromAbi(%L.acquireOwnedPointer().asRawAddress(), %L, %L) ?: error(%S)\n",
                 WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 binding.ownerCachePropertyName,
                 keyAdapter,
                 valueAdapter,

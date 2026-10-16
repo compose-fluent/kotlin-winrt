@@ -470,7 +470,7 @@ internal class WinRTInspectableComObject(
         val forwardTarget = queryInterfaceForwardReference()
             ?: return NativePointerResult(KnownHResults.E_NOINTERFACE.value, PlatformAbi.nullPointer)
         return WinRTPlatformApi.queryInterfaceRaw(
-            PlatformAbi.fromRawComPtr(forwardTarget.pointer),
+            forwardTarget.pointer.asRawAddress(),
             interfaceId,
         )
     }
@@ -483,7 +483,7 @@ internal class WinRTInspectableComObject(
             return PlatformAbi.nullPointer
         }
         return queryInterfaceForwardReference()
-            ?.let { reference -> PlatformAbi.fromRawComPtr(reference.pointer) }
+            ?.let { reference -> reference.pointer.asRawAddress() }
             ?: PlatformAbi.nullPointer
     }
 

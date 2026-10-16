@@ -604,7 +604,7 @@ object MarshalReferenceValueAdapter {
 
 object MarshalDelegate {
     fun createMarshaler(value: WinRTDelegateReference?): WinRTDelegateReference? =
-        value?.let { WinRTDelegateReference.fromAbi(it.getRefPointer().asRawAddress(), it.descriptor) }
+        value?.let { WinRTDelegateReference.fromAbi(it.acquireOwnedPointer().asRawAddress(), it.descriptor) }
 
     fun getAbi(value: WinRTDelegateReference?): RawAddress = value?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
 
@@ -614,7 +614,7 @@ object MarshalDelegate {
     fun fromBorrowedAbi(pointer: RawAddress, descriptor: WinRTDelegateDescriptor): WinRTDelegateReference? {
         if (PlatformAbi.isNull(pointer)) return null
         return WinRTDelegateReference.fromAbi(
-            retainBorrowedComPointer(PlatformAbi.toRawComPtr(pointer)).asRawAddress(),
+            retainBorrowedComPointer(pointer.asRawComPtr()).asRawAddress(),
             descriptor,
         )
     }
@@ -629,7 +629,7 @@ object MarshalDelegate {
 
     fun fromProjected(value: WinRTProjectedDelegate?): RawAddress {
         ComWrappersSupport.tryUnwrapObject(value)?.use { reference ->
-            return reference.getRefPointer().asRawAddress()
+            return reference.acquireOwnedPointer().asRawAddress()
         }
         return value?.let { ProjectedDelegateCcwCache.acquireMarshalingReference(it) }
             ?: PlatformAbi.nullPointer

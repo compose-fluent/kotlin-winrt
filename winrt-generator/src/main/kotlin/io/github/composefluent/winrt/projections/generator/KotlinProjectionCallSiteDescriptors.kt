@@ -824,12 +824,12 @@ private fun KotlinProjectionRenderer.arrayElementDecodeExpression(
             when (recipe.referenceAccess) {
                 WinRTProjectionCallSiteReferenceAccess.RAW_ADDRESS -> pointer
                 WinRTProjectionCallSiteReferenceAccess.RAW_COM_PTR ->
-                    CodeBlock.of("%T.toRawComPtr(%L)", PLATFORM_ABI_CLASS_NAME, pointer)
+                    CodeBlock.of("(%L).asRawComPtr()", pointer)
                 WinRTProjectionCallSiteReferenceAccess.UNKNOWN_REFERENCE,
                 WinRTProjectionCallSiteReferenceAccess.PROJECTED_OBJECT ->
-                    CodeBlock.of("%T(%T.toRawComPtr(%L))", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, pointer)
+                    CodeBlock.of("%T((%L).asRawComPtr())", IUNKNOWN_REFERENCE_CLASS_NAME, pointer)
                 WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE ->
-                    CodeBlock.of("%T(%T.toRawComPtr(%L))", IINSPECTABLE_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, pointer)
+                    CodeBlock.of("%T((%L).asRawComPtr())", IINSPECTABLE_REFERENCE_CLASS_NAME, pointer)
                 null -> error("COM array recipe '${recipe.typeSignature}' has no reference access contract.")
             }
         }
@@ -945,11 +945,10 @@ private fun arrayElementCleanupPlan(recipe: WinRTProjectionCallSiteRecipe): Arra
             ArrayElementCleanup(
                 KotlinProjectionArrayDisposalKey(KotlinArrayCleanupKind.COM_REFERENCE),
                 CodeBlock.of(
-                    "if (!%T.isNull(%L)) %T(%T.toRawComPtr(%L)).close()",
+                    "if (!%T.isNull(%L)) %T((%L).asRawComPtr()).close()",
                     PLATFORM_ABI_CLASS_NAME,
                     pointer,
                     IUNKNOWN_REFERENCE_CLASS_NAME,
-                    PLATFORM_ABI_CLASS_NAME,
                     pointer,
                 ),
             )

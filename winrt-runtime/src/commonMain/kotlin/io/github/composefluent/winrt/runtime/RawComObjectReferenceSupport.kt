@@ -106,7 +106,7 @@ internal class RawComObjectReferenceSupport(
 
     fun addRef(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
-        val count = WinRTPlatformApi.addRefRaw(pointerForCurrentContext().asNativePointer())
+        val count = WinRTPlatformApi.addRefRaw(pointerForCurrentContext().asRawAddress())
         addRefFromTrackerSource(addRefFromTrackerSourceCallback)
         return count
     }
@@ -114,13 +114,13 @@ internal class RawComObjectReferenceSupport(
     fun release(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit): UInt {
         throwIfDisposed()
         releaseFromTrackerSource(releaseFromTrackerSourceCallback)
-        return WinRTPlatformApi.releaseRaw(pointerForCurrentContext().asNativePointer())
+        return WinRTPlatformApi.releaseRaw(pointerForCurrentContext().asRawAddress())
     }
 
-    fun getRef(): RawComPtr {
+    fun acquireOwnedPointer(): RawComPtr {
         throwIfDisposed()
         val currentPointer = pointerForCurrentContext()
-        WinRTPlatformApi.addRefRaw(currentPointer.asNativePointer())
+        WinRTPlatformApi.addRefRaw(currentPointer.asRawAddress())
         return currentPointer
     }
 
@@ -130,7 +130,7 @@ internal class RawComObjectReferenceSupport(
         wrapReference: (RawComPtr, Guid, RawComPtr, Boolean, Boolean) -> T,
     ): T? {
         throwIfDisposed()
-        val result = WinRTPlatformApi.queryInterfaceRaw(pointerForCurrentContext().asNativePointer(), requestedInterfaceId)
+        val result = WinRTPlatformApi.queryInterfaceRaw(pointerForCurrentContext().asRawAddress(), requestedInterfaceId)
         val queriedPointer = result.pointer.asRawComPtr()
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(queriedPointer)) {
             return null
@@ -174,7 +174,7 @@ internal class RawComObjectReferenceSupport(
         }
 
         val trackerPointer = tryQueryComInterface(
-            pointerForCurrentContext().asNativePointer(),
+            pointerForCurrentContext().asRawAddress(),
             IID.IReferenceTracker,
         ).asRawComPtr()
         if (PlatformAbi.isNull(trackerPointer)) {
@@ -204,15 +204,15 @@ internal class RawComObjectReferenceSupport(
         val otherIdentity = try {
             tryQueryIUnknown(other.pointerForCurrentContext()) ?: return false
         } catch (error: Throwable) {
-            WinRTPlatformApi.releaseRaw(thisIdentity.asNativePointer())
+            WinRTPlatformApi.releaseRaw(thisIdentity.asRawAddress())
             throw error
         }
 
         return try {
             PlatformAbi.samePointer(thisIdentity, otherIdentity)
         } finally {
-            WinRTPlatformApi.releaseRaw(thisIdentity.asNativePointer())
-            WinRTPlatformApi.releaseRaw(otherIdentity.asNativePointer())
+            WinRTPlatformApi.releaseRaw(thisIdentity.asRawAddress())
+            WinRTPlatformApi.releaseRaw(otherIdentity.asRawAddress())
         }
     }
 
@@ -227,7 +227,7 @@ internal class RawComObjectReferenceSupport(
                 if (!preventReleaseOnDispose) {
                     releaseFromTrackerSource(releaseFromTrackerSourceCallback)
                     if (!tryReleaseManagedCcwReference(managedCcwReleaseIdentity)) {
-                        WinRTPlatformApi.releaseRaw(pointer.asNativePointer())
+                        WinRTPlatformApi.releaseRaw(pointer.asRawAddress())
                     }
                 }
                 releaseReferenceTracker(releaseFromTrackerSourceCallback, releaseTrackerPointer)
@@ -308,7 +308,7 @@ internal class RawComObjectReferenceSupport(
     }
 
     private fun tryQueryIUnknown(target: RawComPtr): RawComPtr? {
-        val result = WinRTPlatformApi.queryInterfaceRaw(target.asNativePointer(), IID.IUnknown)
+        val result = WinRTPlatformApi.queryInterfaceRaw(target.asRawAddress(), IID.IUnknown)
         val unknownPointer = result.pointer.asRawComPtr()
         if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(unknownPointer)) {
             return null
@@ -317,7 +317,4 @@ internal class RawComObjectReferenceSupport(
         return unknownPointer
     }
 
-    private fun RawComPtr.asNativePointer(): RawAddress = PlatformAbi.fromRawComPtr(this)
-
-    private fun RawAddress.asRawComPtr(): RawComPtr = PlatformAbi.toRawComPtr(this)
 }

@@ -339,7 +339,7 @@ open class WinRTAsyncActionWithProgressReference<TProgress> internal constructor
 
 object WinRTAsyncProjectionInterop {
     fun toAbi(value: WinRTAsyncReferenceBase?): RawAddress =
-        value?.let { reference -> PlatformAbi.fromRawComPtr(reference.pointer) } ?: PlatformAbi.nullPointer
+        value?.let { reference -> reference.pointer.asRawAddress() } ?: PlatformAbi.nullPointer
 
     fun <T> operation(
         pointer: RawAddress,

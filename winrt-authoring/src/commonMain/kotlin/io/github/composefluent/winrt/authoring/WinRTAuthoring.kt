@@ -123,7 +123,7 @@ data class WinRTAuthoredActivationFactoryDefinition<T : Any>(
         val instance = create()
         if (instance is WinUIXamlComponent) initializeWinUIXamlComponent(instance)
         ComWrappersSupport.createCCWForObject(instance).use { reference ->
-            PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(reference.getRefPointer()))
+            PlatformAbi.writePointer(instanceOut, reference.acquireOwnedPointer().asRawAddress())
         }
         return KnownHResults.S_OK.value
     }

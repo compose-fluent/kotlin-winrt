@@ -315,8 +315,7 @@ internal class KotlinComInteropSourceRenderer(
         val asyncExpression = typeRenderer.asyncReferenceExpression(
             returnBinding = asyncReturnBinding,
             pointerExpression = CodeBlock.of(
-                "%T.fromRawComPtr(__asyncReference.pointer)",
-                PLATFORM_ABI_CLASS_NAME,
+                "__asyncReference.pointer.asRawAddress()",
             ),
         ) ?: unsupportedMethod(
             descriptor,

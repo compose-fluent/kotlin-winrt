@@ -300,15 +300,9 @@ internal class WinRTDirectCallBackend private constructor(
             val rawAddress = pluginContext.findDirectClass(WINRT_RAW_ADDRESS_CLASS_ID, fromFile) ?: return null
             val rawComPtrValue = rawComPtr.directPropertyGetter("value") ?: return null
             val rawAddressValue = rawAddress.directPropertyGetter("value") ?: return null
-            val rawComPtrAsRawAddress = pluginContext.findDirectFunctions(
-                CallableId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("asRawAddress")),
-                fromFile,
-            ).filter { symbol ->
-                symbol.owner.parameters.singleOrNull { parameter ->
-                    parameter.kind == IrParameterKind.ExtensionReceiver
-                }?.type?.classFqName == WINRT_RAW_COM_PTR_FQ_NAME &&
-                    symbol.owner.parameters.none { parameter -> parameter.kind == IrParameterKind.Regular }
-            }.toList().uniqueImplementation() ?: return null
+            val rawComPtrAsRawAddress = rawComPtr.directFunction(
+                "asRawAddress", emptyList(), WINRT_RAW_ADDRESS_FQ_NAME.asString(),
+            ) ?: return null
             val jvm = JvmFfmSymbols.create(pluginContext, fromFile, rawComPtrValue, rawAddressValue)
             val native = NativeCInteropSymbols.create(
                 pluginContext,

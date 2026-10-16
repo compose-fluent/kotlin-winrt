@@ -95,7 +95,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(command, IID.ICommand).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer().asRawAddress(),
+                    reference.acquireOwnedPointer().asRawAddress(),
                     WinRTTypeHandle(TypeNameSupport.getNameForType(ICommand::class), IID.ICommand),
                 ) as ICommand
 
@@ -125,7 +125,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(notifier, IID.MUX_INotifyPropertyChanged).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer().asRawAddress(),
+                    reference.acquireOwnedPointer().asRawAddress(),
                     WinRTTypeHandle(
                         TypeNameSupport.getNameForType(INotifyPropertyChanged::class),
                         IID.MUX_INotifyPropertyChanged,
@@ -159,12 +159,12 @@ class XamlSystemProjectionRuntimeTest {
         val dataErrors = DataErrorsChangedEventArgs("Field")
 
         ComWrappersSupport.createCCWForObject(propertyChanged).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as PropertyChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.acquireOwnedPointer().asRawAddress()) as PropertyChangedEventArgs
             assertEquals("Name", projected.propertyName)
         }
 
         ComWrappersSupport.createCCWForObject(collectionChanged).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as NotifyCollectionChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.acquireOwnedPointer().asRawAddress()) as NotifyCollectionChangedEventArgs
             assertEquals(NotifyCollectionChangedAction.Replace, projected.action)
             assertEquals(listOf("new"), projected.newItems)
             assertEquals(listOf("old"), projected.oldItems)
@@ -173,7 +173,7 @@ class XamlSystemProjectionRuntimeTest {
         }
 
         ComWrappersSupport.createCCWForObject(dataErrors).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as DataErrorsChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.acquireOwnedPointer().asRawAddress()) as DataErrorsChangedEventArgs
             assertEquals("Field", projected.propertyName)
         }
     }
@@ -186,7 +186,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(target, IID.ICustomPropertyProvider).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer().asRawAddress(),
+                    reference.acquireOwnedPointer().asRawAddress(),
                     WinRTTypeHandle(
                         TypeNameSupport.getNameForType(ICustomPropertyProvider::class),
                         IID.ICustomPropertyProvider,
@@ -206,7 +206,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(serviceProvider, IID.IServiceProvider).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer().asRawAddress(),
+                    reference.acquireOwnedPointer().asRawAddress(),
                     WinRTTypeHandle(TypeNameSupport.getNameForType(IXamlServiceProvider::class), IID.IServiceProvider),
                 ) as IXamlServiceProvider
 
@@ -221,7 +221,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(42).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer().asRawAddress(),
+                    reference.acquireOwnedPointer().asRawAddress(),
                     WinRTTypeHandle(TypeNameSupport.getNameForType(IStringable::class), IID.IStringable),
                 ) as IStringable
 
@@ -236,7 +236,7 @@ class XamlSystemProjectionRuntimeTest {
         ComWrappersSupport.createCCWForObject(target, IID.ICustomPropertyProvider).use { reference ->
             val projected =
                 ComWrappersSupport.createRcwForComObject(
-                    reference.getRefPointer().asRawAddress(),
+                    reference.acquireOwnedPointer().asRawAddress(),
                     WinRTTypeHandle(
                         TypeNameSupport.getNameForType(ICustomPropertyProvider::class),
                         IID.ICustomPropertyProvider,

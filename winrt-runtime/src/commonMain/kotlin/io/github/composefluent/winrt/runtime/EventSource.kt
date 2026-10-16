@@ -90,7 +90,7 @@ abstract class EventSource<T : Any> private constructor(
                     }
                 } else {
                     eventInvokeHandle.createReference().use { reference ->
-                        state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
+                        state.initializeReferenceTracking(reference.pointer.asRawAddress())
                         state.token = requireNotNull(addHandler)(objectReference, reference)
                     }
                 }

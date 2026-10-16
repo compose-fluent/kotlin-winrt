@@ -44,7 +44,7 @@ class WinRTAuthoringCommonTest {
             ActivationFactory.get(name).use { factory ->
                 factory.activateInstance().use { reference ->
                     val instance = assertNotNull(ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(reference.pointer), XamlActivationComponent::class))
+                        reference.pointer.asRawAddress(), XamlActivationComponent::class))
                     assertEquals(1, instance.initializations)
                     assertEquals(1, instance.loads)
                 }
@@ -131,7 +131,7 @@ class WinRTAuthoringCommonTest {
                 }
                 assertNotNull(
                     ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        instance.pointer.asRawAddress(),
                         ActivatableComponent::class,
                     ),
                 )
@@ -244,8 +244,8 @@ class WinRTAuthoringCommonTest {
                         )
                         retainedInner = ComWrappersSupport.createCCWForObject(InnerComponent, innerIid)
                         val inner = requireNotNull(retainedInner)
-                        PlatformAbi.writePointer(innerOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
-                        PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
+                        PlatformAbi.writePointer(innerOut, inner.acquireOwnedPointer().asRawAddress())
+                        PlatformAbi.writePointer(instanceOut, inner.acquireOwnedPointer().asRawAddress())
                         KnownHResults.S_OK.value
                     },
                 ),
@@ -258,7 +258,7 @@ class WinRTAuthoringCommonTest {
             }.use { composed ->
                 assertEquals(
                     OuterComponent,
-                    ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(composed.outer.pointer), OuterComponent::class),
+                    ComWrappersSupport.findObject(composed.outer.pointer.asRawAddress(), OuterComponent::class),
                 )
                 assertNotNull(composed.inner)
                 composed.outer.queryInterface(innerIid).getOrThrow().use { forwarded ->
@@ -341,11 +341,11 @@ class WinRTAuthoringCommonTest {
         assertTrue(PlatformAbi.isNull(missing))
         val forwarded = WinRTAuthoring.getActivationFactory("Sample.Authoring.ForwardedComponent")
         assertTrue(!PlatformAbi.isNull(forwarded))
-        ActivationFactoryReference(PlatformAbi.toRawComPtr(forwarded)).use { factory ->
+        ActivationFactoryReference(forwarded.asRawComPtr()).use { factory ->
             factory.activateInstance().use { instance ->
                 assertNotNull(
                     ComWrappersSupport.findObject(
-                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        instance.pointer.asRawAddress(),
                         FallbackActivatedComponent::class,
                     ),
                 )
@@ -402,11 +402,11 @@ class WinRTAuthoringCommonTest {
                 )
                 val factoryPointer = PlatformAbi.readPointer(factoryOut)
                 assertTrue(!PlatformAbi.isNull(factoryPointer))
-                ActivationFactoryReference(PlatformAbi.toRawComPtr(factoryPointer)).use { factory ->
+                ActivationFactoryReference(factoryPointer.asRawComPtr()).use { factory ->
                     factory.activateInstance().use { instance ->
                         assertNotNull(
                             ComWrappersSupport.findObject(
-                                PlatformAbi.fromRawComPtr(instance.pointer),
+                                instance.pointer.asRawAddress(),
                                 HostActivatedComponent::class,
                             ),
                         )
@@ -509,14 +509,14 @@ class WinRTAuthoringCommonTest {
 
         var retainedInner: ComObjectReference? = null
         WinRTAuthoring.createComposableObject(OuterComponent, outerIid) { baseInterface, innerOut, instanceOut ->
-            val outer = IUnknownReference(PlatformAbi.toRawComPtr(baseInterface), preventReleaseOnDispose = true)
+            val outer = IUnknownReference(baseInterface.asRawComPtr(), preventReleaseOnDispose = true)
             outer.queryInterface(outerIid).getOrThrow().use { queried ->
                 ComVtableInvoker.invoke(queried.pointer, 6)
             }
             retainedInner = ComWrappersSupport.createCCWForObject(InnerComponent, innerIid)
             val inner = requireNotNull(retainedInner)
-            PlatformAbi.writePointer(innerOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
-            PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
+            PlatformAbi.writePointer(innerOut, inner.acquireOwnedPointer().asRawAddress())
+            PlatformAbi.writePointer(instanceOut, inner.acquireOwnedPointer().asRawAddress())
             KnownHResults.S_OK.value
         }.use { composed ->
             assertEquals(1, outerInvoked)
@@ -569,21 +569,21 @@ class WinRTAuthoringCommonTest {
         WinRTAuthoring.createComposableObject(outerComponent, outerIid) { _, innerOut, instanceOut ->
             retainedInner = ComWrappersSupport.createCCWForObject(InnerComponent, innerIid)
             val inner = requireNotNull(retainedInner)
-            PlatformAbi.writePointer(innerOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
-            PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
+            PlatformAbi.writePointer(innerOut, inner.acquireOwnedPointer().asRawAddress())
+            PlatformAbi.writePointer(instanceOut, inner.acquireOwnedPointer().asRawAddress())
             KnownHResults.S_OK.value
         }.use { composed ->
             assertEquals(
                 outerComponent,
-                ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(composed.outer.pointer), OuterComponent::class),
+                ComWrappersSupport.findObject(composed.outer.pointer.asRawAddress(), OuterComponent::class),
             )
             assertEquals(
                 outerComponent,
-                ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(composed.instance.pointer), OuterComponent::class),
+                ComWrappersSupport.findObject(composed.instance.pointer.asRawAddress(), OuterComponent::class),
             )
             assertEquals(
                 outerComponent,
-                ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(requireNotNull(composed.inner).pointer), OuterComponent::class),
+                ComWrappersSupport.findObject((requireNotNull(composed.inner).pointer).asRawAddress(), OuterComponent::class),
             )
         }
         // A live composition restores the outer, but disposing it must not leave
@@ -591,7 +591,7 @@ class WinRTAuthoringCommonTest {
         assertEquals(
             null,
             ComWrappersSupport.findObject(
-                PlatformAbi.fromRawComPtr(requireNotNull(retainedInner).pointer), OuterComponent::class,
+                (requireNotNull(retainedInner).pointer).asRawAddress(), OuterComponent::class,
             ),
         )
         retainedInner?.close()
@@ -630,8 +630,8 @@ class WinRTAuthoringCommonTest {
         WinRTAuthoring.createComposableObject(OuterComponent, outerIid) { _, innerOut, instanceOut ->
             retainedInner = ComWrappersSupport.createCCWForObject(TrackedInnerComponent, innerIid)
             val inner = requireNotNull(retainedInner)
-            PlatformAbi.writePointer(innerOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
-            PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(inner.getRefPointer()))
+            PlatformAbi.writePointer(innerOut, inner.acquireOwnedPointer().asRawAddress())
+            PlatformAbi.writePointer(instanceOut, inner.acquireOwnedPointer().asRawAddress())
             KnownHResults.S_OK.value
         }.use { composed ->
             assertEquals(true, composed.isAggregatedReferenceTrackerObject)

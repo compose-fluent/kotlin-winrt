@@ -87,7 +87,7 @@ open class WinRTCollectionReferenceBase(
         value: String,
         adapter: WinRTReferenceValueAdapter<T>,
     ): T? {
-        val instance = comPtr.checkedPointer()
+        val instance = comPtr.resolvePointer()
         return winRTDirectInvokeHStringPointerResult(instance, slot, value) { hResult, result ->
             RawObjectAbiSupport.lookupResult(hResult, result) { pointer ->
                 adapter.projectOwnedAbi(pointer)
@@ -144,47 +144,47 @@ open class WinRTCollectionReferenceBase(
 
     protected fun invokeSlot(slot: Int): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invoke(comPtr.raw, slot)
+        return ComVtableInvoker.invoke(comPtr.resolvePointer(), slot)
     }
 
     protected fun invokeSlot(slot: Int, arg0: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0)
     }
 
     protected fun invokeSlot(slot: Int, arg0: UInt): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0)
     }
 
     protected fun invokeSlot(slot: Int, arg0: RawAddress, arg1: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1)
     }
 
     protected fun invokeSlot(slot: Int, arg0: Int, arg1: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1)
     }
 
     protected fun invokeSlot(slot: Int, arg0: UInt, arg1: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1)
     }
 
     protected fun invokeSlot(slot: Int, arg0: RawAddress, arg1: RawAddress, arg2: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1, arg2)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1, arg2)
     }
 
     protected fun invokeSlot(slot: Int, arg0: Int, arg1: RawAddress, arg2: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1, arg2)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1, arg2)
     }
 
     protected fun invokeSlot(slot: Int, arg0: UInt, arg1: Int, arg2: RawAddress, arg3: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1, arg2, arg3)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1, arg2, arg3)
     }
 }
 
@@ -518,7 +518,7 @@ open class WinRTMapViewReference(
 
     open fun asIterable(iterableInterfaceId: Guid): WinRTIterableReference =
         queryInterface(iterableInterfaceId).getOrThrow().use { reference ->
-            createIterableReference(reference.getRefPointer().asRawAddress(), iterableInterfaceId)
+            createIterableReference(reference.acquireOwnedPointer().asRawAddress(), iterableInterfaceId)
         }
 
     protected open fun createUnknownReference(
@@ -554,7 +554,7 @@ open class WinRTMapReference(
 ) : WinRTCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun asIterable(iterableInterfaceId: Guid): WinRTIterableReference =
         queryInterface(iterableInterfaceId).getOrThrow().use { reference ->
-            WinRTIterableReference(reference.getRefPointer().asRawAddress(), iterableInterfaceId)
+            WinRTIterableReference(reference.acquireOwnedPointer().asRawAddress(), iterableInterfaceId)
         }
 
     open fun lookup(key: ComObjectReference): IUnknownReference =

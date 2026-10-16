@@ -33,7 +33,7 @@ class RcwCreationConcurrencyNativeTest {
         try {
             val futures = workers.map { worker ->
                 worker.execute(TransferMode.SAFE, { host }) { host ->
-                    val pointer = host.createReference(IID.IInspectable).use { it.getRefPointer().asRawAddress() }
+                    val pointer = host.createReference(IID.IInspectable).use { it.acquireOwnedPointer().asRawAddress() }
                     ComWrappersSupport.createRcwForOwnedComObject(pointer) as IWinRTObject
                 }
             }

@@ -370,14 +370,13 @@ private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(
                         .returns(projectedType)
                         .addCode(
                             "require(!%T.isNull(instance)) { %S }\n" +
-                                "return %T(%T.toRawComPtr(instance), TYPE_HANDLE.interfaceId, preventReleaseOnDispose = true).use { __reference ->\n" +
+                                "return %T(instance.asRawComPtr(), TYPE_HANDLE.interfaceId, preventReleaseOnDispose = true).use { __reference ->\n" +
                                 "  val __projection = NativeProjection(__reference)\n" +
                                 "  EntrySnapshot(__projection.key, __projection.value)\n" +
                                 "}\n",
                             PLATFORM_ABI_CLASS_NAME,
                             "IKeyValuePair ABI reference cannot be null.",
                             IUNKNOWN_REFERENCE_CLASS_NAME,
-                            PLATFORM_ABI_CLASS_NAME,
                         )
                         .build(),
                 )
@@ -386,10 +385,9 @@ private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(
                         .addModifiers(KModifier.INTERNAL)
                         .addParameter("instance", RAW_ADDRESS_CLASS_NAME)
                         .addCode(
-                            "if (!%T.isNull(instance)) %T(%T.toRawComPtr(instance), TYPE_HANDLE.interfaceId).close()\n",
+                            "if (!%T.isNull(instance)) %T(instance.asRawComPtr(), TYPE_HANDLE.interfaceId).close()\n",
                             PLATFORM_ABI_CLASS_NAME,
                             IUNKNOWN_REFERENCE_CLASS_NAME,
-                            PLATFORM_ABI_CLASS_NAME,
                         )
                         .build(),
                 )
@@ -406,7 +404,7 @@ private fun KotlinProjectionRenderer.renderClosedGenericProjectionHelper(
                                 CodeBlock.of(
                                     "%T<%T>(projectedTypeName = %S, typeSignature = %L, " +
                                         "projector = { reference -> wrap(requireNotNull(reference)) }, " +
-                                        "marshaller = { value -> %T((value as %T).nativeObject.getRefPointer()) })",
+                                        "marshaller = { value -> %T((value as %T).nativeObject.acquireOwnedPointer()) })",
                                     WinRTReferenceValueAdapter::class,
                                     projectedType,
                                     binding.typeName.removeSuffix("?"),

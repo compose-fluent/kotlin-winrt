@@ -517,7 +517,7 @@ class MarshalersTest {
         )
         val inspectablePointer = host.createReference(Guid("88888888-8888-8888-8888-888888888888")).use { reference ->
             reference.asInspectable().use { inspectable ->
-                inspectable.getRefPointer()
+                inspectable.acquireOwnedPointer()
             }
         }
 

@@ -163,7 +163,7 @@ object WinUIXamlMetadataProvider {
                     .getOrThrow()
                     .let { reference ->
                         try {
-                            WinUIXamlMetadataProviderReference(reference.getRefPointer().asRawAddress(), WinUIXamlInterfaceIds.IXamlMetadataProvider)
+                            WinUIXamlMetadataProviderReference(reference.acquireOwnedPointer().asRawAddress(), WinUIXamlInterfaceIds.IXamlMetadataProvider)
                         } finally {
                             reference.close()
                         }
@@ -208,7 +208,7 @@ object XamlMetadataProvider {
         return ActivationFactory.get(runtimeClassName).use { factory ->
             factory.activateInstance().use { instance ->
                 instance.queryInterface(abi.metadataProvider).getOrThrow().use { reference ->
-                    XamlMetadataProviderReference(reference.getRefPointer().asRawAddress(), abi.metadataProvider, abi.type)
+                    XamlMetadataProviderReference(reference.acquireOwnedPointer().asRawAddress(), abi.metadataProvider, abi.type)
                 }
             }
         }

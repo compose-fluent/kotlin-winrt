@@ -214,10 +214,10 @@ internal fun KotlinProjectionRenderer.delegateFromBorrowedAbiCode(
                 null
             } else {
                 val __ownedDelegatePointer = %T(
-                    pointer = %T.toRawComPtr(__delegatePointer),
+                    pointer = __delegatePointer.asRawComPtr(),
                     interfaceId = %L,
                     preventReleaseOnDispose = true,
-                ).use { __borrowed -> %T.fromRawComPtr(__borrowed.getRefPointer()) }
+                ).use { __borrowed -> __borrowed.acquireOwnedPointer().asRawAddress() }
                 %L
             }
         }
@@ -225,9 +225,7 @@ internal fun KotlinProjectionRenderer.delegateFromBorrowedAbiCode(
         pointerExpression,
         PLATFORM_ABI_CLASS_NAME,
         IUNKNOWN_REFERENCE_CLASS_NAME,
-        PLATFORM_ABI_CLASS_NAME,
         interfaceId,
-        PLATFORM_ABI_CLASS_NAME,
         if (binding.typeArguments.isEmpty()) {
             CodeBlock.of("%T.Metadata.fromAbi(__ownedDelegatePointer)", delegateType)
         } else {
@@ -282,7 +280,7 @@ internal fun KotlinProjectionRenderer.mappedKeyValuePairReturnReadback(
     val valueType = resolveValueTypeName(valueBinding)
     return CodeBlock.of(
         """
-        val __pairRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))
+        val __pairRef = %T((%T.readPointer(__resultOut)).asRawComPtr())
         fun __readKey(__pair: %T): %T {
             %L
         }
@@ -297,7 +295,6 @@ internal fun KotlinProjectionRenderer.mappedKeyValuePairReturnReadback(
         }
         """.trimIndent() + "\n",
         IUNKNOWN_REFERENCE_CLASS_NAME,
-        PLATFORM_ABI_CLASS_NAME,
         PLATFORM_ABI_CLASS_NAME,
         IUNKNOWN_REFERENCE_CLASS_NAME,
         keyType,

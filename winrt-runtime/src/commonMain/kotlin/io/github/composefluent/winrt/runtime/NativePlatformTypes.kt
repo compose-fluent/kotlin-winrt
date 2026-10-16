@@ -6,6 +6,9 @@ import kotlin.jvm.JvmInline
 value class RawAddress(
     val value: Long,
 ) {
+    /** Reinterprets this address as a COM interface address; does not acquire a reference. */
+    fun asRawComPtr(): RawComPtr = RawComPtr(value)
+
     companion object {
         val Null: RawAddress = RawAddress(0L)
     }
@@ -15,6 +18,9 @@ value class RawAddress(
 value class RawComPtr(
     val value: Long,
 ) {
+    /** Exposes the interface address without changing COM ownership. */
+    fun asRawAddress(): RawAddress = RawAddress(value)
+
     companion object {
         val Null: RawComPtr = RawComPtr(0L)
     }

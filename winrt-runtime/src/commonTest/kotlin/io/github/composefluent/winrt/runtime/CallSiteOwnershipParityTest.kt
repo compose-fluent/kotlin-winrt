@@ -85,7 +85,7 @@ private class OwnedInspectableGetterHost private constructor(
                 }
                 throw error
             }
-            InspectableReference(PlatformAbi.toRawComPtr(result))
+            InspectableReference(result.asRawComPtr())
         }
 
     override fun close() {
@@ -152,6 +152,5 @@ private class OwnedInspectableGetterHost private constructor(
     }
 }
 
-private fun RawAddress.asRawComPtr(): RawComPtr = PlatformAbi.toRawComPtr(this)
 
 private const val GET_RESULT_SLOT: Int = 6

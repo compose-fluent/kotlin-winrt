@@ -3726,14 +3726,13 @@ class KotlinProjectionRenderer(
             NativeStructReferenceFieldKind.String ->
                 CodeBlock.of("%T.fromHandle(%T.readPointer(%L), owner = false).use { it.toKString() }", HSTRING_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice)
             NativeStructReferenceFieldKind.UnknownReference ->
-                CodeBlock.of("%T(%T.toRawComPtr(%T.readPointer(%L)), preventReleaseOnDispose = true).use { %T(it.getRefPointer()) }", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice, IUNKNOWN_REFERENCE_CLASS_NAME)
+                CodeBlock.of("%T((%T.readPointer(%L)).asRawComPtr(), preventReleaseOnDispose = true).use { %T(it.acquireOwnedPointer()) }", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice, IUNKNOWN_REFERENCE_CLASS_NAME)
             NativeStructReferenceFieldKind.InspectableReference ->
-                CodeBlock.of("%T(%T.toRawComPtr(%T.readPointer(%L)), %T.IInspectable, preventReleaseOnDispose = true).use { %T(it.getRefPointer(), %T.IInspectable) }", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice, IID_CLASS_NAME, IINSPECTABLE_REFERENCE_CLASS_NAME, IID_CLASS_NAME)
+                CodeBlock.of("%T((%T.readPointer(%L)).asRawComPtr(), %T.IInspectable, preventReleaseOnDispose = true).use { %T(it.acquireOwnedPointer(), %T.IInspectable) }", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice, IID_CLASS_NAME, IINSPECTABLE_REFERENCE_CLASS_NAME, IID_CLASS_NAME)
             NativeStructReferenceFieldKind.ProjectedInterface,
             NativeStructReferenceFieldKind.ProjectedRuntimeClass -> CodeBlock.of(
-                "run {\nval __fieldRef = %T(%T.toRawComPtr(%T.readPointer(%L)), preventReleaseOnDispose = true)\n%T.Metadata.wrap(%T(__fieldRef.getRefPointer()))\n}",
+                "run {\nval __fieldRef = %T((%T.readPointer(%L)).asRawComPtr(), preventReleaseOnDispose = true)\n%T.Metadata.wrap(%T(__fieldRef.acquireOwnedPointer()))\n}",
                 IUNKNOWN_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 slice,
                 resolveTypeName(field.typeName),
@@ -3757,14 +3756,13 @@ class KotlinProjectionRenderer(
                 CodeBlock.of("%T.writePointer(%L, %T.create(%L).handle)", PLATFORM_ABI_CLASS_NAME, slice, HSTRING_CLASS_NAME, value)
             NativeStructReferenceFieldKind.UnknownReference,
             NativeStructReferenceFieldKind.InspectableReference ->
-                CodeBlock.of("%T.writePointer(%L, %T.fromRawComPtr(%L.getRefPointer()))", PLATFORM_ABI_CLASS_NAME, slice, PLATFORM_ABI_CLASS_NAME, value)
+                CodeBlock.of("%T.writePointer(%L, (%L.acquireOwnedPointer()).asRawAddress())", PLATFORM_ABI_CLASS_NAME, slice, value)
             NativeStructReferenceFieldKind.ProjectedInterface,
             NativeStructReferenceFieldKind.ProjectedRuntimeClass ->
                 CodeBlock.of(
-                    "%T.writePointer(%L, %T.fromRawComPtr((%L as %T).nativeObject.getRefPointer()))",
+                    "%T.writePointer(%L, ((%L as %T).nativeObject.acquireOwnedPointer()).asRawAddress())",
                     PLATFORM_ABI_CLASS_NAME,
                     slice,
-                    PLATFORM_ABI_CLASS_NAME,
                     value,
                     IWINRT_OBJECT_CLASS_NAME,
                 )
@@ -3792,7 +3790,7 @@ class KotlinProjectionRenderer(
             NativeStructReferenceFieldKind.InspectableReference,
             NativeStructReferenceFieldKind.ProjectedInterface,
             NativeStructReferenceFieldKind.ProjectedRuntimeClass ->
-                CodeBlock.of("if (%L != %T.nullPointer) %T(%T.toRawComPtr(%L)).close()", pointer, PLATFORM_ABI_CLASS_NAME, IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, pointer)
+                CodeBlock.of("if (%L != %T.nullPointer) %T((%L).asRawComPtr()).close()", pointer, PLATFORM_ABI_CLASS_NAME, IUNKNOWN_REFERENCE_CLASS_NAME, pointer)
             null -> if (renderAbiTypeBinding(field.typeName, typesByQualifiedName, currentNamespace).kind == KotlinProjectionAbiValueKind.Struct &&
                 !isWinRTGuidTypeName(field.typeName)
             ) CodeBlock.of("%T.Metadata.disposeAbi(%L)", resolveTypeName(field.typeName), slice) else null

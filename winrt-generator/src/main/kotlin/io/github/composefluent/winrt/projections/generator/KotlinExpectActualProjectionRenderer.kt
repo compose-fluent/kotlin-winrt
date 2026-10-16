@@ -919,7 +919,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     add("if (%T.isNull(__abi)) error(%S)\n", PLATFORM_ABI_CLASS_NAME, "WINRT_E_NULL_ABI_RETURN")
                 }
             }
-            .add("val __resultRef = %T(%T.toRawComPtr(__abi))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+            .add("val __resultRef = %T(__abi.asRawComPtr())\n", IUNKNOWN_REFERENCE_CLASS_NAME)
             .add("return %T.wrap(__resultRef)\n", jvmInterfaceProjectionSupportClassName(returnInterface))
             .build()
         return copy(

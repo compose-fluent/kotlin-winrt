@@ -643,10 +643,9 @@ private fun KotlinProjectionRenderer.delegateNonNullCallbackArgumentCode(
             val projectedType = resolveTypeName(typeBinding.resolvedTypeName).copy(nullable = false)
             if (customAbi.fromAbiFunctionName == "objectFromAbi") {
                 CodeBlock.of(
-                    "%T.%L(%T.fromRawComPtr((__args[%L] as %T).getRefPointer()), %T(%S, %T(%S)), %T::class) ?: error(%S)",
+                    "%T.%L(((__args[%L] as %T).acquireOwnedPointer()).asRawAddress(), %T(%S, %T(%S)), %T::class) ?: error(%S)",
                     WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
                     customAbi.fromAbiFunctionName,
-                    PLATFORM_ABI_CLASS_NAME,
                     index,
                     IINSPECTABLE_REFERENCE_CLASS_NAME,
                     WINRT_TYPE_HANDLE_CLASS_NAME,
@@ -658,10 +657,9 @@ private fun KotlinProjectionRenderer.delegateNonNullCallbackArgumentCode(
                 )
             } else {
                 CodeBlock.of(
-                    "%T.%L(%T.fromRawComPtr((__args[%L] as %T).getRefPointer())) ?: error(%S)",
+                    "%T.%L(((__args[%L] as %T).acquireOwnedPointer()).asRawAddress()) ?: error(%S)",
                     WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
                     customAbi.fromAbiFunctionName,
-                    PLATFORM_ABI_CLASS_NAME,
                     index,
                     IINSPECTABLE_REFERENCE_CLASS_NAME,
                     "WINRT_E_NULL_ABI_DELEGATE_ARGUMENT",

@@ -73,7 +73,7 @@ class EventRuntimeInfrastructureCommonTest {
                 addHandler = { _, handler ->
                     registrations += 1
                     activeDelegate?.close()
-                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.acquireOwnedPointer().asRawAddress(), testIntEventDescriptor)
                     token
                 },
                 removeHandler = { _, removedToken ->
@@ -125,7 +125,7 @@ class EventRuntimeInfrastructureCommonTest {
                 addHandler = { _, handler ->
                     registrations += 1
                     activeDelegate?.close()
-                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.acquireOwnedPointer().asRawAddress(), testIntEventDescriptor)
                     EventRegistrationToken(registrations.toLong())
                 },
                 removeHandler = { _, _ ->
@@ -229,7 +229,7 @@ class EventRuntimeInfrastructureCommonTest {
                 addHandler = { _, handler ->
                     activeDelegate =
                         WinRTDelegateReference.fromAbi(
-                            handler.getRefPointer().asRawAddress(),
+                            handler.acquireOwnedPointer().asRawAddress(),
                             testIntEventDescriptor,
                         )
                     EventRegistrationToken(0x12345678_00000001)
@@ -333,7 +333,7 @@ class EventRuntimeInfrastructureCommonTest {
                 owner = owner,
                 addHandler = { _, handler ->
                     activeDelegate?.close()
-                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.acquireOwnedPointer().asRawAddress(), testIntEventDescriptor)
                     token
                 },
                 removeHandler = { _, removedToken ->
@@ -374,7 +374,7 @@ class EventRuntimeInfrastructureCommonTest {
                 owner = owner,
                 addHandler = { _, handler ->
                     activeDelegate?.close()
-                    activeDelegate = WinRTDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    activeDelegate = WinRTDelegateReference.fromAbi(handler.acquireOwnedPointer().asRawAddress(), testIntEventDescriptor)
                     EventRegistrationToken(0x77889900_00000001)
                 },
                 removeHandler = { _, _ ->
@@ -488,7 +488,7 @@ class EventRuntimeInfrastructureCommonTest {
 
         handle.use {
             it.createReference().use { reference ->
-                state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
+                state.initializeReferenceTracking(reference.pointer.asRawAddress())
                 reference.queryInterface(IID.IReferenceTrackerTarget).getOrThrow().use { trackerTarget ->
                     val trackerPointer = trackerTarget.pointer
                     trackerTarget.close()
@@ -614,7 +614,7 @@ class EventRuntimeInfrastructureCommonTest {
             addHandler = { _, handler ->
                 nativeDelegate =
                     WinRTDelegateReference.fromAbi(
-                        handler.getRefPointer().asRawAddress(),
+                        handler.acquireOwnedPointer().asRawAddress(),
                         testIntEventDescriptor,
                     )
                 EventRegistrationToken(0x22334455_00000001)
@@ -654,7 +654,7 @@ class EventRuntimeInfrastructureCommonTest {
                 addHandler = { _, handler ->
                     nativeDelegate =
                         WinRTDelegateReference.fromAbi(
-                            handler.getRefPointer().asRawAddress(),
+                            handler.acquireOwnedPointer().asRawAddress(),
                             testIntEventDescriptor,
                         )
                     EventRegistrationToken(0x22334455_00000002)

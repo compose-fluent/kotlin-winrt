@@ -521,7 +521,7 @@ class ComWrappersSupportTest {
         }
         fun detachDelegateReference(): RawAddress =
             handle.createReference().use { reference ->
-                PlatformAbi.fromRawComPtr(reference.getRefPointer())
+                reference.acquireOwnedPointer().asRawAddress()
             }
 
         var projected: TestDelegateWrapper? = null
@@ -534,7 +534,7 @@ class ComWrappersSupportTest {
                 ),
             )
             projected = first
-            val canonicalPointer = PlatformAbi.fromRawComPtr(first.nativeObject.pointer)
+            val canonicalPointer = first.nativeObject.pointer.asRawAddress()
             val retainedReferenceCount = requireNotNull(
                 WinRTInspectableComObject.tryProbeReferenceCount(canonicalPointer),
             )
@@ -659,7 +659,7 @@ class ComWrappersSupportTest {
             ComWrappersSupport.registerObjectForComInterface(cached, pointer)
             val retainedCount = requireNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
             failValidation = true
-            val ownedPointer = reference.getRefPointer().asRawAddress()
+            val ownedPointer = reference.acquireOwnedPointer().asRawAddress()
 
             val failure = assertFailsWith<IllegalStateException> {
                 ComWrappersSupport.createRcwForOwnedComObject<Any>(ownedPointer, typeHandle) { _, _ ->
@@ -671,7 +671,7 @@ class ComWrappersSupportTest {
 
             // Collection projection probes the typed hot cache before full creation.
             // A validation exception must consume its owned input at that entry too.
-            val probeOwnedPointer = reference.getRefPointer().asRawAddress()
+            val probeOwnedPointer = reference.acquireOwnedPointer().asRawAddress()
             val probeFailure = assertFailsWith<IllegalStateException> {
                 ComWrappersSupport.tryConsumeCachedRcwForOwnedComObject<Any>(probeOwnedPointer, typeHandle)
             }
@@ -701,7 +701,7 @@ class ComWrappersSupportTest {
             source = reference
             val pointer = reference.pointer.asRawAddress()
             val retainedCount = requireNotNull(WinRTInspectableComObject.tryProbeReferenceCount(pointer))
-            val ownedPointer = reference.getRefPointer().asRawAddress()
+            val ownedPointer = reference.acquireOwnedPointer().asRawAddress()
             val expectedFailure = IllegalStateException("typed RCW factory failed")
 
             val failure = assertFailsWith<IllegalStateException> {
@@ -824,7 +824,7 @@ class ComWrappersSupportTest {
             assertSame(
                 wrapper,
                 ComWrappersSupport.createRcwForComObject(
-                    PlatformAbi.fromRawComPtr(wrapper.nativeObject.pointer),
+                    wrapper.nativeObject.pointer.asRawAddress(),
                 ),
             )
         } finally {
@@ -838,7 +838,7 @@ class ComWrappersSupportTest {
         val runtimeClassName = "test.DisposedCachedRuntimeClass"
         val wrap: (IInspectableReference) -> TestRuntimeClassWrapper = { instance ->
             val cached = ComWrappersSupport.findObject(
-                PlatformAbi.fromRawComPtr(instance.pointer),
+                instance.pointer.asRawAddress(),
                 TestRuntimeClassWrapper::class,
             )
             if (cached != null) {
@@ -857,7 +857,7 @@ class ComWrappersSupportTest {
         val cached = ComWrappersSupport.createRcwForComObject(
             host.detachReference(IID.IInspectable),
         ) as TestRuntimeClassWrapper
-        val freshReference = IInspectableReference(cached.nativeObject.getRefPointer(), IID.IInspectable)
+        val freshReference = IInspectableReference(cached.nativeObject.acquireOwnedPointer(), IID.IInspectable)
         cached.nativeObject.close()
         var wrappedAgain: TestRuntimeClassWrapper? = null
 
@@ -963,7 +963,7 @@ class ComWrappersSupportTest {
             .getOrThrow()
 
         val first = ComWrappersSupport.createRcwForComObject(defaultPointer) as TestRuntimeClassWrapper
-        val second = ComWrappersSupport.createRcwForComObject(PlatformAbi.fromRawComPtr(secondaryPointer.pointer)) as TestRuntimeClassWrapper
+        val second = ComWrappersSupport.createRcwForComObject(secondaryPointer.pointer.asRawAddress()) as TestRuntimeClassWrapper
 
         assertSame(first, second)
         assertEquals(1, created.size)
@@ -992,7 +992,7 @@ class ComWrappersSupportTest {
         ComWrappersSupport.registerObjectForComInterface(managed, defaultPointer)
 
         assertSame(managed, ComWrappersSupport.createRcwForComObject(defaultPointer))
-        assertSame(managed, ComWrappersSupport.createRcwForComObject(PlatformAbi.fromRawComPtr(secondaryPointer.pointer)))
+        assertSame(managed, ComWrappersSupport.createRcwForComObject(secondaryPointer.pointer.asRawAddress()))
         secondaryPointer.close()
         IUnknownReference(defaultPointer.asRawComPtr(), defaultInterfaceId).close()
     }
@@ -1020,7 +1020,7 @@ class ComWrappersSupportTest {
 
         try {
             ComWrappersSupport.registerObjectForComInterface(composed, defaultPointer)
-            val secondaryAbi = PlatformAbi.fromRawComPtr(secondaryPointer.pointer)
+            val secondaryAbi = secondaryPointer.pointer.asRawAddress()
 
             assertNotEquals(defaultPointer, secondaryAbi)
             assertSame(composed, ComWrappersSupport.findObject(secondaryAbi, TestManagedType::class))
@@ -1223,7 +1223,7 @@ class ComWrappersSupportTest {
         val typeHandle = WinRTTypeHandle("test.ICompilerProjectedManaged", interfaceId)
 
         val directAbi = ComWrappersSupport.createCCWForObject(value, interfaceId).use { reference ->
-            PlatformAbi.fromRawComPtr(reference.pointer)
+            reference.pointer.asRawAddress()
         }
         val directPointer = PlatformAbi.pointerKey(directAbi)
         val borrowedReferenceCount = WinRTInspectableComObject.tryProbeReferenceCount(directAbi)
@@ -1388,7 +1388,7 @@ class ComWrappersSupportTest {
 
         val managed = TestManagedType("payload")
         ComWrappersSupport.createCCWForObject(managed, interfaceId).use { ccw ->
-            val pointer = PlatformAbi.fromRawComPtr(ccw.pointer)
+            val pointer = ccw.pointer.asRawAddress()
             val found = ComWrappersSupport.findObject(pointer, TestManagedType::class)
             val info = ComWrappersSupport.getInspectableInfo(pointer) ?: error("Expected inspectable info for managed type CCW.")
 
@@ -1443,11 +1443,11 @@ class ComWrappersSupportTest {
             assertSame(
                 managed,
                 ComWrappersSupport.findObject(
-                    PlatformAbi.fromRawComPtr(composed.outer.pointer),
+                    composed.outer.pointer.asRawAddress(),
                     TestComposableManagedType::class,
                 ),
             )
-            val outerPointer = PlatformAbi.fromRawComPtr(composed.outer.pointer)
+            val outerPointer = composed.outer.pointer.asRawAddress()
             val initialOuterCount = WinRTInspectableComObject.tryProbeReferenceCount(outerPointer)
             val firstMarshaler = ComWrappersSupport.createCCWForObjectForMarshaling(
                 managed,
@@ -1539,7 +1539,7 @@ class ComWrappersSupportTest {
                             managerHost.createReference(IID.IReferenceTrackerManager).use { managerReference ->
                                 PlatformAbi.writePointer(
                                     arguments.single() as RawAddress,
-                                    PlatformAbi.fromRawComPtr(managerReference.getRefPointer()),
+                                    managerReference.acquireOwnedPointer().asRawAddress(),
                                 )
                             }
                             KnownHResults.S_OK.value
@@ -1568,7 +1568,7 @@ class ComWrappersSupportTest {
                 KnownHResults.S_OK.value
             }.use { composed ->
                 assertEquals(defaultInterfaceId, composed.instance.interfaceId)
-                assertNotEquals(returnedInstancePointerKey, PlatformAbi.pointerKey(PlatformAbi.fromRawComPtr(composed.instance.pointer)))
+                assertNotEquals(returnedInstancePointerKey, PlatformAbi.pointerKey(composed.instance.pointer.asRawAddress()))
                 assertTrue(composed.instance.hasReferenceTracker)
                 assertTrue(managerHostWasSet)
             }
@@ -1613,7 +1613,7 @@ class ComWrappersSupportTest {
             ccw.queryInterface(IID.IReferenceTrackerExtension).getOrThrow().use { trackerExtension ->
                 assertTrue(trackerExtension.sameIdentity(ccw))
             }
-            val info = ComWrappersSupport.getInspectableInfo(PlatformAbi.fromRawComPtr(ccw.pointer))
+            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer.asRawAddress())
             assertEquals(
                 listOf(
                     publicInterfaceId,
@@ -1839,7 +1839,7 @@ class ComWrappersSupportTest {
             ccw.queryInterface(IID.IMarshal).getOrThrow().use { marshal ->
                 assertTrue(marshal.sameIdentity(ccw))
             }
-            val info = ComWrappersSupport.getInspectableInfo(PlatformAbi.fromRawComPtr(ccw.pointer))
+            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer.asRawAddress())
             assertEquals(
                 listOf(
                     publicInterfaceId,
@@ -2214,7 +2214,7 @@ class ComWrappersSupportTest {
             defaultInterfaceId = innerInterfaceId,
         )
         val innerReference = innerHost.createPrimaryReference()
-        val innerPointer = PlatformAbi.fromRawComPtr(innerReference.pointer)
+        val innerPointer = innerReference.pointer.asRawAddress()
         val outerDefinition = WinRTCcwDefinition(
             interfaceDefinitions = listOf(
                 WinRTInspectableInterfaceDefinition(outerInterfaceId, methods = emptyList()),
@@ -2238,14 +2238,14 @@ class ComWrappersSupportTest {
         try {
             outerHost.setQueryInterfaceForwardTarget(innerReference)
             outerHost.createPrimaryReference().use { outerReference ->
-                val outerPointer = PlatformAbi.fromRawComPtr(outerReference.pointer)
+                val outerPointer = outerReference.pointer.asRawAddress()
                 assertFalse(PlatformAbi.isNull(outerReference.comPtr.support.managedCcwReleaseIdentity))
                 assertEquals(2u, WinRTInspectableComObject.tryProbeReferenceCount(outerPointer))
                 assertEquals(2u, WinRTInspectableComObject.tryProbeReferenceCount(innerPointer))
 
                 repeat(2) {
                     outerReference.queryInterface(innerInterfaceId).getOrThrow().use { forwarded ->
-                        assertEquals(innerPointer, PlatformAbi.fromRawComPtr(forwarded.pointer))
+                        assertEquals(innerPointer, forwarded.pointer.asRawAddress())
                         assertTrue(PlatformAbi.isNull(forwarded.comPtr.support.managedCcwReleaseIdentity))
                     }
                     assertEquals(2u, WinRTInspectableComObject.tryProbeReferenceCount(outerPointer))
@@ -2253,7 +2253,7 @@ class ComWrappersSupportTest {
                 }
             }
             outerHost.createReference(innerInterfaceId).use { forwarded ->
-                assertEquals(innerPointer, PlatformAbi.fromRawComPtr(forwarded.pointer))
+                assertEquals(innerPointer, forwarded.pointer.asRawAddress())
                 assertTrue(PlatformAbi.isNull(forwarded.comPtr.support.managedCcwReleaseIdentity))
             }
         } finally {
@@ -2416,5 +2416,5 @@ class ComWrappersSupportTest {
 
 private fun WinRTInspectableComObject.ownedInspectablePointer(): RawAddress =
     createReference(IID.IInspectable).use { reference ->
-        PlatformAbi.fromRawComPtr(reference.getRefPointer())
+        reference.acquireOwnedPointer().asRawAddress()
     }

@@ -753,7 +753,7 @@ internal object ValueBoxingInterop {
                 val hr =
                     propertyValue.use {
                         it.comPtr.throwIfDisposed()
-                        ComVtableInvoker.invokeArgs(it.comPtr.raw, slot, resultOut)
+                        ComVtableInvoker.invokeArgs(it.comPtr.resolvePointer(), slot, resultOut)
                     }
                 WinRTPlatformApi.checkSucceededRaw(hr)
                 try {
@@ -776,7 +776,7 @@ internal object ValueBoxingInterop {
                 val hr =
                     propertyValue.use {
                         it.comPtr.throwIfDisposed()
-                        ComVtableInvoker.invokeArgs(it.comPtr.raw, slot, countOut, dataOut)
+                        ComVtableInvoker.invokeArgs(it.comPtr.resolvePointer(), slot, countOut, dataOut)
                     }
                 WinRTPlatformApi.checkSucceededRaw(hr)
                 val length = PlatformAbi.readInt32(countOut)

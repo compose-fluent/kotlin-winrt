@@ -115,7 +115,7 @@ open class WinRTBindableVectorViewReference(
 
     open fun asIterable(): WinRTBindableIterableReference =
         queryInterface(WinRTBindableInterfaceIds.IBindableIterable).getOrThrow().use { reference ->
-            createIterableReference(reference.getRefPointer().asRawAddress(), WinRTBindableInterfaceIds.IBindableIterable)
+            createIterableReference(reference.acquireOwnedPointer().asRawAddress(), WinRTBindableInterfaceIds.IBindableIterable)
         }
 
     protected open fun createUnknownReference(
@@ -193,7 +193,7 @@ open class WinRTBindableVectorReference(
 
     open fun asIterable(): WinRTBindableIterableReference =
         queryInterface(WinRTBindableInterfaceIds.IBindableIterable).getOrThrow().use { reference ->
-            createIterableReference(reference.getRefPointer().asRawAddress(), WinRTBindableInterfaceIds.IBindableIterable)
+            createIterableReference(reference.acquireOwnedPointer().asRawAddress(), WinRTBindableInterfaceIds.IBindableIterable)
         }
 
     protected open fun createUnknownReference(

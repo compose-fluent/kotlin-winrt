@@ -112,7 +112,7 @@ class WinRTCollectionValueAbiTest {
         val managed = linkedMapOf(1 to 1.5)
         val iid = WinRTCollectionInterfaceIds.map(key.typeSignature, value.typeSignature)
         IUnknownReference(WinRTDictionaryProjection.fromManaged(managed, key, value).asRawComPtr(), iid).use { reference ->
-            val projected = WinRTDictionaryProjection.fromAbi(reference.getRefPointer().asRawAddress(), key, value)!!
+            val projected = WinRTDictionaryProjection.fromAbi(reference.acquireOwnedPointer().asRawAddress(), key, value)!!
             (projected as AutoCloseable).use {
                 assertEquals(1.5, projected[1])
                 projected[2] = 2.5

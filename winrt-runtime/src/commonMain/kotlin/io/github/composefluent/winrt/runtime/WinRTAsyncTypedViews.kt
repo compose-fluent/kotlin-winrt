@@ -32,7 +32,7 @@ internal class WinRTAsyncInfoView(
 
     private fun invoke(slot: Int): Int {
         comPtr.throwIfDisposed()
-        return ComVtableInvoker.invoke(comPtr.raw, slot)
+        return ComVtableInvoker.invoke(comPtr.resolvePointer(), slot)
     }
 
     private fun invokeArgs(
@@ -40,7 +40,7 @@ internal class WinRTAsyncInfoView(
         arg0: RawAddress,
     ): Int {
         comPtr.throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0)
+        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0)
     }
 }
 
@@ -49,7 +49,7 @@ internal class WinRTAsyncActionView(
 ) {
     fun setCompletedHandler(handler: ComObjectReference) {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncActionVftblSlots.PutCompleted, handler.pointer)
+        val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncActionVftblSlots.PutCompleted, handler.pointer)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 
@@ -57,14 +57,14 @@ internal class WinRTAsyncActionView(
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncActionVftblSlots.GetCompleted, resultOut)
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncActionVftblSlots.GetCompleted, resultOut)
             },
             wrap = { pointer -> ComObjectReference(pointer.asRawComPtr(), WinRTAsyncInterfaceIds.AsyncActionCompletedHandler) },
         )
 
     fun getResults() {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invoke(comPtr.raw, WinRTAsyncActionVftblSlots.GetResults)
+        val hr = ComVtableInvoker.invoke(comPtr.resolvePointer(), WinRTAsyncActionVftblSlots.GetResults)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 }
@@ -75,7 +75,7 @@ internal class WinRTAsyncOperationView(
 ) {
     fun setCompletedHandler(handler: ComObjectReference) {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncOperationVftblSlots.PutCompleted, handler.pointer)
+        val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncOperationVftblSlots.PutCompleted, handler.pointer)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 
@@ -83,7 +83,7 @@ internal class WinRTAsyncOperationView(
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncOperationVftblSlots.GetCompleted, resultOut)
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncOperationVftblSlots.GetCompleted, resultOut)
             },
             wrap = { pointer -> ComObjectReference(pointer.asRawComPtr(), completedHandlerInterfaceId) },
         )
@@ -96,7 +96,7 @@ internal class WinRTAsyncActionWithProgressView(
 ) {
     fun setProgressHandler(handler: ComObjectReference) {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncActionWithProgressVftblSlots.PutProgress, handler.pointer)
+        val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncActionWithProgressVftblSlots.PutProgress, handler.pointer)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 
@@ -104,14 +104,14 @@ internal class WinRTAsyncActionWithProgressView(
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncActionWithProgressVftblSlots.GetProgress, resultOut)
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncActionWithProgressVftblSlots.GetProgress, resultOut)
             },
             wrap = { pointer -> ComObjectReference(pointer.asRawComPtr(), progressHandlerInterfaceId) },
         )
 
     fun setCompletedHandler(handler: ComObjectReference) {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncActionWithProgressVftblSlots.PutCompleted, handler.pointer)
+        val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncActionWithProgressVftblSlots.PutCompleted, handler.pointer)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 
@@ -119,14 +119,14 @@ internal class WinRTAsyncActionWithProgressView(
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncActionWithProgressVftblSlots.GetCompleted, resultOut)
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncActionWithProgressVftblSlots.GetCompleted, resultOut)
             },
             wrap = { pointer -> ComObjectReference(pointer.asRawComPtr(), completedHandlerInterfaceId) },
         )
 
     fun getResults() {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invoke(comPtr.raw, WinRTAsyncActionWithProgressVftblSlots.GetResults)
+        val hr = ComVtableInvoker.invoke(comPtr.resolvePointer(), WinRTAsyncActionWithProgressVftblSlots.GetResults)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 }
@@ -138,7 +138,7 @@ internal class WinRTAsyncOperationWithProgressView(
 ) {
     fun setProgressHandler(handler: ComObjectReference) {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncOperationWithProgressVftblSlots.PutProgress, handler.pointer)
+        val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncOperationWithProgressVftblSlots.PutProgress, handler.pointer)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 
@@ -146,14 +146,14 @@ internal class WinRTAsyncOperationWithProgressView(
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncOperationWithProgressVftblSlots.GetProgress, resultOut)
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncOperationWithProgressVftblSlots.GetProgress, resultOut)
             },
             wrap = { pointer -> ComObjectReference(pointer.asRawComPtr(), progressHandlerInterfaceId) },
         )
 
     fun setCompletedHandler(handler: ComObjectReference) {
         comPtr.throwIfDisposed()
-        val hr = ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncOperationWithProgressVftblSlots.PutCompleted, handler.pointer)
+        val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncOperationWithProgressVftblSlots.PutCompleted, handler.pointer)
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 
@@ -161,7 +161,7 @@ internal class WinRTAsyncOperationWithProgressView(
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.raw, WinRTAsyncOperationWithProgressVftblSlots.GetCompleted, resultOut)
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WinRTAsyncOperationWithProgressVftblSlots.GetCompleted, resultOut)
             },
             wrap = { pointer -> ComObjectReference(pointer.asRawComPtr(), completedHandlerInterfaceId) },
         )

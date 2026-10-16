@@ -7437,7 +7437,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(interfaceContents, interfaceContents.contains("compositionObject as IWinRTObject,"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(key)"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
-        assertFalse(interfaceContents, interfaceContents.contains("PlatformAbi.fromRawComPtr((compositionObject as IWinRTObject).nativeObject.pointer)"))
+        assertFalse(interfaceContents, interfaceContents.contains("((compositionObject as IWinRTObject).nativeObject.pointer).asRawAddress()"))
     }
 
     @Test
@@ -8480,7 +8480,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(moduleAbiContents, moduleAbiContents.contains("role = WinRTProjectionAbiCodecRole.TO_ABI"))
         assertFalse(
             moduleAbiContents,
-            moduleAbiContents.contains("PlatformAbi.fromRawComPtr((__value as IWinRTObject).nativeObject.pointer)"),
+            moduleAbiContents.contains("((__value as IWinRTObject).nativeObject.pointer).asRawAddress()"),
         )
         assertFalse(widgetContents.contains("element as IWinRTObject"))
         assertFalse(widgetContents.contains("WinRTProjectionIntrinsic.callInt32("))
@@ -9376,7 +9376,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(moduleAbiContents.contains("Widget.Metadata.wrap("))
         assertFalse(
             moduleAbiContents,
-            moduleAbiContents.contains("PlatformAbi.fromRawComPtr((__value as IWinRTObject).nativeObject.pointer)"),
+            moduleAbiContents.contains("((__value as IWinRTObject).nativeObject.pointer).asRawAddress()"),
         )
         assertFalse(widgetContents.contains("source as IWinRTObject"))
         assertFalse(widgetContents.contains("WinRTProjectionIntrinsic.callProjectedRuntimeClass("))
@@ -9748,12 +9748,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRTObjectBase<IInspectableReference>(_inner,"))
         assertFalse(widgetContents.contains("override val nativeObject"))
         assertTrue(widgetContents.contains("fun setValue(`value`: WidgetValue?)"))
-        assertFalse(widgetContents, widgetContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
+        assertFalse(widgetContents, widgetContents.contains("((value as IWinRTObject).nativeObject.pointer).asRawAddress()"))
         assertTrue(widgetContents.contains("fun setNamedValue(name: String, `value`: WidgetValue?)"))
         assertEquals(2, widgetInterfaceContents.projectionCallSiteCount())
         assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("val __winrtCallSiteArgument2: WidgetValue"))
         assertFalse(generated.containsKey("WinRTModulePlatformAbiCall.kt"))
-        assertFalse(widgetInterfaceContents, widgetInterfaceContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
+        assertFalse(widgetInterfaceContents, widgetInterfaceContents.contains("((value as IWinRTObject).nativeObject.pointer).asRawAddress()"))
     }
 
     @Test
@@ -10823,11 +10823,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(namedValue, namedValue.contains("PlatformAbi.writePointer("))
         assertTrue(namedValue, namedValue.contains("layout.slice(destination, \"name\")"))
         assertTrue(namedValue, namedValue.contains("HString.create(value.name).handle"))
-        assertTrue(namedValue, namedValue.contains("PlatformAbi.toRawComPtr("))
+        assertTrue(namedValue, namedValue.contains(".asRawComPtr()"))
         assertTrue(namedValue, namedValue.contains("layout.slice(source, \"value\")"))
         assertTrue(namedValue, namedValue.contains("IID.IInspectable"))
         assertTrue(namedValue, namedValue.contains("preventReleaseOnDispose = true"))
-        assertTrue(namedValue, namedValue.contains("IInspectableReference(it.getRefPointer(), IID.IInspectable)"))
+        assertTrue(namedValue, namedValue.contains("IInspectableReference(it.acquireOwnedPointer(), IID.IInspectable)"))
         assertTrue(namedValue, namedValue.contains("true"))
         assertTrue(namedValue, namedValue.contains(").close()"))
         if (recordSource.contains("_iRecordSourceProjection")) {
@@ -12096,7 +12096,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("HString.fromHandle("))
         assertTrue(contents, contents.contains("HString.create(value.name).handle"))
         assertTrue(contents, contents.containsIgnoringWhitespace("HString.fromHandle(PlatformAbi.readPointer(layout.slice(source, \"name\")), owner = true).close()"))
-        assertFalse(contents, contents.containsIgnoringWhitespace("IUnknownReference(PlatformAbi.toRawComPtr(PlatformAbi.readPointer(layout.slice(source, \"name\")))).close()"))
+        assertFalse(contents, contents.containsIgnoringWhitespace("IUnknownReference((PlatformAbi.readPointer(layout.slice(source, \"name\"))).asRawComPtr()).close()"))
     }
 
     @Test
@@ -16905,7 +16905,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(expression, expression.contains("val __collectionPointer = io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)"))
         assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.WinRTReadOnlyListProjection.fromAbi(__collectionPointer, io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapters.string)"))
         assertFalse(expression, expression.contains("val __collectionRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
-        assertFalse(expression, expression.contains("fromRawComPtr(__collectionRef.pointer)"))
+        assertFalse(expression, expression.contains("__collectionRef.pointer.asRawAddress()"))
     }
 
     @Test
@@ -16946,7 +16946,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(expression, expression.contains("val __collectionPointer = io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)"))
         assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.WinRTReadOnlyDictionaryProjection.fromAbi(__collectionPointer, io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapters.string, io.github.composefluent.winrt.runtime.WinRTReferenceValueAdapters.valueType(kotlin.Int::class, \"Int\", io.github.composefluent.winrt.runtime.WinRTTypeSignature.int32()))"))
         assertFalse(expression, expression.contains("val __collectionRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
-        assertFalse(expression, expression.contains("fromRawComPtr(__collectionRef.pointer)"))
+        assertFalse(expression, expression.contains("__collectionRef.pointer.asRawAddress()"))
         assertFalse(expression, expression.contains("WinRTAsyncOperationWithProgressVftblSlots.GetResults, __operationResultOut"))
     }
 
@@ -16965,7 +16965,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(adapter.contains("object_()"))
         // IReadOnlyList<T>.GetAtDynamic disposes its ABI result after FromAbi;
         // the projected interface must own a retained reference independently.
-        assertTrue(adapter, adapter.contains("Metadata.wrap(io.github.composefluent.winrt.runtime.IUnknownReference(it!!.getRefPointer()))"))
+        assertTrue(adapter, adapter.contains("Metadata.wrap(io.github.composefluent.winrt.runtime.IUnknownReference(it!!.acquireOwnedPointer()))"))
     }
 
     @Test
@@ -17032,7 +17032,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(expression, expression.contains("WinRTAsyncProjectionInterop.operation<sample.foundation.IWidget?>"))
         assertTrue(expression, expression.contains("val __operationResultPointer = io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)"))
         assertTrue(expression, expression.contains("if (io.github.composefluent.winrt.runtime.PlatformAbi.isNull(__operationResultPointer)) null else sample.foundation.IWidget.Metadata.wrap("))
-        assertFalse(expression, expression.contains("IWidget.Metadata.wrap(io.github.composefluent.winrt.runtime.IUnknownReference(io.github.composefluent.winrt.runtime.PlatformAbi.toRawComPtr(io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)))"))
+        assertFalse(expression, expression.contains("IWidget.Metadata.wrap(io.github.composefluent.winrt.runtime.IUnknownReference(io.github.composefluent.winrt.runtime.(io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)).asRawComPtr())"))
     }
 
     @Test
@@ -17223,7 +17223,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, normalizedContents.contains("val __winrtCallSiteResult: Unit = winRTProjectionCallSiteArguments("))
         assertTrue(supportContents, supportContents.contains("kind = WinRTProjectionAbiTypeKind.COM_REFERENCE"))
         assertTrue(supportContents, supportContents.contains("role = WinRTProjectionAbiCodecRole.CREATE_MARSHALER"))
-        assertFalse(contents.contains("PlatformAbi.fromRawComPtr((routedEvent as IWinRTObject).nativeObject.pointer)"))
+        assertFalse(contents.contains("((routedEvent as IWinRTObject).nativeObject.pointer).asRawAddress()"))
         assertFalse(contents.contains("__handlerMarshaler.abi"))
         assertFalse(contents.contains("if (handledEventsToo) 1.toByte() else 0.toByte()"))
         assertFalse(contents.contains("WinRTProjectionIntrinsic.callUnit("))
@@ -18347,7 +18347,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(listContents, listContents.contains("override val size: Int"))
         assertTrue(listContents, listContents.contains("override fun `get`(index: Int): String"))
         assertTrue(listContents, listContents.contains("private val _iVectorView: IUnknownReference"))
-        assertTrue(listContents, listContents.contains("WinRTReadOnlyListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVectorView.getRefPointer())"))
+        assertTrue(listContents, listContents.contains("WinRTReadOnlyListProjection.fromAbi(_iVectorView.acquireOwnedPointer().asRawAddress()"))
     }
 
     @Test
@@ -19605,12 +19605,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(authoringWrappers.contains("metadataTypeName: String = \"ABI.Sample.Foundation.Widget\""))
         assertTrue(authoringWrappers.contains("defaultInterfaceName: String? = \"Sample.Foundation.IWidget\""))
         assertTrue(authoringWrappers.contains("fun wrap(instance: IInspectableReference): Widget"))
-        assertTrue(authoringWrappers.contains("ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(instance.pointer),"))
+        assertTrue(authoringWrappers.contains("ComWrappersSupport.findObject(instance.pointer.asRawAddress(),"))
         assertTrue(authoringWrappers.contains("Widget::class"))
         assertTrue(authoringWrappers.contains("Authored ABI instance for Sample.Foundation.Widget is not backed by a registered Kotlin authored object."))
         assertFalse(authoringWrappers.contains("Widget.Metadata.wrap(instance)"))
         assertTrue(authoringWrappers.contains("fun fromAbi(pointer: RawAddress): Widget?"))
-        assertTrue(authoringWrappers.contains("return wrap(IInspectableReference(PlatformAbi.toRawComPtr(pointer)))"))
+        assertTrue(authoringWrappers.contains("return wrap(IInspectableReference(pointer.asRawComPtr()))"))
         assertTrue(authoringWrappers.contains("object WinRTAuthoringWrappers"))
         assertTrue(authoringWrappers.contains("fun fromAbi(runtimeClassName: String, pointer: RawAddress): Any?"))
         val authoringAbiClasses = filesByName.getValue("WinRTAuthoringAbiClasses.kt").contents
@@ -19622,15 +19622,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(authoringAbiClasses.contains("ComWrappersSupport.createCCWForObject"))
         assertTrue(authoringAbiClasses.contains("interfaceId"))
         assertTrue(authoringAbiClasses.contains("fun GetAbi("))
-        assertTrue(authoringAbiClasses.contains("marshaler?.pointer?.let(PlatformAbi::fromRawComPtr)"))
+        assertTrue(authoringAbiClasses.replace(Regex("\\s+"), " ").contains("marshaler?.pointer?.let({ it.asRawAddress() })"))
         assertTrue(authoringAbiClasses.contains("fun FromAbi("))
         assertTrue(authoringAbiClasses.contains("_AuthoringWrapper_Sample_Foundation_Widget.fromAbi(pointer)"))
-        assertTrue(authoringAbiClasses.contains("PlatformAbi.fromRawComPtr(marshaler.getRefPointer())"))
+        assertTrue(authoringAbiClasses.contains("marshaler.acquireOwnedPointer().asRawAddress()"))
         assertTrue(authoringAbiClasses.contains("fun DisposeAbi(pointer: RawAddress)"))
         assertTrue(authoringAbiClasses.contains("private fun arrayMarshaler(): Marshaler<Widget>"))
         assertTrue(authoringAbiClasses.contains("Marshaler.interfaceType("))
         assertTrue(authoringAbiClasses.contains("WinRTTypeHandle(projectedTypeName, defaultInterfaceId)"))
-        assertTrue(authoringAbiClasses.contains("_AuthoringWrapper_Sample_Foundation_Widget.fromAbi(PlatformAbi.fromRawComPtr(value.nativeObject.pointer))"))
+        assertTrue(authoringAbiClasses.contains("_AuthoringWrapper_Sample_Foundation_Widget.fromAbi(value.nativeObject.pointer.asRawAddress())"))
         assertTrue(authoringAbiClasses.contains("fun CreateMarshalerArray("))
         assertTrue(authoringAbiClasses.contains("createMarshalerArray(values)"))
         assertTrue(authoringAbiClasses.contains("fun GetAbiArray(marshaler: WinRTAbiArray?)"))
@@ -19881,7 +19881,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("WidgetPoint.Metadata.copyTo(__result"))
         assertTrue(ccwFactories.contains("acquireBorrowedInterfaceReference("))
         assertFalse(ccwFactories.contains("preventReleaseOnDispose = true"))
-        assertFalse(ccwFactories.contains(".use { __borrowed -> __borrowed.getRefPointer() }"))
+        assertFalse(ccwFactories.contains(".use { __borrowed -> __borrowed.acquireOwnedPointer() }"))
         assertTrue(ccwFactories.contains("WinRTObjectBase<IUnknownReference>(__native, null)"))
         assertFalse(ccwFactories.contains("override val nativeObject"))
         assertTrue(ccwFactories.contains("WinRTDelegateVftblSlots.Invoke"))
@@ -19929,7 +19929,7 @@ class KotlinProjectionGeneratorTest {
         )
         assertTrue(ccwFactories.contains("value.roundTripGeneric(__arg0)"))
         assertTrue(ccwFactories.contains("WinRTGenericParameterProjection.createReference(__result).use"))
-        assertTrue(ccwFactories.contains("__returnReference?.getRefPointer()"))
+        assertTrue(ccwFactories.contains("__returnReference?.acquireOwnedPointer()"))
         assertTrue(ccwFactories.contains("PlatformAbi.nullPointer"))
         assertTrue(ccwFactories.contains("val __arrayMarshaler = Marshaler.genericParameter<M0>()"))
         assertTrue(ccwFactories.contains("value.roundTripGenericArray(__arg0)"))
@@ -21422,8 +21422,8 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents, contents.contains("private val _iVector: IUnknownReference"))
-        assertTrue(contents, contents.contains("WinRTListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVector.getRefPointer())"))
-        assertFalse(contents, contents.contains("WinRTListProjection.fromAbi(PlatformAbi.fromRawComPtr(_defaultInterface.getRefPointer())"))
+        assertTrue(contents, contents.contains("WinRTListProjection.fromAbi(_iVector.acquireOwnedPointer().asRawAddress()"))
+        assertFalse(contents, contents.contains("WinRTListProjection.fromAbi(_defaultInterface.acquireOwnedPointer().asRawAddress()"))
         assertTrue(contents, contents.contains("override val vectorChanged: WinRTEvent<VectorChangedEventHandler<Any?>>"))
         assertTrue(contents, contents.contains("override fun addVectorChanged(handler: VectorChangedEventHandler<Any?>?): EventRegistrationToken"))
         assertTrue(contents, contents.contains("override fun removeVectorChanged(token: EventRegistrationToken)"))
@@ -26558,8 +26558,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             generatedContents,
             generatedContents.contains(
-                "IResult.Metadata.wrap(IUnknownReference(PlatformAbi.toRawComPtr(" +
-                    "PlatformAbi.readPointerAt(__arrayData, __index))))",
+                "IResult.Metadata.wrap(IUnknownReference((" +
+                    "PlatformAbi.readPointerAt(__arrayData, __index)).asRawComPtr()))",
             ),
         )
         assertFalse(

@@ -110,7 +110,7 @@ fun main() {
                     )
                     loadOperation.nativeObject.queryInterface(asyncOperationInterfaceId).getOrThrow().use { asyncReference ->
                         WinRTAsyncProjectionInterop.operation(
-                            pointer = PlatformAbi.fromRawComPtr(asyncReference.getRefPointer()),
+                            pointer = asyncReference.acquireOwnedPointer().asRawAddress(),
                             resultSignature = WinRTTypeSignature.uint32(),
                             resultOut = PlatformAbi::allocateInt32Slot,
                             resultReader = { resultOut -> PlatformAbi.readInt32(resultOut).toUInt() },

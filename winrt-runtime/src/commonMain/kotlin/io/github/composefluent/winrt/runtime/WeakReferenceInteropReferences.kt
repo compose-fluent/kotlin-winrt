@@ -154,7 +154,7 @@ private inline fun <T> ComObjectReference.withResolvedWeakReference(
             val resultOut = PlatformAbi.slice(iidMemory, Guid.BYTE_SIZE.toLong(), Long.SIZE_BYTES.toLong())
             comPtr.throwIfDisposed()
             val hResult = HResult(
-                ComVtableInvoker.invokeArgs(comPtr.raw, WeakReferenceVftblSlots.Resolve, iidMemory, resultOut),
+                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), WeakReferenceVftblSlots.Resolve, iidMemory, resultOut),
             )
             val resolvedPointer = PlatformAbi.readPointer(resultOut)
             try {

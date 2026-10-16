@@ -44,7 +44,7 @@ class EventSourceShutdownApartmentJvmTest {
                             argsKind = WinRTDelegateValueKind.INT32,
                             // The publisher holds the delegate, which keeps the registration alive.
                             addHandler = { _, delegate ->
-                                publisherDelegate.set(delegate.getRefPointer().asRawAddress())
+                                publisherDelegate.set(delegate.acquireOwnedPointer().asRawAddress())
                                 EventRegistrationToken(0x79790000_00000001)
                             },
                             removeHandler = { _, _ ->
