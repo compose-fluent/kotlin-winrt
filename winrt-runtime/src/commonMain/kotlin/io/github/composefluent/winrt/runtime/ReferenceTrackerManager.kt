@@ -111,6 +111,13 @@ internal object ReferenceTrackerManager {
         }
     }
 
+    // Keep the ordinary release path allocation-free. Only a tracking walk needs
+    // to retain an action; its publication still uses the same checked lock.
+    internal inline fun runOrDeferFinalizerRelease(crossinline release: () -> Unit) {
+        if (collecting && deferFinalizerRelease { release() }) return
+        release()
+    }
+
     internal fun clearForTests() {
         releaseDisconnectedReferenceSources()
         lock.withLock {

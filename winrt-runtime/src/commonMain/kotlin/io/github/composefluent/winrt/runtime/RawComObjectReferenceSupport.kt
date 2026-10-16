@@ -258,6 +258,24 @@ internal class RawComObjectReferenceSupport(
     @PublishedApi
     internal fun disposeNativeResources(deferContextRelease: Boolean) {
         val context = objectContext
+        // CsWinRT 3 NativeDisposeUnsafe directly releases free-threaded objects.
+        // Do not allocate the context/tracker continuation graph for this case.
+        if (context == null && !hasReferenceTracker) {
+            ReferenceTrackerManager.runOrDeferFinalizerRelease {
+                try {
+                    if (!preventReleaseOnDispose && !tryReleaseManagedCcwReference(managedCcwReleaseIdentity)) {
+                        WinRTPlatformApi.releaseRaw(pointer.asRawAddress())
+                    }
+                } finally {
+                    try {
+                        nativeLifetimeLease?.release(deferContextRelease)
+                    } finally {
+                        afterRelease?.invoke()
+                    }
+                }
+            }
+            return
+        }
         val releaseReferences = {
             if (!preventReleaseOnDispose) {
                 releaseFromTrackerSource(::invokeReferenceTrackerReleaseOnPointer)
