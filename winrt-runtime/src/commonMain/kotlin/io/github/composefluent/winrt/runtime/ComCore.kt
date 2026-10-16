@@ -100,6 +100,15 @@ internal class ComPtr private constructor(
         pointer: RawComPtr,
         interfaceId: Guid = IID.IUnknown,
     ): ComPtr = withCallPointer { activePointer ->
+        attachKnownPointerForActiveCall(pointer, activePointer, interfaceId)
+    }
+
+    /** Caller holds one uninterrupted lease from pointer acquisition through ownership transfer. */
+    internal fun attachKnownPointerForActiveCall(
+        pointer: RawComPtr,
+        activePointer: RawComPtr,
+        interfaceId: Guid = IID.IUnknown,
+    ): ComPtr {
         require(!PlatformAbi.isNull(pointer)) {
             "Known COM object reference cannot wrap a null pointer."
         }
@@ -108,7 +117,7 @@ internal class ComPtr private constructor(
         WinRTPlatformApi.addRefRaw(activePointer.asRawAddress())
         if (!PlatformAbi.isNull(tracker)) invokeReferenceTrackerAddRefOnPointer(tracker)
         try {
-            create(
+            return create(
                 raw = pointer,
                 interfaceId = interfaceId,
                 ownershipMode =

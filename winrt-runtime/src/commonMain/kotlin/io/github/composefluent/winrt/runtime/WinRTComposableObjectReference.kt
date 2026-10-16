@@ -74,7 +74,10 @@ class WinRTComposableObjectReference internal constructor(
 
     override fun close() {
         try {
-            cleanupState.close(fromFinalizer = false)
+            cleanupState.close(
+                fromFinalizer = false,
+                references = listOfNotNull(instance, inner, composed, outer).distinct(),
+            )
         } finally {
             try { finalizationRegistration.close() } finally { winRTKeepAlive(managedValue) }
         }
@@ -97,7 +100,8 @@ private object ActiveComposableObjectReferences {
 
     fun register(reference: WinRTComposableObjectReference): PlatformManagedWeakReference<WinRTComposableObjectReference> =
         lock.withLock {
-            references.removeAll { it.get() == null }
+            // Finalization unregisters its own token. Scanning every live object here
+            // makes constructing N composables quadratic while holding the global lock.
             PlatformManagedWeakReference(reference).also { references += it }
         }
 
@@ -122,10 +126,18 @@ private class ComposableObjectCleanup(
 ) {
     private val closed = AtomicInt(0)
 
-    fun close(fromFinalizer: Boolean) {
+    fun close(fromFinalizer: Boolean, references: List<ComObjectReference>? = null) {
         if (!closed.compareAndSet(0, 1)) return
         var failure: Throwable? = null
-        supports.forEach { support ->
+        // Explicit close must include the owner's cached interface references. The
+        // cleaner retains only raw support states, never the managed owner graph.
+        if (references != null) {
+            try {
+                closeAllAutoCloseables(references)
+            } catch (error: Throwable) {
+                failure = error
+            }
+        } else supports.forEach { support ->
             try {
                 if (fromFinalizer) closeComPtrSupportFromFinalizer(support) else closeComPtrSupport(support)
             } catch (error: Throwable) {

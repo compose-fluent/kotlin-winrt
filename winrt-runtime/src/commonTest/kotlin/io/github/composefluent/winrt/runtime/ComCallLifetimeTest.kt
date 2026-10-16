@@ -15,6 +15,72 @@ private fun callWithReentrantInputClose(receiver: ComObjectReference, slot: Int,
 
 class ComCallLifetimeTest {
     @Test
+    fun composable_close_releases_cached_interfaces_before_host_cleanup() {
+        // CsWinRT owns QI results in the RCW graph. Kotlin's deterministic close
+        // must close that graph too, without letting the cleaner root it.
+        val iid = Guid("431f84cf-428b-42e9-9c63-9494aa1130b3")
+        WinRTInspectableComObject(
+            listOf(WinRTInspectableInterfaceDefinition(iid, emptyList())), defaultInterfaceId = iid,
+        ).use { host ->
+            val instance = IInspectableReference(host.acquireReference(iid).asRawComPtr(), iid)
+            val outer = host.createPrimaryReference()
+            val instanceView = acquireInterfaceReference(instance, iid)
+            val outerView = acquireInterfaceReference(outer, iid)
+            // Explicit QI results are independent, unlike owner-cached views.
+            val independent = instance.queryInterface(iid).getOrThrow()
+            var cleanupCount = 0
+            val reference = WinRTComposableObjectReference(
+                instance, instance, null, outer, false, host,
+                cleanup = {
+                    assertTrue(instanceView.isDisposed)
+                    assertTrue(outerView.isDisposed)
+                    cleanupCount++
+                },
+            )
+            try {
+                reference.close()
+                reference.close()
+                assertEquals(1, cleanupCount)
+                assertTrue(!independent.isDisposed)
+                independent.queryInterface(iid).getOrThrow().close()
+            } finally {
+                reference.close()
+                independent.close()
+                instanceView.close()
+                outerView.close()
+            }
+        }
+    }
+
+    @Test
+    fun known_pointer_ownership_transfer_completes_under_existing_lease_after_close() {
+        // CsWinRT 3 Lifecycle.GetThisPtr holds its managed reference through the
+        // native AddRef. Fast ABI borrowed results require the same scope.
+        val iid = Guid("431f84cf-428b-42e9-9c63-9494aa1130b4")
+        WinRTInspectableComObject(
+            listOf(WinRTInspectableInterfaceDefinition(iid, emptyList())), defaultInterfaceId = iid,
+        ).use { host ->
+            val source = host.createPrimaryReference()
+            val pointer = source.pointer.asRawAddress()
+            val before = WinRTInspectableComObject.tryProbeReferenceCount(pointer)!!
+            val result = source.comPtr.withCallPointer { activePointer ->
+                source.close()
+                assertEquals(before, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+                IUnknownReference(source.comPtr.attachKnownPointerForActiveCall(activePointer, activePointer))
+            }
+            try {
+                assertTrue(source.isDisposed)
+                assertEquals(before, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+                result.queryInterface(iid).getOrThrow().close()
+            } finally {
+                result.close()
+                source.close()
+            }
+            assertEquals(before - 1u, WinRTInspectableComObject.tryProbeReferenceCount(pointer))
+        }
+    }
+
+    @Test
     fun composable_abi_query_keeps_outer_owned_during_reentrant_close() {
         // CsWinRT TryAs(Guid, out IntPtr): QI returns an owned ABI reference, while
         // the source stays leased through a custom QI callback that closes it.
