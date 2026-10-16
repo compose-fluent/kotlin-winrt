@@ -18,6 +18,7 @@ internal object ReferenceTrackerManager {
     private val targets = mutableSetOf<ManagedComHostState>()
     private val disconnectedReleases = mutableListOf<() -> Unit>()
     private val finalizerReleases = mutableListOf<() -> Unit>()
+    @kotlin.concurrent.Volatile
     private var collecting = false
     private var currentSources: List<ReferenceTrackerSource>? = null
     private var managerPointer: RawComPtr = PlatformAbi.nullComPtr
@@ -98,10 +99,16 @@ internal object ReferenceTrackerManager {
         failure?.let { throw it }
     }
 
-    internal fun deferFinalizerRelease(release: () -> Unit): Boolean = lock.withLock {
-        if (!collecting) return@withLock false
-        finalizerReleases += release
-        true
+    internal fun deferFinalizerRelease(release: () -> Unit): Boolean {
+        // The decision linearizes at this read, just as the old locked false read
+        // did: actual Release always runs outside the manager lock. Most objects
+        // close outside a XAML tracking walk and need not serialize here at all.
+        if (!collecting) return false
+        return lock.withLock {
+            if (!collecting) return@withLock false
+            finalizerReleases += release
+            true
+        }
     }
 
     internal fun clearForTests() {

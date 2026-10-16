@@ -11,7 +11,7 @@ open class ComObjectReference internal constructor(
     private var objectState: WinRTObjectState<ComObjectReference>? = null
 
     internal val projectedObjectState: WinRTObjectState<ComObjectReference>
-        get() = objectState ?: WinRTObjectStateInitialization.lock.withLock {
+        get() = objectState ?: withObjectReferenceLock(this) {
             objectState ?: WinRTObjectState<ComObjectReference>().also { objectState = it }
         }
 
@@ -121,7 +121,7 @@ open class ComObjectReference internal constructor(
         comPtr.sameIdentity(other.comPtr)
 
     override fun close() {
-        val children = ownedInterfacesLock.withLock {
+        val children = withObjectReferenceLock(this) {
             if (closing) return
             closing = true
             ownedInterfaces.also { ownedInterfaces = null }
@@ -146,7 +146,7 @@ open class ComObjectReference internal constructor(
      * Independent queryInterface results keep their existing independent lifetime.
      */
     internal fun <T : ComObjectReference> ownInterfaceReference(reference: T): T {
-        val accepted = ownedInterfacesLock.withLock {
+        val accepted = withObjectReferenceLock(this) {
             if (closing || comPtr.isDisposed) {
                 false
             } else {
@@ -179,11 +179,6 @@ open class ComObjectReference internal constructor(
             wrapActivationFactory = ::ActivationFactoryReference,
         )
 
-    private companion object {
-        // Protect only registration/detachment; native Release runs outside the lock.
-        // A shared lock avoids allocating an OS lock for each projected pointer wrapper.
-        val ownedInterfacesLock = PlatformLock()
-    }
 }
 
 open class IUnknownReference internal constructor(

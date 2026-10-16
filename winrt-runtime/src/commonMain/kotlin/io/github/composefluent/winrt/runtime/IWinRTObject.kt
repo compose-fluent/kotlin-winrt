@@ -71,7 +71,7 @@ abstract class WinRTObjectBase<T : ComObjectReference>(
     private var objectState: WinRTObjectState<ComObjectReference>? = null
 
     private fun objectState(): WinRTObjectState<ComObjectReference> =
-        objectState ?: WinRTObjectStateInitialization.lock.withLock {
+        objectState ?: withObjectReferenceLock(this) {
             objectState ?: WinRTObjectState<ComObjectReference>().also { objectState = it }
         }
 

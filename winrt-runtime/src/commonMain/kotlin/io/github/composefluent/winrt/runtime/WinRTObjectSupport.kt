@@ -122,7 +122,7 @@ internal class WinRTObjectState<TReference : AutoCloseable> {
         get() = queryInterfaces ?: initializeQueryInterfaceCache()
 
     private fun initializeQueryInterfaceCache(): ConcurrentCacheMap<WinRTTypeHandle, TReference> =
-        WinRTObjectStateInitialization.lock.withLock {
+        withObjectReferenceLock(this) {
             // Retain CsWinRT's independent per-object dictionaries, but start small:
             // Native eagerly allocates backing arrays even before the first insertion.
             queryInterfaces ?: ConcurrentCacheMap<WinRTTypeHandle, TReference>(1).also { queryInterfaces = it }
@@ -132,11 +132,7 @@ internal class WinRTObjectState<TReference : AutoCloseable> {
         get() = typeData ?: initializeAdditionalTypeData()
 
     private fun initializeAdditionalTypeData(): ConcurrentCacheMap<WinRTTypeHandle, Any> =
-        WinRTObjectStateInitialization.lock.withLock {
+        withObjectReferenceLock(this) {
             typeData ?: ConcurrentCacheMap<WinRTTypeHandle, Any>(1).also { typeData = it }
         }
-}
-
-internal object WinRTObjectStateInitialization {
-    val lock = PlatformLock()
 }
