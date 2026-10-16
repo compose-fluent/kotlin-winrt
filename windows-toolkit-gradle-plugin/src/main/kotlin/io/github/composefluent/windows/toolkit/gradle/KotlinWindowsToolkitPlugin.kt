@@ -2558,6 +2558,7 @@ private fun configureWinRTGeneration(
             org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.jvm)
         configuration.attributes.attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage::class.java, Usage.JAVA_RUNTIME))
         configuration.dependencies.add(project.dependencies.create(kotlinWinRTRuntimeClasspathDependency(project)))
+        configuration.dependencies.add(project.dependencies.create(kotlinWinRTContractsClasspathDependency(project)))
         configuration.dependencies.add(project.dependencies.create(kotlinWinRTAuthoringRuntimeClasspathDependency(project)))
         configuration.dependencies.add(project.dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:${project.getKotlinPluginVersion()}"))
         // Local/plugin-under-test runtime artifacts are file dependencies, so
@@ -3054,6 +3055,7 @@ private fun configureWinRTJvmProjectionClasspath(
     configuration.dependencies.add(
         project.dependencies.create(kotlinWinRTRuntimeClasspathDependency(project)),
     )
+    configuration.dependencies.add(project.dependencies.create(kotlinWinRTContractsClasspathDependency(project)))
     configuration.dependencies.add(
         project.dependencies.create(kotlinWinRTAuthoringRuntimeClasspathDependency(project)),
     )
@@ -3631,7 +3633,7 @@ private fun kotlinWinRTGeneratorWorkerClasspath(project: Project) =
                 configuration.isCanBeConsumed = false
                 configuration.isCanBeResolved = true
                 val version = kotlinWinRTPluginVersion()
-                val includedBuildArtifacts = kotlinWinRTIncludedBuildArtifacts(project, "winrt-runtime", "winrt-metadata", "winrt-generator")
+                val includedBuildArtifacts = kotlinWinRTIncludedBuildArtifacts(project, "winrt-runtime-contracts", "winrt-runtime", "winrt-metadata", "winrt-generator")
                 if (includedBuildArtifacts.isNotEmpty()) {
                     includedBuildArtifacts.forEach { artifact ->
                         project.dependencies.add(configuration.name, project.files(artifact))
@@ -3733,9 +3735,16 @@ private fun kotlinWinRTRuntimeClasspathDependency(project: Project): Any {
         projectPath = ":winrt-runtime",
         moduleName = "winrt-runtime",
     )
-        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid"))?.let(project::files)
+        ?: kotlinWinRTStandaloneArtifact(kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.ComObjectReference"))?.let(project::files)
         ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
 }
+
+private fun kotlinWinRTContractsClasspathDependency(project: Project): Any =
+    kotlinWinRTPluginMetadataArtifact(project, "winrt-runtime-contracts")
+        ?: project.rootProject.findProject(":winrt-runtime:contracts")?.let { contracts ->
+            project.dependencies.project(mapOf("path" to contracts.path, "configuration" to "jvmRuntimeElements"))
+        }
+        ?: "io.github.compose-fluent:winrt-runtime-contracts-jvm:${kotlinWinRTPluginVersion()}"
 
 private fun kotlinWinRTAuthoringDependency(project: Project): Any {
     return kotlinWinRTLocalOrPluginUnderTestDependency(
@@ -3798,8 +3807,9 @@ private fun kotlinWinRTCompilerPluginRuntimeDependencies(project: Project): List
         projectPath = KotlinWinRTCompilerVersions.projectPath(":winrt-compiler-plugin:callsite-lowering", kotlinVersion),
         moduleName = KotlinWinRTCompilerVersions.artifact("callsite-lowering", kotlinVersion),
     )
-    runtimeDependencies += kotlinWinRTRuntimeClasspathDependency(project)
-    runtimeDependencies += kotlinWinRTAuthoringRuntimeClasspathDependency(project)
+    // Compiler plugins execute on the JVM even when producing a Native KLIB.
+    // File-based included-build artifacts do not carry transitive dependencies.
+    runtimeDependencies += kotlinWinRTContractsClasspathDependency(project)
     // The compiler-plugin artifact is loaded from plugin-under-test metadata in consuming
     // builds, so its implementation dependencies are not brought in transitively.
     runtimeDependencies.add("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.9.0")
@@ -3834,6 +3844,7 @@ private fun kotlinWinRTCompilerPluginSupportDependency(
 private fun kotlinWinRTLocalGeneratorWorkerClasspath(project: Project): List<File>? {
     val files = listOf(
         kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.Guid"),
+        kotlinWinRTCodeSourceFile("io.github.composefluent.winrt.runtime.ComObjectReference"),
         kotlinWinRTCodeSourceFile(WinRTMetadataSource::class.java),
         kotlinWinRTCodeSourceFile(KotlinProjectionGenerator::class.java),
     )
@@ -3856,7 +3867,7 @@ private fun kotlinWinRTPluginMetadataGeneratorWorkerClasspath(): List<File>? {
         .mapNotNull { path -> path.takeIf(String::isNotBlank)?.let(::File) }
         .filter { file ->
             val name = file.name
-            (name.startsWith("winrt-runtime-jvm") ||
+            (name.startsWith("winrt-runtime-jvm") || name.startsWith("winrt-runtime-contracts-jvm") ||
                 name.startsWith("winrt-metadata") ||
                 name.startsWith("winrt-generator")) &&
                 name.endsWith(".jar") &&
@@ -3865,6 +3876,7 @@ private fun kotlinWinRTPluginMetadataGeneratorWorkerClasspath(): List<File>? {
         .distinctBy { file -> file.toPath().toAbsolutePath().normalize() }
     return files.takeIf { found ->
         found.any { it.name.startsWith("winrt-runtime-jvm") } &&
+            found.any { it.name.startsWith("winrt-runtime-contracts-jvm") } &&
             found.any { it.name.startsWith("winrt-metadata") } &&
             found.any { it.name.startsWith("winrt-generator") }
     }
@@ -3943,6 +3955,7 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
         .flatMap { moduleName ->
             val baseModuleName = moduleName.substringBefore("-kotlin-")
             val baseModuleRoot = when (baseModuleName) {
+                "winrt-runtime-contracts" -> includedRoot.resolve("winrt-runtime").resolve("contracts")
                 "callsite-contract", "callsite-lowering" ->
                     includedRoot.resolve("winrt-compiler-plugin").resolve(baseModuleName)
                 else -> includedRoot.resolve(baseModuleName)
@@ -3952,6 +3965,7 @@ private fun kotlinWinRTIncludedBuildArtifacts(project: Project, vararg moduleNam
                 baseModuleRoot.resolve("$variant-kotlin-${moduleName.substringAfter("-kotlin-").replace('.', '-')}")
             } else baseModuleRoot
             val prefix = when (moduleName) {
+                "winrt-runtime-contracts" -> "winrt-runtime-contracts-jvm-"
                 "winrt-runtime" -> "winrt-runtime-jvm-"
                 "winrt-authoring" -> "winrt-authoring-jvm-"
                 else -> "$moduleName-"
