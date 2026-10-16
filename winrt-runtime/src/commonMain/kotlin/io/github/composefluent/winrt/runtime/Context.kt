@@ -207,8 +207,13 @@ internal class ObjectReferenceContext private constructor(
     private val knownInterfaceId: Guid?,
     private val callsAreFreeThreaded: Boolean,
 ) : AutoCloseable {
-    private val currentContextReferences = ConcurrentCacheMap<Long, IUnknownReference>()
-    private val agileReferenceLock = PlatformLock()
+    // CsWinRT 3 ContextAwareObjectReference initializes CachedContexts and its
+    // agile reference only after leaving the original apartment. In particular,
+    // an ordinary same-apartment reference needs neither native locks nor maps.
+    @kotlin.concurrent.Volatile
+    private var currentContextReferences: ConcurrentCacheMap<Long, IUnknownReference>? = null
+    @kotlin.concurrent.Volatile
+    private var agileReferenceLock: PlatformLock? = null
     private var agileReferenceInitialized = false
     private var agileReference: AgileReference? = null
 
@@ -222,9 +227,10 @@ internal class ObjectReferenceContext private constructor(
         }
 
         val contextKey = PlatformAbi.pointerKey(currentToken)
-        currentContextReferences[contextKey]?.let { return it.pointer }
+        val references = contextReferences()
+        references[contextKey]?.let { return it.pointer }
         val resolved = getAgileReference()?.getReference(interfaceId()) ?: return originalPointer
-        val existing = currentContextReferences.putIfAbsent(contextKey, resolved)
+        val existing = references.putIfAbsent(contextKey, resolved)
         if (existing != null) {
             resolved.close()
             return existing.pointer
@@ -264,10 +270,12 @@ internal class ObjectReferenceContext private constructor(
     }
 
     override fun close() {
-        val cachedReferences = currentContextReferences.values.toList()
-        currentContextReferences.clear()
-        cachedReferences.forEach(IUnknownReference::close)
-        agileReferenceLock.withLock {
+        currentContextReferences?.let { references ->
+            val cachedReferences = references.values.toList()
+            references.clear()
+            cachedReferences.forEach(IUnknownReference::close)
+        }
+        agileReferenceLock?.withLock {
             agileReference?.close()
             agileReference = null
         }
@@ -275,7 +283,7 @@ internal class ObjectReferenceContext private constructor(
     }
 
     private fun getAgileReference(): AgileReference? =
-        agileReferenceLock.withLock {
+        initializedAgileReferenceLock().withLock {
             if (!agileReferenceInitialized) {
                 Context.callInContext(
                     contextCallback = callback,
@@ -289,6 +297,22 @@ internal class ObjectReferenceContext private constructor(
             }
             agileReference
         }
+
+    private fun contextReferences(): ConcurrentCacheMap<Long, IUnknownReference> {
+        currentContextReferences?.let { return it }
+        val candidate = ConcurrentCacheMap<Long, IUnknownReference>()
+        return withObjectReferenceCachePublication(this) {
+            currentContextReferences ?: candidate.also { currentContextReferences = it }
+        }
+    }
+
+    private fun initializedAgileReferenceLock(): PlatformLock {
+        agileReferenceLock?.let { return it }
+        val candidate = PlatformLock()
+        return withObjectReferenceCachePublication(this) {
+            agileReferenceLock ?: candidate.also { agileReferenceLock = it }
+        }
+    }
 
     private fun interfaceId(): Guid =
         knownInterfaceId ?: Guid.fromAbiWords(interfaceIdLowBits, interfaceIdHighBits)
