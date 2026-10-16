@@ -41,6 +41,7 @@ class ReferenceLifecycleMemoryBenchmark {
 }
 
 internal actual fun referenceContentionBenchmarkEnabled() = System.getenv("WINRT_CONTENTION_BENCHMARK") == "1"
+internal actual fun referenceContentionBenchmarkMode(): String? = System.getenv("WINRT_CONTENTION_MODE")
 internal actual fun referenceContentionYield() = Thread.yield()
 internal actual fun runReferenceContentionWorkers(count: Int, action: (Int) -> Unit) {
     val pool = Executors.newFixedThreadPool(count)

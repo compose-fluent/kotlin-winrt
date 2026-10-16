@@ -14,6 +14,9 @@ import kotlin.time.TimeSource
  * -Pwinrt.callsite.benchmark=true (optimized=true, debuggable=false), then run
  * test.exe --ktest_filter=*ReferenceContentionBenchmark* without a concurrent build.
  * On JVM run this class through JUnitCore with -Xbatch and native access enabled.
+ * Set WINRT_CONTENTION_MODE to close, own-close, or state for 120 warmup and
+ * 120 measured batches of that mode. Report the mean alongside median/p90:
+ * GC pauses inside measured batches must not disappear behind a fast median.
  * Compare several independent processes; this isolates runtime bookkeeping and
  * must not be presented as end-to-end COM throughput or a C++/WinRT comparison.
  */
@@ -22,8 +25,12 @@ class ReferenceContentionBenchmark {
     fun independent_reference_contention() {
         if (!referenceContentionBenchmarkEnabled()) return
         val batch = 4096
-        val rounds = 40
-        for (mode in listOf("close", "own-close", "state")) {
+        val selectedMode = referenceContentionBenchmarkMode()
+        val rounds = if (selectedMode == null) 40 else 240
+        val warmup = if (selectedMode == null) 10 else 120
+        val modes = listOf("close", "own-close", "state")
+        require(selectedMode == null || selectedMode in modes)
+        for (mode in modes.filter { selectedMode == null || it == selectedMode }) {
             for (threads in listOf(1, 2, 4, 8)) {
                 val ready = Array(rounds) { AtomicInt(0) }
                 val done = Array(rounds) { AtomicInt(0) }
@@ -47,8 +54,8 @@ class ReferenceContentionBenchmark {
                     }
                 }
                 // Parallel batch completion is the slowest worker; report aggregate ns/operation.
-                val samples = (10 until rounds).map { round -> elapsed.maxOf { it[round] } / (batch * threads) }.sorted()
-                println("CONTENTION mode=$mode threads=$threads nsPerOp=${samples[samples.size / 2]} p90=${samples[samples.size * 9 / 10]}")
+                val samples = (warmup until rounds).map { round -> elapsed.maxOf { it[round] } / (batch * threads) }.sorted()
+                println("CONTENTION mode=$mode threads=$threads nsPerOp=${samples[samples.size / 2]} p90=${samples[samples.size * 9 / 10]} meanNsPerOp=${samples.average()}")
             }
         }
     }
@@ -59,5 +66,6 @@ class ReferenceContentionBenchmark {
 }
 
 internal expect fun referenceContentionBenchmarkEnabled(): Boolean
+internal expect fun referenceContentionBenchmarkMode(): String?
 internal expect fun referenceContentionYield()
 internal expect fun runReferenceContentionWorkers(count: Int, action: (Int) -> Unit)

@@ -121,18 +121,23 @@ internal class WinRTObjectState<TReference : AutoCloseable> {
     val queryInterfaceCache: ConcurrentCacheMap<WinRTTypeHandle, TReference>
         get() = queryInterfaces ?: initializeQueryInterfaceCache()
 
-    private fun initializeQueryInterfaceCache(): ConcurrentCacheMap<WinRTTypeHandle, TReference> =
-        withObjectReferenceLock(this) {
-            // Retain CsWinRT's independent per-object dictionaries, but start small:
-            // Native eagerly allocates backing arrays even before the first insertion.
-            queryInterfaces ?: ConcurrentCacheMap<WinRTTypeHandle, TReference>(1).also { queryInterfaces = it }
+    private fun initializeQueryInterfaceCache(): ConcurrentCacheMap<WinRTTypeHandle, TReference> {
+        // CsWinRT WindowsRuntimeObject.TypeHandleCache constructs before publishing.
+        // Only publication is serialized: no allocation or native lock creation in
+        // this critical section, and no Native identity-hash lookup on the owner.
+        val candidate = ConcurrentCacheMap<WinRTTypeHandle, TReference>(1)
+        return withObjectReferenceCachePublication(this) {
+            queryInterfaces ?: candidate.also { queryInterfaces = it }
         }
+    }
 
     val additionalTypeData: ConcurrentCacheMap<WinRTTypeHandle, Any>
         get() = typeData ?: initializeAdditionalTypeData()
 
-    private fun initializeAdditionalTypeData(): ConcurrentCacheMap<WinRTTypeHandle, Any> =
-        withObjectReferenceLock(this) {
-            typeData ?: ConcurrentCacheMap<WinRTTypeHandle, Any>(1).also { typeData = it }
+    private fun initializeAdditionalTypeData(): ConcurrentCacheMap<WinRTTypeHandle, Any> {
+        val candidate = ConcurrentCacheMap<WinRTTypeHandle, Any>(1)
+        return withObjectReferenceCachePublication(this) {
+            typeData ?: candidate.also { typeData = it }
         }
+    }
 }
