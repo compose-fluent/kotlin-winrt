@@ -6,6 +6,8 @@ param(
     [ValidateRange(1, 20)][int]$Forks = 3,
     [string[]]$Runners = @('kotlin-native', 'cppwinrt', 'cswinrt', 'kotlin-jvm'),
     [string[]]$Scenarios = @(),
+    [ValidateRange(0, 10000)][int]$WarmupRounds = 8,
+    [ValidateRange(1, 100000)][int]$MinimumIterations,
     [ValidateRange(1, 10000)][int]$MeasurementRounds = 25,
     [ValidateRange(1, 3600)][int]$TimeoutSeconds = 180,
     [switch]$Memory
@@ -37,7 +39,11 @@ for ($fork = 1; $fork -le $Forks; $fork++) {
             $start.RedirectStandardOutput = $true
             $start.RedirectStandardError = $true
             foreach ($arg in $runner.arguments) { $start.ArgumentList.Add([string]$arg) }
-            foreach ($arg in @('--filter', $scenario, '--warmup-rounds', '8', '--measurement-rounds',
+            if ($PSBoundParameters.ContainsKey('MinimumIterations')) {
+                $start.ArgumentList.Add('--iterations')
+                $start.ArgumentList.Add([string]$MinimumIterations)
+            }
+            foreach ($arg in @('--filter', $scenario, '--warmup-rounds', [string]$WarmupRounds, '--measurement-rounds',
                     [string]$MeasurementRounds, '--output', $resultPath)) { $start.ArgumentList.Add($arg) }
             if ($Memory -and $runner.managedMemory) { $start.ArgumentList.Add('--memory') }
             foreach ($property in $runner.environment.PSObject.Properties) {
@@ -83,6 +89,8 @@ for ($fork = 1; $fork -le $Forks; $fork++) {
 }
 [pscustomobject]@{ schemaVersion = 1; snapshot = $manifest; mode = $(if ($Memory) {'memory-diagnostic'} else {'timing'})
     forks = $Forks; scenarios = $Scenarios; runners = $Runners; resultCount = $records.Count
+    warmupRounds = $WarmupRounds; measurementRounds = $MeasurementRounds
+    minimumIterationsOverride = $(if ($PSBoundParameters.ContainsKey('MinimumIterations')) { $MinimumIterations } else { $null })
     hostInfo = [pscustomobject]@{ os = [Environment]::OSVersion.VersionString; processors = [Environment]::ProcessorCount
         powershell = $PSVersionTable.PSVersion.ToString() } } |
     ConvertTo-Json -Depth 12 | Set-Content (Join-Path $OutputDirectory 'run.json')
