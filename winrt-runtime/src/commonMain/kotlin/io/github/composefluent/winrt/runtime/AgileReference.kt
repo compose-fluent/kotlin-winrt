@@ -25,7 +25,7 @@ internal class AgileReferenceInterfaceReference(
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), AgileReferenceInterfaceVftbl.Resolve, iidMemory, resultOut),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, AgileReferenceInterfaceVftbl.Resolve, iidMemory, resultOut) },
             ).requireSuccess("IAgileReference.Resolve")
             val resolvedPointer = PlatformAbi.readPointer(resultOut)
             if (PlatformAbi.isNull(resolvedPointer)) {
@@ -54,13 +54,13 @@ internal class GlobalInterfaceTableReference(
             val cookieOut = PlatformAbi.allocatePointerSlot(scope)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    activePointer,
                     GlobalInterfaceTableVftbl.RegisterInterfaceInGlobal,
                     interfacePointer,
                     iidMemory,
                     cookieOut,
-                ),
+                ) },
             ).requireSuccess("IGlobalInterfaceTable.RegisterInterfaceInGlobal")
             PlatformAbi.readPointer(cookieOut)
         }
@@ -69,7 +69,7 @@ internal class GlobalInterfaceTableReference(
         HResult(
             run {
                 comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), GlobalInterfaceTableVftbl.RevokeInterfaceFromGlobal, cookie)
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, GlobalInterfaceTableVftbl.RevokeInterfaceFromGlobal, cookie) }
             },
         )
 
@@ -83,13 +83,13 @@ internal class GlobalInterfaceTableReference(
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    activePointer,
                     GlobalInterfaceTableVftbl.GetInterfaceFromGlobal,
                     cookie,
                     iidMemory,
                     resultOut,
-                ),
+                ) },
             ).requireSuccess("IGlobalInterfaceTable.GetInterfaceFromGlobal")
             val resolvedPointer = PlatformAbi.readPointer(resultOut)
             if (PlatformAbi.isNull(resolvedPointer)) {

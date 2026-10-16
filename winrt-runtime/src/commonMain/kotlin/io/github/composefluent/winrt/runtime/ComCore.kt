@@ -70,6 +70,13 @@ internal class ComPtr private constructor(
     val isDisposed: Boolean
         get() = support.isDisposed
 
+    internal inline fun <T> withCallPointer(block: (RawComPtr) -> T): T =
+        try {
+            support.withCall(block)
+        } finally {
+            winRTKeepAlive(this)
+        }
+
     internal val isCallableInCurrentContext: Boolean
         get() = support.isCallableInCurrentContext
 
@@ -82,26 +89,25 @@ internal class ComPtr private constructor(
     internal val referenceTrackerHandle: RawComPtr
         get() = support.referenceTrackerHandle
 
-    fun addRef(): UInt =
-        support.addRef(::invokeReferenceTrackerAddRefOnPointer)
-
-    fun release(): UInt =
-        support.release(::invokeReferenceTrackerReleaseOnPointer)
-
-    fun acquireOwnedPointer(): RawComPtr = support.acquireOwnedPointer()
+    fun acquireOwnedPointer(): RawComPtr = try {
+        support.acquireOwnedPointer()
+    } finally {
+        winRTKeepAlive(this)
+    }
 
     /** Mirrors CsWinRT's IObjectReference.AsKnownPtr ownership transfer. */
     internal fun attachKnownPointer(
         pointer: RawComPtr,
         interfaceId: Guid = IID.IUnknown,
-    ): ComPtr {
-        throwIfDisposed()
+    ): ComPtr = withCallPointer { activePointer ->
         require(!PlatformAbi.isNull(pointer)) {
             "Known COM object reference cannot wrap a null pointer."
         }
 
-        addRef()
-        return try {
+        val tracker = referenceTrackerHandle
+        WinRTPlatformApi.addRefRaw(activePointer.asRawAddress())
+        if (!PlatformAbi.isNull(tracker)) invokeReferenceTrackerAddRefOnPointer(tracker)
+        try {
             create(
                 raw = pointer,
                 interfaceId = interfaceId,
@@ -111,30 +117,39 @@ internal class ComPtr private constructor(
                     } else {
                         ComOwnershipMode.Owned
                     },
-                referenceTrackerPointer = referenceTrackerHandle,
+                referenceTrackerPointer = tracker,
                 isAggregated = isAggregated,
                 nativeObjectLifetime = support.nativeObjectLifetime,
                 knownFreeThreaded = support.callsAreFreeThreaded,
             )
         } catch (error: Throwable) {
-            release()
+            if (!PlatformAbi.isNull(tracker)) invokeReferenceTrackerReleaseOnPointer(tracker)
+            WinRTPlatformApi.releaseRaw(activePointer.asRawAddress())
             throw error
         }
     }
 
     fun tryQueryInterface(requestedInterfaceId: Guid): ComPtr? =
-        support.tryQueryInterface(
-            requestedInterfaceId,
-            ::invokeReferenceTrackerAddRefOnPointer,
-            ::wrapQueriedReference,
-        )
+        try {
+            support.tryQueryInterface(
+                requestedInterfaceId,
+                ::invokeReferenceTrackerAddRefOnPointer,
+                ::wrapQueriedReference,
+            )
+        } finally {
+            winRTKeepAlive(this)
+        }
 
     fun queryInterface(requestedInterfaceId: Guid): Result<ComPtr> =
-        support.queryInterface(
-            requestedInterfaceId,
-            ::invokeReferenceTrackerAddRefOnPointer,
-            ::wrapQueriedReference,
-        )
+        try {
+            support.queryInterface(
+                requestedInterfaceId,
+                ::invokeReferenceTrackerAddRefOnPointer,
+                ::wrapQueriedReference,
+            )
+        } finally {
+            winRTKeepAlive(this)
+        }
 
     /**
      * Scoped counterpart of CsWinRT IObjectReference.AsValue(Guid)/ObjectReferenceValue.Dispose.
@@ -144,39 +159,41 @@ internal class ComPtr private constructor(
      * exceptions from the caller's block still propagate after releasing the reference.
      */
     internal fun <T> tryWithQueryInterfacePointer(interfaceId: Guid, block: (RawComPtr) -> T): T? {
-        try {
-            val result = WinRTPlatformApi.queryInterfaceRaw(resolvePointer().asRawAddress(), interfaceId)
-            if (result.hResultValue != KnownHResults.S_OK.value) {
-                return null
-            }
-            if (PlatformAbi.isNull(result.pointer)) {
-                return null
-            }
-            val aggregated = isAggregated
-            if (aggregated) {
-                WinRTPlatformApi.releaseRaw(result.pointer)
-            }
-            val tracker = referenceTrackerHandle
-            var trackerSourceAdded = false
+        return withCallPointer { activePointer ->
             try {
-                if (!PlatformAbi.isNull(tracker)) {
-                    invokeReferenceTrackerAddRefOnPointer(tracker)
-                    trackerSourceAdded = true
+                val result = WinRTPlatformApi.queryInterfaceRaw(activePointer.asRawAddress(), interfaceId)
+                if (result.hResultValue != KnownHResults.S_OK.value) {
+                    return null
                 }
-                return block(result.pointer.asRawComPtr())
-            } finally {
+                if (PlatformAbi.isNull(result.pointer)) {
+                    return null
+                }
+                val aggregated = isAggregated
+                if (aggregated) {
+                    WinRTPlatformApi.releaseRaw(result.pointer)
+                }
+                val tracker = referenceTrackerHandle
+                var trackerSourceAdded = false
                 try {
-                    if (trackerSourceAdded) {
-                        invokeReferenceTrackerReleaseOnPointer(tracker)
+                    if (!PlatformAbi.isNull(tracker)) {
+                        invokeReferenceTrackerAddRefOnPointer(tracker)
+                        trackerSourceAdded = true
                     }
+                    return block(result.pointer.asRawComPtr())
                 } finally {
-                    if (!aggregated) {
-                        WinRTPlatformApi.releaseRaw(result.pointer)
+                    try {
+                        if (trackerSourceAdded) {
+                            invokeReferenceTrackerReleaseOnPointer(tracker)
+                        }
+                    } finally {
+                        if (!aggregated) {
+                            WinRTPlatformApi.releaseRaw(result.pointer)
+                        }
                     }
                 }
+            } finally {
+                winRTKeepAlive(this)
             }
-        } finally {
-            winRTKeepAlive(this)
         }
     }
 
@@ -186,44 +203,46 @@ internal class ComPtr private constructor(
      * Non-agile, tracked, aggregated, or context-unclassified references keep their ComPtr path.
      */
     internal fun tryAcquireScopedQueryInterfaceLease(interfaceId: Guid): AbiReferenceLease<AutoCloseable>? {
-        if (!support.canUseScopedQueryInterfaceLease) return null
-        try {
-            val result = WinRTPlatformApi.queryInterfaceRaw(resolvePointer().asRawAddress(), interfaceId)
-            val scopedPointer = result.pointer
-            if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(scopedPointer)) {
-                throw WinRTUnsupportedOperationException(
-                    "QueryInterface failed for $interfaceId with " + KnownHResults.E_NOINTERFACE,
-                    KnownHResults.E_NOINTERFACE,
-                )
-            }
-            WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
-            var cleanup: ScopedComReferenceCleanup? = null
-            var transferred = false
+        return withCallPointer { activePointer ->
+            if (!support.canUseScopedQueryInterfaceLease) return null
             try {
-                val releaseState = ScopedComReferenceCleanup(scopedPointer)
-                cleanup = releaseState
-                var registration: AutoCloseable? = null
-                val lease = AbiReferenceLeaseSupport.create<AutoCloseable>(
-                    abi = scopedPointer,
-                    cleanup = {
-                        try {
-                            registration?.close() ?: releaseState.close()
-                        } finally {
-                            winRTKeepAlive(this)
-                        }
-                    },
-                )
-                // The Cleaner action owns only releaseState, never its lease target/registration.
-                registration = scopedReferenceFinalizationHook.create(releaseState::close)
-                transferred = true
-                return lease
-            } finally {
-                if (!transferred) {
-                    cleanup?.close() ?: WinRTPlatformApi.releaseRaw(scopedPointer)
+                val result = WinRTPlatformApi.queryInterfaceRaw(activePointer.asRawAddress(), interfaceId)
+                val scopedPointer = result.pointer
+                if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(scopedPointer)) {
+                    throw WinRTUnsupportedOperationException(
+                        "QueryInterface failed for $interfaceId with " + KnownHResults.E_NOINTERFACE,
+                        KnownHResults.E_NOINTERFACE,
+                    )
                 }
+                WinRTPlatformApi.checkSucceededRaw(result.hResultValue)
+                var cleanup: ScopedComReferenceCleanup? = null
+                var transferred = false
+                try {
+                    val releaseState = ScopedComReferenceCleanup(scopedPointer)
+                    cleanup = releaseState
+                    var registration: AutoCloseable? = null
+                    val lease = AbiReferenceLeaseSupport.create<AutoCloseable>(
+                        abi = scopedPointer,
+                        cleanup = {
+                            try {
+                                registration?.close() ?: releaseState.close()
+                            } finally {
+                                winRTKeepAlive(this)
+                            }
+                        },
+                    )
+                    // The Cleaner action owns only releaseState, never its lease target/registration.
+                    registration = scopedReferenceFinalizationHook.create(releaseState::close)
+                    transferred = true
+                    return lease
+                } finally {
+                    if (!transferred) {
+                        cleanup?.close() ?: WinRTPlatformApi.releaseRaw(scopedPointer)
+                    }
+                }
+            } finally {
+                winRTKeepAlive(this)
             }
-        } finally {
-            winRTKeepAlive(this)
         }
     }
 
@@ -248,7 +267,7 @@ internal class ComPtr private constructor(
         signature: ComMethodSignature,
         args: LongArray,
     ): Int {
-        return ComVtableInvoker.invokeGeneric(resolvePointer(), slot, signature, args)
+        return this.withCallPointer { activePointer -> ComVtableInvoker.invokeGeneric(activePointer, slot, signature, args) }
     }
 
     @Suppress("NOTHING_TO_INLINE")
@@ -443,10 +462,7 @@ private class ScopedComReferenceCleanup(
 }
 
 internal fun closeComPtrSupport(support: RawComObjectReferenceSupport) {
-    support.close(
-        releaseFromTrackerSourceCallback = ::invokeReferenceTrackerReleaseOnPointer,
-        releaseTrackerPointer = ::invokeIUnknownReleaseOnPointer,
-    )
+    support.close()
 }
 
 internal fun closeComPtrSupportFromFinalizer(support: RawComObjectReferenceSupport) {
@@ -456,11 +472,7 @@ internal fun closeComPtrSupportFromFinalizer(support: RawComObjectReferenceSuppo
     if (WaitedFinalizerReleases.defer { closeComPtrSupportFromFinalizer(support) }) {
         return
     }
-    support.close(
-        releaseFromTrackerSourceCallback = ::invokeReferenceTrackerReleaseOnPointer,
-        releaseTrackerPointer = ::invokeIUnknownReleaseOnPointer,
-        deferContextRelease = true,
-    )
+    support.close(deferContextRelease = true)
 }
 
 private fun invokeIUnknownAddRefOnPointer(targetPointer: RawComPtr): UInt =
@@ -474,7 +486,7 @@ internal fun retainBorrowedComPointer(targetPointer: RawComPtr): RawComPtr {
     return targetPointer
 }
 
-private fun invokeIUnknownReleaseOnPointer(targetPointer: RawComPtr): UInt =
+internal fun invokeIUnknownReleaseOnPointer(targetPointer: RawComPtr): UInt =
     ComVtableInvoker.invoke(
         instance = targetPointer,
         slot = IUnknownVftblSlots.Release,
@@ -486,7 +498,7 @@ private fun invokeReferenceTrackerAddRefOnPointer(targetPointer: RawComPtr): UIn
         slot = ReferenceTrackerVftblSlots.AddRefFromTrackerSource,
     ).toUInt()
 
-private fun invokeReferenceTrackerReleaseOnPointer(targetPointer: RawComPtr): UInt =
+internal fun invokeReferenceTrackerReleaseOnPointer(targetPointer: RawComPtr): UInt =
     ComVtableInvoker.invoke(
         instance = targetPointer,
         slot = ReferenceTrackerVftblSlots.ReleaseFromTrackerSource,

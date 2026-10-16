@@ -205,20 +205,20 @@ object ExceptionHelpers {
             val restrictedDescriptionOut = PlatformAbi.allocatePointerSlot(scope)
             val capabilitySidOut = PlatformAbi.allocatePointerSlot(scope)
             throwExceptionForHR(
-                ComVtableInvoker.invokeArgs(
-                    errorInfo.pointer,
+                errorInfo.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                    leasedPointer,
                     3,
                     descriptionOut,
                     errorOut,
                     restrictedDescriptionOut,
                     capabilitySidOut,
-                ),
+                ) },
                 operation = "IRestrictedErrorInfo.GetErrorDetails",
             )
 
             val referenceOut = PlatformAbi.allocatePointerSlot(scope)
             val referenceResult = HResult(
-                ComVtableInvoker.invokeArgs(errorInfo.pointer, 4, referenceOut),
+                errorInfo.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, 4, referenceOut) },
             )
 
             RestrictedErrorInfoDetails(

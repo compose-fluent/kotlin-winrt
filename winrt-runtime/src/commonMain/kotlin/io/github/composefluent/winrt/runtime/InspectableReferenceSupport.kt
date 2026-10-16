@@ -25,12 +25,11 @@ internal object ActivationFactoryReferenceSupport {
         marshalingType: WinRTObjectReferenceMarshalingType = WinRTObjectReferenceMarshalingType.Unknown,
     ): IInspectableReference =
         acquireNativeScalarScratchFrame().use { resultOut ->
-            comPtr.throwIfDisposed()
-            val hResult = ComVtableInvoker.invokeArgs(
-                instance = comPtr.resolvePointer(),
+            val hResult = comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                instance = activePointer,
                 slot = IActivationFactoryVftblSlots.ActivateInstance,
                 arg0 = resultOut,
-            )
+            ) }
             winRTKeepAlive(comPtr)
             WinRTPlatformApi.checkSucceededRaw(hResult)
             val activatedPointer = resultOut.readPointer()

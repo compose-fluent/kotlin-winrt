@@ -120,11 +120,11 @@ object WinRTReferenceProjectionInterop {
     ): T =
         acquireNativeScalarScratchFrame().use { frame ->
             val resultOut = frame.pointer
-            val hr = ComVtableInvoker.invokeArgs(
-                instance = reference.pointer,
+            val hr = reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                instance = leasedPointer,
                 slot = slot,
                 arg0 = resultOut,
-            )
+            ) }
             HResult(hr).requireSuccess()
             val result = PlatformAbi.readPointer(resultOut)
             try {
@@ -143,11 +143,11 @@ object WinRTReferenceProjectionInterop {
         interfaceId: Guid,
     ) {
         if (value == null) {
-            val hr = ComVtableInvoker.invokeArgs(
-                instance = reference.pointer,
+            val hr = reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                instance = leasedPointer,
                 slot = slot,
                 arg0 = PlatformAbi.nullPointer,
-            )
+            ) }
             HResult(hr).requireSuccess()
             return
         }
@@ -159,11 +159,11 @@ object WinRTReferenceProjectionInterop {
         if (!WinRTValueBoxing.isDirectReferenceValue(value, interfaceId)) {
             val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
             borrowedProjectionAbi(value, typeHandle)?.let { borrowedAbi ->
-                val hr = ComVtableInvoker.invokeArgs(
-                    instance = reference.pointer,
+                val hr = reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                    instance = leasedPointer,
                     slot = slot,
                     arg0 = borrowedAbi,
-                )
+                ) }
                 HResult(hr).requireSuccess()
                 return
             }
@@ -177,11 +177,11 @@ object WinRTReferenceProjectionInterop {
             includePropertyValueInterface = true,
         )
         try {
-            val hr = ComVtableInvoker.invokeArgs(
-                instance = reference.pointer,
+            val hr = reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                instance = leasedPointer,
                 slot = slot,
                 arg0 = host.borrowCachedInterfacePointer(interfaceId),
-            )
+            ) }
             HResult(hr).requireSuccess()
         } finally {
             host.close()

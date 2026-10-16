@@ -147,10 +147,10 @@ internal object WinUIAuthoredTypeMetadata {
             } else {
                 IUnknownReference(pointer.asRawComPtr(), XamlInterfaceIds.IXamlType).use { reference ->
                     when (arguments) {
-                        0 -> ComVtableInvoker.invoke(reference.pointer, slot)
-                        1 -> ComVtableInvoker.invokeArgs(reference.pointer, slot, args[0] as RawAddress)
-                        2 -> ComVtableInvoker.invokeArgs(reference.pointer, slot, args[0] as RawAddress, args[1] as RawAddress)
-                        else -> ComVtableInvoker.invokeArgs(reference.pointer, slot, args[0] as RawAddress, args[1] as RawAddress, args[2] as RawAddress)
+                        0 -> reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invoke(leasedPointer, slot) }
+                        1 -> reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, slot, args[0] as RawAddress) }
+                        2 -> reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, slot, args[0] as RawAddress, args[1] as RawAddress) }
+                        else -> reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, slot, args[0] as RawAddress, args[1] as RawAddress, args[2] as RawAddress) }
                     }
                 }
             }
@@ -165,7 +165,7 @@ internal object WinUIAuthoredTypeMetadata {
                         if (member != null) PlatformAbi.writePointer(result, createMember(definition, member, resolveType))
                         else IUnknownReference(resolveBase().asRawComPtr(), XamlInterfaceIds.IXamlType).use { base ->
                             HString.create(memberName).use { member ->
-                                HResult(ComVtableInvoker.invokeArgs(base.pointer, XamlTypeAbi.getMember, member.handle, result)).requireSuccess()
+                                HResult(base.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, XamlTypeAbi.getMember, member.handle, result) }).requireSuccess()
                             }
                         }
                     } } ?: inherited(7, 1), // ContentProperty may be declared on an application base.
@@ -220,7 +220,7 @@ internal object WinUIAuthoredTypeMetadata {
                             if (PlatformAbi.isNull(pointer)) {
                                 KnownHResults.S_OK.value
                             } else IUnknownReference(pointer.asRawComPtr(), XamlInterfaceIds.IXamlType).use {
-                                ComVtableInvoker.invokeArgs(it.pointer, XamlTypeAbi.getMember, args[0] as RawAddress, args[1] as RawAddress)
+                                it.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, XamlTypeAbi.getMember, args[0] as RawAddress, args[1] as RawAddress) }
                             }
                         }
                     },
@@ -324,7 +324,7 @@ internal object WinUIAuthoredTypeMetadata {
                     val boxed = resolve(boxedName, value.boxedType, resolveType)
                     if (PlatformAbi.isNull(boxed)) KnownHResults.E_NOINTERFACE.value else
                         IUnknownReference(boxed.asRawComPtr(), XamlInterfaceIds.IXamlType).use {
-                            ComVtableInvoker.invokeArgs(it.pointer, XamlTypeAbi.createFromString, args[0] as RawAddress, args[1] as RawAddress)
+                            it.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, XamlTypeAbi.createFromString, args[0] as RawAddress, args[1] as RawAddress) }
                         }
                 } } ?: unavailable(ComMethodSignatures.HResult_Ptr_Ptr, 1),
                 WinRTInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) {

@@ -369,11 +369,11 @@ object WinRTAsyncProjectionInterop {
             resultReader = { operation ->
                 PlatformAbi.confinedScope().use { scope ->
                     val operationResultOut = resultOut(scope)
-                    val operationHr = ComVtableInvoker.invokeArgs(
-                        operation.pointer,
+                    val operationHr = operation.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                        leasedPointer,
                         WinRTAsyncOperationVftblSlots.GetResults,
                         operationResultOut,
-                    )
+                    ) }
                     WinRTPlatformApi.checkSucceededRaw(operationHr)
                     resultReader(operationResultOut)
                 }
@@ -412,11 +412,11 @@ object WinRTAsyncProjectionInterop {
             resultReader = { operation ->
                 PlatformAbi.confinedScope().use { scope ->
                     val operationResultOut = resultOut(scope)
-                    val operationHr = ComVtableInvoker.invokeArgs(
-                        operation.pointer,
+                    val operationHr = operation.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                        leasedPointer,
                         WinRTAsyncOperationWithProgressVftblSlots.GetResults,
                         operationResultOut,
-                    )
+                    ) }
                     WinRTPlatformApi.checkSucceededRaw(operationHr)
                     resultReader(operationResultOut)
                 }

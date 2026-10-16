@@ -108,27 +108,27 @@ private fun ComAbiValueKind.writeArgument(value: Any?, destination: RawAddress) 
 }
 
 private fun WinRTCollectionReferenceBase.invokeElements(slot: Int, kinds: List<ComAbiValueKind>, vararg words: Long): Int =
-    ComVtableInvoker.invokeGeneric(comPtr.resolvePointer(), slot, ComMethodSignature(kinds), words)
+    comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeGeneric(activePointer, slot, ComMethodSignature(kinds), words) }
 
 internal fun <T> WinRTVectorReference.getElement(index: UInt, adapter: WinRTReferenceValueAdapter<T>): T =
     if (adapter.valueAbi == null) adapter.projectOwnedAbi(getAtAbiOrNull(index) ?: RawAddress.Null)
-    else adapter.readElementResult { ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, index, it) }
+    else adapter.readElementResult { comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 6, index, it) } }
 
 internal fun <T> WinRTVectorViewReference.getElement(index: UInt, adapter: WinRTReferenceValueAdapter<T>): T =
     if (adapter.valueAbi == null) adapter.projectOwnedAbi(getAtAbiOrNull(index) ?: RawAddress.Null)
-    else adapter.readElementResult { ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, index, it) }
+    else adapter.readElementResult { comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 6, index, it) } }
 
 internal fun <T> WinRTIteratorReference.currentElement(adapter: WinRTReferenceValueAdapter<T>): T =
     if (adapter.valueAbi == null) adapter.projectOwnedAbi(currentAbiOrNull() ?: RawAddress.Null)
-    else adapter.readElementResult { ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, it) }
+    else adapter.readElementResult { comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 6, it) } }
 
 internal fun <T> WinRTKeyValuePairReference.keyElement(adapter: WinRTReferenceValueAdapter<T>): T =
     if (adapter.valueAbi == null) adapter.projectOwnedAbi(keyAbiOrNull() ?: RawAddress.Null)
-    else adapter.readElementResult { ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, it) }
+    else adapter.readElementResult { comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 6, it) } }
 
 internal fun <T> WinRTKeyValuePairReference.valueElement(adapter: WinRTReferenceValueAdapter<T>): T =
     if (adapter.valueAbi == null) adapter.projectOwnedAbi(valueAbiOrNull() ?: RawAddress.Null)
-    else adapter.readElementResult { ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 7, it) }
+    else adapter.readElementResult { comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 7, it) } }
 
 internal fun <T> WinRTCollectionReferenceBase.indexOfElement(slot: Int, value: T, adapter: WinRTReferenceValueAdapter<T>): Pair<Boolean, UInt> =
     adapter.withElementWord(value) { word ->
@@ -159,7 +159,7 @@ internal fun <T> WinRTVectorReference.appendElement(value: T, adapter: WinRTRefe
 internal fun <K> WinRTCollectionReferenceBase.hasElementKey(key: K, adapter: WinRTReferenceValueAdapter<K>): Boolean =
     adapter.withElementWord(key) { word ->
         RawAbiResultSupport.booleanResult { result ->
-            if (adapter.valueAbi == null) ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 8, RawAddress(word), result)
+            if (adapter.valueAbi == null) comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 8, RawAddress(word), result) }
             else invokeElements(8, listOf(adapter.elementAbiKind, ComAbiValueKind.Pointer), word, result.value)
         }
     }
@@ -168,7 +168,7 @@ internal fun <K, V> WinRTCollectionReferenceBase.lookupElement(key: K, keyAdapte
     if (!hasElementKey(key, keyAdapter)) return null
     return keyAdapter.withElementWord(key) { word ->
         valueAdapter.readElementResult { result ->
-            if (keyAdapter.valueAbi == null) ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, RawAddress(word), result)
+            if (keyAdapter.valueAbi == null) comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 6, RawAddress(word), result) }
             else invokeElements(6, listOf(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer), word, result.value)
         }
     }

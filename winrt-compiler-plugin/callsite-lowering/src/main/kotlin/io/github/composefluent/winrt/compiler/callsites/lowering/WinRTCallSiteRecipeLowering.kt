@@ -156,11 +156,19 @@ internal class WinRTCallSiteRecipeLowering private constructor(
         backendFactory()
     }
 
-    private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol by lazy {
-        requiredCallSiteSymbol(
-            "ComObjectReference.pointer",
-            reference.propertyGetter("pointer"),
-        ) ?: abortCallSiteLowering()
+    private val comReferenceBeginCall by lazy {
+        resolver.function(WINRT_COM_OBJECT_REFERENCE_FQ_NAME, "beginCall", emptyList(), "kotlin.Unit")
+            ?: abortCallSiteLowering()
+    }
+
+    private val comReferenceEndCall by lazy {
+        resolver.function(WINRT_COM_OBJECT_REFERENCE_FQ_NAME, "endCall", emptyList(), "kotlin.Unit")
+            ?: abortCallSiteLowering()
+    }
+
+    private val comReferenceActivePointer by lazy {
+        resolver.function(WINRT_COM_OBJECT_REFERENCE_FQ_NAME, "pointerForActiveCall", emptyList(), WINRT_RAW_COM_PTR_FQ_NAME.asString())
+            ?: abortCallSiteLowering()
     }
 
     private val acquireScalarScratchFrame: IrSimpleFunctionSymbol by lazy {
@@ -743,7 +751,17 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             if (lastFailureDetail == null) lastFailureDetail = "recipe emission returned no complete expression"
             return false
         }
-        function.body = builder.irBlockBody { +builder.irReturn(body) }
+        function.body = builder.irBlockBody {
+            +builder.irCall(comReferenceBeginCall).apply { arguments[0] = builder.irGet(parameters[0]) }
+            +builder.irReturn(builder.irTry(
+                type = function.returnType,
+                tryResult = body,
+                catches = emptyList(),
+                finallyExpression = builder.irCall(comReferenceEndCall).apply {
+                    arguments[0] = builder.irGet(parameters[0])
+                },
+            ))
+        }
         return true
     }
 
@@ -902,7 +920,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             directInputs = emptyList(),
             keepAliveOwners = emptyList(),
         ) { inputValues, inputDirectInputs, inputKeepAliveOwners ->
-            val instance = builder.irCall(comObjectReferencePointerGetter).apply {
+            val instance = builder.irCall(comReferenceActivePointer).apply {
                 arguments[0] = builder.irGet(parameters[0])
             }
             val packedCall = if (packedValueReader != null) {
@@ -2598,7 +2616,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                 builder = builder,
                 pluginContext = pluginContext,
                 ownerFunction = function,
-                instance = builder.irCall(comObjectReferencePointerGetter).apply {
+                instance = builder.irCall(comReferenceActivePointer).apply {
                     arguments[0] = builder.irGet(parameters[0])
                 },
                 slot = builder.irGet(parameters[1]),
@@ -2685,7 +2703,7 @@ internal class WinRTCallSiteRecipeLowering private constructor(
     ): IrExpression? {
         val result = state.result ?: return null
         val consumingOwnedProjection = result.isSingleConsumingOwnedProjection(descriptor)
-        val instance = builder.irCall(comObjectReferencePointerGetter).apply {
+        val instance = builder.irCall(comReferenceActivePointer).apply {
             arguments[0] = builder.irGet(parameters[0])
         }
         val call = directCallBackend.emitDirect(
@@ -3717,15 +3735,8 @@ internal class WinRTCallSiteRecipeLowering private constructor(
             WinRTProjectionCallSiteReferenceAccess.RAW_COM_PTR ->
                 continuation(PreparedInput(listOf(rawComPtrToAddress(builder, value) ?: return null)))
             WinRTProjectionCallSiteReferenceAccess.UNKNOWN_REFERENCE,
-            WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE -> {
-                val pointer = builder.irCall(comObjectReferencePointerGetter).apply { arguments[0] = value }
-                continuation(
-                    PreparedInput(
-                        abiValues = listOf(rawComPtrToAddress(builder, pointer) ?: return null),
-                        keepAliveOwners = listOf(value),
-                    ),
-                )
-            }
+            WinRTProjectionCallSiteReferenceAccess.INSPECTABLE_REFERENCE ->
+                emitLeasedReferenceInput(builder, function, value, pluginContext, continuation)
             WinRTProjectionCallSiteReferenceAccess.MANAGED_INSPECTABLE -> null
             WinRTProjectionCallSiteReferenceAccess.PROJECTED_INTERFACE -> builder.irBlock(
                 resultType = function.returnType,
@@ -3941,42 +3952,58 @@ internal class WinRTCallSiteRecipeLowering private constructor(
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
-                fun projectedAddress(): IrExpression {
-                    val projectedValue = builder.irAs(builder.irGet(stableValue), receiverType)
-                    val reference = builder.irCall(nativeObject).apply { arguments[0] = projectedValue }
-                    val pointer = builder.irCall(comObjectReferencePointerGetter).apply {
-                        arguments[0] = reference
-                    }
-                    return rawComPtrToAddress(builder, pointer) ?: abortCallSiteLowering()
-                }
-                val address = irTemporary(
-                    if (recipe.nullable) {
-                        val nullPointer = platformAbiStaticProperty(builder, platformAbiNullPointerGetter)
-                            ?: return null
-                        builder.irIfNull(
-                            type = nullPointer.type,
-                            subject = builder.irGet(stableValue),
-                            thenPart = nullPointer,
-                            elsePart = projectedAddress(),
-                        )
-                    } else {
-                        projectedAddress()
-                    },
-                    nameHint = "projectedAbi",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                )
-                +(
-                    continuation(
-                        PreparedInput(
-                            abiValues = listOf(builder.irGet(address)),
-                            keepAliveOwners = listOf(builder.irGet(stableValue)),
-                        ),
-                    ) ?: abortCallSiteLowering()
-                )
+                val projectedValue = builder.irAs(builder.irGet(stableValue), receiverType)
+                val nativeReference = builder.irCall(nativeObject).apply { arguments[0] = projectedValue }
+                val nullableReference = if (recipe.nullable) builder.irIfNull(
+                    type = nativeReference.type.makeNullable(),
+                    subject = builder.irGet(stableValue),
+                    thenPart = builder.irNull(nativeReference.type.makeNullable()),
+                    elsePart = nativeReference,
+                ) else nativeReference
+                +(emitLeasedReferenceInput(builder, function, nullableReference, pluginContext, continuation)
+                    ?: abortCallSiteLowering())
             }
             else -> null
         }
+
+    /** Hold a managed reference lease across the entire continuation, including failure. */
+    private fun emitLeasedReferenceInput(
+        builder: DeclarationIrBuilder,
+        function: IrSimpleFunction,
+        value: IrExpression,
+        pluginContext: IrPluginContext,
+        continuation: (PreparedInput) -> IrExpression?,
+    ): IrExpression = builder.irBlock(resultType = function.returnType) {
+        val stable = irTemporary(value, nameHint = "inputReference")
+        val acquired = irTemporary(builder.irBoolean(false), nameHint = "referenceLeaseAcquired", isMutable = true)
+        val address = irTemporary(
+            platformAbiStaticProperty(builder, platformAbiNullPointerGetter) ?: abortCallSiteLowering(),
+            nameHint = "referenceAddress", isMutable = true,
+        )
+        fun owner() = builder.irAs(builder.irGet(stable), value.type.makeNotNull())
+        val prepare = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+            +builder.irCall(comReferenceBeginCall).apply { arguments[0] = owner() }
+            +builder.irSet(acquired.symbol, builder.irBoolean(true))
+            +builder.irSet(address.symbol, rawComPtrToAddress(builder,
+                builder.irCall(comReferenceActivePointer).apply { arguments[0] = owner() },
+            ) ?: abortCallSiteLowering())
+        }
+        val downstream = continuation(PreparedInput(listOf(builder.irGet(address)))) ?: abortCallSiteLowering()
+        +builder.irTry(
+            type = function.returnType,
+            tryResult = builder.irBlock(resultType = function.returnType) {
+                +if (value.type.isNullable()) builder.irIfNull(
+                    type = pluginContext.irBuiltIns.unitType,
+                    subject = builder.irGet(stable), thenPart = builder.irUnit(), elsePart = prepare,
+                ) else prepare
+                +downstream
+            },
+            catches = emptyList(),
+            finallyExpression = builder.irIfThen(pluginContext.irBuiltIns.unitType, builder.irGet(acquired),
+                builder.irCall(comReferenceEndCall).apply { arguments[0] = owner() },
+            ),
+        )
+    }
 
     private fun rawComPtrToAddress(builder: DeclarationIrBuilder, value: IrExpression): IrExpression? {
         val asAddress = rawComPtrAsAddress ?: return null

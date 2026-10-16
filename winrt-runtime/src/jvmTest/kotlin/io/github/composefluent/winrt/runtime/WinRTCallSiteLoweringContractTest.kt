@@ -607,10 +607,9 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(nonNull.contains("PlatformManagedComReferenceCounter.load"), nonNull)
         assertTrue(nonNull.contains("ManagedComHostState.completeBorrowedCallStateTransition"), nonNull)
         assertFalse(nonNull.contains("ManagedComHostState.endBorrowedCall"), nonNull)
-        assertTrue(nonNull.contains("ComObjectReference.getComPtr"), nonNull)
-        assertTrue(nonNull.contains("ComPtr.getSupport"), nonNull)
-        assertTrue(nonNull.contains("RawComObjectReferenceSupport.isDisposed"), nonNull)
-        assertTrue(nonNull.contains("RawComObjectReferenceSupport.\"pointerForCurrentContext-"), nonNull)
+        assertTrue(nonNull.contains("ComObjectReference.beginCall"), nonNull)
+        assertTrue(nonNull.contains("ComObjectReference.endCall"), nonNull)
+        assertTrue(nonNull.contains("ComObjectReference.\"pointerForActiveCall-"), nonNull)
         assertFalse(nonNull.contains("ComPtr.\"getPointer-"), nonNull)
         assertFalse(nonNull.contains("IWinRTObject.getObjectReferenceForType"), nonNull)
         assertFalse(nonNull.contains("IWinRTObject.getNativeObject"), nonNull)
@@ -618,10 +617,9 @@ class WinRTCallSiteLoweringContractTest {
 
         val nullable = bytecode.methodBytecode("consumeNullableRuntimeClass")
         assertTrue(nullable.contains("Metadata.getTYPE_HANDLE"), nullable)
-        assertTrue(nullable.contains("ComObjectReference.getComPtr"), nullable)
-        assertTrue(nullable.contains("ComPtr.getSupport"), nullable)
-        assertTrue(nullable.contains("RawComObjectReferenceSupport.isDisposed"), nullable)
-        assertTrue(nullable.contains("RawComObjectReferenceSupport.\"pointerForCurrentContext-"), nullable)
+        assertTrue(nullable.contains("ComObjectReference.beginCall"), nullable)
+        assertTrue(nullable.contains("ComObjectReference.endCall"), nullable)
+        assertTrue(nullable.contains("ComObjectReference.\"pointerForActiveCall-"), nullable)
         assertFalse(nullable.contains("ComPtr.\"getPointer-"), nullable)
         assertTrue(nullable.contains("ifnonnull") || nullable.contains("ifnull"), nullable)
         assertFalse(nullable.contains("IWinRTObject.getObjectReferenceForType"), nullable)
@@ -834,7 +832,7 @@ class WinRTCallSiteLoweringContractTest {
     }
 
     @Test
-    fun receiver_and_direct_com_input_are_fenced_immediately_after_the_downcall() {
+    fun receiver_and_direct_com_input_hold_leases_across_the_downcall() {
         val bytecode = javap(Task2CallSiteLoweringFixture::class.java.name)
         assertFalse(bytecode.contains("Task 2 compiler-plugin fixture"))
 
@@ -848,7 +846,12 @@ class WinRTCallSiteLoweringContractTest {
         assertTrue(downcall >= 0 && firstFence > downcall, method)
         assertTrue(successBranch > firstFence, method)
         assertTrue(failureTranslation > successBranch, method)
-        assertEquals(2, method.countOccurrences("java/lang/ref/Reference.reachabilityFence:(Ljava/lang/Object;)V"))
+        // Receiver is fenced immediately; the input lease keeps its owner alive
+        // until endCall on both normal and exceptional exits (CsWinRT AsValue).
+        assertEquals(1, method.countOccurrences("java/lang/ref/Reference.reachabilityFence:(Ljava/lang/Object;)V"))
+        assertEquals(2, method.countOccurrences("ComObjectReference.beginCall"))
+        assertEquals(4, method.countOccurrences("ComObjectReference.endCall"))
+        assertTrue(method.indexOf("ComObjectReference.endCall") > failureTranslation, method)
 
         val disposedFrameLocals = method.readPointerFrameLocals().takeLast(4).distinct()
         assertEquals(2, disposedFrameLocals.size)

@@ -87,17 +87,18 @@ open class WinRTCollectionReferenceBase(
         value: String,
         adapter: WinRTReferenceValueAdapter<T>,
     ): T? {
-        val instance = comPtr.resolvePointer()
-        return winRTDirectInvokeHStringPointerResult(instance, slot, value) { hResult, result ->
-            RawObjectAbiSupport.lookupResult(hResult, result) { pointer ->
-                adapter.projectOwnedAbi(pointer)
+        return comPtr.withCallPointer { instance ->
+            winRTDirectInvokeHStringPointerResult(instance, slot, value) { hResult, result ->
+                RawObjectAbiSupport.lookupResult(hResult, result) { pointer ->
+                    adapter.projectOwnedAbi(pointer)
+                }
             }
         }
     }
 
     protected fun invokeIndexOfObjectArg(slot: Int, value: ComObjectReference): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
-            invokeSlot(slot, value.pointer.asRawAddress(), indexOut, foundOut)
+            value.comPtr.withCallPointer { pointer -> invokeSlot(slot, pointer.asRawAddress(), indexOut, foundOut) }
         }
 
     protected fun invokeIndexOfAbiArg(slot: Int, value: RawAddress): Pair<Boolean, UInt> =
@@ -129,12 +130,21 @@ open class WinRTCollectionReferenceBase(
         )
 
     protected fun invokeReplaceAllObjectArray(slot: Int, items: List<ComObjectReference>) {
-        RawObjectAbiSupport.replaceAllObjectArray(
-            items = items.map { it.pointer.asRawAddress() },
-            invoke = { size, itemsAbi ->
-                invokeSlot(slot, size, itemsAbi)
-            },
-        )
+        var acquired = 0
+        try {
+            // CsWinRT array marshalers retain every element for the native call.
+            // A managed lease preserves that lifetime without per-element COM AddRef.
+            for (item in items) {
+                item.beginCall()
+                acquired++
+            }
+            RawObjectAbiSupport.replaceAllObjectArray(
+                items = items.map { it.pointerForActiveCall().asRawAddress() },
+                invoke = { size, itemsAbi -> invokeSlot(slot, size, itemsAbi) },
+            )
+        } finally {
+            while (acquired > 0) items[--acquired].endCall()
+        }
     }
 
     protected fun invokeMapViewSplitPointers(slot: Int): Pair<RawAddress, RawAddress> =
@@ -144,47 +154,47 @@ open class WinRTCollectionReferenceBase(
 
     protected fun invokeSlot(slot: Int): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invoke(comPtr.resolvePointer(), slot)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invoke(activePointer, slot) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: UInt): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: RawAddress, arg1: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0, arg1) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: Int, arg1: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0, arg1) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: UInt, arg1: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0, arg1) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: RawAddress, arg1: RawAddress, arg2: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1, arg2)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0, arg1, arg2) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: Int, arg1: RawAddress, arg2: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1, arg2)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0, arg1, arg2) }
     }
 
     protected fun invokeSlot(slot: Int, arg0: UInt, arg1: Int, arg2: RawAddress, arg3: RawAddress): Int {
         throwIfDisposed()
-        return ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), slot, arg0, arg1, arg2, arg3)
+        return comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, slot, arg0, arg1, arg2, arg3) }
     }
 }
 
@@ -369,7 +379,7 @@ open class WinRTVectorReference(
         invokeIndexOfAbiArg(slot = 9, value = value)
 
     open fun setAt(index: UInt, value: ComObjectReference) {
-        setAt(index, value.pointer.asRawAddress())
+        value.comPtr.withCallPointer { pointer -> setAt(index, pointer.asRawAddress()) }
     }
 
     open fun setAt(index: UInt, valuePointer: RawAddress) {
@@ -378,7 +388,7 @@ open class WinRTVectorReference(
     }
 
     open fun insertAt(index: UInt, value: ComObjectReference) {
-        insertAt(index, value.pointer.asRawAddress())
+        value.comPtr.withCallPointer { pointer -> insertAt(index, pointer.asRawAddress()) }
     }
 
     open fun insertAt(index: UInt, valuePointer: RawAddress) {
@@ -392,7 +402,7 @@ open class WinRTVectorReference(
     }
 
     open fun append(value: ComObjectReference) {
-        append(value.pointer.asRawAddress())
+        value.comPtr.withCallPointer { pointer -> append(pointer.asRawAddress()) }
     }
 
     open fun append(valuePointer: RawAddress) {
@@ -458,7 +468,7 @@ open class WinRTMapViewReference(
             )
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
-        lookupOrNull(key.pointer.asRawAddress())
+        key.comPtr.withCallPointer { pointer -> lookupOrNull(pointer.asRawAddress()) }
 
     open fun lookupOrNull(key: RawAddress): IUnknownReference? =
         invokeLookupAbiMethodWithObjectArg(WinRTCollectionSlots.MapViewLookup, key)?.let { pointer ->
@@ -506,7 +516,7 @@ open class WinRTMapViewReference(
         }
 
     open fun hasKey(key: ComObjectReference): Boolean =
-        hasKey(key.pointer.asRawAddress())
+        key.comPtr.withCallPointer { pointer -> hasKey(pointer.asRawAddress()) }
 
     open fun hasKey(key: RawAddress): Boolean =
         RawAbiResultSupport.booleanResult { resultOut ->
@@ -565,7 +575,7 @@ open class WinRTMapReference(
             )
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
-        lookupOrNull(key.pointer.asRawAddress())
+        key.comPtr.withCallPointer { pointer -> lookupOrNull(pointer.asRawAddress()) }
 
     open fun lookupOrNull(key: RawAddress): IUnknownReference? =
         invokeLookupAbiMethodWithObjectArg(WinRTCollectionSlots.MapLookup, key)?.let { pointer ->
@@ -613,7 +623,7 @@ open class WinRTMapReference(
         }
 
     open fun hasKey(key: ComObjectReference): Boolean =
-        hasKey(key.pointer.asRawAddress())
+        key.comPtr.withCallPointer { pointer -> hasKey(pointer.asRawAddress()) }
 
     open fun hasKey(key: RawAddress): Boolean =
         RawAbiResultSupport.booleanResult { resultOut ->
@@ -627,7 +637,9 @@ open class WinRTMapReference(
         )
 
     open fun insert(key: ComObjectReference, value: ComObjectReference): Boolean =
-        insert(key.pointer.asRawAddress(), value.pointer.asRawAddress())
+        key.comPtr.withCallPointer { keyPointer ->
+            value.comPtr.withCallPointer { valuePointer -> insert(keyPointer.asRawAddress(), valuePointer.asRawAddress()) }
+        }
 
     open fun insert(key: RawAddress, value: RawAddress): Boolean =
         RawAbiResultSupport.booleanResult { resultOut ->
@@ -635,7 +647,7 @@ open class WinRTMapReference(
         }
 
     open fun remove(key: ComObjectReference) {
-        remove(key.pointer.asRawAddress())
+        key.comPtr.withCallPointer { pointer -> remove(pointer.asRawAddress()) }
     }
 
     open fun remove(key: RawAddress) {

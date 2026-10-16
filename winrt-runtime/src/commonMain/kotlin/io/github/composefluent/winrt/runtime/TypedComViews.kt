@@ -29,12 +29,11 @@ internal class IInspectableView(
         InspectableReferenceSupport.getRuntimeClassName(
             noThrow = noThrow,
             invokeGetRuntimeClassName = { hStringOut ->
-                comPtr.throwIfDisposed()
-                ComVtableInvoker.invokeArgs(
-                    instance = comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    instance = activePointer,
                     slot = IInspectableVftblSlots.GetRuntimeClassName,
                     arg0 = hStringOut,
-                )
+                ) }
             },
         )
 }

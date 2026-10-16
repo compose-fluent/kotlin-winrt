@@ -68,14 +68,13 @@ internal class WinRTReferenceReference(
         readValue: (RawAddress) -> T,
         disposeValue: (RawAddress) -> Unit = {},
     ): T {
-        comPtr.throwIfDisposed()
-        return WinRTReferenceProjection.readValue(
-            pointer = comPtr.resolvePointer().asRawAddress(),
+        return comPtr.withCallPointer { activePointer -> WinRTReferenceProjection.readValue(
+            pointer = activePointer.asRawAddress(),
             sizeBytes = sizeBytes,
             alignmentBytes = alignmentBytes,
             readValue = readValue,
             disposeValue = disposeValue,
-        )
+        ) }
     }
 }
 
@@ -91,8 +90,7 @@ internal class WinRTReferenceArrayReference(
         PlatformAbi.confinedScope().use { scope ->
             val countOut = PlatformAbi.allocateInt32Slot(scope)
             val dataOut = PlatformAbi.allocatePointerSlot(scope)
-            comPtr.throwIfDisposed()
-            val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, countOut, dataOut)
+            val hr = comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 6, countOut, dataOut) }
             WinRTPlatformApi.checkSucceededRaw(hr)
             val length = PlatformAbi.readInt32(countOut)
             val data = PlatformAbi.readPointer(dataOut)
@@ -111,8 +109,7 @@ internal class WinRTPropertyValueReference(
     fun type(): PropertyType =
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt32Slot(scope)
-            comPtr.throwIfDisposed()
-            val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 6, resultOut)
+            val hr = comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 6, resultOut) }
             WinRTPlatformApi.checkSucceededRaw(hr)
             PropertyType.fromCode(PlatformAbi.readInt32(resultOut))
         }
@@ -120,8 +117,7 @@ internal class WinRTPropertyValueReference(
     fun isNumericScalar(): Boolean =
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt8Slot(scope)
-            comPtr.throwIfDisposed()
-            val hr = ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), 7, resultOut)
+            val hr = comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, 7, resultOut) }
             WinRTPlatformApi.checkSucceededRaw(hr)
             PlatformAbi.readInt8(resultOut).toInt() != 0
         }

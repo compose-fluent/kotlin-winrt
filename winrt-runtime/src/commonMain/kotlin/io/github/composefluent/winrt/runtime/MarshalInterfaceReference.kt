@@ -41,8 +41,8 @@ internal class MarshalInterfaceReference(
             val resultOut = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    activePointer,
                     MarshalInterfaceVftbl.GetUnmarshalClass,
                     interfaceIdMemory,
                     sourcePointer,
@@ -50,7 +50,7 @@ internal class MarshalInterfaceReference(
                     destinationContextPointer,
                     flags,
                     resultOut,
-                ),
+                ) },
             ).requireSuccess("IMarshal.GetUnmarshalClass")
             PlatformAbi.readGuid(resultOut)
         }
@@ -68,8 +68,8 @@ internal class MarshalInterfaceReference(
             val resultOut = PlatformAbi.allocateInt32Slot(scope)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    activePointer,
                     MarshalInterfaceVftbl.GetMarshalSizeMax,
                     interfaceIdMemory,
                     sourcePointer,
@@ -77,7 +77,7 @@ internal class MarshalInterfaceReference(
                     destinationContextPointer,
                     flags,
                     resultOut,
-                ),
+                ) },
             ).requireSuccess("IMarshal.GetMarshalSizeMax")
             PlatformAbi.readInt32(resultOut).toUInt()
         }
@@ -95,8 +95,8 @@ internal class MarshalInterfaceReference(
             interfaceId.writeTo(interfaceIdMemory)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    activePointer,
                     MarshalInterfaceVftbl.MarshalInterface,
                     streamPointer,
                     interfaceIdMemory,
@@ -104,7 +104,7 @@ internal class MarshalInterfaceReference(
                     destinationContext,
                     destinationContextPointer,
                     flags,
-                ),
+                ) },
             ).requireSuccess("IMarshal.MarshalInterface")
         }
     }
@@ -119,13 +119,13 @@ internal class MarshalInterfaceReference(
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    activePointer,
                     MarshalInterfaceVftbl.UnmarshalInterface,
                     streamPointer,
                     interfaceIdMemory,
                     resultOut,
-                ),
+                ) },
             ).requireSuccess("IMarshal.UnmarshalInterface")
             val resolvedPointer = PlatformAbi.readPointer(resultOut)
             if (PlatformAbi.isNull(resolvedPointer)) {
@@ -138,14 +138,14 @@ internal class MarshalInterfaceReference(
     fun releaseMarshalData(streamPointer: RawAddress) {
         comPtr.throwIfDisposed()
         HResult(
-            ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), MarshalInterfaceVftbl.ReleaseMarshalData, streamPointer),
+            comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, MarshalInterfaceVftbl.ReleaseMarshalData, streamPointer) },
         ).requireSuccess("IMarshal.ReleaseMarshalData")
     }
 
     fun disconnectObject(reserved: Int = 0) {
         comPtr.throwIfDisposed()
         HResult(
-            ComVtableInvoker.invokeArgs(comPtr.resolvePointer(), MarshalInterfaceVftbl.DisconnectObject, reserved),
+            comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(activePointer, MarshalInterfaceVftbl.DisconnectObject, reserved) },
         ).requireSuccess("IMarshal.DisconnectObject")
     }
 }

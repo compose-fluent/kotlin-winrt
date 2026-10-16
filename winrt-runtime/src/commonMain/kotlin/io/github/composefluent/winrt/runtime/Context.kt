@@ -34,15 +34,15 @@ internal class ContextCallbackReference(
             interfaceId.writeTo(iidMemory)
             comPtr.throwIfDisposed()
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    comPtr.resolvePointer(),
+                comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokeArgs(
+                    activePointer,
                     ContextCallbackVftbl.ContextCallback,
                     callbackPointer,
                     callDataPointer,
                     iidMemory,
                     methodIndex,
                     PlatformAbi.nullPointer,
-                ),
+                ) },
             ).requireSuccess("IContextCallback.ContextCallback")
         }
     }

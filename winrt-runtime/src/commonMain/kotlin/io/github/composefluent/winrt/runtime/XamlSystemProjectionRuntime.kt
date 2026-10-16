@@ -241,12 +241,12 @@ internal object XamlSystemProjectionRuntimeHooks {
         var lastHr = KnownHResults.S_OK.value
         for (provider in providers) {
             PlatformAbi.writePointer(arg1, PlatformAbi.nullPointer)
-            val hr = ComVtableInvoker.invokeArgs(
-                instance = provider.pointer,
+            val hr = provider.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                instance = leasedPointer,
                 slot = slot,
                 arg0 = arg0,
                 arg1 = arg1,
-            )
+            ) }
             lastHr = hr
             if (HResult(hr).isSuccess && !PlatformAbi.isNull(PlatformAbi.readPointer(arg1))) {
                 if (FeatureSwitches.traceCcw) {
@@ -895,12 +895,12 @@ private class INotifyDataErrorInfoObject(
             withOptionalHString(propertyName) { propertyNameHandle ->
                 PlatformAbi.confinedScope().use { scope ->
                     val resultOut = PlatformAbi.allocatePointerSlot(scope)
-                    val hr = ComVtableInvoker.invokeArgs(
-                        nativeObject.pointer,
+                    val hr = nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                        leasedPointer,
                         9,
                         propertyNameHandle,
                         resultOut,
-                    )
+                    ) }
                     WinRTPlatformApi.checkSucceededRaw(hr)
                     PlatformAbi.readPointer(resultOut)
                 }
@@ -927,12 +927,12 @@ private class IXamlServiceProviderObject(
         withTypeNameArgument(type) { typePointer ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    ComVtableInvoker.invokeArgs(
-                        nativeObject.pointer,
+                    nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                        leasedPointer,
                         6,
                         typePointer,
                         resultOut,
-                    )
+                    ) }
                 },
                 wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.let(WinRTBindableObjectMarshaller::fromOwnedReference)
@@ -961,12 +961,12 @@ private class ICustomPropertyObject(
         withObjectArgument(target) { targetPointer ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    ComVtableInvoker.invokeArgs(
-                        nativeObject.pointer,
+                    nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                        leasedPointer,
                         8,
                         targetPointer,
                         resultOut,
-                    )
+                    ) }
                 },
                 wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.let(WinRTBindableObjectMarshaller::fromOwnedReference)
@@ -977,12 +977,12 @@ private class ICustomPropertyObject(
         value: Any?,
     ) {
         withTwoObjectArguments(target, value) { targetPointer, valuePointer ->
-            val hr = ComVtableInvoker.invokeArgs(
-                nativeObject.pointer,
+            val hr = nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                leasedPointer,
                 9,
                 targetPointer,
                 valuePointer,
-            )
+            ) }
             WinRTPlatformApi.checkSucceededRaw(hr)
         }
     }
@@ -994,13 +994,13 @@ private class ICustomPropertyObject(
         withTwoObjectArguments(target, index) { targetPointer, indexPointer ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    ComVtableInvoker.invokeArgs(
-                        nativeObject.pointer,
+                    nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                        leasedPointer,
                         10,
                         targetPointer,
                         indexPointer,
                         resultOut,
-                    )
+                    ) }
                 },
                 wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.let(WinRTBindableObjectMarshaller::fromOwnedReference)
@@ -1012,13 +1012,13 @@ private class ICustomPropertyObject(
         index: Any?,
     ) {
         withThreeObjectArguments(target, value, index) { targetPointer, valuePointer, indexPointer ->
-            val hr = ComVtableInvoker.invokeArgs(
-                nativeObject.pointer,
+            val hr = nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                leasedPointer,
                 11,
                 targetPointer,
                 valuePointer,
                 indexPointer,
-            )
+            ) }
             WinRTPlatformApi.checkSucceededRaw(hr)
         }
     }
@@ -1034,12 +1034,12 @@ private class ICustomPropertyProviderObject(
         withOptionalHString(name) { nameHandle ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    ComVtableInvoker.invokeArgs(
-                        nativeObject.pointer,
+                    nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                        leasedPointer,
                         6,
                         nameHandle,
                         resultOut,
-                    )
+                    ) }
                 },
                 wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.use { reference ->
@@ -1055,13 +1055,13 @@ private class ICustomPropertyProviderObject(
             withTypeNameArgument(indexParameterType) { typePointer ->
                 RawObjectAbiSupport.nullableObjectResult(
                     invoke = { resultOut ->
-                        ComVtableInvoker.invokeArgs(
-                            nativeObject.pointer,
+                        nativeObject.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                            leasedPointer,
                             7,
                             nameHandle,
                             typePointer,
                             resultOut,
-                        )
+                        ) }
                     },
                     wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
                 )?.let { reference ->
@@ -1842,7 +1842,7 @@ private fun invokeBooleanGetter(
     slot: Int,
 ): Boolean =
     RawAbiResultSupport.booleanResult { resultOut ->
-        ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
+        reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, slot, resultOut) }
     }
 
 private fun invokeHStringGetter(
@@ -1850,7 +1850,7 @@ private fun invokeHStringGetter(
     slot: Int,
 ): String =
     RawAbiResultSupport.hStringResult { resultOut ->
-        ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
+        reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, slot, resultOut) }
     }.use(HString::toKString)
 
 private fun invokeInt32Getter(
@@ -1858,7 +1858,7 @@ private fun invokeInt32Getter(
     slot: Int,
 ): Int =
     RawAbiResultSupport.int32Result { resultOut ->
-        ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
+        reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, slot, resultOut) }
     }
 
 private fun readPropertyChangedEventArgs(reference: ComObjectReference): PropertyChangedEventArgs =
@@ -1876,7 +1876,7 @@ private fun readNotifyCollectionChangedEventArgs(reference: ComObjectReference):
     val newItems =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                ComVtableInvoker.invokeArgs(reference.pointer, 7, resultOut)
+                reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, 7, resultOut) }
             },
             wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )?.use { listReference ->
@@ -1885,7 +1885,7 @@ private fun readNotifyCollectionChangedEventArgs(reference: ComObjectReference):
     val oldItems =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                ComVtableInvoker.invokeArgs(reference.pointer, 8, resultOut)
+                reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, 8, resultOut) }
             },
             wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )?.use { listReference ->
@@ -1996,7 +1996,7 @@ private fun invokeTypeNameGetter(
 ): KClass<*>? =
     PlatformAbi.confinedScope().use { scope ->
         val buffer = PlatformAbi.allocateBytes(scope, TypeProjection.LAYOUT.sizeBytes)
-        val hr = ComVtableInvoker.invokeArgs(reference.pointer, slot, buffer)
+        val hr = reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, slot, buffer) }
         WinRTPlatformApi.checkSucceededRaw(hr)
         try {
             TypeProjection.fromAbi(buffer)
@@ -2102,12 +2102,12 @@ private fun invokeCanExecute(
     withObjectArgument(parameter) { parameterPointer ->
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt8Slot(scope)
-            val hr = ComVtableInvoker.invokeArgs(
-                reference.pointer,
+            val hr = reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                leasedPointer,
                 8,
                 parameterPointer,
                 resultOut,
-            )
+            ) }
             WinRTPlatformApi.checkSucceededRaw(hr)
             PlatformAbi.readInt8(resultOut).toInt() != 0
         }
@@ -2118,7 +2118,7 @@ private fun invokeExecute(
     parameter: Any?,
 ) {
     withObjectArgument(parameter) { parameterPointer ->
-        val hr = ComVtableInvoker.invokeArgs(reference.pointer, 9, parameterPointer)
+        val hr = reference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, 9, parameterPointer) }
         WinRTPlatformApi.checkSucceededRaw(hr)
     }
 }

@@ -60,11 +60,11 @@ object WinUIResourceManagerSupport {
                     ?: error("ResourceManagerRequested event did not provide event args.")
                 requestedArgs.use { eventArgs ->
                     HResult(
-                        ComVtableInvoker.invokeArgs(
-                            eventArgs.pointer,
+                        eventArgs.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                            leasedPointer,
                             setCustomResourceManagerSlot,
                             resourceManagerReference.pointer.asRawAddress(),
-                        ),
+                        ) },
                     ).requireSuccess("ResourceManagerRequestedEventArgs.SetCustomResourceManager")
                 }
             }
@@ -120,12 +120,12 @@ object WinUIResourceManagerSupport {
             HString.create(priPath.canonicalString()).use { priFileName ->
                 RawObjectAbiSupport.nullableObjectResult(
                     invoke = { resultOut ->
-                        ComVtableInvoker.invokeArgs(
-                            resourceManagerFactory.pointer,
+                        resourceManagerFactory.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                            leasedPointer,
                             createResourceManagerSlot,
                             priFileName.handle,
                             resultOut,
-                        )
+                        ) }
                     },
                     wrap = { createdResourceManager ->
                         IUnknownReference(createdResourceManager.asRawComPtr())

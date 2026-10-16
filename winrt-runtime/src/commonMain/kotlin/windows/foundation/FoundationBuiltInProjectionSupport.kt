@@ -73,7 +73,7 @@ class WinRTClosableObject(
 
     override fun close() {
         inspectable.tryQueryInterface(IID.IDisposable)?.use { closable ->
-            val hr = ComVtableInvoker.invoke(closable.pointer, slot = 6)
+            val hr = closable.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invoke(leasedPointer, slot = 6) }
             WinRTPlatformApi.checkSucceededRaw(hr)
             return
         }

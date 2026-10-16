@@ -25,12 +25,12 @@ internal object StandardDelegates {
     ): EventRegistrationToken = try {
         acquireNativeScalarScratchFrame().use { tokenOut ->
             HResult(
-                ComVtableInvoker.invokeArgs(
-                    instance = objectReference.pointer,
+                objectReference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                    instance = leasedPointer,
                     slot = addHandlerSlot,
                     arg0 = handler,
                     arg1 = tokenOut.pointer,
-                ),
+                ) },
             ).requireSuccess("WinRT event add handler")
             EventRegistrationToken.fromAbiValue(tokenOut.readInt64())
         }
@@ -44,11 +44,11 @@ internal object StandardDelegates {
         token: EventRegistrationToken,
     ) {
         HResult(
-            ComVtableInvoker.invokeArgs(
-                instance = objectReference.pointer,
+            objectReference.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(
+                instance = leasedPointer,
                 slot = removeHandlerSlot,
                 arg0 = token.value,
-            ),
+            ) },
         ).requireSuccess("WinRT event remove handler")
     }
 }

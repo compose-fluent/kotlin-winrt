@@ -36,9 +36,30 @@ open class ComObjectReference internal constructor(
         ),
     )
 
-    /** Borrows an address valid in the current COM context; does not acquire ownership. */
+    /**
+     * Borrows an address in the current COM context without acquiring ownership.
+     * Raw ABI callers must keep this reference open until they finish using the address.
+     * Generated calls use a call lease so concurrent or reentrant close cannot release it.
+     */
     val pointer: RawComPtr
         inline get() = comPtr.resolvePointer()
+
+    // Compiler-generated ABI calls use a managed lease, like CsWinRT 3 AsValue.
+    // These hooks do not change the projected type or native interface ABI.
+    @PublishedApi
+    internal fun beginCall() = comPtr.support.beginCall()
+
+    @PublishedApi
+    internal fun endCall() {
+        try {
+            comPtr.support.endCall()
+        } finally {
+            winRTKeepAlive(this)
+        }
+    }
+
+    @PublishedApi
+    internal fun pointerForActiveCall(): RawComPtr = comPtr.support.pointerForCurrentContext()
 
     val interfaceId: Guid
         get() = comPtr.interfaceId
@@ -65,12 +86,6 @@ open class ComObjectReference internal constructor(
     internal val referenceTrackerHandle: RawComPtr
         get() = comPtr.referenceTrackerHandle
 
-    fun addRef(): UInt =
-        comPtr.addRef()
-
-    fun release(): UInt =
-        comPtr.release()
-
     /** Acquires an ABI reference. The caller must release it or transfer it to another owner. */
     fun acquireOwnedPointer(): RawComPtr =
         comPtr.acquireOwnedPointer()
@@ -86,7 +101,7 @@ open class ComObjectReference internal constructor(
 
     fun getDefaultInterfaceObjectReference(vtableSlot: Int): IUnknownReference {
         throwIfDisposed()
-        val pointer = ComVtableInvoker.invokePointer(comPtr.resolvePointer(), vtableSlot)
+        val pointer = comPtr.withCallPointer { activePointer -> ComVtableInvoker.invokePointer(activePointer, vtableSlot) }
         if (PlatformAbi.isNull(pointer)) {
             throw WinRTUnsupportedOperationException(
                 "Fast ABI default-interface object reference returned a null pointer from vtable slot $vtableSlot",

@@ -62,7 +62,7 @@ fun readWinUIXamlVisualPixels(buffer: ComObjectReference, count: Int): ByteArray
     return buffer.queryInterface(IID.IBufferByteAccess).getOrThrow().use { access ->
         PlatformAbi.confinedScope().use { scope ->
             val slot = PlatformAbi.allocatePointerSlot(scope)
-            ExceptionHelpers.throwExceptionForHR(ComVtableInvoker.invokeArgs(access.pointer, 3, slot), "IBufferByteAccess.Buffer")
+            ExceptionHelpers.throwExceptionForHR(access.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, 3, slot) }, "IBufferByteAccess.Buffer")
             val bytes = PlatformAbi.readPointer(slot)
             check(!PlatformAbi.isNull(bytes)) { "The rendered pixel buffer is unavailable." }
             ByteArray(count) { PlatformAbi.readInt8(PlatformAbi.slice(bytes, it.toLong(), 1)) }

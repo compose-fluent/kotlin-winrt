@@ -406,19 +406,8 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
         }
     }
 
-    private fun cloneCompletedHandler(handlerPointer: RawAddress, handlerInterfaceId: Guid): ComObjectReference {
-        val borrowed = ComObjectReference(
-            pointer = handlerPointer.asRawComPtr(),
-            interfaceId = handlerInterfaceId,
-            preventReleaseOnDispose = true,
-        )
-        try {
-            borrowed.addRef()
-        } finally {
-            borrowed.close()
-        }
-        return ComObjectReference(handlerPointer.asRawComPtr(), handlerInterfaceId)
-    }
+    private fun cloneCompletedHandler(handlerPointer: RawAddress, handlerInterfaceId: Guid): ComObjectReference =
+        ComObjectReference(retainBorrowedComPointer(handlerPointer.asRawComPtr()), handlerInterfaceId)
 
     fun getCompletedHandler(resultOut: RawAddress) {
         ensureNotClosed()
@@ -433,17 +422,7 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
         progressHandler?.close()
         progressHandler = null
         if (!PlatformAbi.isNull(handlerPointer)) {
-            val borrowed = ComObjectReference(
-                pointer = handlerPointer.asRawComPtr(),
-                interfaceId = handlerInterfaceId,
-                preventReleaseOnDispose = true,
-            )
-            try {
-                borrowed.addRef()
-            } finally {
-                borrowed.close()
-            }
-            progressHandler = ComObjectReference(handlerPointer.asRawComPtr(), handlerInterfaceId)
+            progressHandler = cloneCompletedHandler(handlerPointer, handlerInterfaceId)
         }
     }
 
@@ -705,12 +684,12 @@ internal class WinRTTaskToAsyncInfoAdapter<T> private constructor(
         val self = selfReference?.invoke()
         try {
             val asyncInfoPointer = self?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
-            val hResult = ComVtableInvoker.invokeGeneric(
-                instance = handler.pointer,
+            val hResult = handler.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeGeneric(
+                instance = leasedPointer,
                 slot = WinRTDelegateVftblSlots.Invoke,
                 signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Int32),
                 args = longArrayOf(asyncInfoPointer.value, completedStatus.abiValue.toLong()),
-            )
+            ) }
             WinRTPlatformApi.checkSucceededRaw(hResult)
         } finally {
             self?.close()

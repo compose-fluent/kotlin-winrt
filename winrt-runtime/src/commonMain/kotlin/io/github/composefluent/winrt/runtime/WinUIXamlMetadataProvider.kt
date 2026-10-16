@@ -187,10 +187,10 @@ object WinUIXamlMetadataProvider {
                 .getOrThrow()
                 .use { statics ->
                     val hr =
-                        ComVtableInvoker.invoke(
-                            statics.pointer,
+                        statics.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invoke(
+                            leasedPointer,
                             WinUIXamlControlsXamlMetadataProviderStaticsSlots.Initialize,
-                        )
+                        ) }
                     WinRTPlatformApi.checkSucceededRaw(hr)
                 }
             initialized = true

@@ -1318,7 +1318,7 @@ class ComWrappersSupportTest {
 
         assertTrue(secondary.isAggregated)
         secondary.close()
-        assertEquals(0u, source.release())
+        assertEquals(0u, WinRTPlatformApi.releaseRaw(pointer))
         source.close()
     }
 
