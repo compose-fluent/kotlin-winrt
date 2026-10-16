@@ -247,6 +247,11 @@ internal class WeakKeyStateMapCore<K : Any, V : Any>(
         lastEntry.compareAndSet(entry, null)
         if (entryCount == 0 && buckets.size > weakKeyStateInitialCapacity) {
             buckets = weakKeyStateBuckets(weakKeyStateInitialCapacity)
+        } else if (buckets.size > weakKeyStateInitialCapacity && entryCount <= buckets.size / 8) {
+            // CLR owns the identity table behind CsWinRT's ComWrappers. Our table must
+            // release peak storage even when a few long-lived identities remain. Shrink
+            // far below the 3/4 growth threshold to amortize rehashing without oscillation.
+            resizeBuckets(buckets.size / 2)
         }
     }
 
@@ -259,7 +264,11 @@ internal class WeakKeyStateMapCore<K : Any, V : Any>(
             return
         }
 
-        val resized = weakKeyStateBuckets<K, V>(buckets.size shl 1)
+        resizeBuckets(buckets.size shl 1)
+    }
+
+    private fun resizeBuckets(capacity: Int) {
+        val resized = weakKeyStateBuckets<K, V>(capacity)
         buckets.forEach { first ->
             var entry = first
             while (entry != null) {
