@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.atomicfu.atomic
 import kotlin.random.Random
 import kotlin.reflect.KClass
 import windows.foundation.EventRegistrationToken
@@ -30,8 +31,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
 ) {
     // CsWinRT locks the token dictionary only when a registration changes. Empty authored
     // events need no native synchronization resource until their first add/remove operation.
-    @kotlin.concurrent.Volatile
-    private var lock: PlatformLock? = null
+    private val lock = atomic<PlatformLock?>(null)
 
     // Kotlin/Native's empty LinkedHashMap allocates backing storage. Keep CsWinRT's token
     // dictionary and random counter semantics, but initialize them only on first registration.
@@ -50,9 +50,15 @@ class EventRegistrationTokenTable<T : Any> private constructor(
     private var nextLow32Bits: Int = 0
 
     private fun lockForMutation(): PlatformLock =
-        lock ?: lockInitialization.withLock {
-            lock ?: PlatformLock().also { lock = it }
-        }
+        lock.value ?: initializeLock()
+
+    private fun initializeLock(): PlatformLock {
+        // CsWinRT synchronizes each dictionary independently. Publish per-table
+        // synchronization without serializing unrelated events through a global lock.
+        // AtomicFU keeps the nullable reference in the table, with no atomic wrapper.
+        val candidate = PlatformLock()
+        return if (lock.compareAndSet(null, candidate)) candidate else checkNotNull(lock.value)
+    }
 
     fun addEventHandler(handler: T?): EventRegistrationToken {
         if (handler == null) {
@@ -120,9 +126,6 @@ class EventRegistrationTokenTable<T : Any> private constructor(
     }
 
     companion object {
-        // A CLR monitor needs no per-event lazy owner. Share only initialization
-        // synchronization; subsequent mutations still use each table's own lock.
-        private val lockInitialization = PlatformLock()
         private const val zeroHashReplacement = 0x5FC74196
 
         inline fun <reified T : Any> create(): EventRegistrationTokenTable<T> =
