@@ -1110,14 +1110,8 @@ object ComWrappersSupport {
         val cachedHosts = cachedCcwHosts(
             value = value,
             initialMetadataKey = metadataKey,
-        ) { removeFromCache ->
-            createCachedCcwHost(value, declaredReferenceArrayElementType, removeFromCache)
-        }
-        return cachedHosts.getOrCreate(metadataKey) {
-            createCachedCcwHost(value, declaredReferenceArrayElementType) {
-                cachedHosts.remove(metadataKey)
-            }
-        }
+        )
+        return cachedHosts.getOrCreate(metadataKey, value)
     }
 
     private fun cachedCcwHostOrNull(
@@ -1130,19 +1124,11 @@ object ComWrappersSupport {
     private fun cachedCcwHosts(
         value: Any,
         initialMetadataKey: CcwMetadataKey,
-        createInitialHost: (() -> Unit) -> WinRTInspectableComObject,
     ): CachedCcwHosts {
-        val createCachedHosts = {
-            CachedCcwHosts(initialMetadataKey, createInitialHost)
-        }
         val state = (value as? WinRTManagedProjectionStateOwner)?.winRTManagedProjectionState()
-            ?: return ccwHostCache.getOrPut(value, createCachedHosts)
+            ?: return ccwHostCache.getOrPut(value) { CachedCcwHosts(initialMetadataKey, value) }
         while (true) {
             val generation = ccwHostCacheGeneration.load()
-            state.binding.load()
-                ?.takeIf { binding -> binding.generation == generation }
-                ?.let { binding -> return binding.cache as CachedCcwHosts }
-
             val current = state.binding.load()
             if (current?.generation == generation) {
                 return current.cache as CachedCcwHosts
@@ -1150,7 +1136,7 @@ object ComWrappersSupport {
             if (ccwHostCacheGeneration.load() != generation) {
                 continue
             }
-            val cachedHosts = ccwHostCache.getOrPut(value, createCachedHosts)
+            val cachedHosts = ccwHostCache.getOrPut(value) { CachedCcwHosts(initialMetadataKey, value) }
             val newBinding = WinRTManagedProjectionStateBinding(generation, cachedHosts)
             if (state.binding.compareAndSet(current, newBinding)) {
                 cachedHosts.attachProjectionState(state)
@@ -1858,7 +1844,7 @@ object ComWrappersSupport {
     @OptIn(ExperimentalAtomicApi::class)
     private class CachedCcwHosts(
         initialMetadataKey: CcwMetadataKey,
-        createInitialHost: (() -> Unit) -> WinRTInspectableComObject,
+        value: Any,
     ) : WinRTManagedProjectionAbiSource {
         private val defaultHost = AtomicReference<WinRTInspectableComObject?>(null)
         @kotlin.concurrent.Volatile
@@ -1867,9 +1853,7 @@ object ComWrappersSupport {
         private var slowState: CachedCcwSlowState? = null
 
         init {
-            val initialHost = createInitialHost {
-                remove(initialMetadataKey)
-            }
+            val initialHost = createHost(initialMetadataKey, value)
             if (initialMetadataKey.isDefault) {
                 defaultHost.store(initialHost)
             } else {
@@ -1894,7 +1878,7 @@ object ComWrappersSupport {
 
         fun getOrCreate(
             metadataKey: CcwMetadataKey,
-            create: () -> WinRTInspectableComObject,
+            value: Any,
         ): WinRTInspectableComObject {
             if (metadataKey.isDefault) {
                 defaultHost.load()?.let { return it }
@@ -1902,16 +1886,24 @@ object ComWrappersSupport {
             val state = slowStateOrCreate()
             return state.lock.withLock {
                 if (metadataKey.isDefault) {
-                    defaultHost.load() ?: create().also(defaultHost::store)
+                    defaultHost.load() ?: createHost(metadataKey, value).also(defaultHost::store)
                 } else {
                     val hosts = state.specializedHosts
                         ?: mutableMapOf<CcwMetadataKey, WinRTInspectableComObject>().also {
                             state.specializedHosts = it
                         }
-                    hosts[metadataKey] ?: create().also { hosts[metadataKey] = it }
+                    hosts[metadataKey] ?: createHost(metadataKey, value).also { hosts[metadataKey] = it }
                 }
             }
         }
+
+        private fun createHost(metadataKey: CcwMetadataKey, value: Any): WinRTInspectableComObject =
+            // CsWinRT 3 constructs the CCW at the identity-cache miss. Pass the target
+            // directly instead of capturing it in factories on every lookup. Only the
+            // host's inbound binding owns its lifetime; this cleanup captures no target.
+            createCachedCcwHost(value, metadataKey.declaredReferenceArrayElementType) {
+                remove(metadataKey)
+            }
 
         fun remove(metadataKey: CcwMetadataKey) {
             projectionState?.invalidateBorrowedAbi(this)
