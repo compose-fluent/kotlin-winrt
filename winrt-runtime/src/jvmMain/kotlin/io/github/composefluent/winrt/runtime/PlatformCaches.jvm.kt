@@ -1,6 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
 import java.lang.ref.Cleaner
+import java.lang.ref.PhantomReference
+import java.lang.ref.Reference
 import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
@@ -154,7 +156,7 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
                 identityHashCode: Int,
             ): WeakKeyStateEntry<K, V> {
                 val queue: ReferenceQueue<in K> =
-                    if (reclamationOwner == null) referenceQueue else JvmWeakKeyReclaimer.queue
+                    if (reclamationOwner == null) referenceQueue else JvmReferenceReclaimer.queue
                 return JvmWeakKeyStateEntry(key, value, identityHashCode, queue, reclamationOwner)
             }
         },
@@ -242,7 +244,7 @@ private class JvmWeakKeyStateEntry<K : Any, V : Any>(
     override val identityHashCode: Int,
     referenceQueue: ReferenceQueue<in K>,
     private val owner: WeakReference<WeakKeyStateMap<K, V>>?,
-) : WeakReference<K>(key, referenceQueue), WeakKeyStateEntry<K, V>, JvmReclaimableWeakKey {
+) : WeakReference<K>(key, referenceQueue), WeakKeyStateEntry<K, V>, JvmReclaimableReference {
     override var bucketNext: WeakKeyStateEntry<K, V>? = null
 
     override fun keyOrNull(): K? = get()
@@ -252,27 +254,26 @@ private class JvmWeakKeyStateEntry<K : Any, V : Any>(
     }
 }
 
-private interface JvmReclaimableWeakKey {
+private interface JvmReclaimableReference {
     fun reclaim()
 }
 
-// CLR ComWrappers owns CCW identity reclamation. JVM needs one shared queue
-// consumer; entries reuse their existing weak reference rather than adding a
-// second Cleaner/phantom registration for each CCW.
-private object JvmWeakKeyReclaimer {
+// CLR ComWrappers owns identity reclamation. CCW weak keys and RCW phantom
+// registrations share one consumer; neither needs a thread per cache or shard.
+private object JvmReferenceReclaimer {
     val queue = ReferenceQueue<Any>()
 
     init {
         Thread({
             while (true) {
                 try {
-                    (queue.remove() as JvmReclaimableWeakKey).reclaim()
+                    (queue.remove() as JvmReclaimableReference).reclaim()
                 } catch (failure: Throwable) {
                     val thread = Thread.currentThread()
                     thread.uncaughtExceptionHandler.uncaughtException(thread, failure)
                 }
             }
-        }, "KotlinWinRT-IdentityReclaimer").apply {
+        }, "KotlinWinRT-ReferenceReclaimer").apply {
             isDaemon = true
             start()
         }
@@ -305,13 +306,52 @@ private class JvmFinalizationAction(private var cleanup: (() -> Unit)?) : Runnab
 internal actual fun createComPtrFinalizationRegistration(
     target: Any,
     support: RawComObjectReferenceSupport,
-): Any = runtimeCleaner.register(target, ComPtrCleanupAction(support))
+): Any = JvmComPtrRegistration(target, support)
 
-private class ComPtrCleanupAction(
-    private val support: RawComObjectReferenceSupport,
-) : Runnable {
-    override fun run() {
-        closeComPtrSupport(support)
+private class JvmComPtrRegistration(
+    target: Any,
+    private var support: RawComObjectReferenceSupport?,
+) : PhantomReference<Any>(target, JvmReferenceReclaimer.queue), JvmReclaimableReference {
+    private val bucket = JvmComPtrRegistrations.forTarget(target)
+    private var previous: JvmComPtrRegistration? = null
+    private var next: JvmComPtrRegistration? = null
+
+    init {
+        synchronized(bucket) {
+            next = bucket.head
+            next?.previous = this
+            bucket.head = this
+        }
+        Reference.reachabilityFence(target)
+    }
+
+    override fun reclaim() {
+        val released = synchronized(bucket) {
+            val owned = support ?: return
+            if (previous == null) bucket.head = next else previous!!.next = next
+            next?.previous = previous
+            previous = null
+            next = null
+            support = null
+            owned
+        }
+        clear()
+        // Dispose/finalization share the same once-only transition, like CsWinRT
+        // Dispose + SuppressFinalize. Never run COM or user callbacks under a bucket lock.
+        closeComPtrSupport(released)
+    }
+}
+
+private class JvmComPtrRegistrationBucket {
+    var head: JvmComPtrRegistration? = null
+}
+
+private object JvmComPtrRegistrations {
+    private val buckets = Array(64) { JvmComPtrRegistrationBucket() }
+
+    fun forTarget(target: Any): JvmComPtrRegistrationBucket {
+        val hash = System.identityHashCode(target)
+        return buckets[(hash xor (hash ushr 16)) and (buckets.size - 1)]
     }
 }
 
@@ -319,7 +359,9 @@ internal actual fun closeComPtrFinalizationRegistration(
     registration: Any,
     @Suppress("UNUSED_PARAMETER") support: RawComObjectReferenceSupport,
 ) {
-    (registration as Cleaner.Cleanable).clean()
+    (registration as JvmComPtrRegistration).reclaim()
 }
 
-private val runtimeCleaner: Cleaner = Cleaner.create()
+// Pure COM-reference workloads use the existing queue consumer and do not need
+// to start the generic Cleaner thread as a side effect of this file's initialization.
+private val runtimeCleaner: Cleaner by lazy { Cleaner.create() }
