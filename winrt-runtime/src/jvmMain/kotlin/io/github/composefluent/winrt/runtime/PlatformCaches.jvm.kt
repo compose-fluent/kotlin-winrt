@@ -264,23 +264,52 @@ private interface JvmReclaimableReference {
 }
 
 // CLR ComWrappers owns identity reclamation. CCW weak keys and RCW phantom
-// registrations share one consumer; neither needs a thread per cache or shard.
+// registrations share one queue; neither needs a thread per cache or shard.
 private object JvmReferenceReclaimer {
     val queue = ReferenceQueue<Any>()
+    private val workerLimit = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+    @Volatile private var helpersStarted = false
 
     init {
+        startWorker("KotlinWinRT-ReferenceReclaimer")
+    }
+
+    private fun startWorker(name: String) {
         Thread({
+            var consecutive = 0
             while (true) {
                 try {
-                    (queue.remove() as JvmReclaimableReference).reclaim()
+                    val reference = queue.poll() ?: run {
+                        consecutive = 0
+                        queue.remove()
+                    }
+                    (reference as JvmReclaimableReference).reclaim()
+                    if (++consecutive == 1024) startHelpers()
                 } catch (failure: Throwable) {
                     val thread = Thread.currentThread()
                     thread.uncaughtExceptionHandler.uncaughtException(thread, failure)
                 }
             }
-        }, "KotlinWinRT-ReferenceReclaimer").apply {
+        }, name).apply {
             isDaemon = true
             start()
+        }
+    }
+
+    private fun startHelpers() {
+        if (helpersStarted || workerLimit == 1) return
+        synchronized(this) {
+            if (helpersStarted) return
+            helpersStarted = true
+            // Unlike CLR ComWrappers, JVM cannot account for the managed graph
+            // pinned through native COM objects as GC memory pressure. A burst
+            // of RCW releases also creates CCW weak-key work; one consumer can
+            // fall behind until the heap fills. Use bounded platform threads
+            // (virtual threads cannot preserve COM apartment affinity), only
+            // after observing a sustained queue backlog. No per-owner state.
+            for (index in 1 until workerLimit) {
+                startWorker("KotlinWinRT-ReferenceReclaimer-$index")
+            }
         }
     }
 }
