@@ -909,7 +909,9 @@ object ComWrappersSupport {
         value: Any,
         instance: ComObjectReference,
     ) {
-        registerObjectForComInterface(value, instance.pointer.asRawAddress())
+        instance.comPtr.withCallPointer { pointer ->
+            registerObjectForComInterface(value, pointer.asRawAddress())
+        }
     }
 
     /**
@@ -925,7 +927,9 @@ object ComWrappersSupport {
     ): T {
         var ownershipTransferred = false
         try {
-            findObject(instance.pointer.asRawAddress(), staticallyDeterminedType)?.let { cached ->
+            instance.comPtr.withCallPointer { pointer ->
+                findObject(pointer.asRawAddress(), staticallyDeterminedType)
+            }?.let { cached ->
                 instance.close()
                 ownershipTransferred = true
                 return cached
