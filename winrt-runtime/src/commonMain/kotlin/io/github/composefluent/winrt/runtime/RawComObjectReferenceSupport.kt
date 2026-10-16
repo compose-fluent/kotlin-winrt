@@ -1,9 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
-import kotlin.concurrent.atomics.AtomicInt
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlinx.atomicfu.atomic
 
-@OptIn(ExperimentalAtomicApi::class)
 @PublishedApi
 internal class RawComObjectReferenceSupport(
     private val pointer: RawComPtr,
@@ -21,8 +19,18 @@ internal class RawComObjectReferenceSupport(
 ) {
     // CsWinRT 3 WindowsRuntimeObjectReference.Lifecycle: close bit + active calls.
     // The next bit preserves finalizer context routing until the last call returns.
+    private val lifetime = atomic(0)
+
+    // Keep the atomic container private so AtomicFU can lower it to a field.
+    // Published inline call leases expose only primitive operations across modules.
     @PublishedApi
-    internal val lifetime = AtomicInt(0)
+    internal fun loadLifetime(): Int = lifetime.value
+
+    @PublishedApi
+    internal fun compareAndSetLifetime(expected: Int, updated: Int): Boolean = lifetime.compareAndSet(expected, updated)
+
+    @PublishedApi
+    internal fun decrementLifetime(): Int = lifetime.addAndGet(-1)
     private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
     private var referenceTrackerRegistrationKey: Long = 0L
     private var releaseTrackerSourceOnDispose: Boolean = false
@@ -58,7 +66,7 @@ internal class RawComObjectReferenceSupport(
         get() = knownInterfaceId ?: Guid.fromAbiWords(interfaceIdLowBits, interfaceIdHighBits)
 
     val isDisposed: Boolean
-        get() = lifetime.load() < 0
+        get() = lifetime.value < 0
 
     val hasReferenceTracker: Boolean
         get() = !PlatformAbi.isNull(referenceTrackerPointer)
@@ -211,16 +219,16 @@ internal class RawComObjectReferenceSupport(
     @Suppress("NOTHING_TO_INLINE")
     inline fun beginCall() {
         while (true) {
-            val current = lifetime.load()
+            val current = loadLifetime()
             if (current < 0) throw WinRTObjectDisposedException("Object reference is disposed.")
             check(current < CALL_COUNT_MASK) { "COM call lease count overflowed." }
-            if (lifetime.compareAndSet(current, current + 1)) return
+            if (compareAndSetLifetime(current, current + 1)) return
         }
     }
 
     @Suppress("NOTHING_TO_INLINE")
     inline fun endCall() {
-        val remaining = lifetime.addAndFetch(-1)
+        val remaining = decrementLifetime()
         if (remaining < 0 && remaining and CALL_COUNT_MASK == 0) {
             disposeNativeResources(remaining and DEFER_CONTEXT_RELEASE != 0)
         }
@@ -237,7 +245,7 @@ internal class RawComObjectReferenceSupport(
 
     fun close(deferContextRelease: Boolean = false) {
         while (true) {
-            val current = lifetime.load()
+            val current = lifetime.value
             if (current < 0) return
             val closed = current or Int.MIN_VALUE or (if (deferContextRelease) DEFER_CONTEXT_RELEASE else 0)
             if (lifetime.compareAndSet(current, closed)) {

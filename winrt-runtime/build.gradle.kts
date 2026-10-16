@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.atomicfu)
     id("build-convention")
     id("winrt.publish")
 }

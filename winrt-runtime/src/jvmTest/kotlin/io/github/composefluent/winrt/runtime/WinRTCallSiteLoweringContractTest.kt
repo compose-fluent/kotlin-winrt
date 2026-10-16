@@ -859,9 +859,14 @@ class WinRTCallSiteLoweringContractTest {
         assertFalse(method.contains("ComObjectReference.beginCall"), method)
         assertFalse(method.contains("ComObjectReference.endCall"), method)
         val leases = javap("io.github.composefluent.winrt.runtime.ComCallLifetime_jvmKt")
-        assertTrue(leases.methodBytecode("beginComCallJvm").contains("AtomicInteger.compareAndSet"), leases)
+        assertTrue(leases.methodBytecode("beginComCallJvm").contains("RawComObjectReferenceSupport.compareAndSetLifetime"), leases)
         val release = leases.methodBytecode("endComCallJvm")
-        assertTrue(release.contains("AtomicInteger.addAndGet"), release)
+        assertTrue(release.contains("RawComObjectReferenceSupport.decrementLifetime"), release)
+        // The packed CsWinRT-style lease state is now an atomic field, not a
+        // separately allocated AtomicInteger. Verify the helpers retain atomics.
+        val support = javap("io.github.composefluent.winrt.runtime.RawComObjectReferenceSupport")
+        assertTrue(support.methodBytecode("compareAndSetLifetime").contains("AtomicIntegerFieldUpdater.compareAndSet"), support)
+        assertTrue(support.methodBytecode("decrementLifetime").contains("AtomicIntegerFieldUpdater.addAndGet"), support)
         assertEquals(2, release.countOccurrences("reachabilityFence"), release)
 
         val disposedFrameLocals = method.readPointerFrameLocals().takeLast(4).distinct()

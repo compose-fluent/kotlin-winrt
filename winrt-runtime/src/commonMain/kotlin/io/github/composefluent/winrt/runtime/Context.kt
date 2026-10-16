@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.atomicfu.atomic
+
 private object ContextCallbackVftbl {
     const val ContextCallback: Int = 3
 }
@@ -210,10 +212,8 @@ internal class ObjectReferenceContext private constructor(
     // CsWinRT 3 ContextAwareObjectReference initializes CachedContexts and its
     // agile reference only after leaving the original apartment. In particular,
     // an ordinary same-apartment reference needs neither native locks nor maps.
-    @kotlin.concurrent.Volatile
-    private var currentContextReferences: ConcurrentCacheMap<Long, IUnknownReference>? = null
-    @kotlin.concurrent.Volatile
-    private var agileReferenceLock: PlatformLock? = null
+    private val currentContextReferences = atomic<ConcurrentCacheMap<Long, IUnknownReference>?>(null)
+    private val agileReferenceLock = atomic<PlatformLock?>(null)
     private var agileReferenceInitialized = false
     private var agileReference: AgileReference? = null
 
@@ -270,12 +270,12 @@ internal class ObjectReferenceContext private constructor(
     }
 
     override fun close() {
-        currentContextReferences?.let { references ->
+        currentContextReferences.value?.let { references ->
             val cachedReferences = references.values.toList()
             references.clear()
             cachedReferences.forEach(IUnknownReference::close)
         }
-        agileReferenceLock?.withLock {
+        agileReferenceLock.value?.withLock {
             agileReference?.close()
             agileReference = null
         }
@@ -299,19 +299,15 @@ internal class ObjectReferenceContext private constructor(
         }
 
     private fun contextReferences(): ConcurrentCacheMap<Long, IUnknownReference> {
-        currentContextReferences?.let { return it }
+        currentContextReferences.value?.let { return it }
         val candidate = ConcurrentCacheMap<Long, IUnknownReference>()
-        return withObjectReferenceCachePublication(this) {
-            currentContextReferences ?: candidate.also { currentContextReferences = it }
-        }
+        return if (currentContextReferences.compareAndSet(null, candidate)) candidate else checkNotNull(currentContextReferences.value)
     }
 
     private fun initializedAgileReferenceLock(): PlatformLock {
-        agileReferenceLock?.let { return it }
+        agileReferenceLock.value?.let { return it }
         val candidate = PlatformLock()
-        return withObjectReferenceCachePublication(this) {
-            agileReferenceLock ?: candidate.also { agileReferenceLock = it }
-        }
+        return if (agileReferenceLock.compareAndSet(null, candidate)) candidate else checkNotNull(agileReferenceLock.value)
     }
 
     private fun interfaceId(): Guid =

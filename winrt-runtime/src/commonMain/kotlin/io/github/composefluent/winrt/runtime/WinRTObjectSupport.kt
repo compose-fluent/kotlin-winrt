@@ -1,5 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlinx.atomicfu.atomic
+
 internal class WinRTObjectSupport<K : Any, TReference : AutoCloseable>(
     private val queryInterfaceCacheFor: (K) -> ConcurrentCacheMap<WinRTTypeHandle, TReference>,
     private val additionalTypeDataFor: (K) -> ConcurrentCacheMap<WinRTTypeHandle, Any>,
@@ -112,32 +114,25 @@ internal class WinRTObjectState<TReference : AutoCloseable> {
     // CsWinRT 3.0 code_writers.h emits independent nullable cache fields. In
     // particular, using event/helper data must not allocate an unused QI cache
     // (including its OS lock and Cleaner on Native), or vice versa.
-    @kotlin.concurrent.Volatile
-    private var queryInterfaces: ConcurrentCacheMap<WinRTTypeHandle, TReference>? = null
+    private val queryInterfaces = atomic<ConcurrentCacheMap<WinRTTypeHandle, TReference>?>(null)
 
-    @kotlin.concurrent.Volatile
-    private var typeData: ConcurrentCacheMap<WinRTTypeHandle, Any>? = null
+    private val typeData = atomic<ConcurrentCacheMap<WinRTTypeHandle, Any>?>(null)
 
     val queryInterfaceCache: ConcurrentCacheMap<WinRTTypeHandle, TReference>
-        get() = queryInterfaces ?: initializeQueryInterfaceCache()
+        get() = queryInterfaces.value ?: initializeQueryInterfaceCache()
 
     private fun initializeQueryInterfaceCache(): ConcurrentCacheMap<WinRTTypeHandle, TReference> {
         // CsWinRT WindowsRuntimeObject.TypeHandleCache constructs before publishing.
-        // Only publication is serialized: no allocation or native lock creation in
-        // this critical section, and no Native identity-hash lookup on the owner.
+        // AtomicFU lowers this to a field CAS, without a lock or atomic wrapper.
         val candidate = ConcurrentCacheMap<WinRTTypeHandle, TReference>(1)
-        return withObjectReferenceCachePublication(this) {
-            queryInterfaces ?: candidate.also { queryInterfaces = it }
-        }
+        return if (queryInterfaces.compareAndSet(null, candidate)) candidate else checkNotNull(queryInterfaces.value)
     }
 
     val additionalTypeData: ConcurrentCacheMap<WinRTTypeHandle, Any>
-        get() = typeData ?: initializeAdditionalTypeData()
+        get() = typeData.value ?: initializeAdditionalTypeData()
 
     private fun initializeAdditionalTypeData(): ConcurrentCacheMap<WinRTTypeHandle, Any> {
         val candidate = ConcurrentCacheMap<WinRTTypeHandle, Any>(1)
-        return withObjectReferenceCachePublication(this) {
-            typeData ?: candidate.also { typeData = it }
-        }
+        return if (typeData.compareAndSet(null, candidate)) candidate else checkNotNull(typeData.value)
     }
 }
