@@ -105,6 +105,8 @@ private val winRTObjectSupport =
         queryInterfaceCacheFor = IWinRTObject::queryInterfaceCache,
         additionalTypeDataFor = IWinRTObject::additionalTypeData,
         closeReference = ComObjectReference::close,
+        validateReference = { it.comPtr.throwIfDisposed() },
+        ownReference = { owner, reference -> owner.ownInterfaceReference(reference) },
     )
 
 private fun missingInterfaceError(interfaceType: WinRTTypeHandle): Throwable =

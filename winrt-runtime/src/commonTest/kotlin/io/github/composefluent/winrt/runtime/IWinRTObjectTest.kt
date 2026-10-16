@@ -5,8 +5,45 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class IWinRTObjectTest {
+    @Test
+    fun cached_interfaces_follow_owner_close_but_independent_queries_do_not() {
+        // CsWinRT code_writers.h/write_class_objrefs_definition keeps lazy QI
+        // references in the RCW graph. Kotlin deterministic close must cover the
+        // generic IWinRTObject cache just as it covers generated interface fields.
+        val cachedIid = Guid("12345678-1234-1234-1234-1234567890B0")
+        val independentIid = Guid("12345678-1234-1234-1234-1234567890B1")
+        val cached = FakeComObjectReference(cachedIid)
+        val independent = FakeComObjectReference(independentIid)
+        val owner = FakeComObjectReference(IID.IInspectable, mapOf(cachedIid to cached, independentIid to independent))
+        val wrapper = FakeWinRTObject(owner)
+        val type = WinRTTypeHandle("test.ICached", cachedIid)
+        try {
+            assertSame(cached, wrapper.getObjectReferenceForType(type))
+            assertSame(independent, owner.tryQueryInterface(independentIid))
+            owner.close()
+            assertTrue(cached.isDisposed)
+            assertFalse(independent.isDisposed)
+            assertFailsWith<WinRTObjectDisposedException> { wrapper.getObjectReferenceForType(type) }
+            assertFailsWith<WinRTObjectDisposedException> { wrapper.isInterfaceImplemented(type) }
+        } finally {
+            owner.close()
+            independent.close()
+        }
+    }
+
+    @Test
+    fun primary_interface_fast_path_rejects_closed_owner() {
+        val type = WinRTTypeHandle("test.IPrimary", IID.IInspectable)
+        val owner = FakeComObjectReference(IID.IInspectable)
+        val wrapper = FakeWinRTObject(owner, type)
+        owner.close()
+        assertFailsWith<WinRTObjectDisposedException> { wrapper.getObjectReferenceForType(type) }
+        assertFailsWith<WinRTObjectDisposedException> { wrapper.isInterfaceImplemented(type) }
+    }
+
     @Test
     fun caches_query_interface_results_by_type_handle() {
         val requestedInterface = Guid("12345678-1234-1234-1234-1234567890AB")

@@ -4,6 +4,8 @@ internal class WinRTObjectSupport<K : Any, TReference : AutoCloseable>(
     private val queryInterfaceCacheFor: (K) -> ConcurrentCacheMap<WinRTTypeHandle, TReference>,
     private val additionalTypeDataFor: (K) -> ConcurrentCacheMap<WinRTTypeHandle, Any>,
     private val closeReference: (TReference) -> Unit,
+    private val validateReference: (TReference) -> Unit,
+    private val ownReference: (TReference, TReference) -> TReference,
 ) {
     fun queryInterfaceCache(instance: K): ConcurrentCacheMap<WinRTTypeHandle, TReference> =
         queryInterfaceCacheFor(instance)
@@ -20,16 +22,18 @@ internal class WinRTObjectSupport<K : Any, TReference : AutoCloseable>(
         tryQueryInterface: (Guid) -> TReference?,
         missingInterfaceError: (WinRTTypeHandle) -> Throwable,
     ): Boolean {
+        validateReference(nativeObject)
         if (primaryTypeHandle == interfaceType) {
             return true
         }
 
         val queryInterfaceCache = queryInterfaceCache(instance)
-        if (queryInterfaceCache.containsKey(interfaceType)) {
+        queryInterfaceCache[interfaceType]?.let {
+            validateReference(it)
             return true
         }
 
-        val queried = tryQueryInterface(interfaceType.interfaceId)
+        val queried = tryQueryInterface(interfaceType.interfaceId)?.let { ownReference(nativeObject, it) }
         if (queried != null) {
             val existing = queryInterfaceCache.putIfAbsent(interfaceType, queried)
             if (existing != null) {
@@ -53,14 +57,18 @@ internal class WinRTObjectSupport<K : Any, TReference : AutoCloseable>(
         tryQueryInterface: (Guid) -> TReference?,
         missingInterfaceError: (WinRTTypeHandle) -> Throwable,
     ): TReference {
+        validateReference(nativeObject)
         if (primaryTypeHandle == interfaceType) {
             return nativeObject
         }
 
         val queryInterfaceCache = queryInterfaceCache(instance)
-        queryInterfaceCache[interfaceType]?.let { return it }
+        queryInterfaceCache[interfaceType]?.let {
+            validateReference(it)
+            return it
+        }
 
-        val queried = tryQueryInterface(interfaceType.interfaceId)
+        val queried = tryQueryInterface(interfaceType.interfaceId)?.let { ownReference(nativeObject, it) }
         if (queried != null) {
             val existing = queryInterfaceCache.putIfAbsent(interfaceType, queried)
             if (existing != null) {

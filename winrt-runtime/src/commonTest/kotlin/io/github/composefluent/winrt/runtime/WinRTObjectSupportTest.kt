@@ -11,9 +11,10 @@ class WinRTObjectSupportTest {
     private val support = WinRTObjectSupport<TestOwner, TestReference>(
         queryInterfaceCacheFor = { it.state.queryInterfaceCache },
         additionalTypeDataFor = { it.state.additionalTypeData },
-    ) { reference ->
-        reference.close()
-    }
+        closeReference = TestReference::close,
+        validateReference = { check(it.closeCount == 0) },
+        ownReference = { _, reference -> reference },
+    )
 
     @Test
     fun caches_query_interface_results_by_type_handle() {
