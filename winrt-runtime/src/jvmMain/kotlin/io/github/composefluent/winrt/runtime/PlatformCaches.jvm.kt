@@ -147,7 +147,8 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
     private val lock = Any()
     private val referenceQueue = ReferenceQueue<K>()
     private var reclamationOwner: WeakReference<WeakKeyStateMap<K, V>>? = null
-    private var finalizerEvictions: MutableList<V>? = null
+    private var reclaiming = false
+    private var finalizerEviction: V? = null
     private val core = WeakKeyStateMapCore<K, V>(
         entryFactory = object : WeakKeyStateEntryFactory<K, V> {
             override fun create(
@@ -161,7 +162,7 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
             }
         },
         onValueEvicted = { value ->
-            finalizerEvictions?.add(value) ?: onValueEvicted(value)
+            if (reclaiming) finalizerEviction = value else onValueEvicted(value)
         },
     )
 
@@ -170,16 +171,20 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor(
     }
 
     internal fun reclaim(entry: WeakKeyStateEntry<K, V>) {
-        val evicted = mutableListOf<V>()
-        synchronized(lock) {
+        // One queue entry can evict at most one value. CLR ComWrappers performs
+        // this identity cleanup internally; our queue must not allocate a list
+        // and backing array for every collected CCW, especially under pressure.
+        val evicted = synchronized(lock) {
             try {
-                finalizerEvictions = evicted
+                reclaiming = true
                 core.sweep(entry)
+                finalizerEviction
             } finally {
-                finalizerEvictions = null
+                finalizerEviction = null
+                reclaiming = false
             }
         }
-        releaseEvictedCacheValues(evicted, onValueEvicted)
+        evicted?.let(onValueEvicted)
     }
 
     actual operator fun get(key: K): V? {
