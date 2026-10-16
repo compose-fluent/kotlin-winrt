@@ -21,7 +21,8 @@ internal class RawComObjectReferenceSupport(
 ) {
     // CsWinRT 3 WindowsRuntimeObjectReference.Lifecycle: close bit + active calls.
     // The next bit preserves finalizer context routing until the last call returns.
-    private val lifetime = AtomicInt(0)
+    @PublishedApi
+    internal val lifetime = AtomicInt(0)
     private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
     private var referenceTrackerRegistrationKey: Long = 0L
     private var releaseTrackerSourceOnDispose: Boolean = false
@@ -205,7 +206,10 @@ internal class RawComObjectReferenceSupport(
         }
     }
 
-    fun beginCall() {
+    // CsWinRT marks AddRefUnsafe/TryAddRefUnsafe aggressively inline. Keep the
+    // hot state transition in the caller instead of adding Native managed frames.
+    @Suppress("NOTHING_TO_INLINE")
+    inline fun beginCall() {
         while (true) {
             val current = lifetime.load()
             if (current < 0) throw WinRTObjectDisposedException("Object reference is disposed.")
@@ -214,7 +218,8 @@ internal class RawComObjectReferenceSupport(
         }
     }
 
-    fun endCall() {
+    @Suppress("NOTHING_TO_INLINE")
+    inline fun endCall() {
         val remaining = lifetime.addAndFetch(-1)
         if (remaining < 0 && remaining and CALL_COUNT_MASK == 0) {
             disposeNativeResources(remaining and DEFER_CONTEXT_RELEASE != 0)
@@ -242,7 +247,8 @@ internal class RawComObjectReferenceSupport(
         }
     }
 
-    private fun disposeNativeResources(deferContextRelease: Boolean) {
+    @PublishedApi
+    internal fun disposeNativeResources(deferContextRelease: Boolean) {
         val context = objectContext
         val releaseReferences = {
             if (!preventReleaseOnDispose) {
@@ -285,7 +291,8 @@ internal class RawComObjectReferenceSupport(
         }
     }
 
-    private companion object {
+    @PublishedApi
+    internal companion object {
         const val CALL_COUNT_MASK = 0x3fffffff
         const val DEFER_CONTEXT_RELEASE = 0x40000000
     }

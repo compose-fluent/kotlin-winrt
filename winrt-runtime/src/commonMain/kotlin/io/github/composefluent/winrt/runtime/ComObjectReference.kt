@@ -47,19 +47,16 @@ open class ComObjectReference internal constructor(
     // Compiler-generated ABI calls use a managed lease, like CsWinRT 3 AsValue.
     // These hooks do not change the projected type or native interface ABI.
     @PublishedApi
-    internal fun beginCall() = comPtr.support.beginCall()
+    @Suppress("NOTHING_TO_INLINE")
+    internal inline fun beginCall() = beginComCall(comPtr.support)
 
     @PublishedApi
-    internal fun endCall() {
-        try {
-            comPtr.support.endCall()
-        } finally {
-            winRTKeepAlive(this)
-        }
-    }
+    @Suppress("NOTHING_TO_INLINE")
+    internal inline fun endCall() = endComCall(this)
 
     @PublishedApi
-    internal fun pointerForActiveCall(): RawComPtr = comPtr.support.pointerForCurrentContext()
+    @Suppress("NOTHING_TO_INLINE")
+    internal inline fun pointerForActiveCall(): RawComPtr = comPtr.support.pointerForCurrentContext()
 
     val interfaceId: Guid
         get() = comPtr.interfaceId
