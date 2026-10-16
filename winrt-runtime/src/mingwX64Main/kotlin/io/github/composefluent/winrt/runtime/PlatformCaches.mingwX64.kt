@@ -131,6 +131,15 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
     private val lock = PlatformLock()
     private val delegate = linkedMapOf<K, WeakValueCacheEntry<K, V>>()
     private val sweepQueue = ArrayDeque<WeakValueCacheEntry<K, V>>()
+    private var gcReclamationEnabled = false
+    private var gcCleanupArmed = false
+
+    internal actual fun enableGcReclamation() {
+        lock.withLock {
+            check(delegate.isEmpty()) { "Configure GC reclamation before inserting identity entries." }
+            gcReclamationEnabled = true
+        }
+    }
 
     actual operator fun get(key: K): V? = reference(key)?.get()
 
@@ -160,16 +169,16 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
         value: V,
     ): WeakValueCacheReference<K, V> =
         lock.withLock {
-            sweepOneEntry()
+            if (!gcReclamationEnabled) sweepOneEntry()
             WeakValueCacheEntry(key, value).also { entry ->
                 delegate[key] = entry
-                sweepQueue.addLast(entry)
+                if (gcReclamationEnabled) armGcCleanup() else sweepQueue.addLast(entry)
             }
         }
 
     actual fun remove(key: K): V? =
         lock.withLock {
-            sweepOneEntry()
+            if (!gcReclamationEnabled) sweepOneEntry()
             delegate.remove(key)?.value?.get()
         }
 
@@ -203,9 +212,52 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
     }
 
     private fun sweepAllEntries() {
+        if (gcReclamationEnabled) {
+            val iterator = delegate.values.iterator()
+            while (iterator.hasNext()) {
+                if (iterator.next().get() == null) iterator.remove()
+            }
+            return
+        }
         val entriesToCheck = sweepQueue.size
         repeat(entriesToCheck) {
             sweepOneEntry()
+        }
+    }
+
+    // CsWinRT 3 delegates RCW identity to CLR ComWrappers; JVM receives cleared
+    // references through ReferenceQueue. Native needs a GC notification instead.
+    // Only the runtime's immutable pointer/IID keys opt in: removing hash buckets
+    // can hash keys, so arbitrary user keys retain caller-thread maintenance.
+    private fun armGcCleanup() {
+        if (gcCleanupArmed) return
+        gcCleanupArmed = true
+        scheduleGcCleanup()
+    }
+
+    private fun scheduleGcCleanup() {
+        // Neither the token nor its resource roots this cache or its values.
+        createCleaner(NativeWeakReference(this)) { reference ->
+            reference.get()?.collectDeadEntriesAfterGc()
+        }
+    }
+
+    private fun collectDeadEntriesAfterGc() {
+        // GC.collect can wait for cleaners while the mutator owns this lock.
+        // Never wait here; the next collection can retry the pending cleanup.
+        if (!lock.tryEnter()) {
+            scheduleGcCleanup()
+            return
+        }
+        try {
+            gcCleanupArmed = false
+            try {
+                sweepAllEntries()
+            } finally {
+                if (delegate.isNotEmpty()) armGcCleanup()
+            }
+        } finally {
+            lock.exit()
         }
     }
 

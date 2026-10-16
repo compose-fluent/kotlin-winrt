@@ -16,6 +16,7 @@ import platform.windows.DeleteCriticalSection
 import platform.windows.EnterCriticalSection
 import platform.windows.InitializeCriticalSection
 import platform.windows.LeaveCriticalSection
+import platform.windows.TryEnterCriticalSection
 
 internal actual typealias PlatformManagedWeakReference<T> = NativeManagedWeakReference<T>
 
@@ -35,6 +36,8 @@ internal actual class PlatformLock actual constructor() {
     actual fun enter() {
         EnterCriticalSection(section)
     }
+
+    internal fun tryEnter(): Boolean = TryEnterCriticalSection(section) != 0
 
     actual fun exit() {
         LeaveCriticalSection(section)

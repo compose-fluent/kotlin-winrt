@@ -74,6 +74,8 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
     private val referenceQueue = ReferenceQueue<V>()
     private val delegate = ConcurrentHashMap<K, WeakValueCacheEntry<K, V>>()
 
+    internal actual fun enableGcReclamation() = Unit
+
     actual operator fun get(key: K): V? = reference(key)?.get()
 
     internal actual fun reference(key: K): WeakValueCacheReference<K, V>? {

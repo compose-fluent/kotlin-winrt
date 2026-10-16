@@ -1985,7 +1985,7 @@ object ComWrappersSupport {
 
 @OptIn(ExperimentalAtomicApi::class)
 private class RcwIdentityCache {
-    private val entries = WeakValueCache<Long, Any>()
+    private val entries = WeakValueCache<Long, Any>().also { it.enableGcReclamation() }
     // CsWinRT delegates identity reuse to ComWrappers. Reuse the cache-owned weak
     // entry itself rather than allocating another record when the hot key changes.
     private val hotEntry = AtomicReference<WeakValueCacheReference<Long, Any>?>(null)
@@ -2024,6 +2024,7 @@ private class RcwIdentityCache {
 @OptIn(ExperimentalAtomicApi::class)
 private class ClosedInterfaceRcwIdentityCache {
     private val entries = WeakValueCache<ClosedInterfaceRcwIdentityKey, IWinRTObject>()
+        .also { it.enableGcReclamation() }
     private val hotEntry = AtomicReference<WeakValueCacheReference<ClosedInterfaceRcwIdentityKey, IWinRTObject>?>(null)
 
     fun getHot(pointerKey: Long, interfaceId: Guid): IWinRTObject? {

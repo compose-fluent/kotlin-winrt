@@ -48,8 +48,8 @@ expect class ConcurrentCacheSet<T>() {
 }
 
 /**
- * Weak-value storage with lookup-local reads. Stale-entry reclamation is amortized by
- * mutations and explicit size inspection; a read only validates and removes its requested key.
+ * Weak-value storage with lookup-local reads. Targets reclaim stale entries through
+ * GC notifications or mutations; a read only validates and removes its requested key.
  */
 internal interface WeakValueCacheReference<out K, out V : Any> {
     val key: K
@@ -61,6 +61,12 @@ internal interface WeakValueCacheReference<out K, out V : Any> {
 internal expect inline fun <K, V : Any> WeakValueCacheReference<K, V>.getHotValue(): V?
 
 expect class WeakValueCache<K, V : Any>() {
+    /**
+     * Enables collection-driven maintenance for runtime-owned immutable identity keys.
+     * Configure before insertion; key hashing/equality must be safe on the finalizer thread.
+     */
+    internal fun enableGcReclamation()
+
     operator fun get(key: K): V?
 
     internal fun reference(key: K): WeakValueCacheReference<K, V>?
