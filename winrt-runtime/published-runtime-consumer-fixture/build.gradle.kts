@@ -123,6 +123,7 @@ fun Configuration.runtimeArtifact(extension: String): Pair<ModuleComponentIdenti
         if (
             component.group == "io.github.compose-fluent" &&
             component.module.startsWith("winrt-runtime") &&
+            !component.module.startsWith("winrt-runtime-contracts") &&
             artifact.file.extension.equals(extension, ignoreCase = true)
         ) {
             component to artifact.file
@@ -167,6 +168,9 @@ fun Configuration.assertPublishedRuntimeGraph() {
     val modules = components.filterIsInstance<ModuleComponentIdentifier>()
     check(modules.any { it.group == "io.github.compose-fluent" && it.module.startsWith("winrt-runtime") }) {
         "Published runtime module is absent from $name: $modules"
+    }
+    check(modules.any { it.group == "io.github.compose-fluent" && it.module.startsWith("winrt-runtime-contracts") }) {
+        "Published runtime value contracts are absent from $name: $modules"
     }
     check(modules.none { component ->
         component.group == "io.github.compose-fluent" &&
