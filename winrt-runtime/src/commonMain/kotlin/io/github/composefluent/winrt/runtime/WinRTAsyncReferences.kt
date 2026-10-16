@@ -127,6 +127,11 @@ open class WinRTAsyncInfoReference internal constructor(
     }
 }
 
+@WinRTProjectionInputAdapter(
+    abiName = "Windows.Foundation.IAsyncAction",
+    owner = "io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop",
+    function = "toAbi",
+)
 open class WinRTAsyncActionReference internal constructor(
     comPtr: ComPtr,
 ) : WinRTAsyncInfoReference(comPtr) {
@@ -188,6 +193,11 @@ open class WinRTAsyncActionReference internal constructor(
     }
 }
 
+@WinRTProjectionInputAdapter(
+    abiName = "Windows.Foundation.IAsyncOperation",
+    owner = "io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop",
+    function = "toAbi",
+)
 open class WinRTAsyncOperationReference<T> internal constructor(
     comPtr: ComPtr,
     private val completedHandlerInterfaceId: Guid,
@@ -267,6 +277,11 @@ open class WinRTAsyncOperationReference<T> internal constructor(
     }
 }
 
+@WinRTProjectionInputAdapter(
+    abiName = "Windows.Foundation.IAsyncActionWithProgress",
+    owner = "io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop",
+    function = "toAbi",
+)
 open class WinRTAsyncActionWithProgressReference<TProgress> internal constructor(
     comPtr: ComPtr,
     private val progressHandlerInterfaceId: Guid,
@@ -533,6 +548,11 @@ internal fun winRTAsyncErrorException(
         ExceptionHelpers.exceptionFor(hResult, "WinRT async $kind")
     }
 
+@WinRTProjectionInputAdapter(
+    abiName = "Windows.Foundation.IAsyncOperationWithProgress",
+    owner = "io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop",
+    function = "toAbi",
+)
 open class WinRTAsyncOperationWithProgressReference<T, TProgress> internal constructor(
     comPtr: ComPtr,
     private val progressHandlerInterfaceId: Guid,

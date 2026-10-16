@@ -132,6 +132,19 @@ enum class WinRTProjectionAbiCodecRole {
     DISPOSE_ABI,
 }
 
+/**
+ * Input marshaler owned by a runtime reference declaration. As with CsWinRT's
+ * marshalling information, the declaration selects the adapter; lowering does
+ * not enumerate runtime wrapper families. Outputs still need a closed codec.
+ */
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.BINARY)
+annotation class WinRTProjectionInputAdapter(
+    val abiName: String,
+    val owner: String,
+    val function: String,
+)
+
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.BINARY)
 annotation class WinRTProjectionAbiCodec(

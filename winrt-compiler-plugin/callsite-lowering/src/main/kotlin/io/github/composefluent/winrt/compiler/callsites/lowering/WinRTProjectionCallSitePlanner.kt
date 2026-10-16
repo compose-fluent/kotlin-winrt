@@ -7,6 +7,7 @@
 
 package io.github.composefluent.winrt.compiler.callsites.lowering
 
+import io.github.composefluent.winrt.compiler.callsites.WINRT_PROJECTION_INPUT_ADAPTER_ANNOTATION_FQ_NAME
 import io.github.composefluent.winrt.compiler.callsites.WINRT_PROJECTION_ABI_CODEC_ANNOTATION_FQ_NAME
 import io.github.composefluent.winrt.compiler.callsites.WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME
 import io.github.composefluent.winrt.compiler.callsites.WINRT_CALLER_OWNED_RESULT_ANNOTATION_FQ_NAME
@@ -250,7 +251,7 @@ internal class WinRTProjectionCallSitePlanner(
             }
         }
         if (usage == RecipeUsage.INPUT && !hasSpecializedInputCodec(abiTypeName)) {
-            directAsyncReferenceInputRecipe(type, abiTypeName, projectedName)?.let { return it }
+            declaredReferenceInputRecipe(type, abiTypeName, projectedName)?.let { return it }
         }
         if (usage.isOutputDecode() && !hasOutputDecodeCodec(abiTypeName, usage)) {
             if (directDeclarationIdentity) {
@@ -511,32 +512,26 @@ internal class WinRTProjectionCallSitePlanner(
         return projection.copy(children = listOf(storage))
     }
 
-    /**
-     * Async references are mapped Kotlin wrappers around parameterized WinRT interfaces.  Most
-     * generated call sites have a closed codec, but an authored inbound result can be the only
-     * input use of a closed async shape, leaving only the generated FROM_ABI codec in the module
-     * support shard.  Reuse the common runtime pointer adapter for that input instead of emitting
-     * a target-specific codec or requiring a synthetic generated declaration.
-     */
-    private fun directAsyncReferenceInputRecipe(
+    /** Runtime declarations own their input adapter, including open generic reference wrappers. */
+    private fun declaredReferenceInputRecipe(
         type: IrType,
         abiTypeName: String,
         projectedName: String,
     ): WinRTProjectionCallSiteRecipe? {
-        val typeName = type.classFqName?.asString() ?: return null
-        val asyncAbiPrefix = when (typeName) {
-            WINRT_ASYNC_ACTION_REFERENCE_FQ_NAME -> "Windows.Foundation.IAsyncAction"
-            WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_FQ_NAME ->
-                "Windows.Foundation.IAsyncActionWithProgress<"
-            WINRT_ASYNC_OPERATION_REFERENCE_FQ_NAME -> "Windows.Foundation.IAsyncOperation<"
-            WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_FQ_NAME ->
-                "Windows.Foundation.IAsyncOperationWithProgress<"
-            else -> return null
-        }
-        if (asyncAbiPrefix.endsWith('<')) {
-            if (!abiTypeName.startsWith(asyncAbiPrefix) || !abiTypeName.endsWith('>')) return null
-        } else if (abiTypeName != asyncAbiPrefix) {
+        val declaration = type.classOrNull?.owner ?: return null
+        val adapter = declaration.annotations.singleOrNull { annotation ->
+            annotation.type.classFqName?.asString() == WINRT_PROJECTION_INPUT_ADAPTER_ANNOTATION_FQ_NAME
+        } ?: return null
+        val declaredAbiName = adapter.stringArgument("abiName")
+        if (declaration.typeParameters.isEmpty()) {
+            if (abiTypeName != declaredAbiName) return null
+        } else if (!abiTypeName.startsWith("$declaredAbiName<") || !abiTypeName.endsWith('>')) {
             return null
+        }
+        val adapterOwner = adapter.stringArgument("owner")
+        val adapterFunction = adapter.stringArgument("function")
+        require(adapterOwner.isNotEmpty() && adapterFunction.isNotEmpty()) {
+            "runtime reference input adapter must name its marshaler"
         }
         val signature = AbiTypeKind.COM_REFERENCE.typeSignature(projectedName)
         val storage = referenceRecipe(
@@ -550,8 +545,8 @@ internal class WinRTProjectionCallSitePlanner(
             valueCarrier = storage.valueCarrier,
             nullable = type.isNullable(),
             callables = WinRTProjectionCallSiteCallables(
-                ownerFqName = WINRT_ASYNC_PROJECTION_INTEROP_FQ_NAME,
-                toAbi = "toAbi",
+                ownerFqName = adapterOwner,
+                toAbi = adapterFunction,
             ),
             children = listOf(storage),
             typeSignature = signature,
@@ -1706,16 +1701,6 @@ private val WINRT_IUNKNOWN_REFERENCE_FQ_NAME = FqName("io.github.composefluent.w
 private val WINRT_INSPECTABLE_REFERENCE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.InspectableReference")
 private val WINRT_COM_OBJECT_REFERENCE_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.ComObjectReference")
 private val WINRT_ABI_ARRAY_FQ_NAME = FqName("io.github.composefluent.winrt.runtime.WinRTAbiArray")
-private const val WINRT_ASYNC_ACTION_REFERENCE_FQ_NAME =
-    "io.github.composefluent.winrt.runtime.WinRTAsyncActionReference"
-private const val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_FQ_NAME =
-    "io.github.composefluent.winrt.runtime.WinRTAsyncActionWithProgressReference"
-private const val WINRT_ASYNC_OPERATION_REFERENCE_FQ_NAME =
-    "io.github.composefluent.winrt.runtime.WinRTAsyncOperationReference"
-private const val WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_FQ_NAME =
-    "io.github.composefluent.winrt.runtime.WinRTAsyncOperationWithProgressReference"
-private const val WINRT_ASYNC_PROJECTION_INTEROP_FQ_NAME =
-    "io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop"
 private val KOTLIN_UNIT_FQ_NAME = FqName("kotlin.Unit")
 private val KOTLIN_ARRAY_FQ_NAME = FqName("kotlin.Array")
 private val KOTLIN_BOOLEAN_FQ_NAME = FqName("kotlin.Boolean")

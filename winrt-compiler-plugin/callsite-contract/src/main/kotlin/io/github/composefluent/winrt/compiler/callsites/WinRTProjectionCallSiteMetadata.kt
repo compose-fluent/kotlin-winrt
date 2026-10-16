@@ -18,6 +18,9 @@ const val WINRT_PROJECTION_ABI_TYPE_ANNOTATION_FQ_NAME: String =
 const val WINRT_PROJECTION_ABI_CODEC_ANNOTATION_FQ_NAME: String =
     "io.github.composefluent.winrt.runtime.WinRTProjectionAbiCodec"
 
+const val WINRT_PROJECTION_INPUT_ADAPTER_ANNOTATION_FQ_NAME: String =
+    "io.github.composefluent.winrt.runtime.WinRTProjectionInputAdapter"
+
 const val WINRT_CALLER_OWNED_RESULT_ANNOTATION_FQ_NAME: String =
     "io.github.composefluent.winrt.runtime.WinRTCallerOwnedResult"
 
