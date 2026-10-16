@@ -645,7 +645,7 @@ internal data class KotlinProjectionMappedType(
     val abiQualifiedName: String,
     val projectedTypeResolver: SpecialTypeResolver,
     val abiValueKind: KotlinProjectionAbiValueKind? = null,
-    val customStructAbi: KotlinProjectionCustomStructAbi? = null,
+    val customStructAbi: KotlinProjectionCustomStructAbi? = mappedScalarStructAbi(abiQualifiedName),
     val customObjectAbi: KotlinProjectionCustomObjectAbi? = null,
     val readOnlyCollectionKind: KotlinProjectionReadOnlyCollectionKind? = null,
     val mutableCollectionKind: KotlinProjectionMutableCollectionKind? = null,
@@ -675,6 +675,20 @@ internal data class KotlinProjectionCustomStructAbi(
     val abiLayoutExpression: CodeBlock? = null,
     val alignmentBytes: Int? = null,
 )
+
+private fun mappedScalarStructAbi(abiQualifiedName: String): KotlinProjectionCustomStructAbi? {
+    val descriptor = winRTMappedTypeForAbiName(abiQualifiedName)?.scalarStructProjection ?: return null
+    return KotlinProjectionCustomStructAbi(
+        helperTypeName = ClassName.bestGuess(descriptor.helperQualifiedName),
+        sizeBytes = descriptor.sizeBytes,
+        fromAbiFunctionName = descriptor.fromAbiFunctionName,
+        copyToFunctionName = descriptor.copyToFunctionName,
+        toAbiFunctionName = descriptor.toAbiFunctionName,
+        fromAbiCarrierFunctionName = descriptor.fromAbiCarrierFunctionName,
+        abiArgumentKind = KotlinProjectionComArgumentKind.valueOf(descriptor.abiKindName),
+        alignmentBytes = descriptor.alignmentBytes,
+    )
+}
 
 internal data class KotlinProjectionCustomObjectAbi(
     val interfaceId: Guid,
@@ -758,16 +772,6 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.DateTime",
         { KOTLIN_INSTANT_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        customStructAbi = KotlinProjectionCustomStructAbi(
-            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
-            8,
-            "dateTimeFromAbi",
-            "copyDateTimeTo",
-            toAbiFunctionName = "dateTimeToAbi",
-            fromAbiCarrierFunctionName = "dateTimeFromAbiValue",
-            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
-            alignmentBytes = 8,
-        ),
         simpleAbiLookup = true,
         descriptionName = "DateTime",
     ),
@@ -775,16 +779,6 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.TimeSpan",
         { KOTLIN_DURATION_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        customStructAbi = KotlinProjectionCustomStructAbi(
-            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
-            8,
-            "timeSpanFromAbi",
-            "copyTimeSpanTo",
-            toAbiFunctionName = "timeSpanToAbi",
-            fromAbiCarrierFunctionName = "timeSpanFromAbiValue",
-            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
-            alignmentBytes = 8,
-        ),
         simpleAbiLookup = true,
         descriptionName = "TimeSpan",
     ),
@@ -813,16 +807,6 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.EventRegistrationToken",
         { EVENT_REGISTRATION_TOKEN_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        customStructAbi = KotlinProjectionCustomStructAbi(
-            helperTypeName = EVENT_REGISTRATION_TOKEN_CLASS_NAME.nestedClass("Metadata"),
-            sizeBytes = 8,
-            fromAbiFunctionName = "fromAbi",
-            copyToFunctionName = "copyTo",
-            toAbiFunctionName = "toAbi",
-            fromAbiCarrierFunctionName = "fromAbiValue",
-            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
-            alignmentBytes = 8,
-        ),
         runtimeOwnedProjection = true,
         simpleAbiLookup = true,
         descriptionName = "EventRegistrationToken",

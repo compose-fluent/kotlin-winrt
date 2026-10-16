@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler.authoring
 
+import io.github.composefluent.winrt.metadata.winRTMappedTypeForAbiName
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
@@ -97,8 +98,6 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
     private val winRTSystemProjectionMarshalersType = ClassName("io.github.composefluent.winrt.runtime", "WinRTSystemProjectionMarshalers")
     private val winRTTypeSignatureType = ClassName("io.github.composefluent.winrt.runtime", "WinRTTypeSignature")
     private val winRTKeyValuePairAdapterMember = MemberName("io.github.composefluent.winrt.runtime", "winRTKeyValuePairAdapter")
-    private val instantType = ClassName("kotlin.time", "Instant")
-    private val durationType = ClassName("kotlin.time", "Duration")
     private val enumIntegralAbiDescriptors = mapOf(
         WinRTIntegralType.Int8 to AuthoringEnumIntegralAbiDescriptor(
             carrierTypeName = Byte::class.asClassName(),
@@ -1188,7 +1187,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         renderDelegateParameterProjection(rawArg, parameter, typesByName, semanticHelpers)?.let { projection ->
             return projection
         }
-        renderRuntimeOwnedStructParameterProjection(rawArg, parameter)?.let { projection ->
+        renderMappedScalarStructParameterProjection(rawArg, parameter)?.let { projection ->
             return projection
         }
         return renderComplexParameterProjection(rawArg, parameter, typesByName, semanticHelpers, authoredRuntimeClassNames)
@@ -1422,11 +1421,11 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         fundamentalType(parameter.typeName)?.let { type ->
             return listOf(fundamentalAbiKindName(type))
         }
+        val scalar = winRTMappedTypeForAbiName(parameter.typeName.substringBefore('<').removeSuffix("?"))
+            ?.scalarStructProjection
         val type = typesByName[parameter.typeName]
         return when {
-            parameter.typeName.substringBefore('<').removeSuffix("?") == "Windows.Foundation.EventRegistrationToken" &&
-                parameter.direction != WinRTParameterDirection.Out &&
-                !parameter.typeIsByRef -> listOf("Int64")
+            scalar != null -> listOf(scalar.abiKindName)
             type?.kind == WinRTTypeKind.Enum -> listOf(enumAbiKindName(type))
             type?.kind == WinRTTypeKind.Struct &&
                 parameter.direction != WinRTParameterDirection.Out &&
@@ -1495,10 +1494,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         renderReferenceReturnProjection(method, outExpression, valueExpression, typesByName)?.let {
             return it
         }
-        renderRuntimeMappedStructReturnProjection(method.returnTypeName, outExpression, valueExpression)?.let {
-            return it
-        }
-        renderRuntimeOwnedStructReturnProjection(method.returnTypeName, outExpression, valueExpression)?.let {
+        renderMappedScalarStructReturnProjection(method.returnTypeName, outExpression, valueExpression)?.let {
             return it
         }
         // Nullable projection spelling does not change the WinMD identity/IID.
@@ -1552,62 +1548,33 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
             WinRTFundamentalType.String -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
         }
 
-    private fun renderRuntimeMappedStructReturnProjection(
+    private fun renderMappedScalarStructReturnProjection(
         typeName: String,
         outExpression: CodeBlock,
         valueExpression: String,
-    ): CodeBlock? =
-        when (typeName.substringBefore('<').removeSuffix("?")) {
-            "Windows.Foundation.DateTime" -> CodeBlock.of(
-                "%T.copyDateTimeTo(%L as %T, %L)",
-                winRTSystemProjectionMarshalersType,
-                valueExpression,
-                instantType,
-                outExpression,
-            )
-            "Windows.Foundation.TimeSpan" -> CodeBlock.of(
-                "%T.copyTimeSpanTo(%L as %T, %L)",
-                winRTSystemProjectionMarshalersType,
-                valueExpression,
-                durationType,
-                outExpression,
-            )
-            else -> null
-        }
+    ): CodeBlock? {
+        val mapped = winRTMappedTypeForAbiName(typeName.substringBefore('<').removeSuffix("?")) ?: return null
+        val adapter = mapped.scalarStructProjection ?: return null
+        return CodeBlock.of(
+            "%T.%L(%L as %T, %L)",
+            ClassName.bestGuess(adapter.helperQualifiedName), adapter.copyToFunctionName,
+            valueExpression, ClassName.bestGuess(requireNotNull(mapped.kotlinQualifiedName)), outExpression,
+        )
+    }
 
-    private fun renderRuntimeOwnedStructParameterProjection(
+    private fun renderMappedScalarStructParameterProjection(
         rawArg: CodeBlock,
         parameter: WinRTParameterDefinition,
     ): CodeBlock? {
-        if (parameter.direction == WinRTParameterDirection.Out || parameter.typeIsByRef) {
-            return null
-        }
-        return when (parameter.typeName.substringBefore('<').removeSuffix("?")) {
-            "Windows.Foundation.EventRegistrationToken" -> CodeBlock.of(
-                "%T(%L as %T)",
-                eventRegistrationTokenType,
-                rawArg,
-                Long::class.asClassName(),
-            )
-            else -> null
-        }
+        if (parameter.direction == WinRTParameterDirection.Out || parameter.typeIsByRef) return null
+        val adapter = winRTMappedTypeForAbiName(parameter.typeName.substringBefore('<').removeSuffix("?"))
+            ?.scalarStructProjection ?: return null
+        return CodeBlock.of(
+            "%T.%L(%L as %T)",
+            ClassName.bestGuess(adapter.helperQualifiedName), adapter.fromAbiCarrierFunctionName,
+            rawArg, ClassName.bestGuess(adapter.abiCarrierQualifiedName),
+        )
     }
-
-    private fun renderRuntimeOwnedStructReturnProjection(
-        typeName: String,
-        outExpression: CodeBlock,
-        valueExpression: String,
-    ): CodeBlock? =
-        when (typeName.substringBefore('<').removeSuffix("?")) {
-            "Windows.Foundation.EventRegistrationToken" -> CodeBlock.of(
-                "%T.Metadata.copyTo(%L as %T, %L)",
-                eventRegistrationTokenType,
-                valueExpression,
-                eventRegistrationTokenType,
-                outExpression,
-            )
-            else -> null
-        }
 
     private fun renderDelegateParameterProjection(
         rawArg: CodeBlock,

@@ -29,6 +29,7 @@ data class WinRTMappedTypeDescriptor(
     val hasCustomMembersOutput: Boolean = false,
     val kotlinQualifiedName: String? = null,
     val preservesNullReference: Boolean? = null,
+    val scalarStructProjection: WinRTScalarStructProjection? = null,
 ) {
     val abiQualifiedName: String
         get() = "$abiNamespace.$abiName"
@@ -233,6 +234,7 @@ private fun mapped(
     hasCustomMembersOutput: Boolean = false,
     kotlinQualifiedName: String? = null,
     preservesNullReference: Boolean? = null,
+    scalarStructProjection: WinRTScalarStructProjection? = null,
 ): WinRTMappedTypeDescriptor {
     val abiNamespace = abiQualifiedName.substringBeforeLast('.', "")
     val abiName = abiQualifiedName.substringAfterLast('.')
@@ -245,6 +247,7 @@ private fun mapped(
         hasCustomMembersOutput = hasCustomMembersOutput,
         kotlinQualifiedName = kotlinQualifiedName,
         preservesNullReference = preservesNullReference,
+        scalarStructProjection = scalarStructProjection,
     )
 }
 
@@ -279,15 +282,27 @@ private val MAPPED_TYPES: Map<String, WinRTMappedTypeDescriptor> = listOf(
     mapped("Microsoft.UI.Xaml.Media.Media3D.Matrix3DHelper"),
     mapped("WinRT.Interop.HWND", "System", "IntPtr"),
     mapped("WinRT.Interop.ProjectionInternalAttribute"),
-    mapped("Windows.Foundation.DateTime", "System", "DateTimeOffset", requiresMarshaling = true, kotlinQualifiedName = "kotlin.time.Instant"),
+    mapped("Windows.Foundation.DateTime", "System", "DateTimeOffset", requiresMarshaling = true, kotlinQualifiedName = "kotlin.time.Instant",
+        scalarStructProjection = WinRTScalarStructProjection(
+            "io.github.composefluent.winrt.runtime.WinRTSystemProjectionMarshalers", "dateTimeFromAbi", "copyDateTimeTo", "dateTimeToAbi", "dateTimeFromAbiValue",
+        ),
+    ),
     mapped("Windows.Foundation.EventHandler", "System", "EventHandler"),
-    mapped("Windows.Foundation.EventRegistrationToken", "WinRT", "EventRegistrationToken"),
+    mapped("Windows.Foundation.EventRegistrationToken", "WinRT", "EventRegistrationToken", kotlinQualifiedName = "windows.foundation.EventRegistrationToken",
+        scalarStructProjection = WinRTScalarStructProjection(
+            "windows.foundation.EventRegistrationToken.Metadata", "fromAbi", "copyTo", "toAbi", "fromAbiValue",
+        ),
+    ),
     mapped("Windows.Foundation.HResult", "System", "Exception", requiresMarshaling = true),
     mapped("Windows.Foundation.IClosable", "System", "IDisposable", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.IPropertyValue", "Windows.Foundation", "IPropertyValue", requiresMarshaling = true),
     mapped("Windows.Foundation.IReference", "System", "Nullable", requiresMarshaling = true),
     mapped("Windows.Foundation.IReferenceArray", "Windows.Foundation", "IReferenceArray", requiresMarshaling = true),
-    mapped("Windows.Foundation.TimeSpan", "System", "TimeSpan", requiresMarshaling = true, kotlinQualifiedName = "kotlin.time.Duration"),
+    mapped("Windows.Foundation.TimeSpan", "System", "TimeSpan", requiresMarshaling = true, kotlinQualifiedName = "kotlin.time.Duration",
+        scalarStructProjection = WinRTScalarStructProjection(
+            "io.github.composefluent.winrt.runtime.WinRTSystemProjectionMarshalers", "timeSpanFromAbi", "copyTimeSpanTo", "timeSpanToAbi", "timeSpanFromAbiValue",
+        ),
+    ),
     mapped("Windows.Foundation.Collections.IIterable", "System.Collections.Generic", "IEnumerable`1", requiresMarshaling = true, hasCustomMembersOutput = true),
     mapped("Windows.Foundation.Collections.IIterator", "System.Collections.Generic", "IEnumerator`1", requiresMarshaling = true, hasCustomMembersOutput = true),
     // CsWinRT KeyValuePair.FromAbi(null) returns the default value-type pair.
