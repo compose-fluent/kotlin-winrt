@@ -1130,6 +1130,51 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun cached_call_leases_preserve_interface_addresses_and_canonical_aliases() {
+        // CsWinRT's ComInterfaceDispatch preserves the selected vtable address;
+        // IUnknown and the default IInspectable may alias the primary interface.
+        val firstId = Guid("45454545-4545-4545-4545-454545454545")
+        val secondId = Guid("46464646-4646-4646-4646-464646464646")
+        val value = Any()
+        val host = WinRTInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRTInspectableInterfaceDefinition(firstId, emptyList()),
+                WinRTInspectableInterfaceDefinition(secondId, emptyList()),
+            ),
+            defaultInterfaceId = firstId,
+            managedValue = value,
+            weakManagedValue = true,
+        )
+        try {
+            fun lease(interfaceId: Guid): WinRTProjectionMarshaler {
+                val result = host.tryAcquireStaticCallLease(interfaceId, value)
+                    ?: error("Expected a local interface lease.")
+                host.endStaticCallLease(value)
+                return result
+            }
+            val first = lease(firstId)
+            assertSame(first, lease(IID.IUnknown))
+            assertSame(first, lease(IID.IInspectable))
+            val second = lease(secondId)
+            assertNotEquals(first.abi, second.abi)
+            assertEquals(host.borrowCachedInterfacePointer(secondId), second.abi)
+            assertEquals(first.abi, lease(firstId).abi)
+            assertEquals(1u, WinRTInspectableComObject.tryProbeReferenceCount(first.abi))
+
+            WinRTPlatformApi.addRefRaw(second.abi)
+            try {
+                host.close()
+                assertEquals(1u, WinRTInspectableComObject.tryProbeReferenceCount(second.abi))
+                assertSame(value, host.managedValue)
+            } finally {
+                WinRTPlatformApi.releaseRaw(second.abi)
+            }
+        } finally {
+            host.close()
+        }
+    }
+
+    @Test
     fun projected_call_lease_reuses_cached_definition_without_a_per_call_facade() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("4E4E4E4E-4E4E-4E4E-4E4E-4E4E4E4E4E4E")

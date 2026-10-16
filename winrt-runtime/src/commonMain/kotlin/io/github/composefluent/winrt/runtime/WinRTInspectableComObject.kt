@@ -138,21 +138,19 @@ internal class WinRTInspectableComObject(
 ) : ManagedReferenceHost, AutoCloseable {
     private val ccwShape = shapeCacheKey?.let(::cachedShape)
         ?: ManagedCcwShape.create(interfaceDefinitions, hiddenInterfaceDefinitions, defaultInterfaceId)
-    private val referencesAreAgile = ccwShape.referencesAreAgile
-    internal val primaryInterfaceId = ccwShape.primaryInterfaceId
-    private val interfaceObjectMemorySizeBytes = ccwShape.interfaceObjectMemorySizeBytes
-    private val referenceCounterStorageOffsetBytes = interfaceObjectMemorySizeBytes
-    private val queryInterfaceTableStorageOffsetBytes =
-        referenceCounterStorageOffsetBytes + Long.SIZE_BYTES
+    // Like CsWinRT 3's cached WindowsRuntimeVtableInfo, the shape owns immutable
+    // layout metadata; each host only needs its allocation and lifetime state.
+    private val referencesAreAgile get() = ccwShape.referencesAreAgile
+    internal val primaryInterfaceId get() = ccwShape.primaryInterfaceId
+    private val referenceCounterStorageOffsetBytes get() = ccwShape.interfaceObjectMemorySizeBytes
+    private val queryInterfaceTableStorageOffsetBytes
+        get() = referenceCounterStorageOffsetBytes + Long.SIZE_BYTES
     private val hostOwnedMemory = PlatformAbi.allocateBytesOwned(
         sizeBytes = queryInterfaceTableStorageOffsetBytes +
             ccwShape.queryInterfaceTableShape.instanceStorageSizeBytes,
         alignmentBytes = NativeAbiLayout.ADDRESS.byteAlignment,
     )
-    private val interfaceObjectMemory = hostOwnedMemory.pointer
-    private val referenceCounterStorage = RawAddress(
-        hostOwnedMemory.pointer.value + referenceCounterStorageOffsetBytes,
-    )
+    private val interfaceObjectMemory get() = hostOwnedMemory.pointer
     private val canonicalObjectMemory = interfaceObjectPointer(ccwShape.primaryInterfaceIndex)
     private val inboundBinding = ManagedComInboundBinding(
         host = this,
@@ -165,7 +163,7 @@ internal class WinRTInspectableComObject(
         rootReference = inboundBinding,
         cleanup = ::cleanup,
         borrowReady = borrowReady,
-        referenceCounterStorage = referenceCounterStorage,
+        referenceCounterStorage = RawAddress(hostOwnedMemory.pointer.value + referenceCounterStorageOffsetBytes),
         referenceCounterStorageView = hostOwnedMemory.memory,
         referenceCounterStorageOffsetBytes = referenceCounterStorageOffsetBytes,
     )
@@ -173,7 +171,7 @@ internal class WinRTInspectableComObject(
         get() = inboundBinding.get()
     private var externalPointerAliases: MutableSet<Long>? = null
     @kotlin.concurrent.Volatile
-    private var lastStaticCallLease: StaticCallLeaseEntry? = null
+    private var lastStaticCallLease: WinRTProjectionMarshaler? = null
     @kotlin.concurrent.Volatile
     private var queryInterfaceForwardTarget = initialQueryInterfaceForwardTarget
     private var weakQueryInterfaceForwardTarget: PlatformManagedWeakReference<ComObjectReference>? = null
@@ -327,10 +325,9 @@ internal class WinRTInspectableComObject(
         beginStaticCallLease(identityVerifiedManagedValue)
         return try {
             lastStaticCallLease
-                ?.takeIf { entry -> entry.interfaceId == interfaceId }
-                ?.marshaler
+                ?.takeIf { marshaler -> marshaler.abi.value == abiValue }
                 ?: WinRTProjectionMarshaler.cachedCallLease(abi, this).also { marshaler ->
-                    lastStaticCallLease = StaticCallLeaseEntry(interfaceId, marshaler)
+                    lastStaticCallLease = marshaler
                 }
         } catch (failure: Throwable) {
             state.endBorrowedCall(identityVerifiedManagedValue)
@@ -727,11 +724,6 @@ internal class WinRTInspectableComObject(
         cleanupAction = null
         action?.invoke()
     }
-
-    private data class StaticCallLeaseEntry(
-        val interfaceId: Guid,
-        val marshaler: WinRTProjectionMarshaler,
-    )
 
     /**
      * Immutable exposed-interface metadata. It deliberately contains no method handler or managed
