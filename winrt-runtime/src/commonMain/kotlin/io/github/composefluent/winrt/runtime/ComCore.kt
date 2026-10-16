@@ -214,7 +214,7 @@ internal class ComPtr private constructor(
                     },
                 )
                 // The Cleaner action owns only releaseState, never its lease target/registration.
-                registration = scopedReferenceFinalizationHook.register(lease, releaseState::close)
+                registration = scopedReferenceFinalizationHook.create(releaseState::close)
                 transferred = true
                 return lease
             } finally {

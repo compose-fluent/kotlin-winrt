@@ -20,7 +20,7 @@ internal class WinRTBindableInspectableValue private constructor(
     private val inspectable: IInspectableReference,
 ) : IWinRTObject, AutoCloseable {
     private val closed = AtomicInt(0)
-    private val cleanable = registerBindableFinalization(this, inspectable)
+    private val cleanable = registerBindableFinalization(inspectable)
 
     override val nativeObject: ComObjectReference
         get() = inspectable
@@ -53,10 +53,9 @@ internal class WinRTBindableInspectableValue private constructor(
 }
 
 private fun registerBindableFinalization(
-    target: Any,
     inspectable: IInspectableReference,
 ): AutoCloseable =
-    winRTBindableFinalizationHook.register(target) {
+    winRTBindableFinalizationHook.create {
         inspectable.close()
     }
 

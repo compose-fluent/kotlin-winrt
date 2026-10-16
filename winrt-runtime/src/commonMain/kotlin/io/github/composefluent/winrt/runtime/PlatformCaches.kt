@@ -343,9 +343,14 @@ operator fun <T> SnapshotList<T>.plusAssign(value: T) {
     add(value)
 }
 
+/**
+ * Creates owner-held cleanup tokens, the Kotlin counterpart of a native-resource finalizer.
+ * Keep the token reachable for as long as the resource is in use. Cleanup runs once when
+ * the token is closed or collected. The cleanup action must not capture its owner/token.
+ * Native cannot attach a finalizer to an arbitrary object; both targets use this contract.
+ */
 expect class FinalizationHook() {
-    fun register(
-        target: Any,
+    fun create(
         cleanup: () -> Unit,
     ): AutoCloseable
 }

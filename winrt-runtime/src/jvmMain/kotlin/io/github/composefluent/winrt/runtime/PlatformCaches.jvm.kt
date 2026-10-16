@@ -226,15 +226,15 @@ private class JvmWeakKeyStateEntry<K : Any, V : Any>(
 actual class FinalizationHook actual constructor() {
     private val cleaner = Cleaner.create()
 
-    actual fun register(
-        target: Any,
+    actual fun create(
         cleanup: () -> Unit,
-    ): AutoCloseable {
-        val cleanable = cleaner.register(target, cleanup)
-        return AutoCloseable {
-            cleanable.clean()
-        }
-    }
+    ): AutoCloseable = JvmFinalizationRegistration(cleaner, cleanup)
+}
+
+private class JvmFinalizationRegistration(cleaner: Cleaner, cleanup: () -> Unit) : AutoCloseable {
+    private val cleanable = cleaner.register(this, cleanup)
+
+    override fun close() = cleanable.clean()
 }
 
 internal actual fun createComPtrFinalizationRegistration(

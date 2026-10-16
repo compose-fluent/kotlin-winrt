@@ -19,7 +19,7 @@ class WinRTComposableObjectReference internal constructor(
         cleanup,
     )
     private val finalizationRegistration = registerComposableObjectFinalizer(
-        this, cleanupState, ActiveComposableObjectReferences.register(this),
+        cleanupState, ActiveComposableObjectReferences.register(this),
     )
 
     internal fun tryCreateStaticCallLease(
@@ -146,10 +146,9 @@ private val composableObjectFinalizationHook = FinalizationHook()
 // This function's cleaner closure captures only native support states and a weak
 // registry token. Capturing a property through `this` would root its own target.
 private fun registerComposableObjectFinalizer(
-    target: Any,
     cleanup: ComposableObjectCleanup,
     registration: PlatformManagedWeakReference<WinRTComposableObjectReference>,
-): AutoCloseable = composableObjectFinalizationHook.register(target) {
+): AutoCloseable = composableObjectFinalizationHook.create {
     try {
         cleanup.close(fromFinalizer = true)
     } finally {

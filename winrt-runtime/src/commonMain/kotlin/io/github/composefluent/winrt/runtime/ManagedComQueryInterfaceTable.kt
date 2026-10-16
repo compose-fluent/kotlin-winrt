@@ -35,7 +35,7 @@ internal class ManagedComQueryInterfaceTableShape(
                 writeEntryWords(this) { index, value ->
                     allocation.memory.writeInt64(index.toLong() * Long.SIZE_BYTES, value)
                 }
-                cleanup = finalizationHook.register(this, allocation::close)
+                cleanup = finalizationHook.create(allocation::close)
                 sharedEntries = allocation
             } catch (error: Throwable) {
                 allocation.close()

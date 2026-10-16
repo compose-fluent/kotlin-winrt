@@ -33,7 +33,7 @@ abstract class EventSourceState<T : Any> protected constructor(
     // CsWinRT 3 EventSourceState<T> is managed-only and caches a System.WeakReference.
     // Its state never needs WinRT weak-reference resolution or an associated native lock.
     private val cacheEntry = PlatformManagedWeakReference<Any>(this)
-    private val cacheCleanupRegistration = finalizationHook.register(this, CacheCleanup(objectPointerKey, index, cacheEntry)::run)
+    private val cacheCleanupRegistration = finalizationHook.create(CacheCleanup(objectPointerKey, index, cacheEntry)::run)
     private var disposed = false
     // Mutations hold lock, just as CsWinRT serializes updates to its multicast
     // delegate. Publish the immutable snapshot directly; readers need no atomic wrapper.

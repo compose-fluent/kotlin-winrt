@@ -136,10 +136,36 @@ class PlatformCacheSeamsTest {
         assertEquals("second", registrations.firstNotNullOfOrNull { entry -> entry.takeIf { it.startsWith("s") } })
 
         val cleaned = mutableListOf<String>()
-        val closeable = FinalizationHook().register(Any()) { cleaned += "done" }
+        val closeable = FinalizationHook().create { cleaned += "done" }
+        closeable.close()
         closeable.close()
 
         assertEquals(listOf("done"), cleaned)
+    }
+
+    @OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+    @Test
+    fun finalization_token_owns_cleanup_until_closed_or_collected() {
+        // CsWinRT resource finalizers follow their owner. Native's Cleaner follows
+        // its token, so the shared contract explicitly makes that token the owner.
+        val cleaned = kotlin.concurrent.atomics.AtomicInt(0)
+        val hook = FinalizationHook()
+        val retained = hook.create { cleaned.fetchAndAdd(1) }
+        repeat(3) { PlatformFinalization.drain() }
+        assertEquals(0, cleaned.load())
+        retained.close()
+        retained.close()
+        assertEquals(1, cleaned.load())
+
+        fun abandonToken() {
+            hook.create { cleaned.fetchAndAdd(1) }
+        }
+        abandonToken()
+        repeat(20) {
+            PlatformFinalization.drain()
+            if (cleaned.load() == 2) return
+        }
+        assertEquals(2, cleaned.load())
     }
 
     private data class Holder(

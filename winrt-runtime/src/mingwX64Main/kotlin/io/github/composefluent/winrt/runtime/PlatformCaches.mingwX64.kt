@@ -362,9 +362,7 @@ private class NativeWeakKeyStateEntry<K : Any, V : Any>(
 }
 
 actual class FinalizationHook actual constructor() {
-    @Suppress("UNUSED_PARAMETER")
-    actual fun register(
-        target: Any,
+    actual fun create(
         cleanup: () -> Unit,
     ): AutoCloseable = NativeFinalizationRegistration(cleanup)
 }
