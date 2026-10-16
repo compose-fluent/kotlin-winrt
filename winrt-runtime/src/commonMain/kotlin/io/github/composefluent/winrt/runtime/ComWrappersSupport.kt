@@ -368,23 +368,10 @@ object ComWrappersSupport {
         }
 
         return run {
-            if (tryUseCache) {
-                val cached = findCachedRcw(pointerKey)
-                    ?: if (directPointerKey != pointerKey) {
-                        findCachedRcw(directPointerKey)
-                    } else {
-                        null
-                    }
-                cached?.let {
-                    if (directPointerKey != pointerKey) {
-                        rcwCache[pointerKey] = cached
-                        rcwCache[directPointerKey] = cached
-                    }
-                    WinRTPlatformApi.releaseRaw(pointer)
-                    return@run cached
-                }
-            }
-
+            // Both aliases were checked above. CsWinRT 3 delegates identity
+            // publication to ComWrappers; our publishRcw performs the equivalent
+            // final winner check. There is no publication lock around this factory,
+            // so repeating the miss probes here adds work without closing a race.
             // A boxed value is decoded synchronously in this apartment. Keep the owned ABI
             // pointer until decoding completes; only a lasting RCW needs ComPtr context,
             // reference-tracker state, and a finalizer. The existing class factory keeps
