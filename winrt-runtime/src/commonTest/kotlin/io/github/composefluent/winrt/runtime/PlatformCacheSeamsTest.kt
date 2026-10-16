@@ -168,6 +168,22 @@ class PlatformCacheSeamsTest {
         assertEquals(2, cleaned.load())
     }
 
+    @Test
+    fun closed_finalization_token_does_not_retain_cleanup_captures() {
+        // Like GC.SuppressFinalize/disposing the resource in CsWinRT, explicit
+        // cleanup must also release the managed state captured by that cleanup.
+        fun createToken(): Pair<AutoCloseable, PlatformManagedWeakReference<Holder>> {
+            val captured = Holder("captured")
+            return FinalizationHook().create { assertEquals("captured", captured.value) } to
+                PlatformManagedWeakReference(captured)
+        }
+        val (token, captured) = createToken()
+        token.close()
+        drainUntilCleared(captured)
+        token.close()
+        winRTKeepAlive(token)
+    }
+
     private data class Holder(
         val value: String,
     )

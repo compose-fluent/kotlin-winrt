@@ -232,9 +232,20 @@ actual class FinalizationHook actual constructor() {
 }
 
 private class JvmFinalizationRegistration(cleaner: Cleaner, cleanup: () -> Unit) : AutoCloseable {
-    private val cleanable = cleaner.register(this, cleanup)
+    // Cleaner removes a cleaned registration from its list, but a retained
+    // Cleanable still holds its action. Clear that action's captures explicitly.
+    private val cleanable = cleaner.register(this, JvmFinalizationAction(cleanup))
 
     override fun close() = cleanable.clean()
+}
+
+private class JvmFinalizationAction(private var cleanup: (() -> Unit)?) : Runnable {
+    override fun run() {
+        // Cleanable.clean guarantees this action is invoked at most once.
+        val action = cleanup
+        cleanup = null
+        action?.invoke()
+    }
 }
 
 internal actual fun createComPtrFinalizationRegistration(

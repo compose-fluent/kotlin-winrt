@@ -129,8 +129,8 @@ actual class ConcurrentCacheSet<T> actual constructor() {
 
 actual class WeakValueCache<K, V : Any> actual constructor() {
     private val lock = PlatformLock()
-    private val delegate = linkedMapOf<K, WeakValueCacheEntry<K, V>>()
-    private val sweepQueue = ArrayDeque<WeakValueCacheEntry<K, V>>()
+    private var delegate = linkedMapOf<K, WeakValueCacheEntry<K, V>>()
+    private var sweepQueue = ArrayDeque<WeakValueCacheEntry<K, V>>()
     private var gcReclamationEnabled = false
     private var gcCleanupArmed = false
 
@@ -172,7 +172,8 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
             if (!gcReclamationEnabled) sweepOneEntry()
             WeakValueCacheEntry(key, value).also { entry ->
                 delegate[key] = entry
-                if (gcReclamationEnabled) armGcCleanup() else sweepQueue.addLast(entry)
+                sweepQueue.addLast(entry)
+                if (gcReclamationEnabled) armGcCleanup()
             }
         }
 
@@ -212,17 +213,7 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
     }
 
     private fun sweepAllEntries() {
-        if (gcReclamationEnabled) {
-            val iterator = delegate.values.iterator()
-            while (iterator.hasNext()) {
-                if (iterator.next().get() == null) iterator.remove()
-            }
-            return
-        }
-        val entriesToCheck = sweepQueue.size
-        repeat(entriesToCheck) {
-            sweepOneEntry()
-        }
+        repeat(sweepQueue.size) { sweepOneEntry() }
     }
 
     // CsWinRT 3 delegates RCW identity to CLR ComWrappers; JVM receives cleared
@@ -243,18 +234,39 @@ actual class WeakValueCache<K, V : Any> actual constructor() {
     }
 
     private fun collectDeadEntriesAfterGc() {
-        // GC.collect can wait for cleaners while the mutator owns this lock.
-        // Never wait here; the next collection can retry the pending cleanup.
+        // A mutator may be waiting for this cleaner while owning the cache lock.
+        // Never wait, and never hold the lock across a full identity-cache scan.
+        if (!lock.tryEnter()) {
+            scheduleGcCleanup()
+            return
+        }
+        var remaining = try { sweepQueue.size } finally { lock.exit() }
+        while (remaining > 0) {
+            if (!lock.tryEnter()) {
+                scheduleGcCleanup()
+                return
+            }
+            try {
+                val count = minOf(remaining, 128, sweepQueue.size)
+                repeat(count) { sweepOneEntry() }
+                remaining -= count
+                if (sweepQueue.isEmpty()) remaining = 0
+            } finally {
+                lock.exit()
+            }
+        }
         if (!lock.tryEnter()) {
             scheduleGcCleanup()
             return
         }
         try {
-            gcCleanupArmed = false
-            try {
-                sweepAllEntries()
-            } finally {
-                if (delegate.isNotEmpty()) armGcCleanup()
+            if (delegate.isEmpty()) {
+                // Large bursts must not permanently retain empty map/queue backing arrays.
+                delegate = linkedMapOf()
+                sweepQueue = ArrayDeque()
+                gcCleanupArmed = false
+            } else {
+                scheduleGcCleanup()
             }
         } finally {
             lock.exit()
@@ -393,13 +405,17 @@ private class NativeFinalizationRegistration(
 }
 
 private class NativeFinalizationState(
-    private val cleanup: () -> Unit,
+    cleanup: () -> Unit,
 ) {
-    private val cleaned = kotlin.concurrent.atomics.AtomicInt(0)
+    private val cleanup = kotlin.concurrent.atomics.AtomicReference<(() -> Unit)?>(cleanup)
 
     fun runOnce() {
-        if (cleaned.compareAndSet(0, 1)) {
-            cleanup()
+        while (true) {
+            val action = cleanup.load() ?: return
+            if (cleanup.compareAndSet(action, null)) {
+                action()
+                return
+            }
         }
     }
 }

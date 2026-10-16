@@ -28,6 +28,26 @@ class WeakValueCacheReclamationNativeTest {
     }
 
     @Test
+    fun collection_reclaims_multiple_batches_and_preserves_replaced_entries() {
+        val cache = WeakValueCache<Key, Any>().also { it.enableGcReclamation() }
+        val deadKeys = List(513) { abandonEntry(cache) }
+        val liveKey = Key()
+        val liveValue = Any()
+        repeat(260) { cache[liveKey] = Any() }
+        cache[liveKey] = liveValue
+
+        repeat(8) { GC.collect() }
+
+        deadKeys.forEach { assertNull(it.get()) }
+        assertSame(liveValue, cache[liveKey])
+        cache.clear()
+        cache[liveKey] = liveValue
+        repeat(3) { GC.collect() }
+        assertSame(liveValue, cache[liveKey])
+        winRTKeepAlive(cache)
+    }
+
+    @Test
     fun collection_notification_does_not_root_the_cache_itself() {
         val cache = abandonCache()
         repeat(6) { GC.collect() }
