@@ -1119,7 +1119,7 @@ object ComWrappersSupport {
         while (true) {
             val generation = ccwHostCacheGeneration.load()
             val current = state.binding.load()
-            if (current?.generation == generation) {
+            if (current != null && current.generation == generation) {
                 return current.cache as CachedCcwHosts
             }
             if (ccwHostCacheGeneration.load() != generation) {
