@@ -34,7 +34,7 @@ class EventRegistrationTokenTable<T : Any> private constructor(
     private val lock = atomic<PlatformLock?>(null)
 
     // Kotlin/Native's empty LinkedHashMap allocates backing storage. Keep CsWinRT's token
-    // dictionary and random counter semantics, but initialize them only on first registration.
+    // dictionary semantics, but defer its backing storage until a second live registration.
     private var tokens: MutableMap<Int, T>? = null
     /**
      * Immutable update-time snapshot used by authored event raisers.
@@ -48,6 +48,8 @@ class EventRegistrationTokenTable<T : Any> private constructor(
     internal var handlerSnapshot: EventRegistrationTokenTableSnapshot<T>? = null
         private set
     private var nextLow32Bits: Int = 0
+    private var counterInitialized = false
+    private var singleToken: Int = 0
 
     internal fun lockForMutation(): PlatformLock =
         lock.value ?: initializeLock()
@@ -66,8 +68,22 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         }
 
         return withEventRegistrationLock(this) {
-            val tokens = tokens ?: linkedMapOf<Int, T>().also {
+            if (!counterInitialized) {
                 nextLow32Bits = Random.nextInt()
+                counterInitialized = true
+            }
+            // CsWinRT's dictionary contract only needs one token/handler pair here.
+            // Unlike its Dictionary, Native LinkedHashMap eagerly allocates backing arrays.
+            // Reuse the published single-handler snapshot until a second registration needs
+            // a dictionary; token sequencing and duplicate registrations remain unchanged.
+            val previous = handlerSnapshot?.singleHandler
+            if (tokens == null && previous == null) {
+                val token = nextLow32Bits++
+                singleToken = token
+                handlerSnapshot = EventRegistrationTokenTableSnapshot(singleHandler = handler)
+                return@withEventRegistrationLock EventRegistrationToken(composeTokenValue(delegateTypeHash, token))
+            }
+            val tokens = tokens ?: linkedMapOf(singleToken to checkNotNull(previous)).also {
                 this.tokens = it
             }
             var tokenLow32Bits: Int
@@ -86,6 +102,14 @@ class EventRegistrationTokenTable<T : Any> private constructor(
         }
 
         return withEventRegistrationLock(this) {
+            if (tokens == null) {
+                val handler = handlerSnapshot?.singleHandler
+                if (handler != null && lower32Bits(token) == singleToken) {
+                    handlerSnapshot = null
+                    return@withEventRegistrationLock handler
+                }
+                return@withEventRegistrationLock null
+            }
             tokens?.remove(lower32Bits(token)).also {
                 if (it != null) {
                     handlerSnapshot = composeHandlerSnapshot()

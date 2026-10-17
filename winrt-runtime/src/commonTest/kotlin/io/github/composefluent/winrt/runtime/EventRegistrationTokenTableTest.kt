@@ -18,6 +18,29 @@ import windows.foundation.EventRegistrationToken
 @OptIn(ExperimentalAtomicApi::class)
 class EventRegistrationTokenTableTest {
     @Test
+    fun single_registration_reuse_and_dictionary_promotion_keep_old_tokens_invalid() {
+        // CsWinRT retains the counter across removals and preserves each registration.
+        val table = EventRegistrationTokenTable.create<TestHandler>()
+        val first = TestHandler("first")
+        val second = TestHandler("second")
+        val oldToken = table.addEventHandler(first)
+        assertSame(first, table.removeEventHandler(oldToken))
+        val replacement = table.addEventHandler(second)
+        assertNotEquals(oldToken, replacement)
+        assertNull(table.removeEventHandler(oldToken))
+        val promoted = table.addEventHandler(first)
+        val calls = mutableListOf<String>()
+        table.forEachHandler { calls += it.name }
+        assertEquals(listOf("second", "first"), calls)
+        assertSame(second, table.removeEventHandler(replacement))
+        assertSame(first, table.removeEventHandler(promoted))
+        val finalToken = table.addEventHandler(first)
+        assertNull(table.removeEventHandler(promoted))
+        assertSame(first, table.removeEventHandler(finalToken))
+        assertNull(table.handlerSnapshot)
+    }
+
+    @Test
     fun token_type_identity_matches_the_runtime_class_across_table_instances() {
         // CsWinRT EventRegistrationTokenTable<T>.TypeOfTHashCode uses typeof(T), not its name.
         val expectedHash = TestHandler::class.hashCode().let { if (it == 0) 0x5FC74196 else it }
