@@ -125,3 +125,16 @@ pwsh -File winrt-benchmarks/scripts/Measure-Compilation.ps1 `
 ```
 
 Use `:winrt-runtime:compileKotlinJvm` for JVM, or specify a sample's build/link and clean tasks to measure the full projection/application pipeline. The probe must be a new `.kt` file in a compiled source set. The script preserves existing files, changes the probe's function body, and removes it in `finally`. Three rounds measure selected-module clean builds, unchanged builds, and single-file body edits; cleaning is outside the timed build. Build cache and configuration cache are disabled, dependency caches are retained, and Gradle daemon startup can affect the first round. Each result includes task outcomes and a Gradle profile for inspecting compile/link costs. Compare identical tasks, toolchain, arguments, and machine conditions; this is not a cold dependency-download benchmark. `-GradleArguments` passes machine-specific settings or init scripts without changing repository configuration.
+
+### Snapshot retention
+
+Keep only the baseline and candidate needed by the active comparison. Once a comparison is complete, retain its measurements and version metadata, then remove superseded executables and dependencies. Snapshots contain runtime assets only; reference source checkouts, headers, and compiler tools are not copied.
+
+For experiments saved under the repository's root `build` directory, preview and apply cleanup with the exact directory names to retain:
+
+```powershell
+& ./winrt-benchmarks/scripts/Remove-BenchmarkArtifacts.ps1 -KeepSnapshotNames @('perf-before', 'perf-after')
+& ./winrt-benchmarks/scripts/Remove-BenchmarkArtifacts.ps1 -KeepSnapshotNames @('perf-before', 'perf-after') -Apply
+```
+
+Call the script directly from PowerShell when passing an array: `& ./winrt-benchmarks/scripts/Remove-BenchmarkArtifacts.ps1 -KeepSnapshotNames @('perf-before', 'perf-after') -Apply`. Do not clean a snapshot while its runners are executing. Cleanup preserves measurement files, catalogs and snapshot manifests; removed snapshots can still be compared through their saved results but must be rebuilt to run again. It also removes old standalone test binaries and profiling dumps in performance experiment directories. Source trees, module build outputs and dependency caches are outside its scope. The command defaults to a preview and rejects paths outside the repository build tree or paths containing directory links.

@@ -421,7 +421,12 @@ tasks.register("benchmarkSnapshot") {
             check(source.exists()) { "Missing snapshot input: $source" }
             source.copyRecursively(target, overwrite = false)
         }
-        val assets = copyTree(referenceBenchmarkComponentDirectory.get().asFile, "assets")
+        // Snapshots execute the already-built component. Header trees, downloaded tools,
+        // and the reference source checkout are build inputs, not runtime assets.
+        val assets = destination.resolve("assets").also { it.mkdirs() }
+        for (name in listOf("BenchmarkComponent.dll", "BenchmarkComponent.winmd", "CppWinRT.version", "TestWinRT.commit")) {
+            copyTree(referenceBenchmarkComponentDirectory.get().asFile.resolve(name), "assets/$name")
+        }
         val jvm = benchmarkKotlinJvm.get()
         val jars = jvm.classpath.files.mapIndexed { index, source ->
             copyTree(source, "jvm/${index.toString().padStart(3, '0')}-${source.name}").absolutePath

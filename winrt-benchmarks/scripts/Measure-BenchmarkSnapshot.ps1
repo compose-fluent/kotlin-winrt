@@ -16,6 +16,11 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $Snapshot = (Resolve-Path -LiteralPath $Snapshot).Path
 $manifest = Get-Content (Join-Path $Snapshot 'snapshot.json') -Raw | ConvertFrom-Json
+foreach ($runner in $manifest.runners) {
+    if (!(Test-Path -LiteralPath $runner.executable -PathType Leaf)) {
+        throw "Snapshot executable is missing (the snapshot may have been cleaned). Rebuild it to run again: $($runner.executable)"
+    }
+}
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Use a new output directory; previous measurements are immutable.' }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 [IO.Directory]::CreateDirectory($OutputDirectory) | Out-Null
