@@ -66,16 +66,21 @@ internal fun createSyntheticInspectableCcwDefinition(
  * Keep interface adaptation separate from value boxing so notification registrations
  * cannot suppress IEnumerable/IBindableIterable on the same managed object. */
 internal fun createSyntheticInterfaceCcwDefinition(value: Any): WinRTCcwDefinition? {
-    val interfaces = buildList {
+    val iterable = value is Iterable<*>
+    val indexed = value is MutableList<*>
+    val closeable = value as? AutoCloseable
+    val interfaceCount = (if (iterable) 1 else 0) +
+        (if (indexed) 1 else 0) + (if (closeable != null) 1 else 0)
+    if (interfaceCount == 0) return null
+    val interfaces = buildList(interfaceCount) {
         // CsWinRT Projections/Bindable.net5.cs exposes IEnumerable as IBindableIterable
         // even when the caller's declared ABI type is only IInspectable (ItemsSource).
-        if (value is Iterable<*>) add(bindableIterableDefinition())
+        if (iterable) add(bindableIterableDefinition())
         // IList and its notification interfaces must share the original CCW. WinUI's
         // ItemsSourceView snapshots an iterable that has no indexed vector interface.
-        if (value is MutableList<*>) add(bindableVectorDefinition())
-        if (value is AutoCloseable) add(createClosableInspectableInterfaceDefinition(value))
+        if (indexed) add(bindableVectorDefinition())
+        if (closeable != null) add(createClosableInspectableInterfaceDefinition(closeable))
     }
-    if (interfaces.isEmpty()) return null
     return WinRTCcwDefinition(
         interfaceDefinitions = interfaces,
         defaultInterfaceId = interfaces.first().interfaceId,
