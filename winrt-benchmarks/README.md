@@ -126,6 +126,24 @@ pwsh -File winrt-benchmarks/scripts/Measure-Compilation.ps1 `
 
 Use `:winrt-runtime:compileKotlinJvm` for JVM, or specify a sample's build/link and clean tasks to measure the full projection/application pipeline. The probe must be a new `.kt` file in a compiled source set. The script preserves existing files, changes the probe's function body, and removes it in `finally`. Three rounds measure selected-module clean builds, unchanged builds, and single-file body edits; cleaning is outside the timed build. Build cache and configuration cache are disabled, dependency caches are retained, and Gradle daemon startup can affect the first round. Each result includes task outcomes and a Gradle profile for inspecting compile/link costs. Compare identical tasks, toolchain, arguments, and machine conditions; this is not a cold dependency-download benchmark. `-GradleArguments` passes machine-specific settings or init scripts without changing repository configuration.
 
+### Native GC diagnostics
+
+Use `Measure-BenchmarkSnapshot.ps1 -NativeGcDiagnostics -Runners kotlin-native` (or
+the Native executable's `--native-gc-diagnostics`) to investigate allocation-heavy
+tail latency. `nativeGcSnapshots[0]` is the observation before timing begins;
+entry `i + 1` is observed after timing sample `i`. A null observation means no GC
+has completed yet. Each observation describes only the latest completed GC:
+repeated epochs refer to the same collection, and epoch gaps mean intermediate
+collections were not captured. These are not cumulative allocation statistics.
+
+The snapshots report GC duration, total stop-the-world pause duration, heap bytes
+before/after collection, stable-reference roots, marked objects, and post-GC
+cleanup duration. A null cleanup duration means reclamation is still pending.
+Snapshots are read outside the timed interval without forcing a GC or waiting
+for cleanup. Reading them allocates and can perturb subsequent samples, so the
+run is marked `native-gc-diagnostic` and cannot be compared with ordinary timing
+or heap-retention runs. Confirm any optimization using diagnostics disabled.
+
 ### Snapshot retention
 
 Keep only the baseline and candidate needed by the active comparison. Once a comparison is complete, retain its measurements and version metadata, then remove superseded executables and dependencies. Snapshots contain runtime assets only; reference source checkouts, headers, and compiler tools are not copied.

@@ -10,10 +10,13 @@ param(
     [ValidateRange(1, 100000)][int]$MinimumIterations,
     [ValidateRange(1, 10000)][int]$MeasurementRounds = 25,
     [ValidateRange(1, 3600)][int]$TimeoutSeconds = 180,
-    [switch]$Memory
+    [switch]$Memory,
+    [switch]$NativeGcDiagnostics
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($Memory -and $NativeGcDiagnostics) { throw 'Run heap-retention and Native GC diagnostics separately.' }
+if ($NativeGcDiagnostics -and 'kotlin-native' -notin $Runners) { throw 'Native GC diagnostics require kotlin-native in Runners.' }
 $Snapshot = (Resolve-Path -LiteralPath $Snapshot).Path
 $manifest = Get-Content (Join-Path $Snapshot 'snapshot.json') -Raw | ConvertFrom-Json
 foreach ($runner in $manifest.runners) {
@@ -51,6 +54,9 @@ for ($fork = 1; $fork -le $Forks; $fork++) {
             foreach ($arg in @('--filter', $scenario, '--warmup-rounds', [string]$WarmupRounds, '--measurement-rounds',
                     [string]$MeasurementRounds, '--output', $resultPath)) { $start.ArgumentList.Add($arg) }
             if ($Memory -and $runner.managedMemory) { $start.ArgumentList.Add('--memory') }
+            if ($NativeGcDiagnostics -and $name -eq 'kotlin-native') {
+                $start.ArgumentList.Add('--native-gc-diagnostics')
+            }
             foreach ($property in $runner.environment.PSObject.Properties) {
                 $start.Environment[$property.Name] = [string]$property.Value
             }
@@ -92,7 +98,7 @@ for ($fork = 1; $fork -le $Forks; $fork++) {
         }
     }
 }
-[pscustomobject]@{ schemaVersion = 1; snapshot = $manifest; mode = $(if ($Memory) {'memory-diagnostic'} else {'timing'})
+[pscustomobject]@{ schemaVersion = 1; snapshot = $manifest; mode = $(if ($NativeGcDiagnostics) {'native-gc-diagnostic'} elseif ($Memory) {'memory-diagnostic'} else {'timing'})
     forks = $Forks; scenarios = $Scenarios; runners = $Runners; resultCount = $records.Count
     warmupRounds = $WarmupRounds; measurementRounds = $MeasurementRounds
     minimumIterationsOverride = $(if ($PSBoundParameters.ContainsKey('MinimumIterations')) { $MinimumIterations } else { $null })

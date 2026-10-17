@@ -24,6 +24,7 @@ internal data class BenchmarkOptions(
     val filter: Set<String> = emptySet(),
     val listScenarios: Boolean = false,
     val memory: Boolean = false,
+    val nativeGcDiagnostics: Boolean = false,
 )
 
 internal data class BenchmarkScenario(
@@ -55,6 +56,7 @@ internal data class BenchmarkResult(
     val checksum: Long,
     val samplesNsPerOp: List<Double>,
     val memory: BenchmarkMemoryResult? = null,
+    val nativeGcSnapshots: List<BenchmarkNativeGcSnapshot?>? = null,
 )
 
 internal expect object BenchmarkPlatform {
@@ -72,6 +74,7 @@ internal fun parseBenchmarkOptions(args: Array<String>): BenchmarkOptions {
     var filter = emptySet<String>()
     var listScenarios = false
     var memory = false
+    var nativeGcDiagnostics = false
     var index = 0
 
     fun nextValue(option: String): String {
@@ -95,6 +98,7 @@ internal fun parseBenchmarkOptions(args: Array<String>): BenchmarkOptions {
                 .also { require(it.isNotEmpty()) { "$option must select at least one scenario." } }
             "--list-scenarios" -> listScenarios = true
             "--memory" -> memory = true
+            "--native-gc-diagnostics" -> nativeGcDiagnostics = true
             else -> error("Unknown benchmark option '$option'.")
         }
         index += 1
@@ -108,6 +112,7 @@ internal fun parseBenchmarkOptions(args: Array<String>): BenchmarkOptions {
         filter = filter,
         listScenarios = listScenarios,
         memory = memory,
+        nativeGcDiagnostics = nativeGcDiagnostics,
     )
 }
 
@@ -124,6 +129,9 @@ internal fun runBenchmarkSuite(
     scenarios: List<BenchmarkScenario>,
 ): List<BenchmarkResult> {
     val options = parseBenchmarkOptions(args)
+    require(!options.nativeGcDiagnostics || BenchmarkPlatform.runner == "kotlin-native") {
+        "--native-gc-diagnostics requires the Kotlin/Native runner."
+    }
     if (options.listScenarios) {
         require(options.filter.isEmpty()) { "--list-scenarios cannot be combined with --filter." }
         val catalog = scenarios.map(BenchmarkScenario::name).sorted().joinToString(separator = "\n", postfix = "\n")
@@ -189,10 +197,18 @@ private fun runScenario(
     iterations = calibrateIterations(scenario.name, prepared, expectedSingleChecksum, iterations)
 
     val expectedChecksum = expectedSingleChecksum * iterations
+    // Diagnostic collection allocates and can perturb later batches. It is opt-in,
+    // outside the timed interval, and its timings must not be mixed with normal runs.
+    val gcSnapshots = if (options.nativeGcDiagnostics) {
+        ArrayList<BenchmarkNativeGcSnapshot?>(options.measurementRounds + 1).also {
+            it.add(benchmarkNativeGcSnapshot())
+        }
+    } else null
     val samples = List(options.measurementRounds) {
         val start = TimeSource.Monotonic.markNow()
         val checksum = prepared.runBatch(iterations)
         val elapsedNs = start.elapsedNow().inWholeNanoseconds
+        gcSnapshots?.add(benchmarkNativeGcSnapshot())
         check(checksum == expectedChecksum) {
             "Scenario '${scenario.name}' produced checksum $checksum; expected $expectedChecksum."
         }
@@ -216,6 +232,7 @@ private fun runScenario(
         checksum = expectedSingleChecksum,
         samplesNsPerOp = samples,
         memory = if (options.memory) measureBenchmarkMemory(prepared, iterations, expectedChecksum) else null,
+        nativeGcSnapshots = gcSnapshots,
     )
 }
 
@@ -367,6 +384,11 @@ private fun BenchmarkResult.toJson(): String = buildString {
     samplesNsPerOp.joinTo(this, separator = ",")
     append("]")
     memory?.let { append(",\"memory\":").append(it.toJson()) }
+    nativeGcSnapshots?.let { snapshots ->
+        append(",\"nativeGcSnapshots\":[")
+        snapshots.joinTo(this, separator = ",") { it?.toJson() ?: "null" }
+        append(']')
+    }
     append("}")
 }
 

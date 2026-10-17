@@ -53,7 +53,7 @@ function Scenario-Version($Run, [string]$Scenario) {
 }
 $left = Read-Run $Before
 $right = Read-Run $After
-if ($left.run.mode -ne $right.run.mode) { throw 'Do not compare timing runs with memory diagnostic runs.' }
+if ($left.run.mode -ne $right.run.mode) { throw 'Do not compare runs from different timing or diagnostic modes.' }
 if (@(Compare-Object @($left.groups.Keys) @($right.groups.Keys)).Count) { throw 'Scenario/runner sets differ.' }
 $rows = foreach ($key in ($left.groups.Keys | Sort-Object)) {
     $a = $left.groups[$key]; $b = $right.groups[$key]

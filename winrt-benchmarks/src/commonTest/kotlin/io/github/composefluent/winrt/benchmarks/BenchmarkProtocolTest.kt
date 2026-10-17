@@ -8,6 +8,15 @@ import kotlin.test.assertTrue
 
 class BenchmarkProtocolTest {
     @Test
+    fun nativeGcDiagnosticsRemainOptInAndPreservePendingCleanup() {
+        assertFalse(parseBenchmarkOptions(emptyArray()).nativeGcDiagnostics)
+        assertTrue(parseBenchmarkOptions(arrayOf("--native-gc-diagnostics")).nativeGcDiagnostics)
+        val snapshot = BenchmarkNativeGcSnapshot(1, 20, 5, null, 100, 40, 3, 8)
+        assertTrue(snapshot.toJson().contains("\"cleanupNs\":null"))
+        assertTrue(snapshot.toJson().contains("\"epoch\":1"))
+    }
+
+    @Test
     fun memoryDiagnosticsValidateWorkAndKeepUnavailableAllocationExplicit() {
         assertTrue(parseBenchmarkOptions(arrayOf("--memory")).memory)
         var operations = 0
