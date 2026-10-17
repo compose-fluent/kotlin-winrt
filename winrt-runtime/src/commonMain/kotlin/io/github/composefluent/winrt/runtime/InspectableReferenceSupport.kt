@@ -71,7 +71,7 @@ internal object ActivationFactoryReferenceSupport {
 }
 
 internal object InspectableReferenceSupport {
-    fun getRuntimeClassName(
+    inline fun getRuntimeClassName(
         noThrow: Boolean,
         invokeGetRuntimeClassName: (RawAddress) -> Int,
     ): String? =
@@ -88,6 +88,8 @@ internal object InspectableReferenceSupport {
             if (PlatformAbi.isNull(handle)) {
                 return null
             }
-            return HString.fromHandle(handle, owner = true).use(HString::toKString)
+            // CsWinRT 3 CreateObject scopes the returned HSTRING to type resolution.
+            // Reuse the owned-result consumer instead of allocating a temporary owner.
+            return consumeOwnedHString(handle)
         }
 }

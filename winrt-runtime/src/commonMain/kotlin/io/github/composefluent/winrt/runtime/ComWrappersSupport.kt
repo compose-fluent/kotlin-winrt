@@ -319,11 +319,11 @@ object ComWrappersSupport {
         }
 
         val pointerKey = rcwCacheKey(pointer)
-        if (tryUseCache) {
+        // If QI returned the same address, the direct lookup already checked this key.
+        // publishRcw still resolves a competing publication after construction.
+        if (tryUseCache && directPointerKey != pointerKey) {
             findCachedRcw(pointerKey, staticallyDeterminedType)?.let { cached ->
-                if (directPointerKey != pointerKey) {
-                    rcwCache[directPointerKey] = cached
-                }
+                rcwCache[directPointerKey] = cached
                 return cached
             }
         }
@@ -357,11 +357,9 @@ object ComWrappersSupport {
         }
 
         val pointerKey = rcwCacheKey(pointer)
-        if (tryUseCache) {
+        if (tryUseCache && directPointerKey != pointerKey) {
             findCachedRcw(pointerKey)?.let { cached ->
-                if (directPointerKey != pointerKey) {
-                    rcwCache[directPointerKey] = cached
-                }
+                rcwCache[directPointerKey] = cached
                 WinRTPlatformApi.releaseRaw(pointer)
                 return cached
             }
