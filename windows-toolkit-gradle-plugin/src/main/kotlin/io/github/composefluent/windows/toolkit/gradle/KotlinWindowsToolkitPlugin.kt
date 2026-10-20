@@ -1662,6 +1662,22 @@ private fun configureWinAppTasks(
     }
     // Launch tasks are concrete-only: variants can share a package identity and cannot be
     // registered concurrently by an aggregate run task.
+    project.tasks.register(taskName("runWinAppNative"), RunWinAppHostTask::class.java) { task ->
+        task.group = "windows-package"
+        task.description = "Runs the staged Kotlin/Native application with XAML development session support."
+        task.supportsXamlPreview.set(false)
+        task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.MingwX64 }
+        task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+            packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.MingwX64
+        }.zip(options.applicationModel) { enabled, model -> enabled && model == WindowsApplicationModel.Desktop })
+        task.hostExecutable.set(stageApplicationPackageTask.flatMap { stage ->
+            stage.outputDirectory.file(executableBaseName.map { "$it.exe" })
+        })
+        task.workingDirectory.set(stageApplicationPackageTask.flatMap { it.outputDirectory })
+        task.environmentVariables.put("KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
+            stageApplicationPackageTask.flatMap { it.outputDirectory }.map { it.asFile.absolutePath })
+        task.dependsOn(stageApplicationPackageTask)
+    }
     val runApplicationPackageTask = project.tasks.register(
         taskName("runWinAppPackage"),
         RunWinAppPackageTask::class.java,
@@ -1689,11 +1705,12 @@ private fun configureWinAppTasks(
                 packageType == WindowsPackageType.Packaged && deployment != WindowsAppSdkDeployment.SelfContained
             })
             task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
-                packageType == WindowsPackageType.Packaged && variant.kind == WinAppVariantKind.Jvm
-            }.zip(options.windowsAppSdkDeployment) { jvmPackage, deployment ->
-                jvmPackage && deployment != WindowsAppSdkDeployment.SelfContained
+                packageType == WindowsPackageType.Packaged && variant.kind in setOf(WinAppVariantKind.Jvm, WinAppVariantKind.MingwX64)
+            }.zip(options.windowsAppSdkDeployment) { developmentPackage, deployment ->
+                developmentPackage && deployment != WindowsAppSdkDeployment.SelfContained
             }.zip(options.applicationModel) { enabled, model -> enabled && model == WindowsApplicationModel.Desktop })
             task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
+            task.supportsXamlPreview.set(selectedVariant.map { it.kind == WinAppVariantKind.Jvm })
             task.previewHostExecutable.set(project.layout.buildDirectory.dir(
                 selectedVariant.map { "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/AppX" }
             ).flatMap { directory -> applicationHostTask.flatMap { it.executableBaseName }.map { directory.file("$it.exe") } })

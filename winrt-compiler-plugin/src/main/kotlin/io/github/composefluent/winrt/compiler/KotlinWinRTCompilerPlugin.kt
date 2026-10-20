@@ -349,7 +349,6 @@ class KotlinWinRTIrGenerationExtension(
         val compilerSupportEntries = readCompilerSupportManifest()
         val projectionRegistrarEntries = readProjectionRegistrarEntries(compilerSupportEntries)
         val nativeTarget = pluginContext.platform?.componentPlatforms?.any { it.platformName == "Native" } == true
-        if (nativeTarget) io.github.composefluent.winrt.compiler.xaml.lowerNativeXamlDevelopmentAccessors(moduleFragment, pluginContext)
         val nativeUses = if (!typeIndexOutputPath.isNullOrBlank() && nativeTarget)
             NativeProjectionUseCollector(projectionRegistrarEntries) else null
         val nativeNameBasedTypes = nativeUses?.collectNameBasedTypes(moduleFragment).orEmpty()

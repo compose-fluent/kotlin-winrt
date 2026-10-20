@@ -106,6 +106,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal
     abstract val supportsXamlHotReload: Property<Boolean>
 
+    @get:Internal
+    abstract val supportsXamlPreview: org.gradle.api.provider.Property<Boolean>
+
     /** Configuration-only IDE hint; Auto deployment is resolved when the run executes. */
     @get:Internal
     abstract val supportsDevelopmentRun: Property<Boolean>
@@ -136,6 +139,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         offline.convention(false)
         developmentSessionDirectory.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY))
         supportsXamlHotReload.convention(false)
+        supportsXamlPreview.convention(supportsXamlHotReload)
         supportsDevelopmentRun.convention(packageType.zip(selfContained) { type, bundled ->
             type == WindowsPackageType.Packaged.name && !bundled
         })
@@ -272,7 +276,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
             logger = logger,
         ).resolve()
         val applicationArguments = winAppDevelopmentArguments(if (designPreview.get()) {
-            check(supportsXamlHotReload.get()) { "The XAML preview host requires a JVM WinUI development launch." }
+            check(supportsXamlPreview.get()) { "The XAML preview host requires a supported WinUI development launch." }
             WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT
         } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })

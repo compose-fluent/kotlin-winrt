@@ -26,9 +26,9 @@ fun WinUIXamlHotReloadPanel(project: Project) {
         item {
             when {
                 module == null -> Text("Sync Gradle to load your WinUI application.")
-                launches.isEmpty() -> Text("This module has no supported JVM WinUI development launch. Select an application module and prepare XAML.")
+                launches.isEmpty() -> Text("This module has no supported WinUI development launch. Select an application module and prepare XAML.")
                 else -> WinRTChoice("Launch", launches.map { it.taskName to
-                    if (it.taskName.startsWith("runWinAppPackage")) "JVM · Packaged" else "JVM · Unpackaged" }, launch?.taskName) { task = it }
+                    it.taskName }, launch?.taskName) { task = it }
             }
             Text(state.message)
         }

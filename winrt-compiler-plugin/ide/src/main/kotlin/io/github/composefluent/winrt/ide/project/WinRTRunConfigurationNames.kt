@@ -172,9 +172,9 @@ class WinRTRunConfigurationNames(private val project: Project) : Disposable {
 
         internal fun taskName(module: WinRTModuleData, task: String): String? {
             val packaged = task.startsWith("runWinAppPackage")
-            if (!packaged && !task.startsWith("runWinAppHost") && task != "runWindows" &&
+            if (!packaged && !task.startsWith("runWinAppHost") && !task.startsWith("runWinAppNative") && task != "runWindows" &&
                 !task.startsWith("runDebugExecutable") && !task.startsWith("runReleaseExecutable")) return null
-            val suffix = listOf("runWinAppPackage", "runWinAppHost", "runDebugExecutable", "runReleaseExecutable", "runWindows")
+            val suffix = listOf("runWinAppPackage", "runWinAppHost", "runWinAppNative", "runDebugExecutable", "runReleaseExecutable", "runWindows")
                 .firstNotNullOfOrNull { prefix -> task.takeIf { it.startsWith(prefix) }?.removePrefix(prefix) } ?: return null
             val explicit = module.targets.filter { suffix.startsWith(it.name, ignoreCase = true) }
             val target = explicit.maxByOrNull { it.name.length } ?: if (suffix.isNotEmpty()) return null else {

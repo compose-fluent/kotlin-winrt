@@ -14,7 +14,7 @@ import java.io.ObjectOutputStream
 /** Validates the IDE boundary, not WinMD/projection policy owned by .cswinrt/src/cswinrt. */
 class WinRTIdeModelBuilderTest {
     @Test
-    fun packaged_hot_reload_uses_the_deployed_jvm_executable_and_excludes_native_transport() {
+    fun hot_reload_exports_packaged_and_unpacked_jvm_and_native_launches() {
         val project = ProjectBuilder.builder().withName("packaged-app").build()
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
@@ -34,7 +34,9 @@ class WinRTIdeModelBuilderTest {
         val builder = WinRTIdeModelBuilder()
         val run = project.tasks.named("runWinAppPackageDesktopMain", RunWinAppPackageTask::class.java).get()
         assertTrue("Configured packaged JVM run must support Hot Reload", run.supportsXamlHotReload.get())
-        val launch = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single()
+        val launches = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches
+        assertTrue(launches.any { it.taskName.startsWith("runWinAppPackageMingwX64") })
+        val launch = launches.single { it.taskName == run.name }
         val runTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
         assertTrue(runTasks.toString(), runTasks.contains("runWinAppPackageDesktopMain"))
         assertTrue(runTasks.toString(), runTasks.any { it.startsWith("runWinAppPackageMingwX64") })
@@ -50,9 +52,9 @@ class WinRTIdeModelBuilderTest {
         assertTrue("WinApp CLI cannot launch self-contained packages, so IDE import must not offer them",
             builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks.isEmpty())
         application.packageType.set(WindowsPackageType.None)
-        assertEquals(listOf("runWinAppHostDesktopMain"),
-            builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.map { it.taskName })
-        val unpackaged = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single()
+        assertTrue(
+            builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.any { it.taskName.startsWith("runWinAppNativeMingwX64") })
+        val unpackaged = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single { it.taskName == "runWinAppHostDesktopMain" }
         assertEquals(unpackaged.executable, unpackaged.previewExecutable)
         val unpackagedTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
         assertTrue(unpackagedTasks.contains("runWinAppHostDesktopMain"))

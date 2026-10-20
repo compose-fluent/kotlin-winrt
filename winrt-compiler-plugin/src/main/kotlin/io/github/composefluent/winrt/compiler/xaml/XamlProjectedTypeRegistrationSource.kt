@@ -106,9 +106,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
         // Keep SDK-wide registration below JVM method limits. Each helper owns
         // one type, just as generated XamlTypeInfo owns its member table.
         types.forEachIndexed { index, type ->
-            // Native has no development transport. Its compiler removes only these
-            // private bodies before collecting demand; the identity edges below remain.
-            if (sdk(type)) appendLine("@Suppress(\"$JVM_XAML_DEVELOPMENT_ACCESSORS\")")
+            // Development accessors serve both JVM and Native sessions.
             appendLine("private fun ${register}_$index() {")
             emit(type, sdk(type))
             appendLine("}")

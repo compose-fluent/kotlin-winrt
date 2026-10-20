@@ -33,7 +33,9 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
             listOf(WinRTTargetData("jvm", "jvm", emptyList()), WinRTTargetData("mingwX64", "native", emptyList())),
             emptyList(), emptyList(), hotReloadLaunches = listOf(
                 WinUIXamlHotReloadLaunchData("runWinAppHostJvmMain", "$root/app.exe", "$root/app"),
-                WinUIXamlHotReloadLaunchData("runWinAppPackageJvmMain", "$root/app.exe", "$root/app")))
+                WinUIXamlHotReloadLaunchData("runWinAppPackageJvmMain", "$root/app.exe", "$root/app"),
+                WinUIXamlHotReloadLaunchData("runWinAppNativeMingwX64DebugExecutable", "$root/native.exe", "$root/app", ""),
+                WinUIXamlHotReloadLaunchData("runWinAppPackageMingwX64DebugExecutable", "$root/native.exe", "$root/app", "")))
         project.service<WinRTProjectService>().replaceBuildModels(root, listOf(module))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
@@ -59,7 +61,8 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
     fun testRunAndDebugInjectFreshHotReloadSessionsForPackagedAndUnpackagedAliases() {
         val directories = mutableSetOf<Path>()
         listOf(DefaultRunExecutor.getRunExecutorInstance(), DefaultDebugExecutor.getDebugExecutorInstance()).forEach { executor ->
-            listOf("runWindows", "runWinAppHostJvmMain", "runWinAppPackage", "runWinAppPackageJvmMain").forEach { task ->
+            listOf("runWindows", "runWinAppHostJvmMain", "runWinAppPackage", "runWinAppPackageJvmMain", "runWinAppNativeMingwX64DebugExecutable",
+                "runDebugExecutableMingwX64", "runWinAppPackageMingwX64DebugExecutable").forEach { task ->
                 val (configuration, environment, nativeSettings) = execution(task, executor)
                 val launch = environment.getUserData(WinRTApplicationHotReload.KEY)!!
                 assertEquals(Path.of(root, "app/build/kotlin-winrt/ide-hot-reload"), launch.directory.parent)
@@ -75,13 +78,13 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
         }
     }
 
-    fun testDisabledSettingAndUnsupportedNativeLaunchKeepOrdinaryGradleExecution() {
+    fun testDisabledSettingAndUnknownLaunchKeepOrdinaryGradleExecution() {
         settings.hotReloadEnabled = false
         val (_, disabled, nativeSettings) = execution("runWinAppPackageJvmMain")
         assertNull(disabled.getUserData(WinRTApplicationHotReload.KEY))
         assertEquals(mapOf("USER_OPTION" to "preserved"), nativeSettings.env)
         settings.hotReloadEnabled = true
-        val (_, native, unchanged) = execution("runDebugExecutableMingwX64")
+        val (_, native, unchanged) = execution("runDebugExecutableUnknownTarget")
         assertNull(native.getUserData(WinRTApplicationHotReload.KEY))
         assertEquals(mapOf("USER_OPTION" to "preserved"), unchanged.env)
     }

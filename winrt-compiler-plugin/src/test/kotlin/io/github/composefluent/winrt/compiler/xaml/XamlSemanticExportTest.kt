@@ -165,7 +165,7 @@ class XamlSemanticExportTest {
                 assertNotNull(writeXamlProjectedTypeRegistrationSource(root.toPath(), model,
                     setOf("$namespace.Shapes.Rectangle"), "Application", framework))
                 val source = root.walkTopDown().single { it.extension == "kt" }.readText()
-                assertTrue(source.contains("@Suppress(\"$JVM_XAML_DEVELOPMENT_ACCESSORS\")"))
+                assertFalse(source.contains("KOTLIN_WINRT_JVM_XAML_DEVELOPMENT_ACCESSORS"))
                 val startup = source.substringAfter("internal fun registerKotlinWinUIXamlProjectedTypes_Application() {")
                     .substringBefore("if (io.github.composefluent.winrt.runtime.isWinUIXamlHotReloadEnabled())")
                 listOf("$namespace.UIElement", "$namespace.Shapes.Shape", "$namespace.Shapes.Rectangle").forEach { name ->
