@@ -40,9 +40,6 @@ internal fun configureWinUIXamlSdkPreview(
         task.nugetPackages.set(sdkPackages)
         task.runtimeAssets.set(emptyList())
         task.winAppRestoreLockFiles.from(restore.flatMap { it.winmdLockFile })
-        task.nugetPackageContentFiles.from(project.provider {
-            existingWinAppPackageContentRoots(listOf(restore.get().winmdLockFile.get().asFile))
-        })
         task.winAppRuntimeAssetDirectories.from(restore.flatMap { it.winAppDirectory }.map { it.dir("bin") })
         // Self-contained WinUI resolves its own ms-appx theme resources through
         // the host's merged index, just as the desktop sample's SDK PRI inputs.

@@ -132,7 +132,8 @@ class WinRTPrebuiltProjectionConventionPluginTest {
         assertTrue(Files.isRegularFile(repository.resolve("published-projection-mingwx64-1.0.klib")))
         val metadata = Files.readString(repository.resolve("published-projection-mingwx64-1.0.module"))
         assertEquals(metadata, expectedKlibs, Regex(""""url": "[^"\n]*\.klib"""").findAll(metadata).count())
-        assertEquals(metadata, expectedKlibs == 2, metadata.contains("-winrt-projection.klib"))
+        assertEquals(metadata, expectedKlibs == 2,
+            Regex(""""url": "[^"\n]*-winrt-projection-reference\.klib"""").containsMatchIn(metadata))
 
         val cachedResult = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
@@ -154,7 +155,8 @@ class WinRTPrebuiltProjectionConventionPluginTest {
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":projection:verifyMingwX64ProjectionCallSiteLowering")?.outcome)
-        assertEquals(TaskOutcome.SKIPPED, result.task(":projection:compileWinRTProjectionKotlinMingwX64")?.outcome)
+        assertEquals(TaskOutcome.SKIPPED, result.task(":projection:compileWinRTProjectionReferenceKotlinMingwX64")?.outcome)
+        assertEquals(null, result.task(":projection:compileWinRTProjectionKotlinMingwX64"))
 
         val cachedResult = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
@@ -186,15 +188,23 @@ class WinRTPrebuiltProjectionConventionPluginTest {
         Files.writeString(buildFile, "import java.util.zip.ZipOutputStream\nimport java.util.zip.ZipEntry\n" +
             Files.readString(buildFile) + "\n" + """
             kotlin.targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().all {
-                val projection = compilations.create("winRTProjection")
+                val projection = compilations.create("winRTProjectionReference")
+                // Match the toolkit's exported official header. The compiler's
+                // normal local output stays available to the marker audit.
+                val header = tasks.register<org.gradle.api.tasks.bundling.Zip>("mingwX64WinRTProjectionReferenceKlib") {
+                    archiveFileName.set("mingwX64-winrt-projection-reference.klib")
+                    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+                    from(project.zipTree(projection.compileTaskProvider.flatMap { it.outputFile }))
+                    dependsOn(projection.compileTaskProvider)
+                }
                 project.afterEvaluate {
                     configurations.getByName(apiElementsConfigurationName).outgoing.artifact(
-                        projection.compileTaskProvider.flatMap { it.outputFile },
+                        header.flatMap { it.archiveFile },
                     ) {
-                        classifier = "winrt-projection"
+                        classifier = "winrt-projection-reference"
                         extension = "klib"
                         type = "klib"
-                        builtBy(projection.compileTaskProvider)
+                        builtBy(header)
                     }
                 }
             }
@@ -202,12 +212,12 @@ class WinRTPrebuiltProjectionConventionPluginTest {
                 enabled = false
             }
             tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>(
-                "compileWinRTProjectionKotlinMingwX64",
+                "compileWinRTProjectionReferenceKotlinMingwX64",
             ) {
                 produceUnpackagedKlib.set(false)
             }
             val projectionKlib = tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeCompile>(
-                "compileWinRTProjectionKotlinMingwX64",
+                "compileWinRTProjectionReferenceKotlinMingwX64",
             ).get().outputFile.get()
             projectionKlib.parentFile.mkdirs()
             ZipOutputStream(projectionKlib.outputStream()).use { archive ->

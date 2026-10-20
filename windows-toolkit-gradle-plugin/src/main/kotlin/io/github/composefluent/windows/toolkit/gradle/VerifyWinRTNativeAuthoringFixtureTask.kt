@@ -90,20 +90,23 @@ abstract class VerifyWinRTNativeAuthoringComponentFixtureTask : DefaultTask() {
         }
 
         val identityText = identity.readText()
-        check(identityText.contains(componentDllFile.absolutePath.replace("\\", "\\\\"))) {
-            "Expected native component DLL in identity runtime assets: $identityText"
+        val componentRecord = readDependencyAuthoredTargetArtifactRecords(identity)
+            .singleOrNull { it.fileName == componentDllFile.name }
+        check(componentRecord != null && java.util.Base64.getDecoder().decode(componentRecord.contentBase64)
+            .contentEquals(componentDllFile.readBytes())) {
+            "Expected identity ${identity.name} to contain the actual native component DLL as a portable artifact."
         }
         check(identityText.contains("\"authoredMetadataRecords\"") && identityText.contains("\"fileName\":\"${authoredWinmdFile.name}\"")) {
-            "Expected native authored WinMD portable record in identity: $identityText"
+            "Expected native authored WinMD portable record in identity ${identity.name}."
         }
         check(
             identityText.contains("\"authoredHostManifestRecords\"") &&
                 runtimeClassNames.get().any { runtimeClassName -> identityText.contains(runtimeClassName) },
         ) {
-            "Expected native authored host manifest record in identity: $identityText"
+            "Expected native authored host manifest record in identity ${identity.name}."
         }
         check(identityText.contains("\"authoredTargetArtifactRecords\"") && identityText.contains("\"fileName\":\"${componentDllFile.name}\"")) {
-            "Expected native authored target artifact portable record in identity: $identityText"
+            "Expected native authored target artifact portable record in identity ${identity.name}."
         }
         if ("sample.NativeJsonValueThing" in runtimeClassNames.get()) {
             val authoredWinmdText = authoredWinmdFile.readBytes().toString(Charsets.UTF_8)

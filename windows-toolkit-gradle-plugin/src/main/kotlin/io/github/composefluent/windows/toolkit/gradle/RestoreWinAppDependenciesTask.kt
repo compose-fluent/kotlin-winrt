@@ -1,7 +1,9 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import org.gradle.api.model.ObjectFactory
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.FileCollection
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -17,6 +19,7 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
+import javax.inject.Inject
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -25,6 +28,9 @@ import kotlin.io.path.isRegularFile
 
 @DisableCachingByDefault(because = "WinApp restore writes absolute NuGet-cache paths and updates external package caches.")
 abstract class RestoreWinAppDependenciesTask : DefaultTask() {
+    @get:Inject
+    protected abstract val objects: ObjectFactory
+
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val configurationFile: RegularFileProperty
@@ -60,12 +66,24 @@ abstract class RestoreWinAppDependenciesTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
 
-    /** Package roots are inputs because the restore lock points into the external NuGet cache. */
+    /** Read the previous restore lock when Gradle snapshots inputs, not while configuring
+     * providers: the first restore must not invalidate the next configuration-cache entry.
+     * External package contents still participate in up-to-date checks.
+     */
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     @get:org.gradle.api.tasks.IgnoreEmptyDirectories
-    abstract val packageContentFiles: ConfigurableFileCollection
+    val packageContentFiles: FileCollection
+        get() = objects.fileCollection().from(
+            configurationFile.map {
+                existingWinAppPackageContentRoots(listOf(winmdLockFile.get().asFile)).map { root ->
+                    objects.fileTree().setDir(root).apply {
+                        exclude { element -> !isWinAppPackageRestoreInput(element.relativePath.pathString) }
+                    }
+                }
+            },
+        )
 
     /** Tracks inherited NuGet.Config files that WinApp CLI will discover from restoreBaseDirectory. */
     @get:InputFiles

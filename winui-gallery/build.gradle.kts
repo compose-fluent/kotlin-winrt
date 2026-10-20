@@ -82,7 +82,38 @@ ksp {
     arg(galleryXamlSourceArguments)
 }
 tasks.matching { it.name.startsWith("ksp") }.configureEach {
-    dependsOn("generateWinRTProjections", "mergeWinRTCompilerSupport")
+    if (name.endsWith("MingwX64")) {
+        // KSP also snapshots source-set directories after filtering their files.
+        // Order JVM producers only when packaging requests the mixed graph.
+        mustRunAfter("generateWinRTProjections", "mergeWinRTCompilerSupport")
+        if (name.contains("WinRTProjectionReference")) {
+            dependsOn("generateWinRTReferenceProjections", "mergeWinRTReferenceCompilerSupport")
+        } else {
+            dependsOn("generateWinRTNativeAuthoring", "mergeWinRTNativeCompilerSupport")
+        }
+    } else {
+        dependsOn("generateWinRTProjections", "mergeWinRTCompilerSupport")
+    }
+}
+afterEvaluate {
+    tasks.withType<com.google.devtools.ksp.gradle.KspAATask>().matching {
+        it.name == "kspKotlinMingwX64"
+    }.configureEach {
+        // KGP adds fragment-owned authoring roots after evaluation. Snapshot KSP's
+        // producers afterward, so stale JVM outputs never become Native inputs.
+        val legacyRoots = listOf("generated/kotlin-winrt/src", "generated/kotlin-winrt-authoring",
+            "generated/kotlin-winrt/compiler-support/merged").map {
+            layout.buildDirectory.dir(it).get().asFile.toPath().toAbsolutePath().normalize()
+        }
+        val originalSources = files(kspConfig.sourceRoots.from.toList()).asFileTree
+        val originalCommonSources = files(kspConfig.commonSourceRoots.from.toList()).asFileTree
+        kspConfig.sourceRoots.setFrom(originalSources.filter { source ->
+            legacyRoots.none(source.toPath().toAbsolutePath().normalize()::startsWith)
+        })
+        kspConfig.commonSourceRoots.setFrom(originalCommonSources.filter { source ->
+            legacyRoots.none(source.toPath().toAbsolutePath().normalize()::startsWith)
+        })
+    }
 }
 tasks.matching { it.name.startsWith("generateWinRTXamlApplicationHeader") }.configureEach {
     dependsOn(prepareGallerySources)
@@ -100,9 +131,9 @@ kotlin {
     mingwX64 { binaries { executable { entryPoint = "io.github.composefluent.winrt.gallery.main" } } }
     sourceSets {
         getByName("winuiMain").kotlin.setSrcDirs(listOf(files(gallerySourceRoot).builtBy(prepareGallerySources)))
-        // KSP analyzes SDK supertypes from projection source; the toolkit still
-        // compiles these bindings separately from application code.
-        getByName("winuiMain").kotlin.srcDir(tasks.named<io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask>("generateWinRTProjections").flatMap { it.outputDirectory })
+        // JVM KSP retains its source view of SDK supertypes. Native reads the public
+        // reference KLIB and must not acquire the full SDK generator as a source producer.
+        getByName("winuiJvmMain").kotlin.srcDir(tasks.named<io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask>("generateWinRTProjections").flatMap { it.outputDirectory })
         getByName("winuiMain").dependencies {
                 implementation(project(":winui-gallery:code-document"))
                 implementation(project(":winui-gallery:models"))

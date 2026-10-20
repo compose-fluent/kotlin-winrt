@@ -650,6 +650,28 @@ class KotlinProjectionGeneratorTest {
             ccwFactories.contains("AuthoredTypeCcwDefinitionHolder_Windows_Sample_RuntimeOnly"),
         )
         assertFalse(ccwFactories, ccwFactories.contains("IRuntimeOnly.Metadata.IID"))
+
+        // CsWinRT AuthoringExportTypesGenerator keeps native component exports even when
+        // referenced SDK assemblies supply all imported projection declarations.
+        val output = java.nio.file.Files.createTempDirectory("authoring-with-shared-sdk")
+        val summary = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRTMetadataProjectionContext(sources = emptyList(), component = true),
+            suppressedProjectionTypeNames = model.namespaces.flatMap { it.types }.map { it.qualifiedName }.toSet(),
+            authoredRuntimeClassNames = setOf("Sample.Foundation.Widget"),
+            emitJvmAuthoringHostExports = false,
+        ).generateAuthoringSupportTo(model, output)
+        assertTrue(summary.renderedFiles > 0)
+        val generated = output.toFile().walkTopDown().filter { it.isFile }.toList()
+        val exports = generated.single { it.name == "WinRTAuthoringHostExports.kt" }.readText()
+        assertTrue(exports, exports.contains("CName(\"DllGetActivationFactory\")"))
+        assertTrue(exports, exports.contains("CName(\"DllCanUnloadNow\")"))
+        assertFalse(generated.toString(), generated.any { it.name == "IWidget.kt" || it.name == "RuntimeOnly.kt" })
+        assertFalse(generated.toString(), generated.any { it.name == "projection-registrar.tsv" })
+        assertTrue(generated.any { it.name == "WinRTAuthoringServerActivationFactories.kt" })
+        val mappings = generated.single { it.name == "AuthoringMetadataTypeMappingHelper.kt" }.readText()
+        assertTrue(mappings, mappings.contains("Sample.Foundation.Widget"))
+        assertFalse(mappings, mappings.contains("Windows.Sample.RuntimeOnly"))
     }
 
     @Test

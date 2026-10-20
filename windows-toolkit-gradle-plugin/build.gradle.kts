@@ -70,6 +70,8 @@ dependencies {
         testImplementation(tool)
     }
     implementation(libs.kotlinpoet)
+    implementation("org.ow2.asm:asm:9.8")
+    implementation("org.jetbrains.kotlin:kotlin-metadata-jvm:${libs.versions.kotlin.get()}")
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.io.core)
@@ -164,7 +166,9 @@ tasks.register<Test>("compilerCompatibilityTest") {
     val tests = sourceSets.named("test")
     testClassesDirs = tests.get().output.classesDirs
     classpath = tests.get().runtimeClasspath
-    include("**/KotlinCompilerCompatibilityTest.class")
+    include("**/KotlinCompilerCompatibilityTest.class", "**/JvmProjectionReferenceArtifactTest.class",
+        "**/NativeProjectionReferenceArtifactTest.class", "**/JvmReferencePublicationTest.class",
+        "**/NativeReferencePublicationTest.class")
     compilerCompatibilityProjects.forEach { module ->
         dependsOn("${module.path.takeUnless { it == ":" }.orEmpty()}:publishAllPublicationsToCompilerCompatibilityRepository")
     }

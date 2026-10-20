@@ -116,6 +116,9 @@ import kotlin.io.path.extension
 private const val LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD = 512
 private const val LARGE_MODULE_ABI_SUPPORT_SHARD_COUNT = 32
 
+internal fun projectionAbiSupportShardCount(typeCount: Int): Int =
+    if (typeCount >= LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD) LARGE_MODULE_ABI_SUPPORT_SHARD_COUNT else 1
+
 class KotlinProjectionGenerator(
     private val planner: KotlinProjectionPlanner = KotlinProjectionPlanner(),
     private val renderer: KotlinProjectionRenderer = KotlinProjectionRenderer(),
@@ -129,6 +132,12 @@ class KotlinProjectionGenerator(
     private val groupProjectionFilesByPackageOnWrite: Boolean = false,
     private val supportOwnerIdentity: String? = null,
     private val emitJvmAuthoringHostExports: Boolean = true,
+    private val referenceProjection: Boolean = false,
+    private val abiSupportShardCountOverride: Int? = null,
+    private val resolveSupplementalMetadata: Boolean = true,
+    private val nativeStaticMemberDemand: Set<String>? = null,
+    private val nativeAbiOnlyInterfaces: Set<String> = emptySet(),
+    private val nativeInstanceMemberDemand: NativeInstanceMemberDemand? = null,
 ) {
     private val authoringHostExportsClassName = winRTAuthoringHostExportsClassName(supportOwnerIdentity)
     private val authoringServerActivationFactoriesClassName = winRTAuthoringServerActivationFactoriesClassName(supportOwnerIdentity)
@@ -143,6 +152,10 @@ class KotlinProjectionGenerator(
         }
     }
 
+    /** Native SDK overlay compilation must not materialize every projection body. */
+    fun generateBusinessOverlaysTo(model: WinRTMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary =
+        writeFiles(supportRenderer.renderBusinessOverlayFiles(model, projectionContext, suppressedSourceAdditionTypeNames), outputRoot)
+
     fun generate(model: WinRTMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
         val plans = planner.plan(normalizedModel, projectionContext)
@@ -152,7 +165,9 @@ class KotlinProjectionGenerator(
             plan.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) ||
                 plan.shouldSkipRuntimeOwnedMappedProjectionOutput()
         }
-        val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
+        val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans().filter {
+            nativeInstanceMemberDemand?.ccwInputTypes?.contains(it.type.qualifiedName) != false
+        }
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(
             model = normalizedModel,
             plans = renderedPlans,
@@ -167,7 +182,9 @@ class KotlinProjectionGenerator(
                 plan.type.qualifiedName in projectionContext.inaccessibleDependencyTypes
             }),
         )
-        val projectionFiles = renderedPlans.flatMap(projectionRenderer::render)
+        val projectionFiles = renderedPlans.flatMap {
+            if (referenceProjection) projectionRenderer.renderStructured(it) else projectionRenderer.render(it)
+        }
         val projectedInterfaceCcwFiles = listOfNotNull(
             supportRenderer
                 .withModulePlatformAbiCalls(modulePlatformAbiCalls, supportOwnerIdentity)
@@ -184,13 +201,32 @@ class KotlinProjectionGenerator(
                 semanticHelpers = semanticHelpers,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
             )
-            return projectionFiles + projectedInterfaceCcwFiles + closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles()
+            return referenceFiles(projectionFiles + projectedInterfaceCcwFiles + closedGenericFiles + modulePlatformAbiCalls.orEmptyFiles())
         }
-        return projectionFiles + projectedInterfaceCcwFiles + supportFiles(
+        return referenceFiles(projectionFiles + projectedInterfaceCcwFiles + supportFiles(
             model = normalizedModel,
             plans = plans,
             semanticHelpers = semanticHelpers,
             modulePlatformAbiCalls = modulePlatformAbiCalls,
+        ))
+    }
+
+    /** Authoring exports belong to this component even when dependencies own every SDK projection. */
+    fun generateAuthoringSupportTo(model: WinRTMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
+        val normalizedModel = completeProjectionModel(model).withoutExcludedProjectionSurfaceReferences()
+        val plans = planner.plan(normalizedModel, projectionContext)
+        val semanticHelpers = normalizedModel.semanticHelpers()
+        // Imported projection bodies are validated by their owner. This pass only emits
+        // the component's own CCW/factory contracts, using dependency plans for signatures.
+        val componentPlans = plans.filter { plan ->
+            plan.type.kind != WinRTTypeKind.RuntimeClass || authoredRuntimeClassNames.isEmpty() ||
+                plan.type.qualifiedName in authoredRuntimeClassNames
+        }
+        validateAuthoredCcwBindingContracts(normalizedModel, componentPlans, semanticHelpers)
+        validateAuthoringActivationFactorySupportContracts(normalizedModel, componentPlans, semanticHelpers)
+        return writeFiles(
+            supportFiles(normalizedModel, plans, semanticHelpers, null, authoringSupportOnly = true),
+            outputRoot,
         )
     }
 
@@ -215,7 +251,9 @@ class KotlinProjectionGenerator(
         } else {
             emptySet()
         }
-        val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans()
+        val projectedInterfaceCcwPlans = plans.projectedInterfaceCcwInputPlans().filter {
+            nativeInstanceMemberDemand?.ccwInputTypes?.contains(it.type.qualifiedName) != false
+        }
         val modulePlatformAbiCalls = modulePlatformAbiCallSupport(
             model = normalizedModel,
             plans = projectionPlans,
@@ -237,7 +275,7 @@ class KotlinProjectionGenerator(
             generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet
         val projectionFiles = projectionPlans
             .flatMap { plan ->
-                if (groupedProjectionOutput) {
+                if (groupedProjectionOutput || referenceProjection) {
                     projectionRenderer.renderStructured(plan)
                 } else {
                     projectionRenderer.render(plan)
@@ -301,7 +339,7 @@ class KotlinProjectionGenerator(
         var written = 0
         val expectedPaths = mutableSetOf<String>()
         val relativePathsByCollisionKey = mutableMapOf<String, String>()
-        files.forEach { file ->
+        referenceFiles(files).forEach { file ->
             rendered += 1
             val outputPath = outputRoot.resolve(file.relativePath).toAbsolutePath().normalize().toString()
             val collisionKey = outputPath.lowercase()
@@ -323,9 +361,17 @@ class KotlinProjectionGenerator(
         )
     }
 
+    private fun referenceFiles(files: List<KotlinProjectionFile>): List<KotlinProjectionFile> =
+        if (!referenceProjection) files else files.map { file ->
+            file.kotlinPoetFile?.let { declaration ->
+                val reference = declaration.referenceDeclarations()
+                file.copy(contents = reference.toString(), kotlinPoetFile = reference)
+            } ?: file
+        }
+
     private fun completeProjectionModel(model: WinRTMetadataModel): WinRTMetadataModel {
         val normalizedModel = model.normalized()
-        if (projectionContext.sources.isEmpty() || projectionContext.include.isEmpty()) {
+        if (!resolveSupplementalMetadata || projectionContext.sources.isEmpty() || projectionContext.include.isEmpty()) {
             return normalizedModel
         }
         val excludedNamespaces = projectionContext.exclude - projectionContext.excludedTypes
@@ -1893,6 +1939,9 @@ class KotlinProjectionGenerator(
                 supportOwnerIdentity = supportOwnerIdentity,
                 projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
                 guidSignatureHelpers = semanticHelpers,
+                nativeStaticMemberDemand = nativeStaticMemberDemand,
+                nativeAbiOnlyInterfaces = nativeAbiOnlyInterfaces,
+                nativeInstanceMemberDemand = nativeInstanceMemberDemand,
             )
         } else {
             renderer.withModulePlatformAbiCalls(
@@ -1913,6 +1962,9 @@ class KotlinProjectionGenerator(
                     supportOwnerIdentity = configured.supportOwnerIdentity,
                     projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
                     guidSignatureHelpers = configured.guidSignatureHelpers,
+                    nativeStaticMemberDemand = nativeStaticMemberDemand,
+                    nativeAbiOnlyInterfaces = nativeAbiOnlyInterfaces,
+                    nativeInstanceMemberDemand = nativeInstanceMemberDemand,
                 )
             }
         }
@@ -1943,6 +1995,7 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>,
         semanticHelpers: WinRTMetadataSemanticHelpers,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
+        authoringSupportOnly: Boolean = false,
     ): List<KotlinProjectionFile> {
         val supportPlans = plans + supportPlansByQualifiedName(model, plans, semanticHelpers).values
         val supportRendererFiles = supportRenderer
@@ -1964,6 +2017,9 @@ class KotlinProjectionGenerator(
                 excludedSourceAdditionTypeNames = suppressedSourceAdditionTypeNames,
                 modulePlatformAbiCalls = modulePlatformAbiCalls,
                 semanticHelpers = semanticHelpers,
+                authoringSupportOnly = authoringSupportOnly,
+                nativeInstanceMemberDemand = nativeInstanceMemberDemand,
+                nativeStaticMemberDemand = nativeStaticMemberDemand,
             )
         val files = when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> supportRendererFiles
@@ -2007,11 +2063,7 @@ class KotlinProjectionGenerator(
         projectedSlotLiterals: Map<KotlinProjectionSlotLiteralKey, Int>? = null,
         durationAliasPackages: Set<String>? = null,
     ): KotlinModulePlatformAbiCallSupport? {
-        val abiSupportShardCount = if (plans.size >= LARGE_MODULE_ABI_SUPPORT_TYPE_THRESHOLD) {
-            LARGE_MODULE_ABI_SUPPORT_SHARD_COUNT
-        } else {
-            1
-        }
+        val abiSupportShardCount = abiSupportShardCountOverride ?: projectionAbiSupportShardCount(plans.size)
         if (!emitSupportFiles) {
             return KotlinModulePlatformAbiCallSupport(
                 className = modulePlatformAbiCallClassName,

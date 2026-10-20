@@ -16,7 +16,14 @@ internal object ActivationFactoryReferenceSupport {
         defaultInterfaceId: Guid,
         marshalingType: WinRTObjectReferenceMarshalingType,
     ): IInspectableReference =
-        activateInstance(comPtr, defaultInterfaceId, requireQueryInterface = false, marshalingType = marshalingType)
+        // CsWinRT 3's fast attachment path assumes the returned activation pointer can
+        // serve its generated default-interface ABI. Our ordinary interface-slot calls
+        // need the queried interface: WinUI TextBlock returns a different IInspectable
+        // pointer from IActivationFactory than QI(ITextBlock). Merely tagging the former
+        // with the default IID skips the constructor cast and dispatches the wrong vtable.
+        // Keep this adaptation at activation, shared by JVM and Native, as in CsWinRT's
+        // code_writers.h constructor objRef.As(defaultInterface.IID) ownership boundary.
+        activateInstance(comPtr, defaultInterfaceId, requireQueryInterface = true, marshalingType = marshalingType)
 
     private fun activateInstance(
         comPtr: ComPtr,
@@ -37,9 +44,9 @@ internal object ActivationFactoryReferenceSupport {
                 return@use wrapActivatedInstance(activatedPointer, interfaceId, marshalingType)
             }
 
-            // Generic activation can request any interface, like C++/WinRT's
-            // IActivationFactory.ActivateInstance<T>. Generated constructors instead
-            // attach the factory's default interface directly through the branch above.
+            // Both generic and generated typed activation acquire the requested vtable,
+            // as in C++/WinRT IActivationFactory.ActivateInstance<T>. Untyped activation
+            // retains the IInspectable result through the branch above.
             try {
                 val queryResult = WinRTPlatformApi.queryInterfaceRaw(activatedPointer, interfaceId)
                 WinRTPlatformApi.checkSucceededRaw(queryResult.hResultValue)

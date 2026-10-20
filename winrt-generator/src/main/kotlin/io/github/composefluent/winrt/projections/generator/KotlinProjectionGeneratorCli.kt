@@ -25,6 +25,7 @@ fun main(args: Array<String>) {
         additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
     )
     val fileCount = KotlinProjectionGenerator(
+        referenceProjection = options.referenceProjection,
         emitSupportFiles = true,
         projectionContext = WinRTMetadataProjectionContext(
             sources = metadataSources,
@@ -48,6 +49,7 @@ internal data class KotlinProjectionGeneratorOptions(
     val excludedTypes: Set<String>,
     val additionExcludes: Set<String>,
     val xamlFramework: XamlFramework = XamlFramework.WinUI,
+    val referenceProjection: Boolean = false,
 ) {
     companion object {
         fun parse(args: List<String>): KotlinProjectionGeneratorOptions {
@@ -59,6 +61,7 @@ internal data class KotlinProjectionGeneratorOptions(
             val excludedTypes = mutableSetOf<String>()
             val additionExcludes = mutableSetOf<String>()
             var xamlFramework = XamlFramework.WinUI
+            var referenceProjection = false
             var index = 0
             while (index < args.size) {
                 when (val arg = args[index]) {
@@ -73,6 +76,7 @@ internal data class KotlinProjectionGeneratorOptions(
                     "--exclude-type" -> excludedTypes += args.valueAfter(index, arg).also { index++ }
                     "--addition-exclude" -> additionExcludes += args.valueAfter(index, arg).also { index++ }
                     "--xaml-framework" -> xamlFramework = parseXamlFramework(args.valueAfter(index, arg)).also { index++ }
+                    "--reference" -> referenceProjection = true
                     "--help", "-h" -> printUsageAndExit()
                     else -> error("Unknown argument: $arg")
                 }
@@ -88,6 +92,7 @@ internal data class KotlinProjectionGeneratorOptions(
                 excludedTypes = excludedTypes,
                 additionExcludes = additionExcludes,
                 xamlFramework = xamlFramework,
+                referenceProjection = referenceProjection,
             )
         }
 
@@ -128,7 +133,7 @@ internal data class KotlinProjectionGeneratorOptions(
         private fun printUsageAndExit(): Nothing {
             println(
                 """
-                Usage: winrt-generator --output <dir> [--namespace <name>] [--type <full.name>] [--exclude-namespace <name>] [--exclude-type <full.name>] [--addition-exclude <prefix>] [--xaml-framework winui|uwp] [--winmd <path|sdk|sdk+|version[+]>...]
+                Usage: winrt-generator --output <dir> [--reference] [--namespace <name>] [--type <full.name>] [--exclude-namespace <name>] [--exclude-type <full.name>] [--addition-exclude <prefix>] [--xaml-framework winui|uwp] [--winmd <path|sdk|sdk+|version[+]>...]
 
                 If --winmd is omitted, the latest Windows SDK Platform.xml API-contract set is used.
                 The XAML framework defaults to winui. Use uwp for Windows.UI.Xaml, including WinUI 2 controls.

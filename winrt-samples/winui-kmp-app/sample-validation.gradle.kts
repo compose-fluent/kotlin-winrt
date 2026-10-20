@@ -10,11 +10,11 @@ val verifyWinuiKmpTransitiveProjectionSuppression by tasks.registering {
 
     doLast {
         val generatedRoot = generatedSources.get().asFile
-        check(!generatedRoot.resolve("windows/system/Launcher.kt").exists()) {
-            "Application regenerated Windows.System.Launcher owned by the transitive KMP base library."
-        }
-        check(!generatedRoot.resolve("microsoft/ui/xaml/controls/Button.kt").exists()) {
-            "Application regenerated Microsoft.UI.Xaml.Controls.Button owned by the direct KMP WinUI library."
+        val duplicateSources = generatedRoot.walkTopDown().filter { it.isFile && it.extension == "kt" }
+            .map { it.relativeTo(generatedRoot).invariantSeparatorsPath }
+            .filter { it.startsWith("windows/") || it.startsWith("microsoft/") }.toList()
+        check(duplicateSources.isEmpty()) {
+            "Application regenerated SDK types owned by the shared prebuilt projections: $duplicateSources"
         }
     }
 }
@@ -88,17 +88,44 @@ val verifyWinuiKmpMingwRun by tasks.registering {
     dependsOn(tasks.named("runReleaseExecutableMingwX64"))
 }
 
+val verifyWinuiKmpNativeProjectionReachability by tasks.registering {
+    group = "verification"
+    description = "Checks that the Native WinUI executable does not retain unrelated full-SDK registration roots."
+    dependsOn("linkReleaseExecutableMingwX64")
+    val executable = layout.buildDirectory.file("bin/mingwX64/releaseExecutable/winui-kmp-app.exe")
+    inputs.file(executable)
+    doLast {
+        // CsWinRT keeps a canonical SDK implementation; the Native adaptation must allow
+        // unused registrations to disappear with unused code. These names were all present
+        // in the former full-owner initializer's executable, including this UI-only sample.
+        val bytes = executable.get().asFile.readBytes().toString(Charsets.ISO_8859_1)
+        fun containsRuntimeName(name: String): Boolean = bytes.contains(
+            name.toByteArray(Charsets.UTF_16LE).toString(Charsets.ISO_8859_1),
+        )
+        check(containsRuntimeName("Microsoft.UI.Xaml.Controls.Button")) {
+            "Expected the sample's used Button runtime type to remain in the Native executable."
+        }
+        listOf("Windows.Devices.Bluetooth.BluetoothLEDevice", "Windows.Media.Capture.MediaCapture").forEach { name ->
+            check(!containsRuntimeName(name)) { "Unrelated SDK registration is still rooted in the Native executable: $name" }
+        }
+    }
+}
+
+verifyWinuiKmpMingwRun { dependsOn(verifyWinuiKmpNativeProjectionReachability) }
+
 val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
     group = "verification"
     description = "Verifies the KMP WinUI dependency is a native authored DLL with composable/overridable support."
     val library = project(":winrt-samples:winui-kmp-library")
     dependsOn(library.tasks.named("validateCompileKotlinMingwX64WinRTNativeAuthoringExports"))
+    dependsOn(library.tasks.named("validateCompileKotlinMingwX64WinRTAuthoredCandidates"))
+    dependsOn("${library.path}:releaseSharedWinRTDemandImplementation")
     dependsOn("stageWindowsPackageRuntimeAssetsMingwX64MainReleaseExecutable")
 
     val nativeAuthoringRoot = library.layout.buildDirectory.dir("kotlin-winrt/native-authoring/compileKotlinMingwX64")
     val generatedTypeDetailsRoot =
-        library.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/compileKotlinMingwX64/src/commonMain/kotlin")
-    val libraryGeneratedRoot = library.layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin")
+        library.layout.buildDirectory.dir("generated/kotlin-winrt-compiler-authoring/compileKotlinMingwX64/src/commonMain/kotlin/sourceSets/winuiMain")
+    val sdkGeneratedRoot = library.layout.buildDirectory.dir("kotlin-winrt/native-demand/releaseShared/sources")
     val libraryDll = library.layout.buildDirectory.file("bin/mingwX64/releaseShared/winui_kmp_library.dll")
     val stagedRuntimeAssets =
         layout.buildDirectory.dir("kotlin-winrt/application-layout/mingwX64_main_releaseExecutable/runtime-assets")
@@ -108,7 +135,7 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
     inputs.file(nativeAuthoringRoot.map { it.file("kotlin-winrt-authoring/winui-kmp-library.host.json") })
     inputs.file(libraryDll)
     inputs.dir(generatedTypeDetailsRoot)
-    inputs.dir(libraryGeneratedRoot)
+    inputs.dir(sdkGeneratedRoot)
     inputs.dir(stagedRuntimeAssets)
 
     doLast {
@@ -166,7 +193,17 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
             "Internal composable helper types must not be exported as activatable classes: $hostManifest"
         }
 
-        requireFile(libraryDll.get().asFile, "linked mingw authored shared library")
+        val dllBytes = requireFile(libraryDll.get().asFile, "linked mingw authored shared library")
+            .readBytes().toString(Charsets.ISO_8859_1)
+        fun containsRuntimeName(name: String): Boolean = dllBytes.contains(
+            name.toByteArray(Charsets.UTF_16LE).toString(Charsets.ISO_8859_1),
+        )
+        check(containsRuntimeName("Microsoft.UI.Xaml.Controls.Button")) {
+            "Expected the used Button runtime type in the authored DLL."
+        }
+        listOf("Windows.Devices.Bluetooth.BluetoothLEDevice", "Windows.Media.Capture.MediaCapture").forEach { name ->
+            check(!containsRuntimeName(name)) { "Unrelated SDK type retained by the authored DLL: $name" }
+        }
         val typeDetailsRoot = generatedTypeDetailsRoot.get().asFile
         val panelTypeDetails = requireFile(
             typeDetailsRoot.resolve(
@@ -205,9 +242,29 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
             "Expected local AutomationPeer TypeDetails to dispatch GetPeerFromPointCore through generated bridge."
         }
 
-        val projectedControls = libraryGeneratedRoot.get().asFile
-            .resolve("microsoft/ui/xaml/controls/microsoft_ui_xaml_controls_1.kt")
-            .readText()
+        val projectedControls = sdkGeneratedRoot.get().asFile.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" &&
+                it.parentFile.invariantSeparatorsPath.endsWith("/microsoft/ui/xaml/controls") }
+            .joinToString("\n") { it.readText() }
+        val buttonProjection = sdkGeneratedRoot.get().asFile.walkTopDown().single {
+            it.isFile && it.invariantSeparatorsPath.endsWith("/microsoft/ui/xaml/controls/Button.kt")
+        }.readText()
+        check(!buttonProjection.contains("public val flyoutProperty:")) {
+            "Unused Button static member must not be generated in the demand implementation."
+        }
+        val buttonStatics = sdkGeneratedRoot.get().asFile.walkTopDown().single {
+            it.isFile && it.invariantSeparatorsPath.endsWith("/microsoft/ui/xaml/controls/IButtonStatics.kt")
+        }.readText()
+        check(buttonStatics.contains("FLYOUTPROPERTY_GETTER_SLOT: Int = 6") &&
+            !buttonStatics.contains("class NativeProjection")) {
+            "A static-only ABI interface must retain its original slots without an unused object proxy."
+        }
+        val automationProperties = sdkGeneratedRoot.get().asFile.walkTopDown().single {
+            it.isFile && it.invariantSeparatorsPath.endsWith("/microsoft/ui/xaml/automation/AutomationProperties.kt")
+        }.readText()
+        check(automationProperties.contains("public fun setAccessibilityView(")) {
+            "A static member used by a transitive business library must be generated."
+        }
         check(projectedControls.contains("ComposableFactory.createInstanceForSubclass(this,")) {
             "Expected generated WinUI projection to use composable factory subclass creation."
         }
@@ -216,7 +273,7 @@ val verifyWinuiKmpNativeComposableAuthoringHost by tasks.registering {
         }
 
         val stagedRoot = stagedRuntimeAssets.get().asFile
-        requireFile(stagedRoot.resolve("winui-kmp-library.dll"), "staged native authored dependency DLL")
+        requireFile(stagedRoot.resolve(libraryDll.get().asFile.name), "staged native authored dependency DLL")
         requireFile(stagedRoot.resolve("winui-kmp-library.host.json"), "staged native authored dependency host manifest")
         requireFile(stagedRoot.resolve("winui-kmp-library.winmd"), "staged native authored dependency WinMD")
     }

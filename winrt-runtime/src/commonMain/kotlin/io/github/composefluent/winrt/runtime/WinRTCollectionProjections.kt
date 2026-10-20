@@ -1362,6 +1362,110 @@ object WinRTDictionaryProjection {
         }
     }
 
+    /**
+     * CsWinRT IDictionaryAdapter supplies mapped IMap methods on the authored object's
+     * existing CCW. Resolve the current host value so shared shapes do not capture another
+     * object's map or require a separate COM identity.
+     */
+    fun <K, V> ccwInterfaceDefinitions(
+        keyAdapter: WinRTReferenceValueAdapter<K>,
+        valueAdapter: WinRTReferenceValueAdapter<V>,
+        interfaceId: Guid? = null,
+    ): List<WinRTInspectableInterfaceDefinition> = listOf(
+        managedIterableInterfaceDefinition(
+            elementAdapter = winRTKeyValuePairAdapter(keyAdapter, valueAdapter),
+            iteratorFactory = { value ->
+                @Suppress("UNCHECKED_CAST")
+                val managed = value as MutableMap<K, V>
+                managed.entries.asSequence().map { ProjectionEntrySnapshot(it.key, it.value) }.iterator()
+            },
+        ),
+        WinRTInspectableInterfaceDefinition(
+            interfaceId = interfaceId ?: mapInterfaceId(keyAdapter, valueAdapter),
+            methods = listOf(
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
+                ) { value, rawArgs ->
+                    @Suppress("UNCHECKED_CAST")
+                    val managed = value as MutableMap<K, V>
+                    val key = keyAdapter.readElementArgument(rawArgs[0])
+                    val resultOut = rawArgs[1] as RawAddress
+                    if (!managed.containsKey(key)) {
+                        return@WinRTInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                    }
+                    val value = managed.getValue(key)
+                    resultOut.writeManagedValue(value, valueAdapter)
+                    KnownHResults.S_OK.value
+                },
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                ) { value, rawArgs ->
+                    @Suppress("UNCHECKED_CAST")
+                    val managed = value as MutableMap<K, V>
+                    (rawArgs[0] as RawAddress).writeUInt32(managed.size.toUInt())
+                    KnownHResults.S_OK.value
+                },
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
+                ) { value, rawArgs ->
+                    @Suppress("UNCHECKED_CAST")
+                    val managed = value as MutableMap<K, V>
+                    val key = keyAdapter.readElementArgument(rawArgs[0])
+                    (rawArgs[1] as RawAddress).writeBoolean(managed.containsKey(key))
+                    KnownHResults.S_OK.value
+                },
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                ) { value, rawArgs ->
+                    @Suppress("UNCHECKED_CAST")
+                    val managed = value as MutableMap<K, V>
+                    val resultOut = rawArgs[0] as RawAddress
+                    resultOut.writeReturnedPointer(
+                        WinRTReadOnlyDictionaryProjection.ToAbiHelper(
+                            managed.toMap(),
+                            keyAdapter,
+                            valueAdapter,
+                        ).detachReference(),
+                    )
+                    KnownHResults.S_OK.value
+                },
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(keyAdapter.elementAbiKind, valueAdapter.elementAbiKind, ComAbiValueKind.Pointer),
+                ) { value, rawArgs ->
+                    @Suppress("UNCHECKED_CAST")
+                    val managed = value as MutableMap<K, V>
+                    val key = keyAdapter.readElementArgument(rawArgs[0])
+                    val value = valueAdapter.readElementArgument(rawArgs[1])
+                    val replaced = managed.containsKey(key)
+                    managed[key] = value
+                    (rawArgs[2] as RawAddress).writeBoolean(replaced)
+                    KnownHResults.S_OK.value
+                },
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(keyAdapter.elementAbiKind),
+                ) { value, rawArgs ->
+                    @Suppress("UNCHECKED_CAST")
+                    val managed = value as MutableMap<K, V>
+                    val key = keyAdapter.readElementArgument(rawArgs[0])
+                    if (!managed.containsKey(key)) {
+                        KnownHResults.E_BOUNDS.value
+                    } else {
+                        managed.remove(key)
+                        KnownHResults.S_OK.value
+                    }
+                },
+                WinRTInspectableMethodDefinition(
+                    signature = ComMethodSignature.of(),
+                ) { value, _ ->
+                    @Suppress("UNCHECKED_CAST")
+                    val managed = value as MutableMap<K, V>
+                    managed.clear()
+                    KnownHResults.S_OK.value
+                },
+            ),
+        ),
+    )
+
     internal class ToAbiHelper<K, V>(
         private val managed: MutableMap<K, V>,
         private val keyAdapter: WinRTReferenceValueAdapter<K>,
@@ -1372,82 +1476,7 @@ object WinRTDictionaryProjection {
         private val host = createCollectionHost(
             managedValue = managed,
             defaultInterfaceId = mapId,
-            interfaceDefinitions = listOf(
-                iterableInterfaceDefinition(
-                    elementAdapter = winRTKeyValuePairAdapter(keyAdapter, valueAdapter),
-                    iteratorFactory = { managed.entries.asSequence().map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
-                ),
-                WinRTInspectableInterfaceDefinition(
-                            interfaceId = mapId,
-                    methods = listOf(
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
-                        ) { rawArgs ->
-                            val key = keyAdapter.readElementArgument(rawArgs[0])
-                            val resultOut = rawArgs[1] as RawAddress
-                            if (!managed.containsKey(key)) {
-                                return@WinRTInspectableMethodDefinition KnownHResults.E_BOUNDS.value
-                            }
-                            val value = managed.getValue(key)
-                            resultOut.writeManagedValue(value, valueAdapter)
-                            KnownHResults.S_OK.value
-                        },
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                        ) { rawArgs ->
-                            (rawArgs[0] as RawAddress).writeUInt32(managed.size.toUInt())
-                            KnownHResults.S_OK.value
-                        },
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, ComAbiValueKind.Pointer),
-                        ) { rawArgs ->
-                            val key = keyAdapter.readElementArgument(rawArgs[0])
-                            (rawArgs[1] as RawAddress).writeBoolean(managed.containsKey(key))
-                            KnownHResults.S_OK.value
-                        },
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                        ) { rawArgs ->
-                            val resultOut = rawArgs[0] as RawAddress
-                            resultOut.writeReturnedPointer(
-                                WinRTReadOnlyDictionaryProjection.ToAbiHelper(
-                                    managed.toMap(),
-                                    keyAdapter,
-                                    valueAdapter,
-                                ).detachReference(),
-                            )
-                            KnownHResults.S_OK.value
-                        },
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind, valueAdapter.elementAbiKind, ComAbiValueKind.Pointer),
-                        ) { rawArgs ->
-                            val key = keyAdapter.readElementArgument(rawArgs[0])
-                            val value = valueAdapter.readElementArgument(rawArgs[1])
-                            val replaced = managed.containsKey(key)
-                            managed[key] = value
-                            (rawArgs[2] as RawAddress).writeBoolean(replaced)
-                            KnownHResults.S_OK.value
-                        },
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(keyAdapter.elementAbiKind),
-                        ) { rawArgs ->
-                            val key = keyAdapter.readElementArgument(rawArgs[0])
-                            if (!managed.containsKey(key)) {
-                                KnownHResults.E_BOUNDS.value
-                            } else {
-                                managed.remove(key)
-                                KnownHResults.S_OK.value
-                            }
-                        },
-                        WinRTInspectableMethodDefinition(
-                            signature = ComMethodSignature.of(),
-                        ) {
-                            managed.clear()
-                            KnownHResults.S_OK.value
-                        },
-                    ),
-                ),
-            ),
+            interfaceDefinitions = ccwInterfaceDefinitions(keyAdapter, valueAdapter, mapId),
         )
 
         fun createMarshaler(): WinRTCollectionProjectionMarshaler =
@@ -1643,17 +1672,23 @@ private fun iterableInterfaceDefinition(
     elementAdapter: WinRTReferenceValueAdapter<*>,
     iteratorFactory: () -> Iterator<*>,
 ): WinRTInspectableInterfaceDefinition =
+    managedIterableInterfaceDefinition(elementAdapter) { _: Any? -> iteratorFactory() }
+
+private fun managedIterableInterfaceDefinition(
+    elementAdapter: WinRTReferenceValueAdapter<*>,
+    iteratorFactory: (Any?) -> Iterator<*>,
+): WinRTInspectableInterfaceDefinition =
     WinRTInspectableInterfaceDefinition(
         interfaceId = iterableInterfaceId(elementAdapter),
         methods = listOf(
             WinRTInspectableMethodDefinition(
                 signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-            ) { rawArgs ->
+            ) { value, rawArgs ->
                 val resultOut = rawArgs[0] as RawAddress
                 @Suppress("UNCHECKED_CAST")
                 resultOut.writeReturnedPointer(
                     WinRTIteratorProjection.detachReference(
-                        iteratorFactory(),
+                        iteratorFactory(value),
                         elementAdapter as WinRTReferenceValueAdapter<Any?>,
                     ),
                 )

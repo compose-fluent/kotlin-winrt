@@ -8,6 +8,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProjectionSourceCacheTest {
+    @Test fun disabling_local_projection_clears_uncached_support_records() {
+        val root = Files.createTempDirectory("uncached-projection-support")
+        val support = Files.createDirectories(root.resolve("kotlin-winrt-support"))
+        Files.writeString(support.resolve("compiler-support.tsv"), "stale projection registrar")
+        Files.writeString(support.resolve("projection-registrar.tsv"), "stale owned types")
+        Files.writeString(support.resolve("xaml-component-resources.tsv"), "stale component")
+        Files.writeString(root.resolve("User.kt"), "class User")
+        clearPreparedStaticSources(root)
+        assertFalse(Files.exists(support.resolve("compiler-support.tsv")))
+        assertFalse(Files.exists(support.resolve("projection-registrar.tsv")))
+        assertFalse(Files.exists(support.resolve("xaml-component-resources.tsv")))
+        assertEquals("class User", Files.readString(root.resolve("User.kt")))
+    }
+
+    @Test fun implementation_changes_invalidate_only_the_composed_source_cache_key() {
+        val contract = "a".repeat(64)
+        val original = preparedProjectionImplementationKey(contract, "b".repeat(64))
+        assertNotEquals(original, preparedProjectionImplementationKey(contract, "c".repeat(64)))
+        assertNotEquals(original, preparedProjectionImplementationKey("d".repeat(64), "b".repeat(64)))
+    }
+
     @Test
     fun cache_repairs_damaged_sources_and_preserves_user_files() {
         // CsWinRTGenerateProjection's input/output boundary, adapted to a shared Gradle cache.
@@ -16,7 +37,7 @@ class ProjectionSourceCacheTest {
         val store = root.resolve("cache")
         val model = WinRTMetadataModel(emptyList())
         var generations = 0
-        fun prepare() = prepareProjectionSources(store, "a".repeat(64), output, model) { target ->
+        fun prepare(destination: java.nio.file.Path = output) = prepareProjectionSources(store, "a".repeat(64), destination, model) { target ->
             generations++
             Files.writeString(target.resolve("sample.kt"), "class Sample")
         }
@@ -33,6 +54,11 @@ class ProjectionSourceCacheTest {
         assertEquals(2, generations)
         assertEquals("class User", Files.readString(output.resolve("User.kt")))
         assertTrue(isPreparedStaticSourceValid(cached))
+        val relocated = root.resolve("another-checkout/build/projections")
+        prepare(relocated)
+        assertEquals(2, generations)
+        assertEquals("class Sample", Files.readString(relocated.resolve("sample.kt")))
+        assertFalse(Files.exists(relocated.resolve("User.kt")))
     }
 
     @Test

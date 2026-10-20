@@ -23,8 +23,8 @@ import kotlin.time.Duration
 import kotlin.time.Instant
 
 @WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IClosable"])
-class NativeClosableThing {
-    fun close() = Unit
+class NativeClosableThing : AutoCloseable {
+    override fun close() = Unit
 }
 
 @WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.IStringable"])
@@ -58,7 +58,7 @@ class NativeJsonValueThing private constructor(
     companion object {
         fun parse(input: String): NativeJsonValueThing = NativeJsonValueThing(input)
 
-        fun tryParse(input: String, result: WinRTOut<JsonValue>): Boolean {
+        fun tryParse(input: String, result: WinRTOut<JsonValue?>): Boolean {
             if (input.isEmpty()) return false
             result.value = JsonValue.createStringValue(input)
             return true
@@ -143,39 +143,15 @@ class NativeDataReaderThing {
 }
 
 @WinRTAuthoredRuntimeClass(interfaceNames = ["windows.foundation.collections.IPropertySet"])
-class NativePropertySetThing {
-    private val values = linkedMapOf<String, Any?>("existing" to "value")
+class NativePropertySetThing : AbstractMutableMap<String, Any?>() {
+    private val contents = linkedMapOf<String, Any?>("existing" to "value")
     private val mapChangedHandlers =
         EventRegistrationTokenTable.create<MapChangedEventHandler<String, Any?>>()
 
-    val size: UInt
-        get() = values.size.toUInt()
+    override val entries: MutableSet<MutableMap.MutableEntry<String, Any?>>
+        get() = contents.entries
 
-    fun lookup(key: String): Any? = values.getValue(key)
-
-    fun hasKey(key: String): Boolean = values.containsKey(key)
-
-    fun getView(): Map<String, Any?> = values.toMap()
-
-    fun iterator(): Iterator<Map.Entry<String, Any?>> =
-        values.entries.map { entry -> object : Map.Entry<String, Any?> {
-            override val key: String = entry.key
-            override val value: Any? = entry.value
-        } }.iterator()
-
-    fun insert(key: String, value: Any?): Boolean {
-        val replaced = values.containsKey(key)
-        values[key] = value
-        return replaced
-    }
-
-    fun remove(key: String) {
-        values.remove(key)
-    }
-
-    fun clear() {
-        values.clear()
-    }
+    override fun put(key: String, value: Any?): Any? = contents.put(key, value)
 
     fun addMapChanged(handler: MapChangedEventHandler<String, Any?>): EventRegistrationToken =
         mapChangedHandlers.addEventHandler(handler)

@@ -57,20 +57,25 @@ abstract class ValidatePrebuiltProjectionPublicationTask : DefaultTask() {
         val dependencies = document.getElementsByTagName("dependency")
             .let { nodes -> (0 until nodes.length).map { nodes.item(it) as Element } }
         requiredDependenciesFor(publishedModule, pom).forEach { expectedModule ->
-            val expectedArtifactId = expectedModule.toPublicationArtifactId(publicationName)
-            val dependency = dependencies.firstOrNull { it.childText("artifactId") == expectedArtifactId }
-                ?: error("${pom.absolutePath} does not expose $expectedArtifactId.")
-            check(dependency.childText("scope") == "compile") {
-                "${pom.absolutePath} publishes $expectedArtifactId outside the compile/API surface."
+            val expectedArtifactIds = expectedModule.toPublicationArtifactIds(publicationName)
+            val matches = dependencies.filter { it.childText("artifactId") in expectedArtifactIds }
+            check(matches.isNotEmpty()) {
+                "${pom.absolutePath} does not expose ${expectedArtifactIds.joinToString(" or ")}."
             }
-            check(dependency.childText("optional") != "true") {
-                "${pom.absolutePath} publishes $expectedArtifactId as optional."
+            matches.forEach { dependency ->
+                val artifactId = dependency.childText("artifactId")
+                check(dependency.childText("scope") == "compile") {
+                    "${pom.absolutePath} publishes $artifactId outside the compile/API surface."
+                }
+                check(dependency.childText("optional") != "true") {
+                    "${pom.absolutePath} publishes $artifactId as optional."
+                }
             }
         }
         forbiddenDependenciesFor(publishedModule).forEach { forbiddenModule ->
-            val forbiddenArtifactId = forbiddenModule.toPublicationArtifactId(publicationName)
-            check(dependencies.none { it.childText("artifactId") == forbiddenArtifactId }) {
-                "${pom.absolutePath} publishes forbidden compile-only dependency $forbiddenArtifactId."
+            val forbiddenArtifactIds = forbiddenModule.toPublicationArtifactIds(publicationName)
+            check(dependencies.none { it.childText("artifactId") in forbiddenArtifactIds }) {
+                "${pom.absolutePath} publishes forbidden compile-only dependency $forbiddenModule."
             }
         }
     }
@@ -123,10 +128,12 @@ abstract class ValidatePrebuiltProjectionPublicationTask : DefaultTask() {
         else -> error("Unsupported prebuilt projection publication '$publicationName'.")
     }
 
-    private fun String.toPublicationArtifactId(publicationName: String): String = when (publicationName) {
-        "jvm" -> "$this-jvm"
-        "mingwX64" -> "$this-mingwx64"
-        "kotlinMultiplatform" -> this
+    private fun String.toPublicationArtifactIds(publicationName: String): Set<String> = when (publicationName) {
+        "jvm" -> setOf("$this-jvm")
+        // KGP can retain the KMP root coordinate when selecting our Native
+        // reference variant. Its Gradle module metadata redirects to mingwX64.
+        "mingwX64" -> setOf(this, "$this-mingwx64")
+        "kotlinMultiplatform" -> setOf(this)
         else -> error("Unsupported prebuilt projection publication '$publicationName'.")
     }
 

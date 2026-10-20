@@ -8,7 +8,6 @@ import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.SourceSetContainer
-import org.gradle.api.tasks.Delete
 import org.jetbrains.kotlin.gradle.plugin.KotlinApiPlugin
 import org.jetbrains.kotlin.gradle.plugin.KotlinJvmFactory
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
@@ -47,7 +46,7 @@ internal fun configureWinUIXamlPipeline(
     // which do not occur in the selected page's inheritance or method signatures.
     // Keep them in the same root selection used by metadata, local projection
     // ownership, identity and caching, including consumers of prebuilt SDKs.
-    extension.includeTypes.addAll(project.provider {
+    extension.packageReferences.compilerRequiredTypes.addAll(project.provider {
         requiredXamlProjectionTypes(xamlSourceRoots.get(), extension.xaml.framework.get(), extension.applicationEnabled.get())
     })
     project.extensions.extraProperties.set("kotlinWinRTXamlSourcesPresent", hasXaml)
@@ -58,14 +57,11 @@ internal fun configureWinUIXamlPipeline(
     // Removing the last XAML file removes its compilations from the graph. Their
     // tasks cannot clean previous output, so dispose only the owned XAML branches.
     // The plain Kotlin model-library exporter remains an independent producer.
-    val removeStaleXaml = project.tasks.register("removeStaleWinRTXamlOutputs", Delete::class.java) { task ->
-        task.onlyIf { !hasXaml.get() }
-        task.delete(project.provider {
-            listOf("generated/kotlin-winrt/xaml", "intermediates/kotlin-winrt/xaml").flatMap { path ->
-                project.layout.buildDirectory.dir(path).get().asFile.listFiles().orEmpty()
-                    .filter { it.name != "library" && !(exportsLibrarySchema.get() && it.name == "application") }
-            }
-        })
+    val removeStaleXaml = project.tasks.register("removeStaleWinRTXamlOutputs", RemoveStaleWinUIXamlOutputsTask::class.java) { task ->
+        task.xamlSourcesPresent.set(hasXaml)
+        task.exportsLibrarySchema.set(exportsLibrarySchema)
+        task.generatedDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml"))
+        task.intermediateDirectory.set(project.layout.buildDirectory.dir("intermediates/kotlin-winrt/xaml"))
     }
     candidates.configure { it.dependsOn(removeStaleXaml) }
     project.tasks.withType(GenerateAppxResourcesArtifactTask::class.java).configureEach { it.dependsOn(removeStaleXaml) }
@@ -146,10 +142,6 @@ internal fun configureWinUIXamlPipeline(
         task.scannerJvmArgs.set(listOf("-Xmx512m", "-Xss512k", "-XX:+UseSerialGC", "-XX:ReservedCodeCacheSize=32m"))
         task.outputFile.set(project.layout.buildDirectory.file("generated/kotlin-winrt/xaml/application/KotlinXaml.winmd"))
         task.sourceOutputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml/application/src"))
-        task.dependencyIdentityFiles.from(project.provider {
-            project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java)
-                .get().dependencyIdentityFiles
-        })
         task.emitSources.set(hasXaml)
         task.previewHost.set(project.provider { extension.applicationEnabled.get() &&
             extension.xaml.framework.get() == io.github.composefluent.winrt.runtime.XamlFramework.WinUI })
@@ -157,7 +149,9 @@ internal fun configureWinUIXamlPipeline(
         task.dependsOn(removeStaleXaml)
     }
     val analyzeAll = project.tasks.register("analyzeWinRTXaml") { it.group = "kotlin-winrt" }
-    project.tasks.withType(GenerateWinRTProjectionsTask::class.java).matching { it.name == "generateWinRTProjections" }.configureEach { task ->
+    project.tasks.withType(GenerateWinRTProjectionsTask::class.java).matching {
+        it.name == "generateWinRTProjections" || it.name == "generateWinRTNativeAuthoring"
+    }.configureEach { task ->
         task.xamlRegistrars.set(hasXaml.flatMap { enabled ->
             if (enabled) applicationHeader.flatMap { it.sourceOutputDirectory.file("registrars.tsv") } else project.providers.provider { null }
         })
@@ -167,7 +161,9 @@ internal fun configureWinUIXamlPipeline(
     val dependencySchemas = applicationHeader.flatMap { it.sourceOutputDirectory }.map {
         it.dir("dependency-schemas").asFileTree.matching { spec -> spec.include("*.KotlinXaml.winmd") }
     }
-    project.tasks.withType(GenerateWinRTIdentityTask::class.java).configureEach { task ->
+    project.tasks.withType(GenerateWinRTIdentityTask::class.java).matching {
+        it.name == "generateWinRTIdentity"
+    }.configureEach { task ->
         task.dependsOn(removeStaleXaml)
         task.xamlSchemaFiles.from(hasXaml.flatMap { enabled ->
             if (enabled) applicationHeader.map { listOf(it.outputFile.get().asFile) }

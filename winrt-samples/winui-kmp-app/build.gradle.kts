@@ -4,9 +4,9 @@ plugins {
     id("io.github.compose-fluent.windows-toolkit")
 }
 
-val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsAppSdkVersion")
+val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRT.projections.windowsAppSdkVersion")
     .orElse("2.5.1")
-val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.samples.windowsSdkVersion")
+val sampleWindowsSdkVersion = providers.gradleProperty("kotlinWinRT.projections.windowsSdkVersion")
     .orElse("10.0.26100.0")
 
 kotlin {
@@ -14,7 +14,10 @@ kotlin {
     jvm("winuiJvm")
     mingwX64 {
         binaries {
-            executable()
+            executable {
+                // Missing KLIB symbols must fail linking rather than become runtime traps.
+                freeCompilerArgs += "-Xpartial-linkage-loglevel=error"
+            }
         }
     }
     sourceSets {
@@ -33,13 +36,9 @@ windows {
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         packageReferences {
             windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
-            nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
-            type("Windows.Foundation.Uri")
-            type("Windows.System.Launcher")
-            type("Microsoft.UI.Xaml.Automation.AutomationProperties")
-            type("Microsoft.UI.Xaml.Controls.Button")
-            type("Microsoft.UI.Xaml.Controls.TextBox")
-        }
+            nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion) {
+                generateProjection = false
+            }        }
     }
 }
 

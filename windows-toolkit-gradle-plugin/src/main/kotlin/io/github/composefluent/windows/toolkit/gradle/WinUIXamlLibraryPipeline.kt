@@ -57,7 +57,9 @@ internal fun configureWinUIXamlLibraryPipeline(
             business.compilerOptions.freeCompilerArgs.addAll(options)
         }
     outputs.firstOrNull()?.let { (business, root) ->
-        project.tasks.withType(GenerateWinRTIdentityTask::class.java).configureEach { task ->
+        project.tasks.withType(GenerateWinRTIdentityTask::class.java).matching {
+            it.name == "generateWinRTIdentity"
+        }.configureEach { task ->
             task.xamlSchemaFiles.from(business.map { root.get().file("KotlinXaml.winmd") })
             task.compilerSupportManifestFiles.from(business.map { root.get().file("kotlin-winrt-support/compiler-support.tsv") })
         }

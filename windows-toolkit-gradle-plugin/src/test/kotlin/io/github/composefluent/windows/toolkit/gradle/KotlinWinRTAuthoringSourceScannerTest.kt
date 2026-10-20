@@ -2462,7 +2462,7 @@ class KotlinWinRTAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_LocalBufferConsumer_TypeDetails.kt").readText()
         assertTrue(generated, generated.contains("ComMethodSignature.of(ComAbiValueKind.Int32"))
-        assertTrue(generated, generated.contains("ComAbiValueKind.Pointer)) { rawArgs ->"))
+        assertTrue(generated, generated.contains("ComAbiValueKind.Pointer)) { value, rawArgs ->"))
         assertTrue(generated, generated.contains("val __arrayLength = rawArgs[0] as Int"))
         assertTrue(generated, generated.contains("val __arrayData = rawArgs[1] as RawAddress"))
         assertTrue(generated, generated.contains("Array(__arrayLength) { __index ->"))
@@ -2473,7 +2473,8 @@ class KotlinWinRTAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("(value as "))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeSetNames(__arg0)"))
         assertTrue(generated, generated.contains("IThing.Metadata.wrap(IInspectableReference"))
-        assertTrue(generated, generated.contains("(PlatformAbi.readPointer").asRawComPtr())
+        assertTrue(generated, generated.contains("(PlatformAbi.readPointer"))
+        assertTrue(generated, generated.contains(".asRawComPtr()"))
         assertTrue(generated, generated.contains("(value as "))
         assertTrue(generated, generated.contains("__winrtAuthoringInvokeSetThings(__arg0)"))
         assertTrue(generated, generated.contains("Point.Metadata.fromAbi(PlatformAbi.slice(__arrayData"))

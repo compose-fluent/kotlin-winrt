@@ -8,6 +8,38 @@ import kotlin.test.assertTrue
 
 class WinRTCollectionProjectionTest {
     @Test
+    fun shared_dictionary_definitions_resolve_each_host_and_preserve_interface_identity() {
+        // CsWinRT Runtime2 IDictionaryAdapter methods operate on the current CCW target.
+        val keyAdapter = WinRTReferenceValueAdapters.string
+        val valueAdapter = WinRTReferenceValueAdapters.object_
+        val definitions = WinRTDictionaryProjection.ccwInterfaceDefinitions(keyAdapter, valueAdapter)
+        val mapId = WinRTCollectionInterfaceIds.map(keyAdapter.typeSignature, valueAdapter.typeSignature)
+        val iterableId = definitions.first().interfaceId
+        for (managed in listOf(linkedMapOf<String, Any?>("first" to null), linkedMapOf())) {
+            WinRTInspectableComObject(
+                interfaceDefinitions = definitions,
+                defaultInterfaceId = mapId,
+                managedValue = managed,
+            ).use { host ->
+                WinRTMapReference(host.acquireReference(mapId), mapId).use { map ->
+                    assertEquals(managed.size.toUInt(), map.size())
+                    map.queryInterface(IID.IUnknown).getOrThrow().use { mapIdentity ->
+                        host.createReference(iterableId).use { iterable ->
+                            iterable.queryInterface(IID.IUnknown).getOrThrow().use { iterableIdentity ->
+                                assertEquals(mapIdentity.pointer, iterableIdentity.pointer)
+                            }
+                        }
+                    }
+                    managed["second"] = "updated"
+                    assertEquals(managed.size.toUInt(), map.size())
+                    map.clear()
+                    assertTrue(managed.isEmpty())
+                }
+            }
+        }
+    }
+
+    @Test
     fun null_key_value_pair_uses_projected_defaults_without_unboxing_null() {
         // CsWinRT Projections/KeyValuePair.cs FromAbi(0) returns default(KeyValuePair<K,V>).
         val integer = WinRTReferenceValueAdapters.valueType(Int::class, "Int32", WinRTTypeSignature.int32(), IID.NullableInt)

@@ -116,6 +116,7 @@ internal fun renderClosedGenericProjectionHelpers(
             relativePath = "io/github/composefluent/winrt/projections/support/$fileName.kt",
             packageName = CLOSED_GENERIC_SUPPORT_PACKAGE,
             contents = fileSpec.toString(),
+            kotlinPoetFile = fileSpec,
         )
     }
 }

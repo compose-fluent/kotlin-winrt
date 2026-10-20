@@ -813,6 +813,7 @@ private fun KotlinProjectionRenderer.visitRequiredInterfaceForwardMembers(
             val interfaceType = requiredInterface.type
             interfaceType.methods
                 .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+                .filter { retainsInstanceMember(plan, it.projectedMethodName()) }
                 .filterNot {
                     requiredInterface.isMappedCollectionOrIteratorInterface && it.name in suppressedMemberNames ||
                         it.name in existingMethodNames
@@ -826,6 +827,7 @@ private fun KotlinProjectionRenderer.visitRequiredInterfaceForwardMembers(
                 }
             interfaceType.properties
                 .filterNot(WinRTPropertyDefinition::isStatic)
+                .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }
                 .filterNot {
                     requiredInterface.isMappedCollectionOrIteratorInterface && it.name in suppressedMemberNames ||
                         it.name.replaceFirstChar(Char::lowercase) in existingPropertyNames

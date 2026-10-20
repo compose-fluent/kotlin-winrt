@@ -44,7 +44,7 @@ class JvmNativeHeadersTest {
         Files.writeString(localJdk.resolve("include/win32/jni_md.h"), "")
 
         val fallbacks = jvmDevelopmentKitFallbackHomes(
-            environment = mapOf("JAVA_HOME" to ideRuntime.toString()),
+            environment = mapOf("java_home" to ideRuntime.toString()),
             currentJavaHome = ideRuntime.toString(),
             localProperties = "java.home=${localJdk.toString().replace("\\", "\\\\")}",
         )

@@ -10,8 +10,7 @@ internal fun isGeneratedWinRTProjectionSource(file: File): Boolean {
     return runCatching {
         file.useLines { lines ->
             val header = lines.take(32).toList()
-            header.any { it.contains("\"KOTLIN_WINRT_GENERATED\"") } &&
-                header.none { it.contains("KOTLIN_WINRT_BUSINESS_OVERLAY") }
+            io.github.composefluent.winrt.projections.generator.isProjectionImplementationSourceHeader(header)
         }
     }.getOrDefault(false)
 }

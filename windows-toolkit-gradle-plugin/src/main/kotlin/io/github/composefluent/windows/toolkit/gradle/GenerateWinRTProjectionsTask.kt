@@ -1,5 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.projections.generator.referenceDeclarations
+
 import com.squareup.kotlinpoet.ClassName
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoredTypeCandidate
 import io.github.composefluent.winrt.compiler.authoring.KotlinWinRTAuthoringCandidateFile
@@ -24,8 +26,10 @@ import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import io.github.composefluent.winrt.projections.generator.redirectedWinUIXamlProjectionSurfaceTypeReferences
 import io.github.composefluent.winrt.projections.generator.winRTAuthoringHostExportsClassName
+import org.gradle.api.model.ObjectFactory
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.FileCollection
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -65,6 +69,9 @@ private const val PREPARED_METADATA_MANIFEST_RELATIVE_PATH = "kotlin-winrt-metad
 
 @CacheableTask
 abstract class GenerateWinRTProjectionsTask : DefaultTask() {
+    @get:Inject
+    protected abstract val objects: ObjectFactory
+
     @get:Input
     abstract val xamlFramework: Property<io.github.composefluent.winrt.runtime.XamlFramework>
 
@@ -78,6 +85,8 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
         emitProjectionSources.convention(true)
         prepareMetadataOnly.convention(false)
         generateSdkPreviewSources.convention(false)
+        referenceProjection.convention(false)
+        workerEnvironment.convention(emptyMap())
     }
 
     @get:OutputDirectory
@@ -85,6 +94,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
 
     @get:Input
     abstract val generateSdkPreviewSources: Property<Boolean>
+
+    @get:Input
+    abstract val referenceProjection: Property<Boolean>
 
     @get:OutputDirectory
     abstract val authoringTypeDetailsOutputDirectory: DirectoryProperty
@@ -113,7 +125,15 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val windowsSdkMetadataFiles: ConfigurableFileCollection
+    val windowsSdkMetadataFiles: FileCollection
+        get() = objects.fileCollection().from(winAppRestoreLockFiles.elements.map {
+            windowsSdkMetadataInputFiles(
+                windowsSdkDeclared = windowsSdkDeclared.get(),
+                metadataInputs = metadataInputs.get(),
+                registryRoots = windowsSdkRegistryRoots.get(),
+                customSdkRoot = windowsSdkRootEnvironment.orNull,
+            )
+        })
 
     @get:Input
     @get:Optional
@@ -191,7 +211,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:Input
     abstract val generateWindowsSdkProjection: Property<Boolean>
 
-    /** Runtime environment is passed to the isolated worker but is not a projection input. */
+    /** Explicit worker environment overrides; ambient environment is read only at execution. */
     @get:Internal
     abstract val workerEnvironment: MapProperty<String, String>
 
@@ -202,6 +222,18 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     @get:org.gradle.api.tasks.IgnoreEmptyDirectories
+    val restoredNuGetPackageContentFiles: FileCollection
+        get() = objects.fileCollection().from(
+            nugetPackageContentFiles,
+            winAppRestoreLockFiles.elements.map { locks ->
+                existingWinAppPackageContentRoots(locks.map { it.asFile }).map { root ->
+                    objects.fileTree().setDir(root).apply { include("**/*.winmd", "**/*.WinMD", "**/*.nuspec") }
+                }
+            },
+        )
+
+    /** Additional explicit package inputs; restored roots are discovered when inputs are snapshotted. */
+    @get:Internal
     abstract val nugetPackageContentFiles: ConfigurableFileCollection
 
     @get:Input
@@ -235,7 +267,9 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
     fun generate() {
         workerExecutor.processIsolation { spec ->
             spec.classpath.from(generatorWorkerClasspath)
-            spec.forkOptions.environment(workerEnvironment.get())
+            // Capturing the ambient environment during configuration invalidates the cache
+            // for unrelated launcher/session variables. Semantic SDK inputs are modeled separately.
+            spec.forkOptions.environment(System.getenv() + workerEnvironment.get())
             spec.forkOptions.jvmArgs(generatorWorkerJvmArgs.get())
         }.submit(GenerateWinRTProjectionsWorkAction::class.java) { parameters ->
             parameters.xamlFramework.set(xamlFramework)
@@ -250,6 +284,7 @@ abstract class GenerateWinRTProjectionsTask : DefaultTask() {
             parameters.preparedMetadataManifest.set(preparedMetadataManifest)
             parameters.prepareMetadataOnly.set(prepareMetadataOnly)
             parameters.generateSdkPreviewSources.set(generateSdkPreviewSources)
+            parameters.referenceProjection.set(referenceProjection)
             parameters.metadataModelCacheDirectory.set(metadataModelCacheDirectory)
             parameters.projectionSourceCacheDirectory.set(projectionSourceCacheDirectory)
             parameters.includeNamespaces.set(includeNamespaces)
@@ -293,6 +328,7 @@ internal interface GenerateWinRTProjectionsWorkParameters : WorkParameters {
     val preparedMetadataManifest: RegularFileProperty
     val prepareMetadataOnly: Property<Boolean>
     val generateSdkPreviewSources: Property<Boolean>
+    val referenceProjection: Property<Boolean>
     val metadataModelCacheDirectory: DirectoryProperty
     val projectionSourceCacheDirectory: DirectoryProperty
     val includeNamespaces: ListProperty<String>
@@ -338,6 +374,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         // defeat Gradle's incremental source snapshots and the generator's write-if-changed path.
         if (!parameters.emitProjectionSources.get()) {
             clearPreparedStaticSources(generatedRoot)
+            Files.deleteIfExists(generatedRoot.resolve("kotlin-winrt-support/projection-input-contract.tsv"))
         }
         val metadataCache = metadataCache()
         // The resolved files carry the metadata; the declared SDK source carries the fact that
@@ -350,27 +387,19 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             automaticXamlComponentResourceDictionaryTypes(unfilteredModel, parameters.includeTypes.get().toSet())
         validateDependencyProjectionIdentityOwnership(parameters.dependencyIdentityFiles.files)
         val dependencyProjectionSurfaceTypes = dependencyProjectionSurfaceTypeNames(parameters.dependencyIdentityFiles.files)
+        val selection = io.github.composefluent.winrt.metadata.WinRTProjectionSurfaceFilter(
+            namespaces = parameters.includeNamespaces.get().toSet(),
+            types = parameters.includeTypes.get().toSet(),
+            excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
+            excludedTypes = effectiveExcludeTypes.toSet(),
+        ).withAdditionalTypeRoots(effectiveIncludeTypes + dependencyProjectionSurfaceTypes)
         val applicationPackagingOnly = parameters.projectModel.get() == "application" &&
             parameters.metadataInputs.get().isEmpty() &&
             parameters.includeNamespaces.get().isEmpty() &&
             parameters.includeTypes.get().isEmpty() &&
             !parameters.generateWindowsSdkProjection.get()
-        val baseModel = if (applicationPackagingOnly) {
-            WinRTMetadataModel(emptyList())
-        } else {
-            unfilteredModel.filterProjectionSurface(
-                namespaces = parameters.includeNamespaces.get().toSet(),
-                types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes).toSet(),
-                excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
-                excludedTypes = effectiveExcludeTypes.toSet(),
-                additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
-            )
-        }
         val authoringMetadataBaseModel = unfilteredModel.filterProjectionSurface(
-            namespaces = parameters.includeNamespaces.get().toSet(),
-            types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes).toSet(),
-            excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
-            excludedTypes = effectiveExcludeTypes.toSet(),
+            filter = selection,
             additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
         )
         val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
@@ -382,21 +411,19 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         if (parameters.prepareMetadataOnly.get()) {
             return
         }
-        val authoringSourceRoots = parameters.sourceRoots.files
-            .map { it.toPath().toAbsolutePath().normalize() }
-            .filterNot { sourceRoot ->
-                sourceRoot.startsWith(generatedRoot) ||
-                    isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(sourceRoot)
-            }
-            .filter(::containsKotlinSource)
         val authoringCandidates = parameters.authoringCandidatesFile.orNull
             ?.asFile
             ?.toPath()
             ?.takeIf(Files::isRegularFile)
             ?.let(KotlinWinRTAuthoringCandidateFile::read)
-            ?: if (authoringSourceRoots.isEmpty()) {
-                emptyList()
-            } else {
+            ?: run {
+                // Normal builds consume the scanner's semantic output. Only standalone
+                // invocations without that output need to discover source files again.
+                val authoringSourceRoots = parameters.sourceRoots.files
+                    .map { it.toPath().toAbsolutePath().normalize() }
+                    .filterNot { it.startsWith(generatedRoot) || isKotlinWindowsToolkitPluginOwnedAuthoringSourceRoot(it) }
+                    .filter(::containsKotlinSource)
+                if (authoringSourceRoots.isEmpty()) return@run emptyList()
                 val scannerWorkDirectory = parameters.workDirectory.get().asFile.toPath().resolve("authoring-scanner")
                 Files.createDirectories(scannerWorkDirectory)
                 val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
@@ -411,18 +438,19 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             generatedRoot.resolve("kotlin-winrt-authoring/authored-candidates.tsv"),
             authoringCandidates,
         )
-        val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files)
         val dependencySourceAdditionTypeNames = dependencySourceAdditionTypeNames(parameters.dependencyIdentityFiles.files)
         val exportedAuthoringCandidates = authoringCandidates.filter(KotlinWinRTAuthoredTypeCandidate::isPublic)
-        val model = KotlinWinRTAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, exportedAuthoringCandidates)
         val authoringCandidateMetadataRoots = authoringCandidateMetadataRootNames(authoringCandidates)
+        val authoringSelection = selection.withAdditionalTypeRoots(authoringCandidateMetadataRoots)
         val authoringDetailsBaseModel = unfilteredModel.filterProjectionSurface(
-            namespaces = parameters.includeNamespaces.get().toSet(),
-            types = (effectiveIncludeTypes + dependencyProjectionSurfaceTypes + authoringCandidateMetadataRoots).toSet(),
-            excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
-            excludedTypes = effectiveExcludeTypes.toSet(),
+            filter = authoringSelection,
             additionalTypeReferences = ::redirectedWinUIXamlProjectionSurfaceTypeReferences,
         )
+        // CsWinRT includes exported types and their metadata dependencies before emitting
+        // either projection. Authoring roots must retain bindings as well as TypeDetails.
+        val baseModel = if (applicationPackagingOnly) WinRTMetadataModel(emptyList()) else authoringDetailsBaseModel
+        val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files)
+        val model = KotlinWinRTAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, exportedAuthoringCandidates)
         val authoringModel = KotlinWinRTAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             authoringDetailsBaseModel,
             exportedAuthoringCandidates,
@@ -465,10 +493,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
         val projectionContext = WinRTMetadataProjectionContext(
             xamlFramework = parameters.xamlFramework.get(),
             sources = sources,
-            include = parameters.includeNamespaces.get().toSet() +
-                effectiveIncludeTypes.toSet() +
-                dependencyProjectionSurfaceTypes.toSet() +
-                authoringCandidateMetadataRoots.toSet(),
+            include = authoringSelection.namespaces + authoringSelection.types,
             exclude = parameters.excludeNamespaces.get().toSet() + effectiveExcludeTypes.toSet(),
             excludedTypes = effectiveExcludeTypes.toSet(),
             additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
@@ -480,7 +505,21 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             inaccessibleDependencyTypes = dependencyInternalProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files),
         )
         if (parameters.emitProjectionSources.get()) {
+            if (parameters.referenceProjection.get()) {
+                io.github.composefluent.winrt.projections.generator.NativeProjectionRecipe.write(
+                    generatedRoot.resolve("kotlin-winrt-native-recipe"),
+                    projectionModel.copy(windowsSdkSelections = unfilteredModel.windowsSdkSelections), projectionContext,
+                    dependencyProjectionTypeNames + authoredRuntimeClassNames, dependencySourceAdditionTypeNames,
+                    authoredRuntimeClassNames, parameters.authoringTargetArtifactName.get(),
+                )
+            }
+            val inputContract = io.github.composefluent.winrt.projections.generator.KotlinProjectionInputContract.create(
+                projectionModel, unfilteredModel, projectionContext,
+                dependencyProjectionTypeNames + authoredRuntimeClassNames, dependencySourceAdditionTypeNames,
+                parameters.authoringTargetArtifactName.get(), parameters.emitJvmAuthoringHostExports.get(),
+            )
             val generator = KotlinProjectionGenerator(
+                referenceProjection = parameters.referenceProjection.get(),
                 emitSupportFiles = true,
                 groupProjectionFilesByPackageOnWrite = true,
                 projectionContext = projectionContext,
@@ -492,17 +531,35 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             )
             val store = parameters.projectionSourceCacheDirectory.orNull?.asFile?.toPath()
             if (store != null && authoringCandidates.isEmpty()) {
-                val key = preparedProjectionKey(
-                    projectionModel, unfilteredModel, projectionContext,
-                    dependencyProjectionTypeNames, dependencySourceAdditionTypeNames,
-                    parameters.authoringTargetArtifactName.get(), parameters.emitJvmAuthoringHostExports.get(),
-                )
+                val implementationKey = preparedProjectionKey(inputContract)
+                val key = if (parameters.referenceProjection.get()) {
+                    preparedProjectionImplementationKey(implementationKey, "reference-declarations-v1")
+                } else implementationKey
                 prepareProjectionSources(store, key, generatedRoot, projectionModel) { destination ->
                     generator.generateTo(projectionModel, destination)
                 }
             } else {
                 generator.generateTo(projectionModel, generatedRoot)
             }
+            GradleFileOperations.writeStringIfChanged(
+                generatedRoot.resolve("kotlin-winrt-support/projection-input-contract.tsv"), inputContract.descriptor,
+            )
+        }
+        if (!parameters.emitProjectionSources.get() && exportedAuthoringCandidates.isNotEmpty()) {
+            // CsWinRT AuthoringExportTypesGenerator owns component exports independently of
+            // imported projections. Shared SDK owners must not suppress this component's host.
+            // Metadata is already resolved; this pass must not select SDK source additions.
+            KotlinProjectionGenerator(
+                referenceProjection = parameters.referenceProjection.get(),
+                emitSupportFiles = true,
+                projectionContext = projectionContext.copy(sources = emptyList()),
+                suppressedProjectionTypeNames = dependencyProjectionTypeNames + authoredRuntimeClassNames,
+                authoredRuntimeClassNames = authoredRuntimeClassNames,
+                supportOwnerIdentity = parameters.authoringTargetArtifactName.get(),
+                emitJvmAuthoringHostExports = parameters.emitJvmAuthoringHostExports.get(),
+            ).generateAuthoringSupportTo(projectionModel, generatedRoot.resolve("authoring-support"))
+        } else if (!parameters.emitProjectionSources.get()) {
+            GradleFileOperations.deleteDirectory(generatedRoot.resolve("authoring-support"))
         }
         writeAuthoringMetadataIndex(
             mergedAuthoringMetadataIndexTypes(authoringModel, parameters.dependencyIdentityFiles.files),
@@ -513,6 +570,9 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             metadataModel = authoringModel,
             outputDirectory = authoringTypeDetailsRoot,
             assemblyName = parameters.authoringAssemblyName.get(),
+            declarationTransform = { declaration ->
+                if (parameters.referenceProjection.get()) declaration.referenceDeclarations() else declaration
+            },
         )
         writeAuthoringTypeDetailsRegistrarSupport(
             generatedRoot = generatedRoot,
@@ -767,19 +827,10 @@ internal fun dependencyInternalProjectedTypeNames(
     model: WinRTMetadataModel,
     identityFiles: Iterable<File>,
 ): Set<String> {
-    // Current identities carry visibility directly. Only legacy identities need
-    // another metadata index; building it eagerly duplicates a full SDK model.
-    val types by lazy { model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName } }
-    val helpers by lazy { io.github.composefluent.winrt.metadata.WinRTMetadataSemanticHelpers(model) }
-    val context = WinRTMetadataProjectionContext(sources = emptyList())
     return identityFiles.flatMap { file ->
         val identity = readProjectionSurfaceIdentity(file)
         val ownedTypes = dependencyProjectedTypeNames(model, identity)
-        // Older identities did not record visibility. Their default CsWinRT
-        // projection policy still identifies internal exclusive/support interfaces.
-        identity.internalProjectedTypes?.filter { it in ownedTypes } ?: ownedTypes.filter { name ->
-            types[name]?.let { helpers.typeProjectionContextDescriptor(it, context).accessibility == "internal" } == true
-        }
+        identity.internalProjectedTypes.orEmpty().filter { it in ownedTypes }
     }.toSortedSet()
 }
 
@@ -792,31 +843,38 @@ internal fun dependencySourceAdditionTypeNames(
     .toSortedSet()
 
 internal fun validateDependencyProjectionIdentityOwnership(identityFiles: Iterable<File>) {
-    val projectedTypeOwners = linkedMapOf<String, File>()
-    val sourceAdditionOwners = linkedMapOf<String, File>()
-    identityFiles.sortedBy(File::getAbsolutePath).forEach { identityFile ->
+    val files = identityFiles.toList()
+    val typeOwners = linkedMapOf<String, Pair<ProjectionIdentityOwner, File>>()
+    val identities = linkedMapOf<String, Pair<ProjectionIdentityOwner, File>>()
+    files.sortedBy(File::getAbsolutePath).forEach { identityFile ->
         val identity = readProjectionSurfaceIdentity(identityFile)
-        identity.currentShapeProjectedTypes().forEach { typeName ->
-            requireUniqueDependencyOwner("Projected type", typeName, identityFile, projectedTypeOwners)
+        val owner = identity.owner ?: return@forEach
+        val previousOwner = identities.putIfAbsent(owner.name, owner to identityFile)
+        check(previousOwner == null || previousOwner.first == owner) {
+            "WinRT projection owner '${owner.name}' has conflicting versions or identity contents: " +
+                "'${previousOwner?.second}' and '$identityFile'. Resolve one producer version."
         }
-        identity.sourceAdditions.forEach { typeName ->
-            requireUniqueDependencyOwner("Source addition", typeName, identityFile, sourceAdditionOwners)
+        // A source addition may also collide with a generated projection, so both share
+        // the same namespace of public Kotlin ownership rather than separate registries.
+        (identity.currentShapeProjectedTypes() + identity.sourceAdditions).forEach { typeName ->
+            val previous = typeOwners.putIfAbsent(typeName, owner to identityFile)
+            check(previous == null || previous.first == owner) {
+                "Projected type '$typeName' is claimed by multiple WinRT projection owners: " +
+                    "'${previous?.first?.name}' (${previous?.second}) and '${owner.name}' ($identityFile)."
+            }
         }
     }
-}
-
-private fun requireUniqueDependencyOwner(
-    ownershipKind: String,
-    typeName: String,
-    identityFile: File,
-    owners: MutableMap<String, File>,
-) {
-    val previous = owners.putIfAbsent(typeName, identityFile)
-    if (previous != null && previous.absolutePath != identityFile.absolutePath) {
-        throw IllegalStateException(
-            "$ownershipKind '$typeName' is claimed by multiple WinRT projection dependencies: " +
-                "'${previous.absolutePath}' and '${identityFile.absolutePath}'.",
-        )
+    files.forEach { file ->
+        readProjectionDependencyOwners(file).forEach dependency@{ expected ->
+            val resolved = identities[expected.name]?.first
+            // During graph construction project producers may not have run yet.
+            if (resolved == null && files.any { !it.isFile }) return@dependency
+            check(resolved == expected) {
+                "WinRT projection '$file' requires owner '${expected.name}' version '${expected.version}' " +
+                    "with identity ${expected.fingerprint}, but resolved ${resolved ?: "no owner"}. " +
+                    "Resolve the producer's projection dependencies or rebuild it against the selected SDK."
+            }
+        }
     }
 }
 
@@ -891,7 +949,14 @@ internal fun automaticXamlComponentResourceDictionaryTypes(
 
 internal fun authoringCandidateMetadataRootNames(candidates: List<KotlinWinRTAuthoredTypeCandidate>): List<String> =
     candidates
-        .flatMap { candidate -> candidate.winRTInterfaceNames + candidate.winRTBaseClassName.orEmpty() + candidate.sourceTypeName }
+        .flatMap { candidate ->
+            candidate.winRTInterfaceNames + candidate.overridableInterfaceNames +
+                candidate.staticFactoryInterfaceNames + listOfNotNull(
+                    candidate.winRTBaseClassName,
+                    candidate.activatableFactoryInterfaceName,
+                    candidate.sourceTypeName,
+                )
+        }
         .map(String::trim)
         .filter(String::isNotEmpty)
         .distinct()
@@ -967,45 +1032,30 @@ internal data class ProjectionSurfaceIdentity(
     val excludeNamespaces: List<String>,
     val excludeTypes: List<String>,
     val internalProjectedTypes: List<String>? = null,
+    val owner: ProjectionIdentityOwner? = null,
 )
 
-internal const val CURRENT_PROJECTION_SHAPE_VERSION: Int = 1
+internal const val CURRENT_PROJECTION_SHAPE_VERSION: Int =
+    io.github.composefluent.winrt.projections.generator.KOTLIN_PROJECTION_SHAPE_VERSION
 
 internal fun ProjectionSurfaceIdentity.currentShapeProjectedTypes(): List<String> =
     projectedTypes.orEmpty().takeIf { projectionShapeVersion == CURRENT_PROJECTION_SHAPE_VERSION }.orEmpty()
 
 internal fun readProjectionSurfaceIdentity(identityFile: java.io.File): ProjectionSurfaceIdentity {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    val document = readProjectionIdentityDocument(content, identityFile)
+    val shapeVersion = validateProjectionContractVersions(document, identityFile)
+    val owner = readProjectionIdentityOwner(document, identityFile)
+    fun names(name: String): List<String>? = projectionIdentityNames(document, name, identityFile)
     return ProjectionSurfaceIdentity(
-        includeNamespaces = readIdentityStringArray(content, "includeNamespaces"),
-        includeTypes = readIdentityStringArray(content, "includeTypes"),
-        projectionShapeVersion = readOptionalIdentityInt(content, "projectionShapeVersion"),
-        projectedTypes = readOptionalIdentityStringArray(content, "projectedTypes"),
-        sourceAdditions = readIdentityStringArray(content, "sourceAdditions"),
-        excludeNamespaces = readIdentityStringArray(content, "excludeNamespaces"),
-        excludeTypes = readIdentityStringArray(content, "excludeTypes"),
-        internalProjectedTypes = readOptionalIdentityStringArray(content, "internalProjectedTypes"),
+        includeNamespaces = names("includeNamespaces").orEmpty(),
+        includeTypes = names("includeTypes").orEmpty(),
+        projectionShapeVersion = shapeVersion,
+        projectedTypes = names("projectedTypes"),
+        sourceAdditions = names("sourceAdditions").orEmpty(),
+        excludeNamespaces = names("excludeNamespaces").orEmpty(),
+        excludeTypes = names("excludeTypes").orEmpty(),
+        internalProjectedTypes = names("internalProjectedTypes"),
+        owner = owner,
     )
 }
-
-private fun readIdentityStringArray(content: String, name: String): List<String> {
-    return readOptionalIdentityStringArray(content, name).orEmpty()
-}
-
-private fun readOptionalIdentityStringArray(content: String, name: String): List<String>? {
-    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
-        .find(content) ?: return null
-    return Regex(""""((?:\\.|[^"\\])*)"""")
-        .findAll(match.groupValues[1])
-        .map { it.groupValues[1].decodeIdentityJsonString() }
-        .toList()
-}
-
-private fun readOptionalIdentityInt(content: String, name: String): Int? {
-    val match = Regex(""""${Regex.escape(name)}"\s*:\s*(\d+)""")
-        .find(content) ?: return null
-    return match.groupValues[1].toIntOrNull()
-}
-
-private fun String.decodeIdentityJsonString(): String =
-    replace("\\\"", "\"").replace("\\\\", "\\")

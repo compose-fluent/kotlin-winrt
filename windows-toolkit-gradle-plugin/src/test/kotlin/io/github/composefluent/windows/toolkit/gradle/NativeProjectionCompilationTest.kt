@@ -119,7 +119,7 @@ class NativeProjectionCompilationTest {
                 }
             }
         """)
-        val compileTask = ":w9Producer:compileWinRTProjectionKotlinMingwX64"
+        val compileTask = ":w9Producer:compileWinRTProjectionReferenceKotlinMingwX64"
         val arguments = listOf(
             ":w9Consumer:linkDebugExecutableMingwX64", ":w9Consumer:linkReleaseExecutableMingwX64",
             "--init-script", fixture.resolve("fixture.init.gradle").toString(),
@@ -143,10 +143,14 @@ class NativeProjectionCompilationTest {
         }
         // CsWinRT owns registration in the projection assembly. Both Native links must retain
         // the same initializer through KLIB serialization and release dead stripping.
-        assertEquals(TaskOutcome.SUCCESS, build("first").task(compileTask)?.outcome)
+        val first = build("first")
+        assertEquals(TaskOutcome.SUCCESS, first.task(compileTask)?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, first.task(":w9Consumer:generateWinRTNativeAuthoring")?.outcome)
+        assertTrue("Native business compilation must not render the JVM SDK implementation",
+            first.tasks.none { it.path == ":w9Consumer:generateWinRTProjections" })
         runBinary("debug", "before")
         runBinary("release", "before")
-        val artifact = fixture.resolve("producer/build/classes/kotlin/mingwX64/winRTProjection/klib/w9Producer_winRTProjection.klib")
+        val artifact = fixture.resolve("producer/build/classes/kotlin/mingwX64/winRTProjectionReference/klib/w9Producer_winRTProjectionReference.klib")
         fun digest() = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(artifact)).toList()
         val originalDigest = digest()
         assertEquals(TaskOutcome.UP_TO_DATE, build("noop").task(compileTask)?.outcome)
@@ -267,17 +271,17 @@ class NativeProjectionCompilationTest {
 
         assertTrue(consumer.tasks.none { it.path.startsWith(":externalLibrary:") })
         // The generator leaves Uri to the library that owns it, so both standalone projection
-        // compilations must see the published module, not only the business compilations.
+        // contract compilations must see the published module, not only the business compilations.
         val generated = fixture.resolve("consumer/build/generated/kotlin-winrt/src/winuiMain/kotlin/windows")
         assertTrue(Files.isDirectory(generated.resolve("applicationmodel/contacts")))
         assertTrue(Files.notExists(generated.resolve("foundation")))
         assertEquals(
             TaskOutcome.SUCCESS,
-            consumer.task(":externalConsumer:compileKotlinWinRTProjectionJvm")?.outcome,
+            consumer.task(":externalConsumer:compileKotlinWinRTProjectionJvmReference")?.outcome,
         )
         assertEquals(
             TaskOutcome.SUCCESS,
-            consumer.task(":externalConsumer:compileWinRTProjectionKotlinMingwX64")?.outcome,
+            consumer.task(":externalConsumer:compileWinRTProjectionReferenceKotlinMingwX64")?.outcome,
         )
         val runtimeLog = fixture.resolve("runtime.log").toFile()
         val process = ProcessBuilder(
@@ -348,8 +352,8 @@ class NativeProjectionCompilationTest {
 
         // The business compilation's dependency files include the projection KLIB, and cinterop
         // reads them as libraries. Gradle fails the build when that read has no declared order.
-        assertTrue(result.output, result.output.contains(
-            "cinteropMustRunAfter=compileWinRTProjectionKotlinMingwX64",
-        ))
+        val predecessors = Regex("cinteropMustRunAfter=([^\\r\\n]*)").find(result.output)
+            ?.groupValues?.get(1).orEmpty().split(',')
+        assertTrue(result.output, "compileWinRTProjectionReferenceKotlinMingwX64" in predecessors)
     }
 }

@@ -53,7 +53,7 @@ internal fun resolveJvmNativeHeaderDirectories(javaHome: String): JvmNativeHeade
 }
 
 internal fun jvmDevelopmentKitFallbackHomes(
-    environment: Map<String, String> = System.getenv(),
+    environment: Map<String, String>? = null,
     currentJavaHome: String = System.getProperty("java.home"),
     localProperties: String = "",
 ): List<Path> = listOfNotNull(
@@ -90,5 +90,8 @@ private fun javaReleaseMajor(javaHome: Path): Int? = runCatching {
     if (parts.firstOrNull() == "1") parts.getOrNull(1)?.toIntOrNull() else parts.firstOrNull()?.toIntOrNull()
 }.getOrNull()
 
-private fun Map<String, String>.valueIgnoringCase(name: String): String? =
-    entries.firstOrNull { (key, _) -> key.equals(name, ignoreCase = true) }?.value
+private fun Map<String, String>?.valueIgnoringCase(name: String): String? =
+    // Windows getenv(name) already ignores case. Enumerating the ambient map would make
+    // unrelated session variables configuration-cache inputs during toolchain resolution.
+    if (this == null) System.getenv(name)
+    else get(name) ?: entries.firstOrNull { (key, _) -> key.equals(name, ignoreCase = true) }?.value

@@ -6,6 +6,11 @@ data class WinRTProjectionSurfaceFilter(
     val excludedNamespaces: Set<String> = emptySet(),
     val excludedTypes: Set<String> = emptySet(),
 ) {
+    /** Dependency/authoring roots enlarge an explicit selection; they must not turn an
+     * unfiltered public surface into a selection containing only dependency types. */
+    fun withAdditionalTypeRoots(roots: Iterable<String>): WinRTProjectionSurfaceFilter =
+        if (namespaces.isEmpty() && types.isEmpty()) this else copy(types = types + roots)
+
     fun normalized(): WinRTProjectionSurfaceFilter =
         copy(
             namespaces = namespaces.normalizedProjectionFilterSet(),
@@ -97,6 +102,38 @@ fun WinRTMetadataModel.filterProjectionSurface(
             namespaceTypes.takeIf { it.isNotEmpty() }?.let { WinRTNamespace(namespace.name, it) }
         },
     ).normalized()
+}
+
+/** Static factories are called through raw ABI references, not projected interface objects.
+ * Keep the original model for slot planning; this query only identifies exclusive interfaces
+ * with no ordinary signature/inheritance/authoring use. CsWinRT code_writers.h separates
+ * write_static_members/write_static_objref_definition from projected interface wrappers. */
+fun WinRTMetadataModel.staticFactoryInterfacesWithoutProjectedUses(
+    projectedRoots: Set<String>,
+    additionalTypeReferences: (WinRTTypeRef) -> Iterable<WinRTTypeRef> = { emptyList() },
+): Set<String> {
+    val types = namespaces.flatMap { it.types }
+    val staticNames = types.flatMap { type ->
+        type.activation.staticInterfaceNames + type.activation.factories
+            .filter { it.kind == WinRTAttributedFactoryKind.Static }.map { it.interfaceName }
+    }.toSet()
+    val candidates = types.filter { it.qualifiedName in staticNames && it.isExclusiveTo &&
+        it.kind == WinRTTypeKind.Interface && it.genericParameterCount == 0 }
+        .map { it.qualifiedName }.toSet() - projectedRoots
+    if (candidates.isEmpty()) return emptySet()
+    val ordinaryTypes = types.map { type ->
+        type.copy(activation = type.activation.copy(staticInterfaceNames = emptyList(),
+            factories = type.activation.factories.filterNot { it.kind == WinRTAttributedFactoryKind.Static }),
+            customAttributes = type.customAttributes.filterNot { it.typeName == "Windows.Foundation.Metadata.StaticAttribute" })
+    }
+    val ordinaryTypesByName = ordinaryTypes.associateBy { it.qualifiedName }
+    // Include signatures declared on static interfaces too: the runtime class may
+    // expose those members only through the factory metadata, without duplicate
+    // method rows. A static method returning its own interface still needs a wrapper.
+    val ordinaryUses = ordinaryTypes.flatMap {
+        it.referencedProjectionTypeNames(ordinaryTypesByName, additionalTypeReferences)
+    }.toSet()
+    return candidates - ordinaryUses
 }
 
 private fun WinRTTypeDefinition.isProjectionFilterRootIncluded(filter: WinRTProjectionSurfaceFilter): Boolean {

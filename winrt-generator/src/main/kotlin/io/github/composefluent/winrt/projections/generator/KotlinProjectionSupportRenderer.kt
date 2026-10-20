@@ -195,15 +195,66 @@ class KotlinProjectionSupportRenderer private constructor(
         excludedSourceAdditionTypeNames: Set<String>,
         modulePlatformAbiCalls: KotlinModulePlatformAbiCallSupport?,
         semanticHelpers: WinRTMetadataSemanticHelpers,
+        authoringSupportOnly: Boolean = false,
+        nativeInstanceMemberDemand: NativeInstanceMemberDemand? = null,
+        nativeStaticMemberDemand: Set<String>? = null,
     ): List<KotlinProjectionFile> {
-        val inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames)
+        val inventory = projectionInventory(model, context, excludedSourceAdditionTypeNames).let { inventory ->
+            if (authoredRuntimeClassNames.isEmpty()) inventory else {
+                // CsWinRT component authoring owns only the component's authored types.
+                // The metadata model also contains referenced SDK runtime classes: they
+                // still need their normal registrar and Native construction discovery.
+                val authored = inventory.authoredMetadataTypeMappings.filter {
+                    it.projectedTypeName in authoredRuntimeClassNames
+                }
+                inventory.copy(authoredMetadataTypeMappings = authored,
+                    helperOutputs = inventory.helperOutputs.copy(
+                        authoringMetadataTypeMappingHelperRequired = context.component && authored.isNotEmpty()))
+            }
+        }
         val projectionTypes = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
         typeRenderer.projectionTypesByQualifiedName = projectionTypes
         supportTypeRenderer.projectionTypesByQualifiedName = projectionTypes
         validateAuthoringMetadataProjectionPlans(inventory, plans)
+        val authoringFiles = listOfNotNull(
+            renderAuthoringMetadataTypeMappingHelper(inventory, authoredRuntimeClassNames),
+            renderAuthoringWrapperPlan(inventory, plans, authoredRuntimeClassNames),
+            renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+            renderAuthoringWrappers(inventory, plans, authoredRuntimeClassNames),
+            renderAuthoringAbiClasses(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+            renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+            renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
+            renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers, authoringModuleActivationFactoryPlanClassName, authoredRuntimeClassNames),
+            renderAuthoringServerActivationFactories(
+                inventory,
+                plans,
+                semanticHelpers,
+                authoringServerActivationFactoriesClassName,
+                authoringModuleActivationFactoryPlanClassName,
+                authoredRuntimeClassNames,
+            ),
+            renderAuthoringHostExports(
+                inventory,
+                plans,
+                semanticHelpers,
+                authoringHostExportsClassName,
+                authoringServerActivationFactoriesClassName,
+                authoredRuntimeClassNames,
+                emitJvmAddressWrappers = emitJvmAuthoringHostExports,
+            ),
+            renderAuthoringCcwFactories(
+                inventory,
+                plans,
+                semanticHelpers,
+                authoredRuntimeClassNames,
+                supportOwnerIdentity,
+            ),
+        )
+        if (authoringSupportOnly) return authoringFiles
         val genericInstantiationWorklist = semanticHelpers.genericInstantiationWorklist(context)
         val registrarPlans = registrarProjectionPlans(plans, inventory, excludedProjectionTypeNames)
         return buildList {
+            addAll(authoringFiles)
             listOfNotNull(
                 renderTypeShapeDescriptorCompilerInput(
                     plans.filterNot { plan -> plan.type.qualifiedName in excludedProjectionTypeNames },
@@ -218,38 +269,6 @@ class KotlinProjectionSupportRenderer private constructor(
                     supportOwnerIdentity,
                 ),
                 renderWinUIXamlComponentResourceInput(model, plans),
-                renderAuthoringMetadataTypeMappingHelper(inventory),
-                renderAuthoringWrapperPlan(inventory, plans, authoredRuntimeClassNames),
-                renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
-                renderAuthoringWrappers(inventory, plans, authoredRuntimeClassNames),
-                renderAuthoringAbiClasses(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
-                renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
-                renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers, authoredRuntimeClassNames),
-                renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers, authoringModuleActivationFactoryPlanClassName, authoredRuntimeClassNames),
-                renderAuthoringServerActivationFactories(
-                    inventory,
-                    plans,
-                    semanticHelpers,
-                    authoringServerActivationFactoriesClassName,
-                    authoringModuleActivationFactoryPlanClassName,
-                    authoredRuntimeClassNames,
-                ),
-                renderAuthoringHostExports(
-                    inventory,
-                    plans,
-                    semanticHelpers,
-                    authoringHostExportsClassName,
-                    authoringServerActivationFactoriesClassName,
-                    authoredRuntimeClassNames,
-                    emitJvmAddressWrappers = emitJvmAuthoringHostExports,
-                ),
-                renderAuthoringCcwFactories(
-                    inventory,
-                    plans,
-                    semanticHelpers,
-                    authoredRuntimeClassNames,
-                    supportOwnerIdentity,
-                ),
                 renderNamespaceAdditions(inventory, namespaceAdditionsClassName),
                 renderSourceAdditionCompilerInput(inventory),
             ).forEach(::add)
@@ -286,6 +305,8 @@ class KotlinProjectionSupportRenderer private constructor(
                 eventProjectionHelperFilePrefix = eventProjectionHelperFilePrefix,
                 supportOwnerIdentity = supportOwnerIdentity,
                 semanticHelpers = semanticHelpers,
+                nativeInstanceMemberDemand = nativeInstanceMemberDemand,
+                nativeStaticMemberDemand = nativeStaticMemberDemand,
             ))
         }
     }
@@ -802,6 +823,8 @@ class KotlinProjectionSupportRenderer private constructor(
         eventProjectionHelperFilePrefix: String,
         supportOwnerIdentity: String?,
         semanticHelpers: WinRTMetadataSemanticHelpers,
+        nativeInstanceMemberDemand: NativeInstanceMemberDemand? = null,
+        nativeStaticMemberDemand: Set<String>? = null,
     ): List<KotlinProjectionFile> {
         val ownerSuffix = winRTSupportOwnerIdentifierSuffix(supportOwnerIdentity)
         val eventSourceEntries = planner.eventSourceDescriptors(
@@ -810,6 +833,8 @@ class KotlinProjectionSupportRenderer private constructor(
             plans = eventOwnerPlans,
             instantiations = instantiations,
             closedGenericPlans = allPlans,
+            nativeInstanceMemberDemand = nativeInstanceMemberDemand,
+            nativeStaticMemberDemand = nativeStaticMemberDemand,
         )
             .map { descriptor -> descriptor.withSupportOwnerSuffix(ownerSuffix) }
         if (eventSourceEntries.isEmpty()) {
@@ -1026,10 +1051,12 @@ class KotlinProjectionSupportRenderer private constructor(
 
     private fun renderAuthoringMetadataTypeMappingHelper(
         inventory: WinRTMetadataProjectionInventory,
+        authoredRuntimeClassNames: Set<String>,
     ): KotlinProjectionFile? {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
+        val authoredTypeNames = authoringEntryTypeNames(inventory, authoredRuntimeClassNames)
         val fileSpec = authoringSupportFileSpec("AuthoringMetadataTypeMappingHelper")
             .addImport("io.github.composefluent.winrt.runtime", "ComWrappersSupport")
             .addType(
@@ -1038,7 +1065,9 @@ class KotlinProjectionSupportRenderer private constructor(
                     .addProperty(
                         stringListProperty(
                             "AUTHORING_METADATA_MAPPINGS",
-                            inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" },
+                            inventory.authoredMetadataTypeMappings
+                                .filter { it.projectedTypeName in authoredTypeNames }
+                                .map { "${it.projectedTypeName}->${it.metadataTypeName}" },
                         ),
                     )
                     .addProperty(
@@ -1473,6 +1502,14 @@ class KotlinProjectionSupportRenderer private constructor(
             .build()
         return supportFile("${namespaceAdditionsClassName.simpleName}.kt", fileSpec)
     }
+
+    internal fun renderBusinessOverlayFiles(
+        model: WinRTMetadataModel,
+        context: WinRTMetadataProjectionContext,
+        excludedSourceAdditionTypeNames: Set<String>,
+    ): List<KotlinProjectionFile> = renderSourceAdditionFiles(
+        model, projectionInventory(model, context, excludedSourceAdditionTypeNames), inlineOnlyModulePlatformAbiCallSupport(),
+    ).filterNot { isProjectionImplementationSourceHeader(it.contents.lineSequence().take(32).toList()) }
 
     private fun renderSourceAdditionFiles(
         model: WinRTMetadataModel,
@@ -4378,7 +4415,7 @@ ${invocation.toString().prependIndent("                        ")}
         )
 
     private fun supportFile(fileName: String, fileSpec: FileSpec): KotlinProjectionFile =
-        supportFile(fileName, fileSpec.toString())
+        supportFile(fileName, fileSpec.toString()).copy(kotlinPoetFile = fileSpec)
 
     private fun authoringSupportFileSpec(fileName: String): FileSpec.Builder =
         supportFileSpec(fileName).addFileComment("KOTLIN_WINRT_BUSINESS_OVERLAY")
@@ -5275,13 +5312,18 @@ private data class SharedEventHandlerInboundCallSite(
     val function: FunSpec,
 )
 
-internal fun List<KotlinTypeProjectionPlan>.projectedInterfaceCcwInputPlans(): List<KotlinTypeProjectionPlan> {
+internal fun List<KotlinTypeProjectionPlan>.projectedInterfaceCcwInputPlans(
+    retainStaticBinding: (KotlinTypeProjectionPlan, KotlinProjectionStaticMemberBinding) -> Boolean = { _, _ -> true },
+    retainInstanceBinding: (KotlinTypeProjectionPlan, KotlinProjectionInstanceMemberBinding) -> Boolean = { _, _ -> true },
+): List<KotlinTypeProjectionPlan> {
     val plansByQualifiedName = associateBy { plan -> plan.type.qualifiedName }
     val inputTypeNames = asSequence()
         .flatMap { plan ->
             sequenceOf(
-                plan.instanceMemberBindings.asSequence().flatMap { binding -> binding.parameterBindings.asSequence() },
-                plan.staticMemberBindings.asSequence().flatMap { binding -> binding.parameterBindings.asSequence() },
+                plan.instanceMemberBindings.asSequence().filter { retainInstanceBinding(plan, it) }
+                    .flatMap { binding -> binding.parameterBindings.asSequence() },
+                plan.staticMemberBindings.asSequence().filter { retainStaticBinding(plan, it) }
+                    .flatMap { binding -> binding.parameterBindings.asSequence() },
             ).flatten()
         }
         .map(KotlinProjectionAbiParameterBinding::typeBinding)

@@ -43,6 +43,260 @@ Gradle builds running on JDK 21 can declare the Windows toolkit with `apply fals
 
 ## Dependency setup
 
+`type` and `namespace` are optional projection filters. An explicit local WinMD input
+without either filter keeps its complete projection surface, including when other libraries
+already own dependency types. Dependency and authoring roots expand an explicit filter;
+they never turn an unfiltered input into a dependency-only selection. Reuse published SDK
+projections for routine consumers; generating an entire SDK locally still has an initial cost.
+With explicit filters, authored base types, interfaces, overrides and activation/static factories
+are additional roots for both reference and implementation declarations. Their metadata signature
+closure is retained. Types reached only through dynamic names must be included explicitly (or
+provided by the shared SDK owner); this is type selection, not method-level trimming.
+Task-graph selection reads only the declared projection inputs; dependency type subtraction
+and WinMD analysis run inside generation tasks. XAML compiler-discovered roots augment an
+existing local projection selection; they do not create a projection owner in a consumer of
+precompiled SDK projections. Such consumers obtain the required XAML types from that SDK;
+declare local metadata or enable SDK projection generation when producing missing bindings.
+If an explicit selection is entirely provided
+by dependencies, the existing module support anchor keeps the selected Native KLIB valid
+without duplicating projected types. Consumers declaring no local projection inputs skip that module.
+Their business compilations still merge authoring registrar and dependency support, so defining
+authored WinRT classes does not require re-enabling local SDK projection generation.
+The component's activation factories, CCW support, and host exports are generated separately
+under `authoring-support` and compiled with its business declarations. Native components
+therefore retain `DllGetActivationFactory` and `DllCanUnloadNow` even when dependencies own
+all imported SDK projections; IDE import uses reference declarations for the same support.
+
+The `winui-kmp-base-library` → `winui-kmp-library` → `winui-kmp-app` sample uses the
+shared `windows-sdk` and `windows-app-sdk` projection modules without consumer `type` or
+`namespace` lists. Its SDK versions follow `kotlinWinRT.projections.windowsSdkVersion` and
+`kotlinWinRT.projections.windowsAppSdkVersion`, so metadata tools and projection owners agree.
+Building these owners from source incurs their first-build cost; published consumers reuse
+their contract and implementation artifacts.
+
+WinRT dependency identities record three independent compatibility versions:
+`projectionShapeVersion` for generated declaration/mapping policy,
+`projectionRuntimeAbiVersion` for generated-code runtime symbols and ownership semantics,
+and `projectionCompilerProtocolVersion` for compiler support descriptors. SDK and package
+versions are separate. The toolkit rejects unsupported explicit versions before using a
+dependency's type ownership or merging its compiler support; it cannot safely regenerate
+types already defined by an incompatible library.
+
+Ownership lists are read from top-level JSON arrays and malformed lists are rejected.
+Identities declare `projectionOwner` (group and archive name) and `projectionOwnerVersion`.
+Custom publication coordinates must keep this owner stable or configure the identity tasks'
+owner explicitly. Identical identities resolved at multiple paths share that owner; conflicting
+versions or contents for one owner fail. Compiler-support merging checks projection and
+source-addition names in one ownership namespace, including when the consumer emits no local
+projection. Different owners claiming the same type remain an error. The identity-content
+fingerprint is not a Kotlin binary ABI fingerprint and does not permit merging duplicate JARs
+or KLIBs: dependency resolution must still provide one implementation artifact per owner.
+
+Identities also record the resolved projection dependency closure in `dependencyOwners`
+(owner, version and identity-content fingerprint) and deterministic generation-input hashes
+in `generationInputFingerprints`. These contain no machine-local source paths. Dependency
+records use the design-time projection identities, so producing them does not link authored
+hosts or build dependency implementation binaries.
+The resolved graph must match those recorded owners. A library built against a different SDK
+identity must be rebuilt against the selected SDK; a dependency resolver's version upgrade alone
+does not prove projection compatibility. This is intentionally stricter than binary API matching.
+
+Generated registrations also enforce one Kotlin type identity per WinRT metadata name in
+each shared runtime. Repeating the same registration is supported, and an older registration
+may omit an IID that a later registration supplies. Different classes, kinds, base types or
+conflicting IIDs are rejected. On JVM, equal class names loaded by different ClassLoaders
+remain different identities; share the projection and runtime through a common loader.
+Separate runtime/ClassLoader universes are not an object-sharing mechanism. Native consumers
+must link one owner KLIB for each projected type. Custom runtime aliases retain their own
+mapping rules; they are not independently generated projection owners.
+
+Every published identity must include the complete schema, projection shape, runtime ABI
+and compiler protocol version tuple. Unversioned or partially versioned identities require
+rebuilding with the current toolkit; there is no 0.1.0 migration path. A projection
+compilation also reads ABI constants from the resolved contracts and runtime implementation
+libraries, rejecting missing or incompatible markers. Overriding the runtime dependency
+therefore cannot bypass validation by keeping a newer toolkit installed.
+Kotlin compiler/KLIB compatibility and shared publication ownership are separate checks.
+
+Local JVM projection compilations produce a separate reference class directory using the
+matching Kotlin compiler's `jvm-abi-gen` plugin. Business compilations use that reference
+directory (including Kotlin metadata and inline bodies), while archives and execution use
+the implementation classes. Changes to ordinary projection method bodies therefore do not
+change the business compiler's projection input. Reference classes are compile-only and
+must never replace implementation classes on the runtime classpath.
+
+`generateWinRTReferenceProjections` derives declarations from the same KotlinPoet tree as
+the implementation. `compileKotlinWinRTProjectionJvmReference` compiles them independently;
+business compilation does not require the full projection compilation. Inline bodies,
+default expressions, constants, delegation metadata and inbound compiler recipes are retained.
+Support sources without a structured declaration tree currently retain their original bodies.
+The CLI exposes the same generation mode as `--reference`.
+
+Reference generation still plans the complete selected declaration surface. It is not FIR
+declaration injection or method-level reachability compilation. A producer's first build may
+compile both reference and implementation artifacts, so the split does not promise a faster
+first source build. Reusing published SDK owners, avoiding implementation work during import,
+and keeping implementation-only changes out of consumer contracts are the intended savings.
+
+`verifyKotlinWinRTProjectionJvmReferenceAbi` compares the two compiler-produced ABI inventories,
+including Kotlin metadata and inline code, excluding debug locations and declaration-free file
+facades. Run it when changing generator rules. Other JVM target names use the corresponding
+task suffix.
+
+JVM API variants publish a `winrt-reference` JAR containing both the independent projection
+and the main compilation's Kotlin overlays, metadata and inline code. The main compilation
+remains incremental: unchanged reference files survive partial compilation and deleted types
+are pruned against the implementation output. Java overlays are included conservatively with
+their bodies. Runtime variants keep the implementation JAR. Gradle Module Metadata preserves
+this selection and transitive dependencies; Maven/POM-only consumers use the implementation
+JAR for both compilation and runtime. Never place the `winrt-reference` classifier on a runtime
+classpath. Project consumers selecting the classes variant receive the same complete surface.
+
+IDE import (`prepareKotlinIdeaImport`, `ideaModule`, or `idea.sync.active=true`) exposes
+the reference declaration roots. Import preparation runs `generateWinRTReferenceProjections`
+and `mergeWinRTReferenceCompilerSupport`, without compiling or generating the implementation
+projection. A cold import needs no preceding build. The same cacheable tasks repair deleted
+outputs and replace declarations when WinMD inputs change. Normal builds use implementation
+roots for generated authoring code; do not combine IDE import mode with Native implementation
+compilation in one invocation.
+Dependency `prepareWinRTIdentity` tasks also consume reference metadata, including authored
+type and host declarations. A project diamond therefore does not reintroduce implementation
+generation through its identity producers. Packaging identities still use implementation outputs.
+Authoring TypeDetails and registrar declarations use the same reference pass as projections,
+preserving source-set ownership and compiler inbound recipes. Their registration and CCW
+construction bodies remain in the implementation output used by normal compilation.
+Authored types exposing `IMap<K, V>` (including the required map of `IPropertySet`)
+must implement Kotlin `MutableMap<K, V>`. TypeDetails adds the runtime's closed dictionary
+and iterable ABI definitions to the authored object's existing CCW. Implementing similarly
+named `lookup`/`insert` methods alone is insufficient for the mapped managed contract.
+Likewise, authored `IClosable` uses the runtime mapping to `AutoCloseable`.
+
+`compileWinRTProjectionReferenceKotlinMingwX64` produces an independent Native reference KLIB
+with the implementation's module identity. `verifyWinRTProjectionReferenceAbiMingwX64` checks
+manifest compatibility, declaration ABI and inlinable IR using the selected Kotlin/Native
+compiler. Linking must select the implementation KLIB for that identity; reference KLIBs
+contain throwing bodies and are never runtime libraries. Toolkit consumers select the
+`io.github.composefluent.winrt.native-projection-artifact=reference` variant for compilation
+and select the `demand` variant for binary linking. The reference variant
+includes the main business module's official header KLIB (`winrt-main-reference`), retaining
+defaults and inline bodies. The demand variant carries business KLIBs, semantic usage manifests
+(`winrt-native-uses`) and portable normalized metadata recipes (`winrt-native-recipe`).
+Project dependencies support KGP's unpacked KLIB variant as well.
+Published Gradle Module Metadata carries this selection; Native consumers must retain it.
+Consumers without the toolkit use the implementation variant for both stages. Do not add
+the `winrt-projection-reference` or `winrt-main-reference` classifier as an ordinary transitive dependency.
+
+Native header KLIBs can retain source offsets even when their semantic contract fingerprint
+is unchanged. Ordinary business-library body edits can therefore still invalidate downstream
+Native compilation; projection implementation isolation does not promise identical incremental
+behavior for every business-library edit. Final Native release linking also processes the
+implementation graph and can require substantially more time and heap than contract compilation.
+Native registration follows typed uses in each compiled body, including concrete generic
+arguments, base/interface types and literal WinRT type names. A referenced type initializes its
+own metadata; there is no module initializer that roots every SDK type. Unreachable bodies
+and their registration dependencies can be removed together. Registration expressions are emitted
+directly at each use, avoiding both exported helper roots and cross-file private KLIB symbols. Libraries retain their canonical
+projection owner, and consumers do not need `type`/`namespace` filters for this behavior.
+Names constructed dynamically are not discoverable by this pass; their projected types must
+also have a typed use. Before linking, `<binary>WinRTDemandImplementation` merges usage from
+the application and its transitive business libraries, closes metadata dependencies, and generates
+and compiles an implementation KLIB for each original projection module identity. SDK projection
+declarations are shape inputs, not discovery roots. The IDE/reference contract remains complete.
+SDK COM overlays are generated separately, so ordinary Native linking does not require full SDK
+implementation source generation or compilation. Explicit full implementation publication and
+`verifyWinRTProjectionReferenceAbiMingwX64` remain available and still compile the full implementation.
+
+Executable and shared-library trimming differ. Kotlin/Native 2.4.0's
+`DevirtualizationAnalysis.computeRootSet` treats public functions and virtual-call targets
+as roots when there is no program entry point. An authoring DLL can therefore retain SDK
+types that the executable removes, even without a global projection registration table.
+Demand generation bounds that retention to the selected type closure before the optimizer runs.
+Within that type closure, Native implementation generation omits unreferenced runtime-class
+static methods, properties and events. Semantic calls and callable/property references from
+all business libraries retain the canonical owner's member family: overloads, getter/setter
+pairs and event add/remove entry points stay together. A literal runtime type name retains
+that owner's static surface conservatively. This happens before compiling implementation sources;
+the complete IDE/JVM/reference declarations are unaffected. Old Native usage manifests must be
+rebuilt with the current compiler plugin, rather than silently interpreted as empty member demand.
+Native instance calls and callable/property references also contribute semantic member demand.
+The local implementation drops unused instance member families together from interface declarations,
+RCW proxies and runtime-class forwarding, including Kotlin interface dispatch targets. Overloads,
+accessor pairs, event entry points and authoring bridge aliases stay together within each type.
+Demand propagates between a type and its base/interface member surfaces in both directions:
+retained interface members keep their implementations, and retained overrides keep their base
+declarations. Unrelated types no longer retain each other's homonymous members. The closure is
+shared across projection owners, including inherited declarations absent from the derived metadata.
+Overloads within one type remain a family; this is not overload-signature-level trimming.
+Event helper subclasses follow that same instance demand closure, so unused events do not
+leave helper implementations behind. Static events and required generic/authoring surfaces
+keep their existing conservative retention rules.
+Private interface projection caches are omitted when the type/inheritance demand closure
+keeps no instance member on that interface. This removes unused lazy initializers before
+Native compilation; retained dispatch, CCW obligations and original ABI slots are unaffected.
+Native CCW input discovery follows retained instance bindings and converges with the
+type/inheritance demand closure. A required CCW retains its complete interface and discovers
+further parameter dependencies before emission. Unused instance signatures no longer root
+CCW factories and marshaling bodies. Static paths and unknown bindings remain conservative.
+Native usage manifests also distinguish construction from type references. Activation and
+composable factories, their constructors and marshaling call sites are emitted only for
+constructed types, exposed inheritance and name-based uses, including the required base chain.
+RCW wrapping, public reference contracts and original ABI slots remain unchanged. Producers
+with older usage manifests must be rebuilt so missing construction data cannot cause unsafe pruning.
+Business inheritance, ABI input interfaces, protected/overridable WinRT
+callbacks, generic and mapped adapters retain their required complete surfaces automatically.
+Factories, metadata and marshaling helpers remain conservative. Type signatures still participate
+in the full metadata closure; original ABI slots are never compacted or renumbered. Full reference
+contracts and published library identities remain unchanged: only the final local implementation
+KLIB is sliced, after merging the usage manifests from every business dependency. These private
+KLIBs must not be published as substitutes for the complete reference contracts/recipes.
+Implementation KLIBs compile in owner dependency order against the corresponding sliced dependency
+KLIBs, so cross-owner interface obligations agree at compilation and linking. Business compilations
+continue to use complete references. Registration bookkeeping is injected after demand collection,
+so generated type-name literals do not accidentally retain an owner's entire member surface.
+Within one Gradle build, consumers with identical generated sources, support manifests,
+dependency contents, compiler/plugin inputs and compiler options reuse the successful implementation
+compilation. Concurrent consumers wait for that result; different demand inputs compile separately.
+This reuse requires no configuration and adds no persistent cache across builds. Normal Gradle
+up-to-date checks still apply to each consumer's outputs.
+Changing the selected members regenerates the implementation before linking. Stale usage manifests
+fail with a rebuild diagnostic; they are never interpreted as an empty instance demand set.
+An exclusive interface used only as a static factory's ABI retains its declarations, IID and
+original slots, but does not need an object proxy or wrapper factory. Native demand generation
+omits that proxy only when no business type/member reference, ordinary signature, inheritance
+edge or non-static factory role requires the projected interface. The original metadata model
+remains intact for static call planning and cross-library contract identity.
+DLLs can still retain more of this bounded graph than executables.
+The KMP WinUI sample links with `-Xpartial-linkage-loglevel=error` and checks both required
+and unused runtime type names. Missing KLIB symbols must fail validation instead of producing
+runtime traps that make an invalid executable appear smaller.
+
+This repository runs the Native compiler in a separate JVM with an 8 GiB G1 heap
+(`kotlin.native.disableCompilerDaemon` and `kotlin.native.jvmArgs`). Kotlin/JVM compilation
+also uses an 8 GiB G1 compiler daemon (`kotlin.compiler.execution.strategy` and
+`kotlin.daemon.jvmargs`) for the full SDK reference contract. Gradle retains its 4 GiB G1
+heap for the build/IDE model. Release uses the standard Kotlin/Native optimization pipeline. These heap
+settings are local build configuration; the toolkit does not override a consuming project's
+JVM memory settings.
+
+Projection generation records `kotlin-winrt-support/projection-input-contract.tsv` beside
+its support descriptors. Its deterministic fingerprint covers normalized metadata,
+declaration policy, suppressed dependency declarations, support ownership and protocol
+versions. Source locations, output directories, diagnostics and implementation bytecode
+are excluded. The source cache combines that fingerprint with a separate implementation
+fingerprint. This is a conservative generation-input contract, not a published Kotlin ABI
+hash: metadata row/slot details remain significant, and the support owner is not yet a
+canonical Maven publication owner. Reference and implementation generation have distinct cache keys.
+
+Compiled contracts have separate fingerprints. JVM reference JARs include
+`META-INF/kotlin-winrt/binary-contract.json`, derived from the official ABI output including
+Kotlin metadata and retained inline code. Java/ASM method bodies and debug locations are
+excluded from that fingerprint. Native publications attach a `winrt-contract` JSON classifier,
+derived from official header KLIB IR for both the projection and business overlays. This retains
+default expressions and inline/reified code while excluding ordinary bodies and serialized
+source offsets. Packed and unpacked headers are supported. Compiler, runtime ABI, compiler
+protocol and projection-shape versions participate in the contract; the producer release version
+is recorded separately. WinMD versions and generator implementation fingerprints remain distinct.
+
 Use the complete [Maven Central plugin resolution example](../README.md#create-your-application) in the root README. While Gradle Plugin Portal approval is pending, map the plugin ID directly to the Maven Central implementation module with `useModule`. For snapshots, add the Sonatype snapshot repository to both plugin and dependency repositories and select `0.1.0-SNAPSHOT`.
 
 The plugin adds `winrt-runtime` automatically to JVM and KMP main configurations. Add runtime dependencies manually only when using the runtime without the plugin:

@@ -1,5 +1,8 @@
 package io.github.composefluent.winrt.compiler.callsites
 
+/** Projection compiler protocol: call-site codecs, Native registration and semantic demand manifests. */
+const val WINRT_PROJECTION_COMPILER_PROTOCOL_VERSION: Int = 5
+
 const val WINRT_PROJECTION_CALL_SITE_ANNOTATION_FQ_NAME: String =
     "io.github.composefluent.winrt.runtime.WinRTProjectionCallSite"
 

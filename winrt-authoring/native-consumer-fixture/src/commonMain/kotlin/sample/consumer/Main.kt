@@ -1,6 +1,7 @@
 package sample.consumer
 
 import io.github.composefluent.winrt.runtime.ActivationFactory
+import io.github.composefluent.winrt.runtime.ComWrappersSupport
 import io.github.composefluent.winrt.runtime.IID
 import io.github.composefluent.winrt.runtime.IUnknownReference
 import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
@@ -9,6 +10,7 @@ import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRTAsyncInterfaceIds
 import io.github.composefluent.winrt.runtime.WinRTAsyncProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRTTypeSignature
+import io.github.composefluent.winrt.runtime.WinRTTypeHandle
 import io.github.composefluent.winrt.runtime.IWinRTObject
 import io.github.composefluent.winrt.runtime.join
 import sample.NativeJsonValueThing
@@ -25,7 +27,7 @@ import kotlin.time.Duration
 import kotlin.time.Instant
 
 fun main() {
-    RuntimeScope.initializeMultithreaded().use {
+    RuntimeScope.initializeSingleThreaded().use {
         ActivationFactory.get("sample.NativeClosableThing").use { factory ->
             factory.activateInstance().use { instance ->
                 instance.queryInterface(IID.IDisposable).getOrThrow().close()
@@ -34,10 +36,17 @@ fun main() {
 
         ActivationFactory.get("sample.NativeStringableThing").use { factory ->
             factory.activateInstance().use { instance ->
-                instance.queryInterface(IStringable.Metadata.IID).getOrThrow().use { stringableReference ->
-                    val projected = IStringable.Metadata.wrap(stringableReference as IUnknownReference)
-                    check(projected.toString() == "NativeStringableThing") {
-                        "Expected authored IStringable projection to dispatch through native activation."
+                instance.queryInterface(IID.IStringable).getOrThrow().use { stringableReference ->
+                    // IStringable is owned by the shared runtime, with no generated Metadata companion.
+                    val projected = ComWrappersSupport.createRcwForComObject(
+                        stringableReference.pointer.asRawAddress(),
+                        WinRTTypeHandle("Windows.Foundation.IStringable", IID.IStringable),
+                        tryUseCache = false,
+                    ) as IStringable
+                    (projected as IWinRTObject).nativeObject.use {
+                        check(projected.toString() == "NativeStringableThing") {
+                            "Expected authored IStringable projection to dispatch through native activation."
+                        }
                     }
                 }
             }
@@ -98,7 +107,7 @@ fun main() {
                     check(buffer.contentEquals(arrayOf(0x57u.toUByte(), 0x69u.toUByte(), 0x6Eu.toUByte(), 0x52u.toUByte()))) {
                         "Expected authored IDataReader.ReadBytes FillArray dispatch to update caller-provided array."
                     }
-                    val loadOperation = projected.loadAsync(10u)
+                    val loadOperation = checkNotNull(projected.loadAsync(10u))
                     check(loadOperation.status == AsyncStatus.Completed) {
                         "Expected authored IDataReader.LoadAsync result to be completed."
                     }

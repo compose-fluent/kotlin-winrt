@@ -33,6 +33,10 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val localCompilerSupportManifest: RegularFileProperty
 
+    /** Local authoring is emitted independently from the imported reference projection. */
+    @get:InputFiles @get:Optional @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val additionalLocalCompilerSupportManifests: ConfigurableFileCollection
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -49,6 +53,9 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
 
     @TaskAction
     fun merge() {
+        // Validate before consuming dependency compiler tables, including when no local
+        // projection is emitted. A newer protocol must not be interpreted as today's rows.
+        validateDependencyProjectionIdentityOwnership(dependencyIdentityFiles.files)
         val outputRoot = outputDirectory.get().asFile.toPath()
         Files.createDirectories(outputRoot)
         val previousManifest = outputRoot.resolve("compiler-support.tsv")
@@ -62,6 +69,8 @@ abstract class MergeWinRTCompilerSupportTask : DefaultTask() {
         }
         val manifests = buildList {
             localCompilerSupportManifest.orNull?.asFile?.takeIf(File::isFile)?.let(::add)
+            additionalLocalCompilerSupportManifests.files.filter(File::isFile)
+                .sortedBy { it.invariantSeparatorsPath }.forEach(::add)
             writeDependencyCompilerSupportFileRecords(
                 records = readDependencyCompilerSupportFileRecords(dependencyIdentityFiles.files),
                 outputRoot = temporaryDir.toPath().resolve("dependency-compiler-support"),

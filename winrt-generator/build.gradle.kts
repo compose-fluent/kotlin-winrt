@@ -14,6 +14,7 @@ dependencies {
     implementation(projects.winrtMetadata)
     implementation(projects.winrtCompilerPlugin.callsiteContract)
     implementation(libs.kotlinpoet)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
 }
 

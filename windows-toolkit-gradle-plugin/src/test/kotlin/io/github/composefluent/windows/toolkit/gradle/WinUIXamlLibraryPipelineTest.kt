@@ -10,6 +10,41 @@ import org.junit.Test
 
 class WinUIXamlLibraryPipelineTest {
     @Test
+    fun generated_xaml_directories_do_not_invalidate_cleanup_configuration() {
+        // CsWinRT cleanup runs as a build target; generated output discovery must not
+        // become a configuration input in the corresponding Gradle cleanup task.
+        val root = writeLibrary("kotlin-winrt-xaml-cleanup-cache-", plainJvm = true)
+        run(root, "removeStaleWinRTXamlOutputs", "--configuration-cache")
+        val branches = listOf("build/generated/kotlin-winrt/xaml", "build/intermediates/kotlin-winrt/xaml")
+        branches.forEach { branch ->
+            write(root.resolve("$branch/library/keep.txt"), "library")
+            write(root.resolve("$branch/application/keep.txt"), "schema")
+            write(root.resolve("$branch/compiler-references.txt"), "shared compiler inputs")
+            write(root.resolve("$branch/obsolete/stale.txt"), "obsolete")
+        }
+        val warm = run(root, "removeStaleWinRTXamlOutputs", "--configuration-cache")
+        assertTrue(warm.output, warm.output.contains("Reusing configuration cache"))
+        branches.forEach { branch ->
+            assertTrue(Files.isRegularFile(root.resolve("$branch/library/keep.txt")))
+            assertTrue(Files.isRegularFile(root.resolve("$branch/application/keep.txt")))
+            assertTrue(Files.isRegularFile(root.resolve("$branch/compiler-references.txt")))
+            assertTrue(!Files.exists(root.resolve("$branch/obsolete")))
+        }
+        val unchanged = run(root, "removeStaleWinRTXamlOutputs", "--configuration-cache")
+        assertEquals(TaskOutcome.UP_TO_DATE, unchanged.task(":removeStaleWinRTXamlOutputs")?.outcome)
+    }
+
+    @Test
+    fun projection_identity_does_not_compile_inferred_library_schema() {
+        val root = writeLibrary("kotlin-winrt-xaml-reference-identity-", plainJvm = true)
+        val result = run(root, "prepareWinRTIdentity", "--configuration-cache")
+        assertEquals(TaskOutcome.SUCCESS, result.task(":prepareWinRTIdentity")?.outcome)
+        assertTrue(result.output, result.task(":compileKotlin") == null)
+        assertTrue(result.output, result.task(":generateWinRTProjections") == null)
+        assertTrue(result.output, result.task(":generateWinRTXamlApplicationHeader") == null)
+    }
+
+    @Test
     fun header_reuses_type_selection_when_only_literal_markup_changes() {
         // XAMLC DirectUISchemaContext owns namespace aliases; the Kotlin header only selects
         // application types. Unlike XBF, its schema is independent of literal property values.
@@ -46,6 +81,10 @@ class WinUIXamlLibraryPipelineTest {
         val first = run(root, "prepareWinRTXamlSdkPreview", "--configuration-cache")
         assertEquals(TaskOutcome.SKIPPED, first.task(":prepareWinRTXamlSdkPreview")?.outcome)
         assertTrue("The preview must not schedule business compilation", first.task(":compileKotlin") == null)
+        assertTrue("The preview must use its own SDK subset", first.task(":generateWinRTXamlSdkPreviewProjections") != null)
+        assertTrue("The preview must not generate the application projection", first.task(":generateWinRTProjections") == null)
+        assertTrue("The preview must not compile the application projection",
+            first.tasks.none { it.path.contains("KotlinWinRTProjection") })
         val reused = run(root, "prepareWinRTXamlSdkPreview", "--configuration-cache")
         assertTrue(reused.output, reused.output.contains("Reusing configuration cache"))
     }

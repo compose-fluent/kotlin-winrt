@@ -106,11 +106,22 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
         // Keep SDK-wide registration below JVM method limits. Each helper owns
         // one type, just as generated XamlTypeInfo owns its member table.
         types.forEachIndexed { index, type ->
+            // Native has no development transport. Its compiler removes only these
+            // private bodies before collecting demand; the identity edges below remain.
+            if (sdk(type)) appendLine("@Suppress(\"$JVM_XAML_DEVELOPMENT_ACCESSORS\")")
             appendLine("private fun ${register}_$index() {")
             emit(type, sdk(type))
             appendLine("}")
         }
+        appendLine("@Suppress(\"UNUSED_EXPRESSION\")")
         appendLine("internal fun $register() {")
+        // XAML creates SDK objects without a Kotlin constructor. Like Runtime2's
+        // external type map, root their identity independently of development accessors.
+        // Native's typed-use pass initializes generated Metadata; runtime-owned mappings
+        // keep their existing registration without requiring a Metadata companion.
+        types.filter(::sdk).forEach { type ->
+            appendLine("  ${xamlTypeClassId(type.qualifiedName).asSingleFqName().asString()}::class")
+        }
         types.forEachIndexed { index, type -> if (!sdk(type)) appendLine("  ${register}_$index()") }
         if (types.any(::sdk)) {
             appendLine("  if (io.github.composefluent.winrt.runtime.isWinUIXamlHotReloadEnabled()) {")

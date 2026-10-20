@@ -19,7 +19,7 @@ object WindowsSdkRootDiscovery {
      * Returns the first existing SDK root in registry, environment, and default-path order.
      */
     fun discover(
-        environment: Map<String, String> = System.getenv(),
+        environment: Map<String, String>? = null,
         registryRoots: List<String>? = null,
     ): Path? {
         val installedRoots = registryRoots ?: readRegistryKitsRoots()
@@ -31,7 +31,7 @@ object WindowsSdkRootDiscovery {
      * registry-first policy while falling through when a requested version is not installed.
      */
     fun candidateRoots(
-        environment: Map<String, String> = System.getenv(),
+        environment: Map<String, String>? = null,
         registryRoots: List<String> = emptyList(),
     ): List<Path> {
         val candidates = buildList {
@@ -57,7 +57,7 @@ object WindowsSdkRootDiscovery {
      * during Gradle configuration should use [candidateRoots] with already-known values and
      * defer this method to task execution.
      */
-    fun candidateRootsWithRegistry(environment: Map<String, String> = System.getenv()): List<Path> =
+    fun candidateRootsWithRegistry(environment: Map<String, String>? = null): List<Path> =
         candidateRoots(environment, readRegistryKitsRoots())
 
     /**
@@ -128,7 +128,7 @@ object WindowsSdkRootDiscovery {
             ?.first
     }
 
-    private fun MutableList<Path>.addPath(value: String?, environment: Map<String, String>) {
+    private fun MutableList<Path>.addPath(value: String?, environment: Map<String, String>?) {
         val path = value
             ?.trim()
             ?.trim('"')
@@ -140,15 +140,19 @@ object WindowsSdkRootDiscovery {
         }
     }
 
-    private fun String.expandEnvironmentVariables(environment: Map<String, String>): String =
+    private fun String.expandEnvironmentVariables(environment: Map<String, String>?): String =
         replace(ENVIRONMENT_VARIABLE) { match ->
             val name = match.groupValues[1]
             environment.valueIgnoreCase(name)
                 ?: match.value
         }
 
-    private fun Map<String, String>.valueIgnoreCase(name: String): String? =
-        entries.firstOrNull { (key, _) -> key.equals(name, ignoreCase = true) }?.value
+    // Windows getenv(name) is case-insensitive. Read only the requested variable so
+    // Gradle does not track unrelated environment entries while discovering SDK inputs.
+    // Explicit maps retain case-insensitive lookup for portable SDK layouts and tests.
+    private fun Map<String, String>?.valueIgnoreCase(name: String): String? =
+        if (this == null) System.getenv(name)
+        else get(name) ?: entries.firstOrNull { (key, _) -> key.equals(name, ignoreCase = true) }?.value
 
     private fun queryRegistryView(view: List<String>): String? =
         runCatching {

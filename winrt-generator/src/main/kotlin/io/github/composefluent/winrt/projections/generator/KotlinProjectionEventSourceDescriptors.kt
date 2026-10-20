@@ -40,9 +40,26 @@ internal fun KotlinProjectionPlanner.eventSourceDescriptors(
     plans: List<KotlinTypeProjectionPlan>,
     instantiations: List<WinRTGenericTypeInstantiationDescriptor> = emptyList(),
     closedGenericPlans: List<KotlinTypeProjectionPlan> = plans,
+    nativeInstanceMemberDemand: NativeInstanceMemberDemand? = null,
+    nativeStaticMemberDemand: Set<String>? = null,
 ): List<WinRTEventHelperSubclassDescriptor> {
+    // CsWinRT 3 Emit consumes discovered interop requirements, not every SDK event.
+    // Filter only the helper discovery view; original ABI plans and slots stay intact.
+    val eventPlans = if (nativeInstanceMemberDemand == null && nativeStaticMemberDemand == null) plans else plans.map { plan ->
+        // CsWinRT write_static_members forwards events declared only on the factory
+        // interface too. Use the renderer's merged surface before filtering; an ABI-only
+        // interface has no instance proxy that could otherwise root its event helper.
+        val events = plan.type.events.filterNot { it.isStatic } +
+            mergedStaticEvents(plan, plan.type.events.filter { it.isStatic })
+        plan.copy(type = plan.type.copy(events = events.filter { event ->
+            if (event.isStatic) retainsNativeStaticMember(nativeStaticMemberDemand, plan.type.qualifiedName,
+                event.name.replaceFirstChar(Char::lowercase), "add${event.name}", "remove${event.name}")
+            else nativeInstanceMemberDemand?.retain(
+                plan.type.qualifiedName, event.name.replaceFirstChar(Char::lowercase)) != false
+        }))
+    }
     val closedGenericTypeNames = closedGenericPlans.mapTo(mutableSetOf()) { plan -> plan.type.qualifiedName }
-    val requiredDescriptorKeys = plans.requiredEventSourceDescriptorKeys()
+    val requiredDescriptorKeys = eventPlans.requiredEventSourceDescriptorKeys()
     val metadataDescriptors = model.namespaces
         .flatMap(WinRTNamespace::types)
         .flatMap(helpers::eventHelperSubclassDescriptors)
@@ -61,7 +78,7 @@ internal fun KotlinProjectionPlanner.eventSourceDescriptors(
         }
         .filterNot { descriptor -> descriptor.eventTypeName.containsOpenGenericType() }
         .toList()
-    return (metadataDescriptors + closedGenericDescriptors + plans.flatMap { plan ->
+    return (metadataDescriptors + closedGenericDescriptors + eventPlans.flatMap { plan ->
         boundRuntimeClassEventSourceDescriptors(plan, helpers)
     })
         .map { descriptor ->

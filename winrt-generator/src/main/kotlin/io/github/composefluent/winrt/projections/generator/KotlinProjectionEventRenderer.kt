@@ -333,9 +333,16 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
 ): TypeSpec =
     TypeSpec.companionObjectBuilder("Metadata")
         .apply {
+            // Keep the complete plan and ABI slots; only omit unreferenced public static
+            // entry points. Metadata/factories and virtual interface obligations are not
+            // ordinary call roots (CsWinRT Discover tracks exposed types separately).
             val projectedStaticMethods = mergedStaticMethods(plan, staticMethods)
+                .filter { !isActivationFactoryCreateMethod(plan, it) || retainsFactories(plan) }
+                .filter { retainsStaticMember(plan, it.projectedMethodName()) || isActivationFactoryCreateMethod(plan, it) }
             val projectedStaticProperties = mergedStaticProperties(plan, staticProperties)
+                .filter { retainsStaticMember(plan, it.name.replaceFirstChar(Char::lowercase)) }
             val projectedStaticEvents = mergedStaticEvents(plan, staticEvents)
+                .filter { retainsStaticMember(plan, it.name.replaceFirstChar(Char::lowercase), "add${it.name}", "remove${it.name}") }
             appendMetadataCompanionMembers(this, plan)
             projectedStaticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
             projectedStaticProperties.forEach {
@@ -403,7 +410,7 @@ internal fun mergedStaticProperties(
     return merged.values.toList()
 }
 
-private fun mergedStaticEvents(
+internal fun mergedStaticEvents(
     plan: KotlinTypeProjectionPlan,
     staticEvents: List<WinRTEventDefinition>,
 ): List<WinRTEventDefinition> {
@@ -538,6 +545,7 @@ internal fun KotlinProjectionRenderer.appendCompanionShells(
 ) {
     plan.companionKinds
         .filterNot(excludeKinds::contains)
+        .filter { it !in setOf(KotlinProjectionCompanionKind.ActivationFactory, KotlinProjectionCompanionKind.ComposableFactory) || retainsFactories(plan) }
         .forEach { kind ->
             builder.addType(buildCompanionShell(kind, plan))
         }
@@ -729,6 +737,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
 }
 
 internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
+    if (!retainsFactories(plan)) return emptyList()
     val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     return factoryType.methods
         .filter(WinRTMethodDefinition::isProjectedCallableMethod)
@@ -748,6 +757,7 @@ internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinType
 }
 
 internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
+    if (!retainsFactories(plan)) return emptyList()
     return plan.composableFactoryBindings
         .flatMap { factory ->
             val factoryType = plan.typesByQualifiedName[factory.qualifiedName] ?: return@flatMap emptyList()
@@ -837,6 +847,7 @@ private fun KotlinProjectionRenderer.prepareActivationFactoryCall(
 }
 
 internal fun KotlinProjectionRenderer.collectFactoryCallSites(plan: KotlinTypeProjectionPlan) {
+    if (!retainsFactories(plan)) return
     plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get)?.let { factoryType ->
         factoryType.methods.filter(WinRTMethodDefinition::isProjectedCallableMethod)
             .filter { it.returnType.typeName == plan.type.qualifiedName }

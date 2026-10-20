@@ -2,9 +2,9 @@ package io.github.composefluent.windows.toolkit.gradle
 
 import com.squareup.kotlinpoet.ClassName
 import io.github.composefluent.winrt.metadata.WinRTMetadataModel
-import io.github.composefluent.winrt.metadata.WinRTMetadataModelCodec
 import io.github.composefluent.winrt.metadata.WinRTMetadataProjectionContext
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
+import io.github.composefluent.winrt.projections.generator.KotlinProjectionInputContract
 import io.github.composefluent.winrt.runtime.Guid
 import java.nio.file.Files
 import java.nio.file.Path
@@ -57,30 +57,26 @@ internal fun preparedProjectionKey(
     owner: String,
     emitJvmHost: Boolean,
 ): String {
+    val contract = KotlinProjectionInputContract.create(
+        model, sourceModel, context, suppressedTypes, suppressedAdditions, owner, emitJvmHost,
+    )
+    return preparedProjectionKey(contract)
+}
+
+internal fun preparedProjectionKey(contract: KotlinProjectionInputContract): String =
+    preparedProjectionImplementationKey(contract.fingerprint,
+        preparedStaticImplementationFingerprint(preparedStaticImplementationRoots()))
+
+internal fun preparedProjectionImplementationKey(contractFingerprint: String, implementationFingerprint: String): String {
     val digest = MessageDigest.getInstance("SHA-256")
     fun field(value: String) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.size).array())
         digest.update(bytes)
     }
-    field("task-projection-sources-v1")
-    field(preparedStaticImplementationFingerprint(preparedStaticImplementationRoots()))
-    field(WinRTMetadataModelCodec.fingerprint(model))
-    // completeProjectionModel may load supplemental declarations from these inputs.
-    field(WinRTMetadataModelCodec.fingerprint(sourceModel))
-    field(context.copy(
-        sources = emptyList(), outputFolder = null,
-        include = context.include.toSortedSet(), exclude = context.exclude.toSortedSet(),
-        excludedTypes = context.excludedTypes.toSortedSet(), additionExclude = context.additionExclude.toSortedSet(),
-        inaccessibleDependencyTypes = context.inaccessibleDependencyTypes.toSortedSet(),
-    ).toString())
-    field(context.sources.isNotEmpty().toString())
-    for (names in listOf(suppressedTypes, suppressedAdditions)) {
-        field(names.size.toString())
-        names.sorted().forEach(::field)
-    }
-    field(owner)
-    field(emitJvmHost.toString())
+    field("task-projection-sources-v2")
+    field(contractFingerprint)
+    field(implementationFingerprint)
     return java.util.HexFormat.of().formatHex(digest.digest())
 }
 
@@ -232,12 +228,19 @@ internal fun materializePreparedStaticSources(sourceRoot: Path, generatedRoot: P
     )
 }
 
-/** Adopts files from task generation predating the prepared-source ownership manifest. */
+/** Adopts generated declarations and support records even when no cache ownership manifest exists.
+ * Authoring generation bypasses the source cache; disabling local projections must also retire
+ * its old projection registrar and XAML support rows, before writing current authoring support.
+ */
 private fun markedGeneratedProjectionFiles(root: Path, knownFiles: Set<String> = emptySet()): Set<String> {
     if (!Files.isDirectory(root)) return emptySet()
     return Files.walk(root).use { paths ->
         paths.filter { root.relativize(it).toString().replace('\\', '/') !in knownFiles }
-            .filter { isGeneratedWinRTProjectionSource(it.toFile()) }
+            .filter {
+                isGeneratedWinRTProjectionSource(it.toFile()) ||
+                    Files.isRegularFile(it) && root.relativize(it).toString().replace('\\', '/')
+                        .startsWith("kotlin-winrt-support/")
+            }
             .map { root.relativize(it).toString().replace('\\', '/') }
             .toList().toSet()
     }

@@ -1,5 +1,7 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import io.github.composefluent.winrt.compiler.callsites.WINRT_PROJECTION_COMPILER_PROTOCOL_VERSION
+
 import io.github.composefluent.winrt.metadata.WinRTCustomAttributeDefinition
 import io.github.composefluent.winrt.metadata.WinRTCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRTInterfaceImplementationDefinition
@@ -58,11 +60,12 @@ class ProjectionVisibilityTest {
     }
 
     @Test
-    fun legacy_identity_uses_metadata_visibility_and_explicit_public_visibility_wins() {
+    fun producer_visibility_is_not_reconstructed_from_consumer_metadata() {
         val identity = Files.createTempFile("winrt-visibility-", ".json").toFile()
-        identity.writeText("""{"projectionShapeVersion":1,"projectedTypes":["$HIDDEN_QUERY_INTERFACE"]}""")
-        assertEquals(setOf(HIDDEN_QUERY_INTERFACE), dependencyInternalProjectedTypeNames(projectionVisibilityModel(), listOf(identity)))
-        identity.writeText("""{"projectionShapeVersion":1,"projectedTypes":["$HIDDEN_QUERY_INTERFACE"],"internalProjectedTypes":[]}""")
+        identity.writeText("""{"schemaVersion":1,"projectionShapeVersion":1,
+            "projectionOwner":"test:producer","projectionOwnerVersion":"1.0",
+            "projectionRuntimeAbiVersion":1,"projectionCompilerProtocolVersion":${WINRT_PROJECTION_COMPILER_PROTOCOL_VERSION},
+            "projectedTypes":["$HIDDEN_QUERY_INTERFACE"],"internalProjectedTypes":[]}""")
         assertEquals(emptySet<String>(), dependencyInternalProjectedTypeNames(projectionVisibilityModel(), listOf(identity)))
     }
 }

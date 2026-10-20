@@ -48,11 +48,9 @@ interface ICustomProperty {
     fun setIndexedValue(target: Any?, value: Any?, index: Any?)
 
     /**
-     * Compatibility metadata for the source-level XAML model that predates
-     * generated WinRT projections.  The generated gallery projection has the
-     * same nested metadata object; keeping this shape here prevents a duplicate
-     * runtime class from failing when the generated support registrar touches
-     * the metadata initializer.
+     * Shared XAML binding contract owned by the runtime, together with its RCW/CCW
+     * factories. The generator maps SDK references to this declaration; emitting a
+     * second SDK declaration would give the same Native symbol incompatible metadata.
      */
     companion object Metadata {
         const val TYPE_NAME: String = "Microsoft.UI.Xaml.Data.ICustomProperty"

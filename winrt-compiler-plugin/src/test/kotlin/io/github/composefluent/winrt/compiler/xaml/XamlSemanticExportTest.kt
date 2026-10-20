@@ -17,6 +17,11 @@ import java.net.URLClassLoader
 import io.github.composefluent.winrt.runtime.WinUIXamlLoadState
 
 class XamlSemanticExportTest {
+    private fun compilerRuntimeClasspath(): String = listOf(
+        Unit::class.java, WinUIXamlLoadState::class.java, io.github.composefluent.winrt.runtime.Guid::class.java,
+    ).map { File(it.protectionDomain.codeSource.location.toURI()).absolutePath }
+        .distinct().joinToString(File.pathSeparator)
+
     @Test
     fun semantic_only_compilation_exports_symbols_without_business_class_files() {
         val root = Files.createTempDirectory("xaml-semantic-no-codegen").toFile()
@@ -48,7 +53,10 @@ class XamlSemanticExportTest {
             assertFalse(output.walkTopDown().any { it.extension == "class" })
             // Combined mode exports the same inferred schema while retaining executable IR.
             // No second Kotlin frontend invocation is needed for the business classes.
-            val combined = args + listOf("-P", "plugin:io.github.composefluent.winrt.compiler:xamlCompile=true")
+            val combined = args.toMutableList().apply {
+                // Combined mode executes the full plugin, so its ABI check needs both runtime layers.
+                this[indexOf("-classpath") + 1] = compilerRuntimeClasspath()
+            } + listOf("-P", "plugin:io.github.composefluent.winrt.compiler:xamlCompile=true")
             val compiled = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *combined.toTypedArray()) }
             assertEquals(diagnostics.toString(), ExitCode.OK, compiled)
             URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
@@ -99,9 +107,7 @@ class XamlSemanticExportTest {
                     fun getBindingConnector(connectionId: Int, target: Any?): IComponentConnector?
                 }
             """.trimIndent())
-            val classpath = listOf(Unit::class.java, WinUIXamlLoadState::class.java).joinToString(File.pathSeparator) {
-                File(it.protectionDomain.codeSource.location.toURI()).absolutePath
-            }
+            val classpath = compilerRuntimeClasspath()
             val options = mapOf("xamlDeclarations" to input.absolutePath, "metadataIndex" to index.absolutePath,
                 "xamlSemanticOutput" to symbols.absolutePath, "xamlReferencesFile" to references.absolutePath)
             val arguments = listOf("-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", classpath,
@@ -132,6 +138,45 @@ class XamlSemanticExportTest {
         }
         assertEquals("kotlin.collections.MutableList<kotlin.reflect.KClass<*>?>?", xamlProjectedPropertySourceType(
             WinRTTypeRef.fromDisplayName("Windows.Foundation.Collections.IVector<Windows.UI.Xaml.Interop.TypeName>"), resolver, model.semanticHelpers()))
+    }
+
+    @Test
+    fun xaml_sdk_rcw_metadata_is_available_without_hot_reload() {
+        // Runtime2 WindowsRuntimeComWrappers.CreateObject uses the external type map
+        // even for objects created by XAML rather than projected Kotlin constructors.
+        listOf(io.github.composefluent.winrt.runtime.XamlFramework.WinUI,
+            io.github.composefluent.winrt.runtime.XamlFramework.UWP).forEach { framework ->
+            val namespace = framework.xamlNamespace
+            val types = listOf(
+                WinRTTypeDefinition(namespace, "UIElement", WinRTTypeKind.RuntimeClass,
+                    baseTypeName = "System.Object"),
+                WinRTTypeDefinition("$namespace.Shapes", "Shape", WinRTTypeKind.RuntimeClass,
+                    baseTypeName = "$namespace.UIElement"),
+                WinRTTypeDefinition("$namespace.Shapes", "Rectangle", WinRTTypeKind.RuntimeClass,
+                    baseTypeName = "$namespace.Shapes.Shape"),
+                WinRTTypeDefinition("$namespace.Shapes", "Unused", WinRTTypeKind.RuntimeClass,
+                    baseTypeName = "$namespace.UIElement"),
+            )
+            val model = WinRTMetadataModel(types.groupBy { it.namespace }.map { (name, entries) ->
+                WinRTNamespace(name, entries)
+            })
+            val root = Files.createTempDirectory("xaml-sdk-rcw").toFile()
+            try {
+                assertNotNull(writeXamlProjectedTypeRegistrationSource(root.toPath(), model,
+                    setOf("$namespace.Shapes.Rectangle"), "Application", framework))
+                val source = root.walkTopDown().single { it.extension == "kt" }.readText()
+                assertTrue(source.contains("@Suppress(\"$JVM_XAML_DEVELOPMENT_ACCESSORS\")"))
+                val startup = source.substringAfter("internal fun registerKotlinWinUIXamlProjectedTypes_Application() {")
+                    .substringBefore("if (io.github.composefluent.winrt.runtime.isWinUIXamlHotReloadEnabled())")
+                listOf("$namespace.UIElement", "$namespace.Shapes.Shape", "$namespace.Shapes.Rectangle").forEach { name ->
+                    assertTrue(startup, startup.contains("${xamlTypeClassId(name).asSingleFqName().asString()}::class"))
+                }
+                assertFalse(source.contains("Unused"))
+                assertFalse(source.contains("activate ="))
+            } finally {
+                root.deleteRecursively()
+            }
+        }
     }
 
     @Test
@@ -213,9 +258,7 @@ class XamlSemanticExportTest {
             ).map { WinUIXamlApplicationTypeDescriptor(it, isActivatable = false) }, emptyMap(), attributes, emptyMap())
             val references = File(root, "references.txt").apply { writeText(attributes.toString()) }
             val schema = File(root, "schema")
-            val classpath = listOf(Unit::class.java, WinUIXamlLoadState::class.java).joinToString(File.pathSeparator) {
-                File(it.protectionDomain.codeSource.location.toURI()).absolutePath
-            }
+            val classpath = compilerRuntimeClasspath()
             fun compile(sources: List<File>, destination: String, export: Boolean, combined: Boolean = false) {
                 val options = if (export) mapOf("metadataIndex" to metadata.absolutePath,
                     "xamlLibraryOutput" to schema.absolutePath, "xamlLibraryAssembly" to "Probe",
@@ -551,9 +594,7 @@ class XamlSemanticExportTest {
             } }
         """.trimIndent()) }
         fun compile(final: Boolean = false): Pair<ExitCode, String> {
-            val classpath = listOf(Unit::class.java, WinUIXamlLoadState::class.java).joinToString(File.pathSeparator) {
-                File(it.protectionDomain.codeSource.location.toURI()).absolutePath
-            }
+            val classpath = compilerRuntimeClasspath()
             val options = mapOf("xamlDeclarations" to input.absolutePath) + if (final)
                 mapOf("xamlImplementation" to File(root, "final.output.json").absolutePath)
             else mapOf("metadataIndex" to index.absolutePath, "xamlSemanticOutput" to symbols.absolutePath, "xamlReferencesFile" to referenceFile.absolutePath,
@@ -609,12 +650,10 @@ class XamlSemanticExportTest {
         """.trimIndent()) }
         // A separate consumer has no XAML declaration input; the serialized managed interface
         // must suffice to preserve construction behavior for direct calls and references.
-        val consumerClasspath = listOf(File(root, "final")) + listOf(Unit::class.java, WinUIXamlLoadState::class.java).map {
-            File(it.protectionDomain.codeSource.location.toURI())
-        }
+        val consumerClasspath = File(root, "final").absolutePath + File.pathSeparator + compilerRuntimeClasspath()
         val consumerDiagnostics = ByteArrayOutputStream()
         val consumerResult = PrintStream(consumerDiagnostics).use { stream -> K2JVMCompiler().exec(stream,
-            "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", consumerClasspath.joinToString(File.pathSeparator),
+            "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", consumerClasspath,
             "-Xplugin=${System.getProperty("winrt.test.fullPluginJar")}", "-d", File(root, "consumer").absolutePath,
             consumerSource.absolutePath)
         }

@@ -168,6 +168,7 @@ object WinRTTypeRegistry {
     inline fun <reified T : Any> find(): WinRTTypeId<T>? = findByClass(T::class)
 
     internal fun clearForTests() {
+        clearGeneratedProjectionTypeOwnersForTests()
         byClass.clear()
         byName.clear()
         byHelperClass.clear()

@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.runtime.WinUIRuntimeAssetManifests
 import io.github.composefluent.winrt.runtime.XamlFramework
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.FileCollection
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -111,6 +112,15 @@ abstract class StageWindowsPackageRuntimeAssetsTask @Inject constructor(
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    val restoredNuGetPackageContentFiles: FileCollection
+        get() = objects.fileCollection().from(
+            nugetPackageContentFiles,
+            winAppRestoreLockFiles.elements.map { locks ->
+                existingWinAppPackageContentRoots(locks.map { it.asFile })
+            },
+        )
+
+    @get:Internal
     abstract val nugetPackageContentFiles: ConfigurableFileCollection
 
     @get:InputFiles

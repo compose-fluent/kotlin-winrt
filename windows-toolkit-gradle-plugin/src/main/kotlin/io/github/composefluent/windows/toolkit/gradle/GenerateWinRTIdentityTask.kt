@@ -28,7 +28,18 @@ import kotlin.io.path.name
 abstract class GenerateWinRTIdentityTask : DefaultTask() {
     init {
         windowsSdkDeclared.convention(false)
+        projectionOwner.convention(projectionOwnerProvider(project))
+        projectionOwnerVersion.convention(project.provider { project.version.toString() })
     }
+
+    @get:Input abstract val projectionOwner: Property<String>
+    @get:Input abstract val projectionOwnerVersion: Property<String>
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
+    abstract val dependencyIdentityFiles: ConfigurableFileCollection
+
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE)
+    abstract val generationInputContractFiles: ConfigurableFileCollection
 
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
@@ -126,17 +137,28 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
             dslIncludeExtensions = includeWindowsSdkExtensions.get(),
         )
         Files.createDirectories(target.parent)
+        val authoredTypes = readAuthoredTypeNames(authoredMetadataFiles.files)
+        // An SDK projection is already a regular published dependency. Only an
+        // authored component needs its hosting binary embedded for downstream staging.
+        val authoredTargets = if (authoredTypes.isEmpty()) emptyList() else
+            readAuthoredTargetArtifactRecords(authoredTargetArtifactFiles.files)
         val content = buildString {
                 appendLine("{")
                 appendLine("  \"schemaVersion\": 1,")
                 appendLine("  \"model\": \"library\",")
+                appendLine("  \"projectionOwner\": ${projectionOwner.get().toJsonStringOrNull()},")
+                appendLine("  \"projectionOwnerVersion\": ${projectionOwnerVersion.get().toJsonStringOrNull()},")
+                appendLine("  \"dependencyOwners\": ${projectionDependencyOwners(dependencyIdentityFiles.files)},")
+                appendLine("  \"generationInputFingerprints\": ${generationInputContractFiles.files.filter(File::isFile).map { projectionContractDigest(it.readText()) }.distinct().sorted().toJsonArray()},")
                 appendLine("  \"projectionShapeVersion\": $CURRENT_PROJECTION_SHAPE_VERSION,")
+                appendLine("  \"projectionRuntimeAbiVersion\": ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION},")
+                appendLine("  \"projectionCompilerProtocolVersion\": ${io.github.composefluent.winrt.compiler.callsites.WINRT_PROJECTION_COMPILER_PROTOCOL_VERSION},")
                 appendLine("  \"metadataInputs\": ${portablePublishedMetadataInputs(metadataInputs.get()).toJsonArray()},")
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
                 appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFiles.files, typeShapeDescriptorFiles.files).toJsonArray()},")
                 appendLine("  \"internalProjectedTypes\": ${readInternalProjectedTypeNames(typeShapeDescriptorFiles.files).toJsonArray()},")
-                appendLine("  \"authoredTypes\": ${readAuthoredTypeNames(authoredMetadataFiles.files).toJsonArray()},")
+                appendLine("  \"authoredTypes\": ${authoredTypes.toJsonArray()},")
                 appendLine("  \"sourceAdditions\": ${readGeneratedSourceAdditionTypeNames(sourceAdditionManifestFiles.files).toJsonArray()},")
                 appendLine("  \"excludeNamespaces\": ${excludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"excludeTypes\": ${excludeTypes.get().toJsonArray()},")
@@ -152,7 +174,7 @@ abstract class GenerateWinRTIdentityTask : DefaultTask() {
                 appendLine("  \"xamlSchemaRecords\": ${authoredMetadataRecordsToJsonArray(readXamlSchemaRecords(xamlSchemaFiles.files))},")
                 appendLine("  \"authoringMetadataIndexRows\": ${readAuthoringMetadataIndexRows(authoringMetadataIndexFiles.files).toJsonArray()},")
                 appendLine("  \"authoredHostManifestRecords\": ${authoredHostManifestRecordsToJsonArray(readAuthoredHostManifestRecords(authoredHostManifestFiles.files))},")
-                appendLine("  \"authoredTargetArtifactRecords\": ${authoredTargetArtifactRecordsToJsonArray(readAuthoredTargetArtifactRecords(authoredTargetArtifactFiles.files))},")
+                appendLine("  \"authoredTargetArtifactRecords\": ${authoredTargetArtifactRecordsToJsonArray(authoredTargets)},")
                 appendLine("  \"compilerSupportFileRecords\": ${compilerSupportFileRecordsToJsonArray(readCompilerSupportFileRecords(compilerSupportManifestFiles.files))}")
                 appendLine("}")
             }

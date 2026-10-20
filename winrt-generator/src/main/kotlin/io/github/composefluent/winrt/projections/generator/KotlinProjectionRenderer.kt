@@ -124,7 +124,17 @@ class KotlinProjectionRenderer(
     internal val supportOwnerIdentity: String? = null,
     internal val projectedInterfaceCcwInputTypeNames: Set<String> = emptySet(),
     internal val guidSignatureHelpers: WinRTMetadataSemanticHelpers? = null,
+    internal val nativeStaticMemberDemand: Set<String>? = null,
+    internal val nativeAbiOnlyInterfaces: Set<String> = emptySet(),
+    internal val nativeInstanceMemberDemand: NativeInstanceMemberDemand? = null,
 ) {
+    internal fun retainsFactories(plan: KotlinTypeProjectionPlan): Boolean =
+        nativeInstanceMemberDemand?.retainsFactories(plan.type.qualifiedName) != false
+    internal fun retainsStaticMember(plan: KotlinTypeProjectionPlan, vararg names: String): Boolean =
+        retainsNativeStaticMember(nativeStaticMemberDemand, plan.type.qualifiedName, *names)
+    internal fun retainsInstanceMember(plan: KotlinTypeProjectionPlan, name: String): Boolean =
+        nativeInstanceMemberDemand?.retain(plan.type.qualifiedName, name) != false
+
     internal var projectionTypesByQualifiedName: Map<String, WinRTTypeDefinition> = emptyMap()
     private var cachedRuntimeClassForwardTargetsPlan: KotlinTypeProjectionPlan? = null
     private var cachedRuntimeClassForwardTargets: Map<String, RuntimeClassInterfaceProjectionForwardTarget> = emptyMap()
@@ -146,6 +156,9 @@ class KotlinProjectionRenderer(
         supportOwnerIdentity = ownerIdentity,
         projectedInterfaceCcwInputTypeNames = projectedInterfaceCcwInputTypeNames,
         guidSignatureHelpers = guidSignatureHelpers,
+        nativeStaticMemberDemand = nativeStaticMemberDemand,
+        nativeAbiOnlyInterfaces = nativeAbiOnlyInterfaces,
+        nativeInstanceMemberDemand = nativeInstanceMemberDemand,
     )
 
     /**
@@ -226,6 +239,7 @@ class KotlinProjectionRenderer(
             val interfaceType = proxyBinding.interfaceType
             interfaceType.methods
                 .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+                .filter { retainsInstanceMember(plan, it.projectedMethodName()) }
                 .forEach { method ->
                     collectInterfaceProxyMethodCallSite(
                         slotInterfaceType = interfaceType,
@@ -237,6 +251,7 @@ class KotlinProjectionRenderer(
             interfaceType.properties
                 .filterNot(WinRTPropertyDefinition::isStatic)
                 .filter { it.hasNativeProjectionPropertyAccessor() }
+                .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }
                 .forEach { property ->
                     collectInterfaceProxyPropertyCallSites(
                         slotInterfaceType = interfaceType,
@@ -356,6 +371,7 @@ class KotlinProjectionRenderer(
 
         plan.type.methods
             .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+            .filter { retainsInstanceMember(plan, it.projectedMethodName()) }
             .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
             .filterNot { method -> isRuntimeClassDelegatedMember(plan, method.abiSlotConstantName(plan.type.methods)) }
             .filterNot { method ->
@@ -378,6 +394,7 @@ class KotlinProjectionRenderer(
             }
         plan.type.properties
             .filterNot { it.isStatic }
+            .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }
             .filter { it.hasNativeProjectionGetterAccessor() }
             .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .filterNot { property -> isRuntimeClassDelegatedMember(plan, "${property.name.uppercase()}_GETTER_SLOT") }
@@ -400,11 +417,12 @@ class KotlinProjectionRenderer(
 
         val staticMethods = plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedStaticMethod)
         val staticProperties = plan.type.properties.filter { it.isStatic }
-        mergedStaticMethods(plan, staticMethods).filterNot { isActivationFactoryCreateMethod(plan, it) }.forEach { method ->
+        mergedStaticMethods(plan, staticMethods).filter { retainsStaticMember(plan, it.projectedMethodName()) }
+            .filterNot { isActivationFactoryCreateMethod(plan, it) }.forEach { method ->
             plan.staticMemberBindings.firstOrNull { it.bindingName == staticMethodBindingName(plan, method) }
                 ?.let { collectCallSite(prepareBoundStaticInvocation(it)) }
         }
-        mergedStaticProperties(plan, staticProperties).forEach { property ->
+        mergedStaticProperties(plan, staticProperties).filter { retainsStaticMember(plan, it.name.replaceFirstChar(Char::lowercase)) }.forEach { property ->
             val getter = plan.staticMemberBindings.firstOrNull { it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT" }
             if (getter != null) {
                 collectCallSite(prepareBoundStaticInvocation(getter))
@@ -475,6 +493,9 @@ class KotlinProjectionRenderer(
         KotlinProjectionDeclarationKind.Enum -> renderEnumShell(plan)
         KotlinProjectionDeclarationKind.Struct -> renderStruct(plan)
         KotlinProjectionDeclarationKind.Delegate -> renderDelegate(plan)
+    }.let { type ->
+        if (plan.declarationKind in setOf(KotlinProjectionDeclarationKind.Class, KotlinProjectionDeclarationKind.Interface))
+            nativeInstanceMemberDemand?.apply(type, plan) ?: type else type
     }
 
 
@@ -484,8 +505,10 @@ class KotlinProjectionRenderer(
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
-        plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod).forEach { builder.addFunction(renderInterfaceMethod(it)) }
-        plan.type.properties.filterNot { it.isStatic }.filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
+        plan.type.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+            .filter { retainsInstanceMember(plan, it.projectedMethodName()) }.forEach { builder.addFunction(renderInterfaceMethod(it)) }
+        plan.type.properties.filterNot { it.isStatic }.filter { it.hasNativeProjectionPropertyAccessor() }
+            .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }.forEach { property ->
             val getterResolution = property
                 .takeIf { !it.hasNativeProjectionGetterAccessor() && it.hasNativeProjectionSetterAccessor() }
                 ?.let { findNativeProjectionGetterInterface(plan.type, it, plan.typesByQualifiedName) }
@@ -498,7 +521,8 @@ class KotlinProjectionRenderer(
                 ),
             )
         }
-        plan.type.events.filterNot { it.isStatic }.forEach { event ->
+        plan.type.events.filterNot { it.isStatic }
+            .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }.forEach { event ->
             builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
         }
@@ -629,7 +653,8 @@ class KotlinProjectionRenderer(
             val invokeTarget = interfaceNativeProjectionObjectReference(
                 plan, interfaceType, genericArguments, proxyBinding.interfaceInstanceName,
             ).toString()
-            interfaceType.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
+            interfaceType.methods.filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+                .filter { retainsInstanceMember(plan, it.projectedMethodName()) }.forEach { method ->
                 val renderedMethod = if (method.genericParameterCount > 0) {
                     val instantiatedMethod = proxyBinding.instantiatedType.methods.firstOrNull { candidate ->
                         candidate.methodRowId == method.methodRowId && candidate.name == method.name
@@ -646,7 +671,8 @@ class KotlinProjectionRenderer(
                 }
                 builder.addFunction(renderedMethod)
             }
-            interfaceType.properties.filterNot(WinRTPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }.forEach { property ->
+            interfaceType.properties.filterNot(WinRTPropertyDefinition::isStatic).filter { it.hasNativeProjectionPropertyAccessor() }
+                .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }.forEach { property ->
                 builder.addProperty(
                     renderInterfaceProxyProperty(
                         slotInterfaceType = interfaceType,
@@ -657,7 +683,8 @@ class KotlinProjectionRenderer(
                     ),
                 )
             }
-            interfaceType.events.filterNot(WinRTEventDefinition::isStatic).forEach { event ->
+            interfaceType.events.filterNot(WinRTEventDefinition::isStatic)
+                .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }.forEach { event ->
                 val eventSourceBinding = proxyBinding.eventSourceBinding(event)
                 val instantiatedEvent = eventSourceBinding.event
                 builder.addProperty(
@@ -1151,7 +1178,7 @@ class KotlinProjectionRenderer(
     }
 
     internal fun canRenderInterfaceProxy(plan: KotlinTypeProjectionPlan): Boolean =
-        plan.type.genericParameterCount == 0 &&
+        plan.type.qualifiedName !in nativeAbiOnlyInterfaces && plan.type.genericParameterCount == 0 &&
             !isRuntimeOwnedMappedTypeName(plan.type.qualifiedName) &&
             !(suppressProjectedMemberSlotConstants && plan.type.isExclusiveTo) &&
             mappedTypeByAbiName(plan.type.qualifiedName)?.abiValueKind != KotlinProjectionAbiValueKind.MappedKeyValuePair &&
@@ -1744,7 +1771,7 @@ class KotlinProjectionRenderer(
                 else -> Unit
             }
         }
-        if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
+        if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds && retainsFactories(plan)) {
             builder.addFunction(
                 FunSpec.constructorBuilder()
                     .callThisConstructor(CodeBlock.of("ActivationFactory.activate(), kotlin.Unit"))
@@ -1756,6 +1783,7 @@ class KotlinProjectionRenderer(
         val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.methods
             .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+            .filter { retainsInstanceMember(plan, it.projectedMethodName()) }
             .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
             .filterNot { method -> isRuntimeClassDelegatedMember(plan, method.abiSlotConstantName(plan.type.methods)) }
             .filterNot { method ->
@@ -1776,6 +1804,7 @@ class KotlinProjectionRenderer(
         addRuntimeClassAuthoringInvokeBridges(builder, plan, mappedCollectionMemberNames)
         plan.type.properties
             .filterNot { it.isStatic }
+            .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }
             .filter { it.hasNativeProjectionGetterAccessor() }
             .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .filterNot { property -> isRuntimeClassDelegatedMember(plan, "${property.name.uppercase()}_GETTER_SLOT") }
@@ -1795,6 +1824,7 @@ class KotlinProjectionRenderer(
             }
         plan.type.events
             .filterNot { it.isStatic }
+            .filter { retainsInstanceMember(plan, it.name.replaceFirstChar(Char::lowercase)) }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "ErrorsChanged" }
             .filterNot { plan.usesMappedPropertyChangedAugmentation && it.name == "PropertyChanged" }
             .filterNot { event -> isRuntimeClassDelegatedMember(plan, "${event.name.uppercase()}_ADD_SLOT") }
@@ -1863,6 +1893,7 @@ class KotlinProjectionRenderer(
     ) {
         plan.type.methods
             .filter(WinRTMethodDefinition::isOrdinaryProjectedMethod)
+            .filter { retainsInstanceMember(plan, it.projectedMethodName()) }
             .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
             .filterNot { method -> isRuntimeClassDelegatedMember(plan, method.abiSlotConstantName(plan.type.methods)) }
             .filterNot { method ->
@@ -1926,6 +1957,9 @@ class KotlinProjectionRenderer(
         val delegatedTargets = runtimeClassDelegatedInterfaceTargets(plan).keys
         runtimeClassInterfaceProjectionForwardTargets(plan).values
             .filterNot { it.interfaceName in delegatedTargets }
+            // CsWinRT creates interface caches on demand. An entirely unused forwarding
+            // surface needs no lazy initializer that roots its proxy in Native codegen.
+            .filter { nativeInstanceMemberDemand?.requiresInstanceSurface(it.rawInterfaceName) != false }
             .distinctBy { it.projectionPropertyName }
             .sortedBy { it.projectionPropertyName }
             .forEach { target ->

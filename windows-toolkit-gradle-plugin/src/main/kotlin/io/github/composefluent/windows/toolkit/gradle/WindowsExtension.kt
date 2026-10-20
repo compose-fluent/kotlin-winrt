@@ -75,6 +75,12 @@ abstract class PackageReferencesConfigurationSupport @Inject constructor(
 ) : PackageReferencesConfiguration {
     override val includeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val includeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    // Compiler-discovered roots affect generation, but do not declare a local projection owner.
+    // Keeping them separate also prevents source discovery from deciding its own source roots.
+    internal val compilerRequiredTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    internal val effectiveIncludeTypes = includeTypes.zip(compilerRequiredTypes) { declared, required ->
+        (declared + required).distinct()
+    }
     override val excludeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val excludeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val additionExcludeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
@@ -245,7 +251,7 @@ abstract class WindowsExtension @Inject constructor(
     }
 
     internal val includeNamespaces get() = packageReferences.includeNamespaces
-    internal val includeTypes get() = packageReferences.includeTypes
+    internal val includeTypes get() = packageReferences.effectiveIncludeTypes
     internal val excludeNamespaces get() = packageReferences.excludeNamespaces
     internal val excludeTypes get() = packageReferences.excludeTypes
     internal val additionExcludeNamespaces get() = packageReferences.additionExcludeNamespaces

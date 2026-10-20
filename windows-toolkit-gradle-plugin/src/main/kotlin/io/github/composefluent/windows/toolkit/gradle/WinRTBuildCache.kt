@@ -33,6 +33,11 @@ internal fun <T> withPreparedSourceStoreLock(store: Path, action: () -> T): T =
 
 /** Call under the store lock, after generation AND materialization have finished. */
 internal fun retainRecentPreparedSources(store: Path, current: Path, retainedEntries: Int = 3) {
+    retainRecentWinRTCacheEntries(store, current, retainedEntries)
+}
+
+/** Both prepared sources and successful Native owner compilations use committed manifests. */
+internal fun retainRecentWinRTCacheEntries(store: Path, current: Path, retainedEntries: Int = 3) {
     require(retainedEntries > 0)
     require(current.parent == store && Files.isDirectory(current, NOFOLLOW_LINKS))
     Files.setLastModifiedTime(current, FileTime.fromMillis(System.currentTimeMillis()))
@@ -47,7 +52,7 @@ internal fun retainRecentPreparedSources(store: Path, current: Path, retainedEnt
         // Only immediate, recognized cache children are eligible. Never recurse through a supplied path.
         check(entry.parent == store)
         runCatching { GradleFileOperations.deleteDirectory(entry) }.onFailure { error ->
-            Logging.getLogger("WinRTBuildCache").info("Could not retire prepared projection cache $entry", error)
+            Logging.getLogger("WinRTBuildCache").info("Could not retire projection cache $entry", error)
         }
     }
 }

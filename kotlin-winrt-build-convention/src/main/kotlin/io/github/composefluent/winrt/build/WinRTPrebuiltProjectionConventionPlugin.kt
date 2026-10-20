@@ -44,7 +44,9 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         // CsWinRT's WinAppSDK projection compiles against its Windows
         // ProjectReference. Supply those references to the standalone compiler
         // classpaths without exporting them through source-set dependencies.
-        project.configurations.matching { it.name == "kotlinWinRTProjectionJvmCompileClasspath" }
+        project.configurations.matching {
+            it.name == "kotlinWinRTProjectionJvmCompileClasspath" || it.name == "kotlinWinRTProjectionJvmReferenceCompileClasspath"
+        }
             .configureEach(Action<Configuration> { extendsFrom(compileOnlyConfiguration.get()) })
         project.extensions.getByType(KotlinMultiplatformExtension::class.java)
             .targets.withType(KotlinNativeTarget::class.java)
@@ -59,6 +61,12 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(
             Action<KotlinJvmCompile> {
                 compilerOptions.freeCompilerArgs.add(NO_SOURCE_DEBUG_EXTENSION_ARGUMENT)
+                if (name.startsWith("compileKotlinWinRTProjection")) {
+                    // Match the root projection module: generated ABI bodies already have
+                    // fixed call shapes. The JVM optimizer's data-flow passes retain large
+                    // analysis graphs for full SDK initializers, including reference builds.
+                    compilerOptions.freeCompilerArgs.add("-Xno-optimize")
+                }
             },
         )
 
@@ -76,7 +84,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         )
         val nativeCompilationTasks = project.tasks.withType(KotlinNativeCompile::class.java)
             .matching { task ->
-                task.name == "compileKotlinMingwX64" || task.name == "compileWinRTProjectionKotlinMingwX64"
+                task.name == "compileKotlinMingwX64" || task.name == "compileWinRTProjectionReferenceKotlinMingwX64"
             }
         val compiledNativeKlibs = project.objects.fileCollection()
         // Projection declarations live in their own compilation. The main
@@ -93,7 +101,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 dependsOn(nativeCompilationTasks)
                 binaryArtifacts.from(compiledNativeKlibs)
                 markers.set(CALL_SITE_PLACEHOLDERS)
-                artifactDescription.set("compiled mingwX64 projection klib")
+                artifactDescription.set("published mingwX64 contracts and business overlays")
             },
         )
         configureNativeProjectionPublication(project, verifyMingwX64CallSiteLowering)
@@ -154,6 +162,10 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
             )
             compiledClassesDirectories.from(compiledJvmProjectionClasses)
             maxTotalClassBytes.set(PREBUILT_MAX_TOTAL_CLASS_BYTES)
+            // Full SDK compilers deliberately skip JVM optimization. Keep a
+            // separate budget for their fixed-shape bridge bytecode (currently
+            // up to 1.17 MB), while still omitting duplicate SMAP annotations.
+            maxClassFileBytes.set(PREBUILT_MAX_CLASS_FILE_BYTES)
             crossArtifactClassOwners.add(project.name)
             crossArtifactClassDirectories.from(compiledJvmProjectionClasses)
         })
@@ -284,11 +296,12 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                 var promotedProjection = false
                 outgoing.artifacts.all(Action<PublishArtifact> artifactAdded@{
                     if (promotedProjection) return@artifactAdded
-                    val projection = project.tasks.findByName("compileWinRTProjectionKotlinMingwX64")
-                        as? KotlinNativeCompile ?: return@artifactAdded
+                    val projection = project.tasks.findByName("mingwX64WinRTProjectionReferenceKlib")
+                        ?: return@artifactAdded
+                    val projectionFile = projection.outputs.files.singleFile
                     // Gradle notifies this set before applying the artifact's
                     // classifier action, so identify the producer by its file.
-                    if (file != projection.outputFile.get()) return@artifactAdded
+                    if (file != projectionFile) return@artifactAdded
                     val main = project.tasks.findByName("compileKotlinMingwX64")
                         as? KotlinNativeCompile ?: return@artifactAdded
                     // SDK projections generate interop overlays such as
@@ -301,7 +314,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
                     promotedProjection = true
                     apiElements.outgoing.artifacts.remove(this)
                     apiElements.outgoing.artifacts.removeAll { it.extension == "klib" }
-                    apiElements.outgoing.artifact(projection.outputFile, Action<ConfigurablePublishArtifact> {
+                    apiElements.outgoing.artifact(projectionFile, Action<ConfigurablePublishArtifact> {
                         extension = "klib"
                         type = "klib"
                         builtBy(projection, verification)
@@ -320,6 +333,7 @@ class WinRTPrebuiltProjectionConventionPlugin : Plugin<Project> {
         const val PUBLICATION_VALIDATION_TASK_NAME = "validatePrebuiltProjectionPublication"
         val NATIVE_OVERLAY_PROJECTION_MODULES = setOf("windows-sdk", "windows-app-sdk")
         const val PREBUILT_MAX_TOTAL_CLASS_BYTES = 150_000_000L
+        const val PREBUILT_MAX_CLASS_FILE_BYTES = 1_200_000L
         const val JVM_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteLowering"
         const val JVM_DIRECT_CALL_SITE_VERIFICATION_TASK_NAME = "verifyJvmProjectionCallSiteDirectLowering"
         const val MINGW_CALL_SITE_VERIFICATION_TASK_NAME = "verifyMingwX64ProjectionCallSiteLowering"

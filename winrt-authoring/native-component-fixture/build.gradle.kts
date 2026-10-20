@@ -29,6 +29,11 @@ windows {
     }
 }
 
+val generatedProjectionSources = tasks.named(
+    "generateWinRTProjections",
+    io.github.composefluent.windows.toolkit.gradle.GenerateWinRTProjectionsTask::class,
+).flatMap { it.outputDirectory }
+
 val verifyNativeAuthoringComponentFixture by tasks.registering(
     io.github.composefluent.windows.toolkit.gradle.VerifyWinRTNativeAuthoringComponentFixtureTask::class,
 ) {
@@ -41,10 +46,10 @@ val verifyNativeAuthoringComponentFixture by tasks.registering(
     authoredHostManifest.set(layout.buildDirectory.file("kotlin-winrt/native-authoring/compileKotlinMingwX64/kotlin-winrt-authoring/native-component-fixture.host.json"))
     identityFile.set(layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt.json"))
     activationFactoryPlanSource.set(
-        layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/io/github/composefluent/winrt/projections/support/WinRTAuthoringActivationFactoryPlan.kt"),
+        generatedProjectionSources.map { it.file("io/github/composefluent/winrt/projections/support/WinRTAuthoringActivationFactoryPlan.kt") },
     )
     serverActivationFactoriesSource.set(
-        layout.buildDirectory.file("generated/kotlin-winrt/src/commonMain/kotlin/io/github/composefluent/winrt/projections/support/WinRTAuthoringServerActivationFactories_native_component_fixture_dll.kt"),
+        generatedProjectionSources.map { it.file("io/github/composefluent/winrt/projections/support/WinRTAuthoringServerActivationFactories_native_component_fixture_dll.kt") },
     )
     runtimeClassNames.set(
         listOf(

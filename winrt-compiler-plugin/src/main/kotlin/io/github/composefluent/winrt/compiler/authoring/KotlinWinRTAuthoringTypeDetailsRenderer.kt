@@ -39,6 +39,7 @@ import io.github.composefluent.winrt.metadata.isWinRTTypeTypeName
 import io.github.composefluent.winrt.metadata.isWinRTVoidTypeName
 import io.github.composefluent.winrt.metadata.winRTFundamentalTypeForName
 import io.github.composefluent.winrt.metadata.winRTCollectionKindForAbiName
+import io.github.composefluent.winrt.metadata.WinRTCollectionInterfaceKind
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -162,6 +163,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         metadataModel: WinRTMetadataModel,
         outputDirectory: Path,
         assemblyName: String? = null,
+        declarationTransform: (FileSpec) -> FileSpec = { it },
     ) {
         val typesByName = metadataModel.namespaces
             .flatMap { namespace -> namespace.types }
@@ -175,12 +177,12 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
             val packageDirectory = ownerRoot.resolve(candidate.packageName.replace('.', '/'))
             packageDirectory.createDirectories()
             val file = render(candidate, interfaces, typesByName, semanticHelpers, authoredRuntimeClassNames)
-            writeIfChanged(file, ownerRoot).also(expectedFiles::add)
+            writeIfChanged(declarationTransform(file), ownerRoot).also(expectedFiles::add)
         }
         val groups = candidates.groupBy { it.sourceSetName }.ifEmpty { mapOf(null to emptyList()) }
         groups.forEach { (owner, ownedCandidates) ->
             val ownerRoot = owner?.let { outputDirectory.resolve("sourceSets/$it") } ?: outputDirectory
-            writeIfChanged(renderRegistrar(ownedCandidates, authoringTypeDetailsRegistrarName(assemblyName, owner)),
+            writeIfChanged(declarationTransform(renderRegistrar(ownedCandidates, authoringTypeDetailsRegistrarName(assemblyName, owner))),
                 ownerRoot).also(expectedFiles::add)
         }
         deleteStaleFiles(outputDirectory, expectedFiles)
@@ -278,15 +280,17 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         // token tables for managed events), rather than SDK member signatures.
         // The shared runtime CCW registry contributes those interfaces when it
         // combines the authored object's identity with its managed contracts.
-        if (semanticHelpers.getMappedType(type.namespace, type.name)?.mappedQualifiedName != null) {
+        val descriptor = AuthoredInterfaceDescriptor(interfaceRef.normalized(), type)
+        if (semanticHelpers.getMappedType(type.namespace, type.name)?.mappedQualifiedName != null &&
+            !descriptor.isRuntimeDictionary) {
             return
         }
         val normalizedInterfaceRef = interfaceRef.normalized()
         if (interfacesByName.containsKey(normalizedInterfaceRef.typeName)) {
             return
         }
-        validateAuthoredInterfaceMemberSupport(candidate, type)
-        interfacesByName[normalizedInterfaceRef.typeName] = AuthoredInterfaceDescriptor(normalizedInterfaceRef, type)
+        if (!descriptor.isRuntimeDictionary) validateAuthoredInterfaceMemberSupport(candidate, type)
+        interfacesByName[normalizedInterfaceRef.typeName] = descriptor
         type.implementedInterfaces.forEach { implemented ->
             val implementedType = instantiateInterfaceDefinition(implemented.interfaceName, typesByName)
                 ?: throw IllegalArgumentException(
@@ -390,7 +394,7 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
         val file = FileSpec.builder(candidate.packageName, typeDetailsName)
             .addAnnotation(generatedAuthoringTypeDetailsSuppressAnnotation())
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
-        interfaces.forEach { descriptor ->
+        interfaces.filterNot { it.isRuntimeDictionary }.forEach { descriptor ->
             val dispatchTarget = authoredDispatchTarget(candidate, descriptor.definition, typesByName, semanticHelpers)
             descriptor.definition.authoredVtableMethods()
                 .mapNotNull { method ->
@@ -497,12 +501,25 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                             add("%T(interfaceId = %T.IInspectable, methods = emptyList()),\n",
                                 winRTInspectableInterfaceDefinitionType, iidType)
                         }
-                        interfaces.forEach { descriptor ->
+                        interfaces.filterNot { it.isRuntimeDictionary }.forEach { descriptor ->
                             add("%L,\n", renderInterface(candidate, descriptor, typesByName, semanticHelpers, authoredRuntimeClassNames))
                         }
                     }
                     .unindent()
-                    .add("),\n")
+                    .add(")")
+                    .apply {
+                        interfaces.filter { it.isRuntimeDictionary }.forEach { descriptor ->
+                            // Runtime2 IDictionaryAdapter owns mapped collection ABI; TypeDetails
+                            // only supplies the closed generic adapters on this authored CCW.
+                            val arguments = descriptor.type.typeArguments
+                            require(arguments.size == 2) { "Authored IMap requires two closed type arguments." }
+                            val method = descriptor.definition.methods.first()
+                            add(" + %T.ccwInterfaceDefinitions(%L, %L)", winRTDictionaryProjectionType,
+                                renderCollectionElementAdapter(method, arguments[0], typesByName, semanticHelpers),
+                                renderCollectionElementAdapter(method, arguments[1], typesByName, semanticHelpers))
+                        }
+                    }
+                    .add(",\n")
                     .apply {
                         if (defaultInterface == null) {
                             add("defaultInterfaceId = %T.IInspectable,\n", iidType)
@@ -808,8 +825,10 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
                             add("%L\n", invocation)
                             add("TODO(%S)\n", "Lowered while compiling the authored WinRT inbound CallSite")
                         } else {
+                            // Parentheses keep KotlinPoet's line wrapping from separating
+                            // the call name from its lambda in an expression-bodied function.
                             add(
-                                "return (%L).also { TODO(%S) }\n",
+                                "return (%L).also({ TODO(%S) })\n",
                                 invocation,
                                 "Lowered while compiling the authored WinRT inbound CallSite",
                             )
@@ -2730,7 +2749,10 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
     private data class AuthoredInterfaceDescriptor(
         val type: WinRTTypeRef,
         val definition: WinRTTypeDefinition,
-    )
+    ) {
+        val isRuntimeDictionary: Boolean
+            get() = winRTCollectionKindForAbiName(definition.qualifiedName) == WinRTCollectionInterfaceKind.Map
+    }
 
     private data class AuthoringDispatchTarget(
         val className: ClassName,
