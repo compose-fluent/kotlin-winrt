@@ -17,7 +17,7 @@ class WinUIXamlHotReloadNativeTest {
         val temporary = allocArray<UShortVar>(32768)
         assertTrue(GetTempPathW(32768u, temporary) > 0u)
         val directory = temporary.toKStringFromUtf16() + "winrt-reload-${GetCurrentProcessId()}-${GetTickCount64()}"
-        assertTrue(CreateDirectoryW(directory, null) != 0)
+        // Runtime startup can precede the IDE listener creating its session folder.
         val queueLock = PlatformLock()
         val queue = mutableListOf<() -> Unit>()
         val registry = WinUIXamlHotReloadRegistry({ { task -> queueLock.withLock { queue += task }; true } }, { _, text -> text })

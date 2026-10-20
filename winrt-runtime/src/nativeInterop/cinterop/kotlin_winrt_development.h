@@ -1,11 +1,12 @@
 #ifndef KOTLIN_WINRT_DEVELOPMENT_H
 #define KOTLIN_WINRT_DEVELOPMENT_H
 /* Windows-only transport mechanics. Projection and UI transactions stay in Kotlin.
- * The IDE creates the session directory; the file grants access only to this user. */
+ * Session directories/files grant access only to this user when created here. */
 #include <winsock2.h>
 #include <windows.h>
 #include <bcrypt.h>
 #include <aclapi.h>
+#include <shlobj.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -70,6 +71,8 @@ static inline int kotlin_winrt_development_publish(kotlin_winrt_development_serv
         !SetSecurityDescriptorDacl(&descriptor, TRUE, acl, FALSE) ||
         !SetSecurityDescriptorControl(&descriptor, SE_DACL_PROTECTED, SE_DACL_PROTECTED)) goto done;
     SECURITY_ATTRIBUTES attributes = { sizeof(SECURITY_ATTRIBUTES), &descriptor, FALSE };
+    int directory_result = SHCreateDirectoryExW(NULL, directory, &attributes);
+    if (directory_result != ERROR_SUCCESS && directory_result != ERROR_ALREADY_EXISTS && directory_result != ERROR_FILE_EXISTS) goto done;
     size_t length = wcslen(directory) + 100;
     wchar_t *temporary = (wchar_t *)calloc(length, sizeof(wchar_t));
     server->session = (wchar_t *)calloc(length, sizeof(wchar_t));
