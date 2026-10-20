@@ -35,7 +35,8 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
                 WinUIXamlHotReloadLaunchData("runWinAppHostJvmMain", "$root/app.exe", "$root/app"),
                 WinUIXamlHotReloadLaunchData("runWinAppPackageJvmMain", "$root/app.exe", "$root/app"),
                 WinUIXamlHotReloadLaunchData("runWinAppNativeMingwX64DebugExecutable", "$root/native.exe", "$root/app", ""),
-                WinUIXamlHotReloadLaunchData("runWinAppPackageMingwX64DebugExecutable", "$root/native.exe", "$root/app", "")))
+                WinUIXamlHotReloadLaunchData("runWinAppPackageMingwX64DebugExecutable", "$root/native.exe", "$root/app", ""),
+                WinUIXamlHotReloadLaunchData("runWinAppNativeMingwX64ReleaseExecutable", "$root/native-release.exe", "$root/app", "")))
         project.service<WinRTProjectService>().replaceBuildModels(root, listOf(module))
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
     }
@@ -78,6 +79,12 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
         }
     }
 
+    fun testNativeReleaseAliasesDiscoverTheReleaseExecutable() {
+        listOf("runReleaseExecutableMingwX64", "runWinAppNativeMingwX64ReleaseExecutable").forEach { task ->
+            val (_, environment, _) = execution(task)
+            assertEquals("$root/native-release.exe", environment.getUserData(WinRTApplicationHotReload.KEY)!!.launch.executable)
+        }
+    }
     fun testDisabledSettingAndUnknownLaunchKeepOrdinaryGradleExecution() {
         settings.hotReloadEnabled = false
         val (_, disabled, nativeSettings) = execution("runWinAppPackageJvmMain")

@@ -31,9 +31,12 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
             ?: return super.getState(executor, environment)
         val task = settings.taskNames.single().substringAfterLast(':')
         val name = WinRTRunConfigurationNames.taskName(module, task) ?: return super.getState(executor, environment)
-        val launch = module.hotReloadLaunches.firstOrNull {
-            it.taskName == task || WinRTRunConfigurationNames.taskName(module, it.taskName) == name
-        } ?: return super.getState(executor, environment)
+        val launch = module.hotReloadLaunches.firstOrNull { it.taskName == task }
+            ?: module.hotReloadLaunches.firstOrNull {
+                WinRTRunConfigurationNames.taskName(module, it.taskName) == name &&
+                    (!task.startsWith("runDebugExecutable") && !task.startsWith("runReleaseExecutable") ||
+                        it.taskName.contains("ReleaseExecutable") == task.startsWith("runReleaseExecutable"))
+            } ?: return super.getState(executor, environment)
         val directory = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}").toAbsolutePath().normalize()
         // The platform runner requires ExternalSystemRunnableState, including
         // for Debug. Clone the native configuration rather than wrapping its state
