@@ -36,9 +36,9 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
     }
     private val markup = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Text="Preview"/></Page>"""
 
-    fun testPreviewIsNotRegisteredWhileTemporarilyDisabled() {
-        val file = myFixture.addFileToProject("Disabled.xaml", markup).virtualFile
-        assertTrue(FileEditorProviderManager.getInstance().getProviders(project, file).none { it is WinUIXamlPreviewEditorProvider })
+    fun testPreviewIsRegisteredForXaml() {
+        val file = myFixture.addFileToProject("Preview.xaml", markup).virtualFile
+        assertTrue(FileEditorProviderManager.getInstance().getProviders(project, file).any { it is WinUIXamlPreviewEditorProvider })
     }
 
     fun testNativeEditorHasPersistentTopRightModeActionsAndKeepsItsXmlDocument() {

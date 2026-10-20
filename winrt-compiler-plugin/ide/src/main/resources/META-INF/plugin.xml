@@ -23,7 +23,7 @@
         <fileType name="WinRT AppX XML" language="XML" extensions="resw;appxmanifest"
                   implementationClass="io.github.composefluent.winrt.ide.resources.AppxManifestXmlFileType" fieldName="INSTANCE"/>
         <fileEditorProvider implementation="io.github.composefluent.winrt.ide.resources.WinRTXmlFormEditorProvider"/>
-        <!-- Preview is temporarily unavailable; keep XAML in the native text editor. -->
+        <fileEditorProvider implementation="io.github.composefluent.winrt.ide.preview.WinUIXamlPreviewEditorProvider"/>
         <xml.schemaProvider implementation="io.github.composefluent.winrt.ide.resources.AppxManifestSchemaProvider"/>
         <newProjectWizard.generator implementation="io.github.composefluent.winrt.ide.templates.WinRTProjectWizard"/>
         <fileType name="WinRT XAML" language="XML" extensions="xaml"

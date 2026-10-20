@@ -77,7 +77,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             selection.selectRoot(WinUIXamlVisualInspectionSelection.key(root))
     }
     var launchName by remember(module?.projectDirectory) { mutableStateOf<String?>(null) }
-    val launches = module?.hotReloadLaunches.orEmpty().distinctBy { it.executable }
+    val launches = module?.hotReloadLaunches.orEmpty().filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
     val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
     var projectCode by remember(module?.projectDirectory) { mutableStateOf(false) }
     val designLaunch = if (projectCode) launch else module?.staticPreview?.launch()
@@ -170,7 +170,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if ((!state.connected && (!static || staticFile == null)) || static && projectCode) {
             @Composable fun buildOptions() {
                 WinRTModulePicker(project)
-                if (!static || projectCode) WinRTChoice("Application", launches.map { it.taskName to if (it.taskName.startsWith("runWinAppPackage")) "JVM · Packaged" else "JVM · Unpackaged" }, launch?.taskName) { launchName = it }
+                if (!static || projectCode) WinRTChoice("Application", launches.map { it.taskName to it.taskName }, launch?.taskName) { launchName = it }
             }
             if (staticFile != null) WinRTDetails("project code options") { buildOptions() } else buildOptions()
         }

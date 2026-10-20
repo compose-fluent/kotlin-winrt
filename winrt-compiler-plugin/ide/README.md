@@ -450,13 +450,12 @@ misspelled keys still produce the normal unresolved-resource diagnostic.
 
 ## Preview and Visual Tree
 
-Preview is temporarily disabled: its tool-window tab, XAML editor modes and
-preview actions are not registered. **Visual Tree** remains available and connects
+The **Preview** tool-window tab and XAML **Code / Split / Preview** editor modes are enabled.
+**Visual Tree** connects
 to applications launched through IDE Run/Debug. Window roots are identified from
 their XAML and metadata inheritance, excluding the Application and nested controls.
 A single Window is selected automatically; multiple Windows expose a picker.
 
-The following describes the retained, disabled preview implementation.
 Live Preview captures a connected development application's actual WinUI content;
 clicking its image selects the deepest visual at that position. Both tabs share
 component, instance and visual selection. The expandable Jewel tree supports
@@ -562,8 +561,8 @@ directory. The native JVM host consumes it before VM creation and does not pass 
 to application `main`. No token or development configuration is staged in the
 package. The imported launch points to the registered AppX layout's executable,
 which remains subject to the same process and lifetime checks. WinApp 0.6's
-self-contained folder-run limitation and Native's missing development transport
-remain explicit; neither is a general packaged XAML Hot Reload limitation.
+self-contained folder-run limitation remains explicit. Desktop JVM and mingwX64
+launches share the development protocol.
 
 The IDE workspace saves the confirmed launch's module, task, session directory,
 process ID and start time, without its authentication token. After reopening a
@@ -613,7 +612,7 @@ dictionaries, captures in other dictionaries/templates, connected-element remova
 type/name/parent changes, new names or authored controls,
 compiled events/bindings, attached properties and Kotlin changes require rebuilding
 and restarting. There is no page-recreation path. See
-`winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and Native parity gaps.
+`winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 
 The optional graph-host test uses `-Pwinrt.ide.hotReloadGraphSession=<fresh session>`,
 `-Pwinrt.ide.hotReloadGraphSource=<MainWindow.xaml>` and `-Pwinrt.ide.xamlInput=<input.json>`.
@@ -638,8 +637,10 @@ to `WinRTGradleImportTest` to save through the real project component store, clo
 and reopen its imported project, recover the session and apply an unsaved Text edit
 to an existing WinUI application. This uses the native project lifecycle inside
 the platform host; full desktop IDE restart remains separate interactive acceptance.
-The common runtime engine compiles for `mingwX64`, but its development transport and
-end-to-end IDE support currently target JVM. The compatibility matrix records
+The runtime engine and development wire codec are shared by JVM and `mingwX64`.
+Native desktop launches expose the same authenticated session, property updates and
+visual inspection channel. Static preview uses the independent JVM SDK designer;
+project-code static preview remains a JVM host capability. The compatibility matrix records
 backend validation for installed SDKs; desktop interaction still requires
 acceptance in each distribution.
 
