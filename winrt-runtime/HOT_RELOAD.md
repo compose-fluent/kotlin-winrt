@@ -1,6 +1,6 @@
 # XAML development updates
 
-The development transport documented here applies to JVM WinUI applications.
+The development transport documented here applies to JVM and Kotlin/Native mingwX64 desktop WinUI applications.
 UWP AppContainer Hot Reload is not implemented; the shared metadata/property
 engine does not by itself provide a UWP development session. See the
 [UWP guide](../docs/UWP.md) for supported build configuration and remaining checks.
@@ -144,15 +144,23 @@ future ABI-preserving artifact, after subscription ownership exists. Supporting
 new field/binding shapes would require a separately designed code-loading boundary;
 Kotlin code Hot Reload and page recreation are outside the current support scope.
 
-The JVM transport starts only when `KOTLIN_WINRT_HOT_RELOAD_DIRECTORY` is supplied
+The development transport starts only when `KOTLIN_WINRT_HOT_RELOAD_DIRECTORY` is supplied
 to a development process. It uses an ephemeral loopback port, a random 256-bit token,
 bounded binary framing and a session file restricted to its owner. Tokens are not
 part of display models. Invalid clients do not propagate errors into application
 code. Shutdown closes sockets, rejects queued updates and removes only the session
 file created by this transport.
 
-The property engine is common Kotlin and is compiled for JVM and `mingwX64`.
-The development transport currently exists only on JVM. Native explicitly rejects
-an enabled development session. Winsock transport, owner-restricted session files,
-shutdown/cancellation and end-to-end Native UI-thread verification remain Native
-parity work; JVM validation does not claim those capabilities.
+The property engine and bounded wire codec are common Kotlin. The JVM stream
+adapter and the mingwX64 Winsock adapter use the same protocol. Native accepts one
+bounded request at a time on a development worker and dispatches mutations through
+the existing UI queue. Closing the transport interrupts socket operations without
+blocking the UI thread; the worker releases its storage after pending work exits.
+Packaged native launches read the reserved development-directory startup argument,
+matching the JVM launcher's environment setup. The native transport test exercises
+authentication, an owner-thread property update, version advancement and cleanup.
+
+CsWinRT has no IDE socket/session counterpart. The Windows transport is a tooling
+adaptation; projection ownership, custom-property accessors, conversion and UI
+dispatch remain in their existing CsWinRT-aligned owners. This does not provide
+Kotlin code replacement, new bindings/connections, or UWP AppContainer transport.

@@ -1,7 +1,8 @@
 package = io.github.composefluent.winrt.runtime.nativeapi
-headers = kotlin_winrt_com.h
-headerFilter = kotlin_winrt_com.h
+headers = kotlin_winrt_com.h kotlin_winrt_development.h
+headerFilter = kotlin_winrt_com.h kotlin_winrt_development.h
 compilerOpts = -Isrc/nativeInterop/cinterop
+linkerOpts = -lws2_32 -lbcrypt -ladvapi32
 excludedFunctions = kotlin_winrt_compare_exchange_managed_com_reference_count
 
 ---
