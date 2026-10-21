@@ -10,10 +10,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "kotlin_winrt_development_pipe.h"
 
 typedef struct kotlin_winrt_development_server {
     SOCKET listener;
     SOCKET client;
+    kotlin_winrt_development_pipe *pipe;
     CRITICAL_SECTION lock;
     int closed;
     int published;
@@ -27,6 +29,7 @@ static inline void kotlin_winrt_development_stop(kotlin_winrt_development_server
     EnterCriticalSection(&server->lock);
     if (!server->closed) {
         server->closed = 1;
+        if (server->pipe) kotlin_winrt_development_pipe_stop(server->pipe);
         if (server->listener != INVALID_SOCKET) {
             closesocket(server->listener);
             server->listener = INVALID_SOCKET;
@@ -40,32 +43,21 @@ static inline void kotlin_winrt_development_stop(kotlin_winrt_development_server
 static inline void kotlin_winrt_development_destroy(kotlin_winrt_development_server *server) {
     kotlin_winrt_development_stop(server);
     if (server->client != INVALID_SOCKET) closesocket(server->client);
+    if (server->pipe) kotlin_winrt_development_pipe_destroy(server->pipe);
     DeleteCriticalSection(&server->lock);
     free(server->session);
     free(server);
     WSACleanup();
 }
 static inline int kotlin_winrt_development_publish(kotlin_winrt_development_server *server, const wchar_t *directory) {
-    HANDLE process_token = NULL;
-    DWORD size = 0;
-    TOKEN_USER *user = NULL;
     PACL acl = NULL;
     HANDLE file = INVALID_HANDLE_VALUE;
     int success = 0;
     /* Require an absolute drive or UNC path, as on JVM. */
     if (!directory || !(directory[0] && directory[1] == L':' && (directory[2] == L'\\' || directory[2] == L'/')) &&
         !(directory[0] == L'\\' && directory[1] == L'\\')) return 0;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &process_token)) goto done;
-    GetTokenInformation(process_token, TokenUser, NULL, 0, &size);
-    user = (TOKEN_USER *)malloc(size);
-    if (!user || !GetTokenInformation(process_token, TokenUser, user, size, &size)) goto done;
-    EXPLICIT_ACCESSW access = {0};
-    access.grfAccessPermissions = GENERIC_ALL;
-    access.grfAccessMode = SET_ACCESS;
-    access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-    access.Trustee.TrusteeType = TRUSTEE_IS_USER;
-    access.Trustee.ptstrName = (LPWSTR)user->User.Sid;
-    if (SetEntriesInAclW(1, &access, NULL, &acl) != ERROR_SUCCESS) goto done;
+    acl = kotlin_winrt_development_acl();
+    if (!acl) goto done;
     SECURITY_DESCRIPTOR descriptor;
     if (!InitializeSecurityDescriptor(&descriptor, SECURITY_DESCRIPTOR_REVISION) ||
         !SetSecurityDescriptorDacl(&descriptor, TRUE, acl, FALSE) ||
@@ -82,8 +74,8 @@ static inline int kotlin_winrt_development_publish(kotlin_winrt_development_serv
     swprintf(server->session, length, L"%ls\\%lu-%u.session", directory, GetCurrentProcessId(), server->port);
     file = CreateFileW(temporary, GENERIC_WRITE, 0, &attributes, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file != INVALID_HANDLE_VALUE) {
-        char properties[200];
-        int count = snprintf(properties, sizeof(properties), "protocol=%d\nport=%u\ntoken=%s\npid=%lu\n", server->protocol, server->port, server->token, GetCurrentProcessId());
+        char properties[320];
+        int count = snprintf(properties, sizeof(properties), "protocol=%d\nport=%u\ntoken=%s\npid=%lu\npipe=%s\n", server->protocol, server->port, server->token, GetCurrentProcessId(), server->pipe ? server->pipe->name : "");
         DWORD written = 0;
         success = WriteFile(file, properties, count, &written, NULL) && written == (DWORD)count && FlushFileBuffers(file);
         CloseHandle(file); file = INVALID_HANDLE_VALUE;
@@ -95,8 +87,6 @@ static inline int kotlin_winrt_development_publish(kotlin_winrt_development_serv
  done:
     if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
     if (acl) LocalFree(acl);
-    free(user);
-    if (process_token) CloseHandle(process_token);
     return success;
 }
 static inline kotlin_winrt_development_server *kotlin_winrt_development_open(const wchar_t *directory, int protocol) {
@@ -117,6 +107,12 @@ static inline kotlin_winrt_development_server *kotlin_winrt_development_open(con
         while (available >= 6) { available -= 6; server->token[output++] = alphabet[(bits >> available) & 63]; }
     }
     if (available) server->token[output++] = alphabet[(bits << (6 - available)) & 63];
+    wchar_t transport[16];
+    if (GetEnvironmentVariableW(L"KOTLIN_WINRT_DEVELOPMENT_TRANSPORT", transport, 16) == 4 && wcscmp(transport, L"pipe") == 0) {
+        server->pipe = kotlin_winrt_development_pipe_open();
+        if (!server->pipe || !kotlin_winrt_development_publish(server, directory)) goto fail;
+        return server;
+    }
     server->listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (server->listener == INVALID_SOCKET) goto fail;
     BOOL exclusive = TRUE;
@@ -140,6 +136,10 @@ static inline int kotlin_winrt_development_socket_timeout(uint64_t socket_handle
         setsockopt((SOCKET)socket_handle, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) == 0;
 }
 static inline int kotlin_winrt_development_accept(kotlin_winrt_development_server *server) {
+    if (server->pipe) {
+        DWORD count = 0;
+        return kotlin_winrt_development_pipe_io(server->pipe, 0, NULL, 0, INFINITE, &count);
+    }
     EnterCriticalSection(&server->lock);
     SOCKET listener = server->listener;
     int closed = server->closed;
@@ -156,10 +156,12 @@ static inline int kotlin_winrt_development_accept(kotlin_winrt_development_serve
 }
 static inline void kotlin_winrt_development_disconnect(kotlin_winrt_development_server *server) {
     EnterCriticalSection(&server->lock);
+    if (server->pipe) DisconnectNamedPipe(server->pipe->handle);
     if (server->client != INVALID_SOCKET) { closesocket(server->client); server->client = INVALID_SOCKET; }
     LeaveCriticalSection(&server->lock);
 }
 static inline int kotlin_winrt_development_read(kotlin_winrt_development_server *server, void *bytes, int length) {
+    if (server->pipe) return kotlin_winrt_development_pipe_transfer(server->pipe, 1, bytes, length);
     int offset = 0;
     ULONGLONG deadline = GetTickCount64() + 3000;
     while (offset < length) {
@@ -171,6 +173,13 @@ static inline int kotlin_winrt_development_read(kotlin_winrt_development_server 
     return 1;
 }
 static inline int kotlin_winrt_development_write(kotlin_winrt_development_server *server, const void *bytes, int length) {
+    if (server->pipe) {
+        /* DisconnectNamedPipe discards unread buffered bytes. A bounded receipt
+         * replaces an unbounded synchronous FlushFileBuffers on the worker. */
+        unsigned char receipt = 0;
+        return kotlin_winrt_development_pipe_transfer(server->pipe, 2, (void *)bytes, length) &&
+            kotlin_winrt_development_pipe_transfer(server->pipe, 1, &receipt, 1) && receipt == 0x6b;
+    }
     int offset = 0;
     ULONGLONG deadline = GetTickCount64() + 3000;
     while (offset < length) {

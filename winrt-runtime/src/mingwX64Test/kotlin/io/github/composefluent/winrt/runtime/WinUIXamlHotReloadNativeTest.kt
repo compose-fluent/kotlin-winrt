@@ -13,7 +13,10 @@ import kotlin.test.*
  * shared UI dispatcher/transaction owner; no COM objects cross this socket. */
 class WinUIXamlHotReloadNativeTest {
     private class Element(var text: String = "before")
-    @Test fun authenticates_loopback_and_removes_session_on_close() = memScoped {
+    @Test fun authenticates_loopback_and_removes_session_on_close() = exerciseTransport(false)
+    @Test fun authenticates_named_pipe_and_removes_session_on_close() = exerciseTransport(true)
+
+    private fun exerciseTransport(pipeMode: Boolean) = memScoped {
         val temporary = allocArray<UShortVar>(32768)
         assertTrue(GetTempPathW(32768u, temporary) > 0u)
         val directory = temporary.toKStringFromUtf16() + "winrt-reload-${GetCurrentProcessId()}-${GetTickCount64()}"
@@ -28,7 +31,12 @@ class WinUIXamlHotReloadNativeTest {
                 { (it as Element).text }, { target, value -> (target as Element).text = value as String }))))
         registry.observe(element, "native.Page", "Page.xaml", "a".repeat(64), "Greeting", element)
         registry.observe(element, "native.Page", "Page.xaml", "a".repeat(64), null, null)
-        val server = NativeWinUIXamlHotReloadServer(registry, directory)
+        val transportVariable = "KOTLIN_WINRT_DEVELOPMENT_TRANSPORT"
+        val previousTransport = platformGetWindowsEnvironmentVariable(transportVariable)
+        val server = try {
+            SetEnvironmentVariableW(transportVariable, if (pipeMode) "pipe" else null)
+            NativeWinUIXamlHotReloadServer(registry, directory)
+        } finally { SetEnvironmentVariableW(transportVariable, previousTransport) }
         var session = ""
         try {
             val data = alloc<WIN32_FIND_DATAW>()
@@ -48,30 +56,50 @@ class WinUIXamlHotReloadNativeTest {
             } finally { CloseHandle(file) }
             assertEquals(WinUIXamlHotReloadProtocol.VERSION.toString(), properties["protocol"])
             assertTrue(properties.getValue("token").matches(Regex("[A-Za-z0-9_-]{43}")))
+            val pipePath = "\\\\.\\pipe\\LOCAL\\${properties.getValue("pipe")}"
+            if (pipeMode) {
+                assertEquals("0", properties["port"])
+                assertTrue(properties.getValue("pipe").startsWith("KotlinWinRT.${GetCurrentProcessId()}."))
+            }
             fun request(token: String, patch: WinUIXamlHotReloadPatch? = null): WinUIXamlHotReloadReply {
-                val client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-                assertTrue(client != INVALID_SOCKET)
+                val client = if (pipeMode) INVALID_SOCKET else socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+                val pipe = if (!pipeMode) INVALID_HANDLE_VALUE else {
+                    assertTrue(WaitNamedPipeW(pipePath, 3000u) != 0)
+                    CreateFileW(pipePath, GENERIC_READ.toUInt() or GENERIC_WRITE.toUInt(), 0u, null,
+                        OPEN_EXISTING.toUInt(), 0u, null).also { assertTrue(it != INVALID_HANDLE_VALUE) }
+                }
                 try {
-                    val address = alloc<sockaddr_in>()
-                    address.sin_family = AF_INET.toShort()
-                    address.sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK.toUInt())
-                    address.sin_port = htons(properties.getValue("port").toUShort())
-                    assertEquals(0, connect(client, address.ptr.reinterpret(), sizeOf<sockaddr_in>().toInt()))
-                    assertEquals(1, kotlin_winrt_development_socket_timeout(client, 3000u))
+                    if (!pipeMode) {
+                        assertTrue(client != INVALID_SOCKET)
+                        val address = alloc<sockaddr_in>()
+                        address.sin_family = AF_INET.toShort()
+                        address.sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK.toUInt())
+                        address.sin_port = htons(properties.getValue("port").toUShort())
+                        assertEquals(0, connect(client, address.ptr.reinterpret(), sizeOf<sockaddr_in>().toInt()))
+                        assertEquals(1, kotlin_winrt_development_socket_timeout(client, 3000u))
+                    }
 
-                    val bytes = WinUIXamlHotReloadCodec.writeRequest(token, patch)
-                    bytes.usePinned { pinned ->
+                    fun transmit(bytes: ByteArray) = bytes.usePinned { pinned ->
                         var offset = 0
                         while (offset < bytes.size) {
-                            val count = send(client, pinned.addressOf(offset), bytes.size - offset, 0)
+                            val count = if (!pipeMode) send(client, pinned.addressOf(offset), bytes.size - offset, 0) else {
+                                val written = alloc<UIntVar>()
+                                assertTrue(WriteFile(pipe, pinned.addressOf(offset), (bytes.size - offset).toUInt(), written.ptr, null) != 0)
+                                written.value.toInt()
+                            }
                             assertTrue(count > 0); offset += count
                         }
                     }
+                    transmit(WinUIXamlHotReloadCodec.writeRequest(token, patch))
                     fun receive(length: Int) = ByteArray(length).also { buffer ->
                         buffer.usePinned { pinned ->
                             var offset = 0
                             while (offset < length) {
-                                val count = recv(client, pinned.addressOf(offset), length - offset, 0)
+                                val count = if (!pipeMode) recv(client, pinned.addressOf(offset), length - offset, 0) else {
+                                    val read = alloc<UIntVar>()
+                                    assertTrue(ReadFile(pipe, pinned.addressOf(offset), (length - offset).toUInt(), read.ptr, null) != 0)
+                                    read.value.toInt()
+                                }
                                 assertTrue(count > 0); offset += count
                             }
                         }
@@ -86,8 +114,10 @@ class WinUIXamlHotReloadNativeTest {
                         assertNotNull(action, "Native transport must enqueue on the owning UI thread").invoke()
                     }
                     val header = receive(12)
-                    return WinUIXamlHotReloadCodec.readReply(header + receive(WinUIXamlHotReloadCodec.frameSize(header)))
-                } finally { closesocket(client) }
+                    return WinUIXamlHotReloadCodec.readReply(header + receive(WinUIXamlHotReloadCodec.frameSize(header))).also {
+                        if (pipeMode) transmit(byteArrayOf(0x6b))
+                    }
+                } finally { if (pipeMode) CloseHandle(pipe) else closesocket(client) }
             }
             assertEquals(WinUIXamlHotReloadProtocol.REJECTED, request("wrong").status)
             assertEquals(WinUIXamlHotReloadProtocol.APPLIED, request(properties.getValue("token")).status)

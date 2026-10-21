@@ -166,6 +166,15 @@ Packaged native launches read the reserved development-directory startup argumen
 matching the JVM launcher's environment setup. The native transport test exercises
 authentication, an owner-thread property update, version advancement and cleanup.
 
+Native hosts can select a local named pipe with
+`KOTLIN_WINRT_DEVELOPMENT_TRANSPORT=pipe`. It uses the same authenticated frames,
+bounded overlapped I/O and owner-thread dispatch. Its ACL includes only the current
+user and, when present, the current AppContainer SID. The IDE accepts only the
+process-bound `LOCAL` pipe name recorded in the session and cancels pending reads
+on session close. A bounded receipt keeps DisconnectNamedPipe from discarding an
+unread reply. Windows Native transport and IDE pipe interoperability tests cover
+this channel; UWP activation/session-directory integration remains a separate gate.
+
 The native application entry wrapper also reads these arguments before choosing
 the project-code static designer. Preview mode starts the generated Application,
 registers project and dependency XAML types, and retains a hidden preview Window;
