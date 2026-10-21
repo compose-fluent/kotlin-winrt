@@ -7,6 +7,9 @@ package io.github.composefluent.winrt.runtime
  * The generated code supplies typed accessors and subscriptions, never paths.
  */
 class WinUIXamlBindingState {
+    // Event x:Bind connections outlive a tracking refresh and template recycling.
+    // DisconnectUnloadedObject, rather than StopTracking, owns their removal.
+    val eventConnections = WinUIXamlConnectionState()
     private var active = false
     private var updating = false
     private data class Subscription(val phase: Int, val remove: () -> Unit)

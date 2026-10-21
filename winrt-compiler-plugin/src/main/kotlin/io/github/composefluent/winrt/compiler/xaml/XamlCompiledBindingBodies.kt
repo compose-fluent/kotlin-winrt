@@ -335,7 +335,9 @@ internal class XamlCompiledBindingBodies(
                         for (binding in connection.bindings.filter { it.isEvent }) {
                             +eventSubscription(this, klass, binding, irGet(requireNotNull(connect.dispatchReceiverParameter)),
                                 target(parameters[0], connection), irGet(parameters[0]),
-                                projection(connections.first { it.isScopeRoot }.dataTypeName ?: "System.Object").defaultType)
+                                projection(connections.first { it.isScopeRoot }.dataTypeName ?: "System.Object").defaultType,
+                                connectionId = connection.id,
+                                bindingState = irCall(bindingState.symbol).apply { dispatchReceiver = irGet(parameters[0]) })
                         }
                         +irUnit()
                     })
@@ -376,6 +378,16 @@ internal class XamlCompiledBindingBodies(
                         { nested.irGet(receiver) },
                         { nested.irGetField(nested.irGet(receiver), requireNotNull(properties.getValue(requireNotNull(connection.storageName())).backingField)) }) { cleanup ->
                         for (element in page.connections.filter { it.id == connection.id || it.id in connection.children }) {
+                            with(cleanup) {
+                                val ordinary = requireNotNull(properties.getValue(xamlConnectionStateName.asString()).backingField)
+                                +irCall(requireNotNull(pluginContext.referenceClass(xamlConnectionStateId)).owner.functions.single {
+                                    it.name.asString() == "disconnect"
+                                }).apply {
+                                    dispatchReceiver = irGetField(irGet(receiver), ordinary)
+                                    arguments[1] = irInt(element.id)
+                                }
+                                +disconnectEventBindings(this, irGetField(irGet(receiver), state), element.id)
+                            }
                             element.storageName()?.let { name -> with(cleanup) {
                                 val field = requireNotNull(properties.getValue(name).backingField)
                                 preserveDeferredBindings(this, element, { irGetField(irGet(receiver), state) },
@@ -562,8 +574,9 @@ internal class XamlCompiledBindingBodies(
 
     fun eventSubscription(builder: IrBuilderWithScope, klass: IrClass, binding: WinUIXamlBindingDeclaration,
         receiver: IrExpression, target: IrExpression, scope: IrExpression? = null,
-        dataType: IrType? = null): IrExpression = with(builder) {
+        dataType: IrType? = null, connectionId: Int, bindingState: IrExpression): IrExpression = with(builder) {
         val add = projection(binding.declaringTypeName).functions.single { it.name.asString() == "add${binding.name}" }
+        val remove = projection(binding.declaringTypeName).functions.single { it.name.asString() == "remove${binding.name}" }
         val delegateType = add.parameters.single { it.kind == IrParameterKind.Regular }.type
         val delegateClass = requireNotNull(delegateType.classOrNull).owner
         val invoke = delegateClass.functions.single { it.name.asString() == "invoke" }
@@ -596,7 +609,38 @@ internal class XamlCompiledBindingBodies(
             type = pluginContext.irBuiltIns.functionN(2).symbol.typeWith(types + pluginContext.irBuiltIns.unitType)
             arguments[0] = scope ?: receiver; arguments[1] = dispatch
         }, delegateType)
-        irCall(add.symbol).apply { dispatchReceiver = target; arguments[1] = handler }
+        irBlock {
+            val eventSource = irTemporary(target)
+            val callback = irTemporary(handler)
+            val registrationType = remove.parameters.single { it.kind == IrParameterKind.Regular }.type
+            val addCall = irCall(add.symbol).apply { dispatchReceiver = irGet(eventSource); arguments[1] = irGet(callback) }
+            val registration = irTemporary(xamlEventRegistration(this, addCall, irGet(callback), registrationType))
+            +irCall(requireNotNull(pluginContext.referenceClass(xamlConnectionStateId)).owner.functions.single {
+                it.name.asString() == "trackEvent"
+            }).apply {
+                dispatchReceiver = eventConnections(this@irBlock, bindingState)
+                typeArguments[0] = requireNotNull(remove.dispatchReceiverParameter).type
+                typeArguments[1] = registrationType
+                arguments[1] = irInt(connectionId)
+                arguments[2] = irGet(eventSource)
+                arguments[3] = irGet(registration)
+                arguments[4] = xamlFunctionReference(pluginContext, remove)
+            }
+        }
+    }
+
+    private fun eventConnections(builder: IrBuilderWithScope, bindingState: IrExpression): IrExpression = with(builder) {
+        irCall(requireNotNull(property(requireNotNull(pluginContext.referenceClass(xamlBindingStateId)).owner,
+            "eventConnections")?.getter).symbol).apply { dispatchReceiver = bindingState }
+    }
+
+    fun disconnectEventBindings(builder: IrBuilderWithScope, bindingState: IrExpression, connectionId: Int): IrExpression = with(builder) {
+        irCall(requireNotNull(pluginContext.referenceClass(xamlConnectionStateId)).owner.functions.single {
+            it.name.asString() == "disconnect"
+        }).apply {
+            dispatchReceiver = eventConnections(builder, bindingState)
+            arguments[1] = irInt(connectionId)
+        }
     }
 
     private fun converter(builder: IrBuilderWithScope, klass: IrClass, receiver: IrExpression,

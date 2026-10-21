@@ -30,7 +30,10 @@ class WinUIXamlBindingScope(owner: WinUIXamlBindingScopeOwner, val scopeId: Int)
 
     fun targetOrNull(connectionId: Int): Any? = targets[connectionId]
 
-    fun disconnect(connectionId: Int) { targets.remove(connectionId) }
+    fun disconnect(connectionId: Int) {
+        state.eventConnections.disconnect(connectionId)
+        targets.remove(connectionId)
+    }
 
     fun registerPhase(connectionId: Int, phase: Int) { phases[connectionId] = phase }
     fun phaseOf(connectionId: Int): Int = phases[connectionId] ?: 0
@@ -40,6 +43,7 @@ class WinUIXamlBindingScope(owner: WinUIXamlBindingScopeOwner, val scopeId: Int)
 
     fun connect(connectionId: Int, target: Any?) {
         requireNotNull(target) { "XAML template connection $connectionId has a null target" }
+        state.eventConnections.disconnect(connectionId)
         if (FeatureSwitches.traceCcw) {
             println("winrt-xaml-binding: owner=${owner.tryGetTarget()?.let { it::class }} scope=$scopeId connection=$connectionId target=${target::class}")
         }

@@ -133,9 +133,12 @@ its previous subscriptions from the original source using the original token (or
 handler for mapped events). Failed cleanup attempts the remaining removers and
 blocks further connection changes. This follows CsWinRT EventSource's paired
 Subscribe/Unsubscribe ownership. Binding tracking remains separately owned.
-Template generation ownership, compiled event bindings and a transactional
-compiler-emitted reconnect artifact still need their corresponding contracts;
-retaining ordinary event subscriptions does not make generated fields extensible.
+Compiled event bindings have a separate connection state on the page binding owner
+or individual template scope. Tracking refresh and recycling retain those event
+connections; replacing a slot or unloading a deferred element releases them.
+Ordinary events on template children still need template-generation ownership.
+A transactional compiler-emitted reconnect artifact also remains separate;
+retaining event subscriptions does not make generated fields extensible.
 
 Adding, removing or renaming x:Name can change generated fields/accessors. A changed
 x:Bind path can change private typed calls, generated callbacks and tracking state.

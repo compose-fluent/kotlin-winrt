@@ -305,9 +305,16 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                                         }
                                     }
                                 }
+                                if (bindingOnly && connection.bindings.any { it.isEvent }) {
+                                    +XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework).disconnectEventBindings(this,
+                                        irGetField(irGet(requireNotNull(connect.dispatchReceiverParameter)),
+                                            requireNotNull(properties.getValue(xamlBindingStateName.asString()).backingField)), connection.id)
+                                }
                                 for (event in connection.bindings.filter { bindingOnly && it.isEvent }) {
                                     +XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework).eventSubscription(this, klass, event,
-                                        irGet(requireNotNull(connect.dispatchReceiverParameter)), irGet(target))
+                                        irGet(requireNotNull(connect.dispatchReceiverParameter)), irGet(target), connectionId = connection.id,
+                                        bindingState = irGetField(irGet(requireNotNull(connect.dispatchReceiverParameter)),
+                                            requireNotNull(properties.getValue(xamlBindingStateName.asString()).backingField)))
                                 }
                                 if (bindingOnly && connection.canBeInstantiatedLater) {
                                     val receiver = requireNotNull(connect.dispatchReceiverParameter)
