@@ -71,6 +71,12 @@ class WinRTIdeModelBuilderTest {
             .filter { it.taskName.startsWith("runWinAppNative") }
         assertTrue(nativeLaunches.isNotEmpty())
         assertTrue(nativeLaunches.all { it.previewExecutable == it.executable })
+        val nativeRuntimeStages = project.tasks.withType(StageWindowsPackageRuntimeAssetsTask::class.java)
+            .filter { it.name.startsWith("stageWindowsPackageRuntimeAssetsMingwX64") }
+        assertTrue(nativeRuntimeStages.isNotEmpty())
+        assertTrue(nativeRuntimeStages.all { it.includeFrameworkRuntimeAssets.get() })
+        application.frameworkDependent()
+        assertTrue(nativeRuntimeStages.none { it.includeFrameworkRuntimeAssets.get() })
         application.mainClass.set("")
         assertTrue(builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches
             .filter { it.taskName.startsWith("runWinAppNative") }.all { it.previewExecutable.isEmpty() })

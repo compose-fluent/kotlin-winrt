@@ -1123,6 +1123,15 @@ private fun configureWinAppTasks(
             task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { restore -> restore.winmdLockFile })
             task.includeFrameworkRuntimeAssets.set(project.provider {
                 if (format != null) return@provider format.deployment == WindowsAppSdkDeployment.SelfContained
+                if (selectedVariant.get().kind == WinAppVariantKind.MingwX64 &&
+                    options.applicationModel.get() == WindowsApplicationModel.Desktop) {
+                    // The SDK BootstrapCommon/UndockedRegFreeWinRTCommon targets choose
+                    // the package graph OR app-local framework DLLs. Mixing both loads
+                    // CoreMessaging twice when a native preview creates its window.
+                    val requested = options.windowsAppSdkDeployment.get()
+                    val deployment = if (requested == WindowsAppSdkDeployment.Auto) resolvedWindowsAppSdkDeployment.get() else requested
+                    return@provider deployment == WindowsAppSdkDeployment.SelfContained
+                }
                 val outputFile = options.packageOutputFile.orNull?.asFile
                 resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.SelfContained ||
                     options.packageType.get() != WindowsPackageType.Packaged ||
