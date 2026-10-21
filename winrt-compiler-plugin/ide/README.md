@@ -639,8 +639,13 @@ to an existing WinUI application. This uses the native project lifecycle inside
 the platform host; full desktop IDE restart remains separate interactive acceptance.
 The runtime engine and development wire codec are shared by JVM and `mingwX64`.
 Native desktop launches expose the same authenticated session, property updates and
-visual inspection channel. Static preview uses the independent JVM SDK designer;
-project-code static preview remains a JVM host capability. The compatibility matrix records
+visual inspection channel. Static preview defaults to the independent JVM SDK designer.
+“Enable project code” also supports desktop mingwX64 applications with a configured
+`mainClass` and generated XAML host. The native entry wrapper selects the isolated
+designer before calling user main, using the same compiled project/dependency XAML
+registrars as the JVM designer. Both unpackaged native runs and framework-dependent
+packaged development runs expose this capability. Rebuild the designer after Kotlin
+class changes; markup-only edits reuse the running host. The compatibility matrix records
 backend validation for installed SDKs; desktop interaction still requires
 acceptance in each distribution.
 

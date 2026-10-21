@@ -118,6 +118,13 @@ internal class NativeWinUIXamlHotReloadServer(
         fun get(): WinUIXamlHotReloadReply? = lock.withLock { reply }
     }
 }
+/** Native launcher boundary, called before choosing the generated designer or user main.
+ * Packaged activation supplies arguments rather than inheriting the IDE environment. */
+fun isNativeWinUIXamlPreviewRequested(): Boolean {
+    initializeNativeXamlDevelopmentArguments()
+    return platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT) == "1"
+}
+
 private fun initializeNativeXamlDevelopmentArguments() = memScoped {
     val count = alloc<IntVar>()
     val arguments = platform.windows.CommandLineToArgvW(platform.windows.GetCommandLineW()?.toKStringFromUtf16(), count.ptr) ?: return@memScoped

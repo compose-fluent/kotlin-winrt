@@ -160,6 +160,14 @@ Packaged native launches read the reserved development-directory startup argumen
 matching the JVM launcher's environment setup. The native transport test exercises
 authentication, an owner-thread property update, version advancement and cleanup.
 
+The native application entry wrapper also reads these arguments before choosing
+the project-code static designer. Preview mode starts the generated Application,
+registers project and dependency XAML types, and retains a hidden preview Window;
+it does not invoke the user's main or Application constructor. This uses the
+Application.Start/OnLaunched ownership split in CsWinRT's WinUIDesktopSample.
+Project controls still execute their compiled constructors when XamlReader creates
+them. Changing their Kotlin implementation requires rebuilding/restarting the host.
+
 CsWinRT has no IDE socket/session counterpart. The Windows transport is a tooling
 adaptation; projection ownership, custom-property accessors, conversion and UI
 dispatch remain in their existing CsWinRT-aligned owners. This does not provide

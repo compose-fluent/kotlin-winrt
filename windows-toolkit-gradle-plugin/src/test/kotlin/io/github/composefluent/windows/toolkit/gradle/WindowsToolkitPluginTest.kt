@@ -5592,6 +5592,27 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
+    fun mingw_preview_entry_selects_the_generated_host_before_user_main() {
+        // CsWinRT WinUIDesktopSample/Program owns Application.Start. The generated
+        // designer must choose its Application there, before user code can create one.
+        val project = ProjectBuilder.builder().build()
+        val task = project.tasks.create("generatePreviewEntry", GenerateWinAppMingwEntryTask::class.java)
+        task.outputDirectory.set(project.layout.buildDirectory.dir("preview-entry"))
+        task.mainClass.set("sample.MainKt")
+        task.xamlPreviewHost.set(true)
+        task.generate()
+        val source = task.outputDirectory.file("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt").get().asFile.readText()
+        assertTrue(source.contains("if (isNativeWinUIXamlPreviewRequested())"))
+        assertTrue(source.contains("KotlinWinUIXamlPreviewHost.main(emptyArray())"))
+        assertTrue(source.contains("else {\n      userMain()"))
+        task.xamlPreviewHost.set(false)
+        task.generate()
+        val ordinary = task.outputDirectory.file("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt").get().asFile.readText()
+        assertFalse(ordinary.contains("KotlinWinUIXamlPreviewHost"))
+        assertTrue(ordinary.contains("userMain()"))
+    }
+
+    @Test
     fun authoring_host_task_rejects_malformed_host_manifests() {
         val project = ProjectBuilder.builder().build()
         val manifest = project.layout.buildDirectory.file("component/SampleComponent.host.json").get().asFile.toPath()

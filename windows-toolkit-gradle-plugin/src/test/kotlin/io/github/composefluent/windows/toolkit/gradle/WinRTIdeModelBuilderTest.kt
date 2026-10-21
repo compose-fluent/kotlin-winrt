@@ -27,6 +27,10 @@ class WinRTIdeModelBuilderTest {
             it.mainClass.set("sample.MainKt")
             it.packageType.set(WindowsPackageType.Packaged)
         }
+        project.file("src/winuiMain/kotlin/Preview.xaml").apply {
+            parentFile.mkdirs()
+            writeText("<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>")
+        }
         (project as ProjectInternal).evaluate()
         project.configurations.configureEach { configuration ->
             configuration.incoming.beforeResolve { error("IDE import resolved ${configuration.name}") }
@@ -36,6 +40,9 @@ class WinRTIdeModelBuilderTest {
         assertTrue("Configured packaged JVM run must support Hot Reload", run.supportsXamlHotReload.get())
         val launches = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches
         assertTrue(launches.any { it.taskName.startsWith("runWinAppPackageMingwX64") })
+        assertTrue(launches.filter { it.taskName.startsWith("runWinAppPackageMingwX64") }.all {
+            it.previewExecutable.isNotBlank() && it.previewExecutable != it.executable
+        })
         val launch = launches.single { it.taskName == run.name }
         val runTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
         assertTrue(runTasks.toString(), runTasks.contains("runWinAppPackageDesktopMain"))
@@ -60,6 +67,13 @@ class WinRTIdeModelBuilderTest {
         assertTrue(unpackagedTasks.contains("runWinAppHostDesktopMain"))
         assertTrue(unpackagedTasks.toString(), unpackagedTasks.any { it.startsWith("runDebugExecutable") })
         assertFalse(unpackagedTasks.any { it.startsWith("runWinAppPackage") })
+        val nativeLaunches = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches
+            .filter { it.taskName.startsWith("runWinAppNative") }
+        assertTrue(nativeLaunches.isNotEmpty())
+        assertTrue(nativeLaunches.all { it.previewExecutable == it.executable })
+        application.mainClass.set("")
+        assertTrue(builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches
+            .filter { it.taskName.startsWith("runWinAppNative") }.all { it.previewExecutable.isEmpty() })
     }
 
     @Test

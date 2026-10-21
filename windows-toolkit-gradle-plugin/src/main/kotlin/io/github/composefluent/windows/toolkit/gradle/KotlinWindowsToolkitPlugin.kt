@@ -1268,6 +1268,11 @@ private fun configureWinAppTasks(
             )
             task.entryPointFunctionName.set("main$taskSuffix")
             task.mainClass.set(options.mainClass)
+            task.xamlPreviewHost.set(project.provider {
+                val header = project.tasks.named("generateWinRTXamlApplicationHeader", GenerateWinUIXamlApplicationHeaderTask::class.java).get()
+                header.previewHost.get() && header.emitSources.get() &&
+                    options.applicationModel.get() == WindowsApplicationModel.Desktop
+            })
         },
     )
     addGeneratedSourcesToSelectedKotlinMultiplatformMingwCompilation(
@@ -1662,10 +1667,12 @@ private fun configureWinAppTasks(
     }
     // Launch tasks are concrete-only: variants can share a package identity and cannot be
     // registered concurrently by an aggregate run task.
+    val nativeProjectPreview = mingwApplicationEntryTask.flatMap { it.xamlPreviewHost }
+        .zip(options.mainClass.orElse("")) { generated, main -> generated && main.isNotBlank() }
     project.tasks.register(taskName("runWinAppNative"), RunWinAppHostTask::class.java) { task ->
         task.group = "windows-package"
         task.description = "Runs the staged Kotlin/Native application with XAML development session support."
-        task.supportsXamlPreview.set(false)
+        task.supportsXamlPreview.set(nativeProjectPreview)
         task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.MingwX64 }
         task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
             packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.MingwX64
@@ -1710,7 +1717,9 @@ private fun configureWinAppTasks(
                 developmentPackage && deployment != WindowsAppSdkDeployment.SelfContained
             }.zip(options.applicationModel) { enabled, model -> enabled && model == WindowsApplicationModel.Desktop })
             task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
-            task.supportsXamlPreview.set(selectedVariant.map { it.kind == WinAppVariantKind.Jvm })
+            task.supportsXamlPreview.set(selectedVariant.zip(nativeProjectPreview) { variant, nativePreview ->
+                variant.kind == WinAppVariantKind.Jvm || variant.kind == WinAppVariantKind.MingwX64 && nativePreview
+            })
             task.previewHostExecutable.set(project.layout.buildDirectory.dir(
                 selectedVariant.map { "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/AppX" }
             ).flatMap { directory -> applicationHostTask.flatMap { it.executableBaseName }.map { directory.file("$it.exe") } })
