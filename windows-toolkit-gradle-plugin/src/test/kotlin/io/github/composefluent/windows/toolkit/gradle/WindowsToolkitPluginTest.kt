@@ -10647,6 +10647,7 @@ class WindowsToolkitPluginTest {
                 }
             }
             rootProject.name = "kotlin-winrt-kmp-application-entry-source-set-test"
+            include(":runtimeStub")
             """.trimIndent(),
         )
         writeGradleFile(
@@ -10676,6 +10677,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     winuiMain {
                         dependsOn commonMain
+                        dependencies { implementation project(":runtimeStub") }
                     }
                     mingwX64Main {
                         dependsOn winuiMain
@@ -10686,6 +10688,7 @@ class WindowsToolkitPluginTest {
             windows {
                 application {
                     mainClass.set "sample.MainKt"
+                    windowsAppSdkDeployment.set io.github.composefluent.windows.toolkit.gradle.WindowsAppSdkDeployment.None
                 }
             }
             """.trimIndent(),
@@ -10698,10 +10701,24 @@ class WindowsToolkitPluginTest {
             fun main() = Unit
             """.trimIndent(),
         )
+        // The compiler validates the resolved runtime library, as CsWinRT does its
+        // runtime assembly. A same-compilation source stub is not a resolved dependency.
+        writeGradleFile(projectDir.resolve("runtimeStub/build.gradle"), """
+            plugins { id "org.jetbrains.kotlin.multiplatform" }
+            kotlin { jvm(); mingwX64() }
+        """.trimIndent())
+        // JVM receives the plugin-under-test implementation JAR. Only Native
+        // needs an implementation ABI marker in the fixture KLIB.
+        writeGradleFile(projectDir.resolve("runtimeStub/src/mingwX64Main/kotlin/Abi.kt"), """
+            package io.github.composefluent.winrt.runtime
+            const val WINRT_RUNTIME_IMPLEMENTATION_ABI_VERSION = ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION}
+        """.trimIndent())
         writeGradleFile(
-            projectDir.resolve("src/winuiMain/kotlin/io/github/composefluent/winrt/runtime/WindowsAppSdkBootstrap.kt"),
+            projectDir.resolve("runtimeStub/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WindowsAppSdkBootstrap.kt"),
             """
             package io.github.composefluent.winrt.runtime
+
+            const val WINRT_PROJECTION_RUNTIME_ABI_VERSION = ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION}
 
             enum class WinAppPackageIdentity { Packaged, Unpackaged }
             enum class WindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
