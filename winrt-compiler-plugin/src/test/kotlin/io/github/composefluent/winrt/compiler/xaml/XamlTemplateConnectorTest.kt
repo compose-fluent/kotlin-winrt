@@ -138,6 +138,7 @@ class XamlTemplateConnectorTest {
             class Button : microsoft.ui.xaml.FrameworkElement() {
                 private val clicks = mutableListOf<microsoft.ui.xaml.EventHandler<Int>>()
                 fun addClick(handler: microsoft.ui.xaml.EventHandler<Int>?) { if (handler != null) clicks += handler }
+                fun removeClick(handler: microsoft.ui.xaml.EventHandler<Int>?) { check(clicks.remove(handler)) }
                 fun raiseClick() { clicks.toList().forEach { it.invoke(this, 7) } }
                 var isEnabled = true
                     set(value) { field = value; changed(isEnabledProperty) }

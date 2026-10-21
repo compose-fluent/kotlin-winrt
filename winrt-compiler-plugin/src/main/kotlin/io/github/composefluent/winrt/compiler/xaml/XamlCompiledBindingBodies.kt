@@ -528,15 +528,7 @@ internal class XamlCompiledBindingBodies(
             val eventSource = irTemporary(irImplicitCast(source, ownerType))
             val handler = irTemporary(callback?.invoke(this, delegateType) ?: weakCallback(this, klass, changed, page, delegateType))
             val addCall = irCall(add.symbol).apply { type = addType; dispatchReceiver = irGet(eventSource); arguments[1] = irGet(handler) }
-            // CsWinRT EventSource owns the token returned by ABI add calls.
-            // Mapped INPC/INCC surfaces instead remove the original handler.
-            val registration = if (removeType == delegateType) {
-                +addCall
-                irGet(handler)
-            } else {
-                require(removeType == addType) { "XAML event ${owner.name}.$event has incompatible add/remove signatures" }
-                irGet(irTemporary(addCall))
-            }
+            val registration = irGet(irTemporary(xamlEventRegistration(this, addCall, irGet(handler), removeType)))
             +irCall(requireNotNull(pluginContext.referenceClass(xamlBindingStateId)).owner.functions.single {
                 it.name.asString() == "trackEvent" }).apply {
                 dispatchReceiver = state

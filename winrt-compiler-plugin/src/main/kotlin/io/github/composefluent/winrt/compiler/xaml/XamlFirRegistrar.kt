@@ -18,6 +18,8 @@ internal fun xamlConnectorId(framework: XamlFramework) = xamlProjectionClassId(f
 internal val xamlStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlLoadState"))
 internal val xamlComponentId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlComponent"))
 internal val xamlStateName = Name.identifier("_kotlinXamlState")
+internal val xamlConnectionStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlConnectionState"))
+internal val xamlConnectionStateName = Name.identifier("_kotlinXamlConnections")
 internal val xamlConstructionStateName = Name.identifier("_kotlinXamlConstructionState")
 internal val xamlConstructionName = Name.identifier("_kotlinXamlCompleteConstruction")
 internal val xamlLoadName = Name.identifier("_kotlinXamlLoad")
@@ -80,7 +82,7 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
             page.properties.map { Name.identifier(it.name) } +
             page.properties.filterNot { it.isReadOnly }.map { it.eventStorageName() } +
             page.properties.flatMap { it.eventFunctions() } +
-            setOf(xamlStateName, xamlConstructionStateName, xamlConstructionName, xamlLoadName, xamlInitializeName, xamlConnectName, xamlBindingName) +
+            setOf(xamlStateName, xamlConnectionStateName, xamlConstructionStateName, xamlConstructionName, xamlLoadName, xamlInitializeName, xamlConnectName, xamlBindingName) +
             if (page.hasCompiledBindings()) setOf(xamlBindingStateName, xamlUpdateBindingsName, xamlBindingsChangedName,
                 xamlBindingsLoadingName, xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlPageBindingConnectName) + page.bindBackNames() +
                 (if (page.hasTemplateScopes()) xamlScopeNames else emptySet()) else emptySet()
@@ -106,6 +108,7 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
         val element = page.connections.singleOrNull { it.storageName() == name.asString() }
         val state = name == xamlStateName || name == xamlConstructionStateName
         val type = if (state) xamlStateId else if (name == xamlBindingStateName) xamlBindingStateId
+            else if (name == xamlConnectionStateName) xamlConnectionStateId
             else element?.typeName?.let(::xamlProjectionClassId) ?: return emptyList()
         return listOf(createMemberProperty(owner, XamlDeclarationKey, name, type.createConeType(session)) {
             if (state || name == xamlBindingStateName || element?.fieldName == null) visibility = Visibilities.Private

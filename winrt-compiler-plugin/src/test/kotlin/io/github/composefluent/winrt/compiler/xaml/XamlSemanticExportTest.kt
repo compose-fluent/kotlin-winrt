@@ -508,6 +508,14 @@ class XamlSemanticExportTest {
                 check(calls.size == 2)
                 first.initializeComponent()
                 check(first.Counter == 5)
+                val connected = first.myButton
+                first.connect(${declarations.pages.single().connections.single { it.fieldName == "myButton" }.id}, connected)
+                check(connected.subscriptionCount == 1)
+                val replacement = microsoft.ui.xaml.controls.Button()
+                first.connect(${declarations.pages.single().connections.single { it.fieldName == "myButton" }.id}, replacement)
+                check(connected.subscriptionCount == 0 && replacement.subscriptionCount == 1)
+                connected.raise()
+                check(replacement.text.isEmpty())
                 first.myButton.raise()
                 first.initializeComponent()
                 first.myButton.raise()
@@ -541,9 +549,12 @@ class XamlSemanticExportTest {
         val button = File(root, "ButtonBase.kt").apply { writeText("""
             package microsoft.ui.xaml.controls.primitives
             open class ButtonBase {
-                private val handlers = mutableListOf<microsoft.ui.xaml.RoutedEventHandler>()
-                fun addClick(handler: microsoft.ui.xaml.RoutedEventHandler) { handlers.add(handler) }
-                fun raise() { handlers.forEach { it.invoke(this, microsoft.ui.xaml.RoutedEventArgs()) } }
+                private val handlers = mutableMapOf<Long, microsoft.ui.xaml.RoutedEventHandler>()
+                private var nextToken = 0L
+                val subscriptionCount get() = handlers.size
+                fun addClick(handler: microsoft.ui.xaml.RoutedEventHandler): Long = (++nextToken).also { handlers[it] = handler }
+                fun removeClick(token: Long) { check(handlers.remove(token) != null) }
+                fun raise() { handlers.values.toList().forEach { it.invoke(this, microsoft.ui.xaml.RoutedEventArgs()) } }
             }
         """.trimIndent()) }
         val buttonId = declarations.pages.single().connections.single { it.fieldName == "myButton" }.id

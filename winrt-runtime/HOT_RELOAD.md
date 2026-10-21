@@ -127,12 +127,15 @@ old bindings. Cleanup failure requires restart; arbitrary handler side effects
 cannot be rolled back. Future instances must receive the same complete artifact
 generation instead of mixing old connector IDs with new XBF.
 
-The current XamlPageBodies event emitter calls typed add methods but does not keep
-their EventRegistrationToken results for a reconnect/disconnect transaction. Its
-binding state does release owned binding listeners, but that does not remove plain
-XAML event handlers or make generated fields dynamically extensible. Subscription
-ownership and a compiler-emitted reconnect surface are prerequisites for such an
-extension; neither is synthesized inside the IDE or hidden in samples.
+The XamlPageBodies event emitter retains ordinary non-template event subscriptions
+in a per-page WinUIXamlConnectionState. Reconnecting a compiled slot first removes
+its previous subscriptions from the original source using the original token (or
+handler for mapped events). Failed cleanup attempts the remaining removers and
+blocks further connection changes. This follows CsWinRT EventSource's paired
+Subscribe/Unsubscribe ownership. Binding tracking remains separately owned.
+Template generation ownership, compiled event bindings and a transactional
+compiler-emitted reconnect artifact still need their corresponding contracts;
+retaining ordinary event subscriptions does not make generated fields extensible.
 
 Adding, removing or renaming x:Name can change generated fields/accessors. A changed
 x:Bind path can change private typed calls, generated callbacks and tracking state.
