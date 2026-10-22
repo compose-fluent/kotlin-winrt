@@ -9,11 +9,7 @@ import java.nio.file.Path
 import java.time.Instant
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
-import java.io.InputStream
 import java.io.OutputStream
-import java.io.RandomAccessFile
-import com.intellij.util.concurrency.AppExecutorUtil
 
 /** Credentials remain private and ephemeral; only protocol DTOs enter the Compose display state. */
 internal class WinUIXamlHotReloadClient private constructor(
@@ -46,28 +42,18 @@ internal class WinUIXamlHotReloadClient private constructor(
         }
     }
 
-    private fun exchangePipe(name: String, send: (OutputStream) -> Unit): WinUIXamlHotReloadReply =
-        RandomAccessFile("\\\\.\\pipe\\${pipeNamespace.replace('/', '\\')}\\$name", "rw").use { pipe ->
-            connections += pipe
-            val timeout = AppExecutorUtil.getAppScheduledExecutorService().schedule(
-                { runCatching { pipe.close() } }, 12, TimeUnit.SECONDS)
-            try {
-                check(!closed) { "The development connection is closed." }
-                val input = object : InputStream() {
-                    override fun read(): Int = pipe.read()
-                    override fun read(bytes: ByteArray, offset: Int, length: Int): Int = pipe.read(bytes, offset, length)
-                }
-                val output = object : OutputStream() {
-                    override fun write(value: Int) = pipe.write(value)
-                    override fun write(bytes: ByteArray, offset: Int, length: Int) = pipe.write(bytes, offset, length)
-                }
-                send(output)
-                WinUIXamlHotReloadWire.readReply(input).also { output.write(0x6b) }
-            } finally {
-                timeout.cancel(false)
-                connections -= pipe
-            }
+    private fun exchangePipe(name: String, send: (OutputStream) -> Unit): WinUIXamlHotReloadReply {
+        val pipe = WinRTDevelopmentPipe("\\\\.\\pipe\\${pipeNamespace.replace('/', '\\')}\\$name")
+        connections += pipe.cancellation
+        try {
+            check(!closed) { "The development connection is closed." }
+            send(pipe.output)
+            return WinUIXamlHotReloadWire.readReply(pipe.input).also { pipe.output.write(0x6b) }
+        } finally {
+            connections -= pipe.cancellation
+            pipe.dispose()
         }
+    }
 
     override fun close() { closed = true; connections.forEach { runCatching { it.close() } } }
 

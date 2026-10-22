@@ -40,13 +40,29 @@ class WinUIXamlPipeClientTest : BasePlatformTestCase() {
         val request = executor.submit<WinUIXamlHotReloadReply> { client.request() }
         try {
             awaitFile(directory.resolve("received"))
+            val closing = System.nanoTime()
             client.close()
+            assertTrue("Cancellation must not wait for the server", System.nanoTime() - closing < TimeUnit.SECONDS.toNanos(2))
             try {
                 request.get(5, TimeUnit.SECONDS)
                 fail("A closed pipe cannot return a reply")
             } catch (expected: java.util.concurrent.ExecutionException) {
                 assertNotNull(expected.cause)
             }
+        } finally { executor.shutdownNow() }
+    }
+
+    fun testStalledServerTimesOutWithoutWaitingForItsProcess() = withPipe(true) { client, _, process ->
+        val executor = Executors.newSingleThreadExecutor()
+        val request = executor.submit<WinUIXamlHotReloadReply> { client.request() }
+        try {
+            try {
+                request.get(18, TimeUnit.SECONDS)
+                fail("A stalled server must time out")
+            } catch (expected: java.util.concurrent.ExecutionException) {
+                assertTrue("Expected timeout, got ${expected.cause}", expected.cause is java.net.SocketTimeoutException)
+            }
+            assertTrue("Cancellation must not terminate the server", process.isAlive)
         } finally { executor.shutdownNow() }
     }
 
