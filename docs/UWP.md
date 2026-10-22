@@ -232,7 +232,10 @@ live property Hot Reload. Synchronize Gradle, select the Native packaged launch,
 and enable project code for preview. The isolated `.preview` package starts the
 generated Application instead of the user's main/Application constructor; custom
 controls still execute their compiled constructors. UWP uses its activated
-CoreWindow. The independent SDK-only designer remains a desktop WinUI host.
+CoreWindow. With project code disabled, `runWinRTXamlSdkPreviewUwp` prepares an
+independent UWP designer package containing a fixed Kotlin/Native SDK host.
+It does not compile the application or run its main/Application constructor.
+The IDE supplies current XAML and passive image/font assets to that package.
 
 The launcher supplies development settings through `IPackageDebugSettings`, using
 the Windows startup-thread resume contract, and transfers the session descriptor

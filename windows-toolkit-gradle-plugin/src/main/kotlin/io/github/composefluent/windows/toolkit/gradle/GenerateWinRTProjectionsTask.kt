@@ -580,7 +580,7 @@ internal abstract class GenerateWinRTProjectionsWorkAction : WorkAction<Generate
             candidates = authoringCandidates,
         )
         if (parameters.generateSdkPreviewSources.get())
-            io.github.composefluent.winrt.compiler.xaml.writeXamlSdkPreviewSources(generatedRoot, projectionModel)
+            io.github.composefluent.winrt.compiler.xaml.writeXamlSdkPreviewSources(generatedRoot, projectionModel, parameters.xamlFramework.get())
     }
 
     private fun writeAuthoringTypeDetailsRegistrarSupport(

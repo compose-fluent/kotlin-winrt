@@ -1,7 +1,7 @@
 # Kotlin WinRT IntelliJ integration
 
-The application templates and SDK-only designer target WinUI 3. Project-code
-previews and Hot Reload also support Kotlin/Native UWP applications through an
+The application templates target WinUI 3. The SDK-only designer supports WinUI 3
+and UWP. Project-code previews and Hot Reload also support Kotlin/Native UWP applications through an
 isolated development package. Native Debug supports desktop and UWP startup
 breakpoints; UWP packaged `--debug-output` captures native output and exceptions.
 See the [UWP guide](../../docs/UWP.md) for package configuration and activation.
@@ -473,8 +473,8 @@ preview pane is active only while visible in the selected editor. The static
 image fits the available preview area; **Visual Tree and properties** adds the
 inspector when needed.
 
-The default follows UWP's design-time workflow: it uses a fixed SDK-only WinUI
-host and reads current XAML, without compiling the application, running XAMLC,
+The default uses a fixed SDK-only host for the imported XAML framework and reads
+current XAML, without compiling the application, running XAMLC,
 constructing the user's Application or invoking user main. Application Kotlin
 errors do not block this designer. The first launch prepares a host for the
 selected Windows App SDK and Windows SDK; its SDK compilation is cached across
@@ -482,6 +482,22 @@ projects with matching SDKs and compiler/runtime inputs. Subsequent document
 edits reuse that process. The selected SDK must be installed/restorable, and the
 configured JDK and Windows native toolchain must be available for first preparation.
 **Retry preview** reruns preparation after a failure.
+
+UWP uses `runWinRTXamlSdkPreviewUwp`, an independent AppContainer package with a
+Kotlin/Native host and generated Application. Its identity and assets are owned by the
+designer, separate from the application and project-code preview packages.
+It uses the project's `mingwX64` compiler, or `kotlin.native.home` when configured
+explicitly. A Windows Kotlin/Native distribution matching the project's Kotlin
+version is required for its first SDK build.
+The Native executable is shared across projects using a checksum-validated cache
+keyed by SDK sources, registration metadata, compiler, standard library and runtime
+inputs. SDK restore, package identity, manifest and assets are independent of the
+application. The package declares `codeGeneration` for the runtime's Win64 ABI
+call stubs (`VirtualProtectFromApp`); this is required for Native as well as JVM hosts.
+The native UWP XAML loader renders SDK controls; the property inspector registers
+the presentation namespace's typed members. Specialized Maps members are not in
+that inspector table (their Kotlin projection currently has a `Style` name collision
+with `FrameworkElement.Style`). Base visual inspection remains available.
 
 `WinRTDevelopmentLaunchTest` invokes the production session from EDT without
 write intent, as Compose effects and clicks do. It checks automatic SDK preview
@@ -510,7 +526,7 @@ hosts use a separate `.preview` identity and deployment folder and can run besid
 the application's `.dev` package. The default SDK designer is independent of the
 application's packaging mode. Static and live sessions have independent
 connections and process ownership; closing the project stops its design host.
-Synchronize Gradle after updating the toolkit to import version 6 of the IDE model.
+Synchronize Gradle after updating the toolkit to import version 8 of the IDE model.
 
 Static rendering preserves StaticResource, ThemeResource, local dictionaries,
 application resources and their original package-relative Source paths. In the
@@ -519,8 +535,12 @@ from source, including unsaved edits. Named project ResourceDictionary classes
 can contribute their XAML without executing their constructors. Missing files
 and dictionary cycles are reported. Passive image/font assets are copied to the
 module's owned designer folder. Preview options select viewport dimensions and
-theme. Supported `d:` values and inline design children replace
-compiled `x:Bind` expressions; otherwise control defaults apply. Event handlers
+theme. Ordinary `d:` properties override their runtime values, including relative
+image sources, and design collection properties replace runtime items and bindings.
+`d:DesignData` files and inline `d:DataContext` provide inherited scalar sample values
+for plain `Binding` paths without constructing project types. Nested contexts shadow
+their parents, and template item contexts remain separate. Compiled `x:Bind` uses
+explicit design values or control defaults. Event handlers
 and compiler-only directives are removed from the design copy with a visible
 notice. Regular Binding still needs an available design DataContext. With project
 code disabled, custom controls retain layout as visible placeholders and custom
@@ -639,8 +659,10 @@ and subsequent property/resource updates in order (64 entries / 8 MiB). Moving
 controls can trigger Loaded/Unloaded and affect focus; transient lifecycle state is
 not guaranteed. Application changes to collection order are outside this contract.
 
-Style replacement currently requires the same explicit string keys and named/root
-owners and consumers. ThemeResource consumers, implicit keys, external/merged/theme
+Style replacement requires explicit string keys and named/root owners and consumers.
+Local dictionaries can add/remove keys when no surviving consumer references a
+removed key; dictionary keys and values roll back together after a failed update.
+ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
 dictionaries, captures in other dictionaries/templates, connected-element removal,
 type/name/parent changes, new names or authored controls,
 compiled events/bindings, attached properties and Kotlin changes require rebuilding
@@ -672,7 +694,8 @@ to an existing WinUI application. This uses the native project lifecycle inside
 the platform host; full desktop IDE restart remains separate interactive acceptance.
 The runtime engine and development wire codec are shared by JVM and `mingwX64`.
 Native desktop launches expose the same authenticated session, property updates and
-visual inspection channel. Static preview defaults to the independent JVM SDK designer.
+visual inspection channel. Static preview defaults to an independent SDK designer:
+JVM for desktop WinUI and Native AppContainer for UWP.
 “Enable project code” also supports desktop mingwX64 applications with a configured
 `mainClass` and generated XAML host. The native entry wrapper selects the isolated
 designer before calling user main, using the same compiled project/dependency XAML

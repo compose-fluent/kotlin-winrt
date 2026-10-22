@@ -13,6 +13,40 @@ import java.io.ObjectOutputStream
 
 /** Validates the IDE boundary, not WinMD/projection policy owned by .cswinrt/src/cswinrt. */
 class WinRTIdeModelBuilderTest {
+    @Test fun uwp_sdk_designer_is_independent_of_native_application_compilation() {
+        val project = ProjectBuilder.builder().withName("uwp-sdk-designer").build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        project.extensions.getByType(KotlinMultiplatformExtension::class.java).mingwX64 { binaries { executable() } }
+        val windows = project.extensions.getByType(WindowsExtension::class.java)
+        windows.application.applicationModel.set(WindowsApplicationModel.UWP)
+        windows.application.mainClass.set("sample.MainKt")
+        (project as ProjectInternal).evaluate()
+        project.configurations.configureEach { configuration ->
+            configuration.incoming.beforeResolve { error("IDE import resolved ${configuration.name}") }
+        }
+        val model = WinRTIdeModelBuilder().buildAll(WinRTIdeModel::class.java.name, project)
+        val preview = requireNotNull(model.staticPreview)
+        assertEquals("runWinRTXamlSdkPreviewUwp", preview.taskName)
+        assertTrue(preview.executable.replace('\\', '/').endsWith("xaml-sdk-preview/AppX/KotlinWinUIXamlPreview.exe"))
+        assertFalse(model.hotReloadLaunches.any { it.taskName == preview.taskName })
+        assertFalse(model.runTasks.contains(preview.taskName))
+        val sdk = project.tasks.named("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java).get()
+        assertEquals(io.github.composefluent.winrt.runtime.XamlFramework.UWP, sdk.xamlFramework.get())
+        assertTrue(sdk.includeNamespaces.get().contains("Windows.UI.Xaml"))
+        assertTrue(sdk.sourceRoots.isEmpty)
+        val host = project.tasks.named("buildWinRTXamlSdkPreviewNative", BuildWinUIXamlNativeSdkPreviewTask::class.java).get()
+        assertTrue(host.executable.get().asFile.name == "KotlinWinUIXamlPreview.exe")
+        assertEquals("KotlinWinUIXamlPreview.exe", sdk.authoringTargetArtifactName.get())
+        assertFalse(sdk.emitJvmAuthoringHostExports.get())
+        val assets = project.tasks.named("prepareWinRTXamlSdkPreviewPackageAssets", PrepareUwpSdkPreviewAssetsTask::class.java).get()
+        assets.prepare()
+        val manifest = assets.outputDirectory.file("AppxManifest.xml").get().asFile.toPath()
+        assertTrue(java.nio.file.Files.readString(manifest).contains("Capability Name=\"codeGeneration\""))
+        assertTrue(ProjectPriManifestSupport.validatePackageManifest(manifest).isEmpty())
+        assertTrue(ProjectPriManifestSupport.validatePackageManifestPayload(manifest, manifest.parent, setOf(java.nio.file.Path.of("KotlinWinUIXamlPreview.exe"))).isEmpty())
+    }
+
     @Test
     fun hot_reload_exports_packaged_and_unpacked_jvm_and_native_launches() {
         val project = ProjectBuilder.builder().withName("packaged-app").build()

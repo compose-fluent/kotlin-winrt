@@ -129,7 +129,7 @@ abstract class BuildWinUIXamlSdkPreviewTask @Inject constructor(private val exec
     }
 }
 
-private fun previewFileHash(path: Path): String {
+internal fun previewFileHash(path: Path): String {
     val digest = MessageDigest.getInstance("SHA-256")
     Files.newInputStream(path).use { stream ->
         val buffer = ByteArray(64 * 1024); var count = stream.read(buffer)

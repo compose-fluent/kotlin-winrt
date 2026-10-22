@@ -115,6 +115,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal
     abstract val supportsXamlPreview: org.gradle.api.provider.Property<Boolean>
 
+    @get:Internal abstract val sdkPreview: Property<Boolean>
+
     /** Configuration-only IDE hint; Auto deployment is resolved when the run executes. */
     @get:Internal
     abstract val supportsDevelopmentRun: Property<Boolean>
@@ -146,6 +148,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         developmentSessionDirectory.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY))
         supportsXamlHotReload.convention(false)
         supportsXamlPreview.convention(supportsXamlHotReload)
+        sdkPreview.convention(false)
         supportsDevelopmentRun.convention(packageType.zip(selfContained) { type, bundled ->
             type == WindowsPackageType.Packaged.name && !bundled
         })
@@ -215,7 +218,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         }
         if (applicationModel.get() == WindowsApplicationModel.UWP) {
             require(!designPreview.get() || supportsXamlPreview.get() && supportsXamlHotReload.get()) {
-                "UWP XAML preview requires a generated Kotlin/Native preview host."
+                "UWP XAML preview requires a generated preview host with Hot Reload support."
             }
             require(!debugOutput.get() || nativeDebugDirectory.orNull.isNullOrBlank()) {
                 "Choose either Native IDE debugging or --debug-output; Windows permits one debugger per process."

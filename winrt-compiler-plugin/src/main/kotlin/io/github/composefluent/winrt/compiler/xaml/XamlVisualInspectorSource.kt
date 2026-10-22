@@ -187,9 +187,16 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 // the BGRA buffer include XamlRoot's physical DPI scale.
                 val dpi = element.xamlRoot?.rasterizationScale ?: 1.0
                 require(dpi.isFinite() && dpi > 0) { "The visual root has an invalid DPI scale." }
-                val scale = minOf(1.0, 768.0 / (maxOf(element.actualWidth, element.actualHeight, 1.0) * dpi))
-                val width = (element.actualWidth * scale).toInt().coerceIn(1, 768)
-                val height = (element.actualHeight * scale).toInt().coerceIn(1, 768)
+                // Replacing Window.Content can invalidate ActualWidth/Height
+                // before this queued capture runs. RenderAsync completes layout;
+                // use the explicit artboard dimensions while that layout is pending.
+                val logicalWidth = element.actualWidth.takeIf { it.isFinite() && it > 0 }
+                  ?: element.width.takeIf { it.isFinite() && it > 0 } ?: 1.0
+                val logicalHeight = element.actualHeight.takeIf { it.isFinite() && it > 0 }
+                  ?: element.height.takeIf { it.isFinite() && it > 0 } ?: 1.0
+                val scale = minOf(1.0, 768.0 / (maxOf(logicalWidth, logicalHeight, 1.0) * dpi))
+                val width = (logicalWidth * scale).toInt().coerceIn(1, 768)
+                val height = (logicalHeight * scale).toInt().coerceIn(1, 768)
                 requireNotNull(bitmap.renderAsync(element, width, height)).await()
                 stage = "read the rendered pixels"
                 val buffer = requireNotNull(requireNotNull(bitmap.getPixelsAsync()).await())

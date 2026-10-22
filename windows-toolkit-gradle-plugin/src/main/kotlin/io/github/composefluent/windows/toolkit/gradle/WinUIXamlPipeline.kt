@@ -91,6 +91,7 @@ internal fun configureWinUIXamlPipeline(
         it.referenceManifests.from(compilerPackageReferences.flatMap { task -> task.outputFile })
     }
     project.tasks.withType(StageWindowsPackageRuntimeAssetsTask::class.java).configureEach { task ->
+        if (task.name == "stageWinRTXamlSdkPreviewRuntime") return@configureEach
         // Providers belong to the complete application dependency graph, including
         // programmatic entry points whose XAML and WinUI 2 controls live in libraries.
         task.xamlPreparedMetadataManifest.set(metadataManifest)

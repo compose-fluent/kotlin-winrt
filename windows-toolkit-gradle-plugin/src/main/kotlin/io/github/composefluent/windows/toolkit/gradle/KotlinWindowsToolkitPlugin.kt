@@ -2648,6 +2648,13 @@ private fun configureWinRTGeneration(
         task.nugetPackages.set(generateTask.flatMap { it.nugetPackages })
     }
     val previewSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml-sdk-preview/projections")
+    val previewPackages = project.provider {
+        allNuGetPackageSpecs(extension.packageReferences).filter {
+            val id = it.substringBefore('@')
+            if (extension.xaml.framework.get() == io.github.composefluent.winrt.runtime.XamlFramework.UWP) id.equals("Microsoft.UI.Xaml", true)
+            else id.startsWith("Microsoft.WindowsAppSDK", true)
+        }
+    }
     val previewProjection = project.tasks.register("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java) { task ->
         configureProjectionTask(task, previewSources,
             project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml-sdk-preview/authoring"), prepareMetadataOnly = false)
@@ -2656,20 +2663,29 @@ private fun configureWinRTGeneration(
             WinRTMetadataSource.parse(it) is WinRTMetadataSource.WindowsSdk
         } })
         task.metadataInputFiles.setFrom(emptyList<Any>())
-        task.includeNamespaces.set(listOf("Microsoft.UI.Xaml"))
-        task.includeTypes.set(listOf("Microsoft.UI.Dispatching.DispatcherQueue", "Microsoft.UI.Dispatching.DispatcherQueueHandler"))
-        task.excludeNamespaces.set(emptyList())
+        task.includeNamespaces.set(extension.xaml.framework.map { framework ->
+            if (framework == io.github.composefluent.winrt.runtime.XamlFramework.UWP) listOf("Windows.UI.Xaml", "Microsoft.UI.Xaml") else listOf("Microsoft.UI.Xaml")
+        })
+        task.includeTypes.set(extension.xaml.framework.map { framework ->
+            if (framework == io.github.composefluent.winrt.runtime.XamlFramework.UWP) listOf("Windows.UI.ViewManagement.ApplicationView") else listOf("Microsoft.UI.Dispatching.DispatcherQueue", "Microsoft.UI.Dispatching.DispatcherQueueHandler")
+        })
+        // Maps is outside the presentation namespace and the inspector's typed
+        // member table. The native XamlReader can still instantiate map controls;
+        // the host does not need their Kotlin projection to traverse UIElement.
+        task.excludeNamespaces.set(extension.xaml.framework.map { framework ->
+            if (framework == io.github.composefluent.winrt.runtime.XamlFramework.UWP) listOf("Windows.UI.Xaml.Controls.Maps") else emptyList()
+        })
         task.excludeTypes.set(emptyList())
         task.additionExcludeNamespaces.set(emptyList())
         task.generateWindowsSdkProjection.set(true)
         task.projectModel.set("application")
         task.authoringAssemblyName.set("KotlinWinUIXamlSdkPreview")
-        task.authoringTargetArtifactName.set("KotlinWinUIXamlSdkPreview.jar")
-        task.generateSdkPreviewSources.set(true)
-        task.nugetPackages.set(project.provider {
-            allNuGetPackageSpecs(extension.packageReferences).filter { it.substringBefore('@').startsWith("Microsoft.WindowsAppSDK", true) }
+        task.authoringTargetArtifactName.set(extension.xaml.framework.map {
+            if (it == io.github.composefluent.winrt.runtime.XamlFramework.UWP) "KotlinWinUIXamlPreview.exe" else "KotlinWinUIXamlSdkPreview.jar"
         })
-        task.dependsOn(restoreWinAppDependenciesTask)
+        task.emitJvmAuthoringHostExports.set(extension.xaml.framework.map { it != io.github.composefluent.winrt.runtime.XamlFramework.UWP })
+        task.generateSdkPreviewSources.set(true)
+        task.nugetPackages.set(previewPackages)
     }
     val previewRuntime = project.configurations.create("kotlinWinRTXamlSdkPreviewRuntimeClasspath") { configuration ->
         configuration.isCanBeConsumed = false
@@ -2696,9 +2712,26 @@ private fun configureWinRTGeneration(
         configuration.dependencies.add(project.dependencies.create("org.jetbrains:annotations:13.0"))
     }
     previewProjection.configure { task -> task.generatorWorkerClasspath.from(previewCompiler) }
+    val nativePreviewLibraries = project.configurations.create("kotlinWinRTXamlSdkPreviewNativeLibraries") { configuration ->
+        configuration.isCanBeConsumed = false
+        configuration.isCanBeResolved = true
+        configuration.attributes.attribute(org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.attribute,
+            org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.native)
+        configuration.attributes.attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage::class.java, "kotlin-api"))
+        configuration.attributes.attribute(org.gradle.api.attributes.Attribute.of("org.jetbrains.kotlin.native.target", String::class.java), "mingw_x64")
+        configuration.dependencies.add(project.dependencies.create(kotlinWinRTNativeLibraryDependency(project, ":winrt-runtime", "winrt-runtime")))
+        configuration.dependencies.add(project.dependencies.create(kotlinWinRTNativeLibraryDependency(project, ":winrt-authoring", "winrt-authoring")))
+    }
+    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+    val previewNativeHome = project.provider {
+        project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.targets?.withType(KotlinNativeTarget::class.java)
+            ?.firstOrNull { it.isMingwX64Target() }?.compilations?.getByName("main")?.compileTaskProvider?.get()?.konanHome?.get()
+            ?: project.providers.gradleProperty("kotlin.native.home").orNull.orEmpty()
+    }
     configureWinUIXamlSdkPreview(project, extension, previewProjection,
         previewCompiler, compilerPluginClasspath, previewRuntime,
-        previewProjection.flatMap { it.nugetPackages }, windowsSdkRegistryRoots,
+        nativePreviewLibraries, previewNativeHome,
+        previewPackages, windowsSdkRegistryRoots,
         configuredJvmToolchainHome(project, extension.application), currentWindowsRuntimeIdentifier())
     // A build script may narrow the legacy generateWinRTProjections.sourceRoots
     // collection after plugin application. Resolve that collection lazily from the

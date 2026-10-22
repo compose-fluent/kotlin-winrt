@@ -14,14 +14,20 @@ import javax.imageio.ImageIO
  * controls, screenshots of another application, or substituted layout engine. */
 class WinRTPreviewRuntimeTest {
     @Test fun uwp_native_appcontainer_previews_unsaved_markup_and_reads_effective_properties() {
-        val folder = System.getProperty("winrt.ide.uwpPreviewSession")
-        assumeTrue("Supply a real UWP Native preview session", !folder.isNullOrEmpty())
+        verifyUwpPreview("winrt.ide.uwpPreviewSession")
+    }
+    @Test fun uwp_sdk_designer_previews_unsaved_markup_and_reads_effective_properties() {
+        verifyUwpPreview("winrt.ide.uwpSdkPreviewSession")
+    }
+    private fun verifyUwpPreview(property: String) {
+        val folder = System.getProperty(property)
+        assumeTrue("Supply a real UWP preview session: $property", !folder.isNullOrEmpty())
         connect(folder!!).use { client ->
             val before = client.request()
             val root = before.roots.single { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }
             assertEquals("The user's UWP application must not be instantiated", listOf(root), before.roots)
             var previousPixels: ByteArray? = null
-            for ((theme, text) in listOf("Light" to "UWP Native preview", "Dark" to "Unsaved UWP edit")) {
+            for ((theme, text) in listOf("Light" to "UWP preview", "Dark" to "Unsaved UWP edit")) {
                 val document = WinUIXamlDesignDocument.prepare("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.DesignPage">
                     <StackPanel Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="24" Spacing="16">
                         <TextBlock x:Name="Greeting" Text="$text" FontSize="28"/>

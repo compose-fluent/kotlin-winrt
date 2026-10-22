@@ -19,7 +19,11 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
         finally { super.tearDown() }
     }
 
-    fun testUnbuiltSourcesUnsavedDictionariesAndPassiveAssetsUseTheOwnedDesignerDirectory() {
+    fun testUnbuiltSourcesUnsavedDictionariesAndPassiveAssetsUseTheOwnedDesignerDirectory() = verifySources("host")
+
+    fun testUwpDesignerStagesPassiveAssetsInItsIndependentPackage() = verifySources("AppX")
+
+    private fun verifySources(directory: String) {
         val ns = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
         val page = myFixture.addFileToProject("src/main/kotlin/UI/Page.xaml", """<Page $ns/>""").virtualFile
         val colors = myFixture.addFileToProject("src/main/kotlin/Styles/Colors.xaml", """<ResourceDictionary $ns x:Class="sample.Colors"><SolidColorBrush x:Key="Accent" Color="Blue"/></ResourceDictionary>""").virtualFile
@@ -27,7 +31,7 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
         val asset = myFixture.addFileToProject("src/main/appxResources/Assets/Logo.png", "passive asset").virtualFile
         val root = myFixture.tempDirFixture.getFile("")!!.path
         importedRoot = root
-        val host = "$root/build/kotlin-winrt/xaml-sdk-preview/host"
+        val host = "$root/build/kotlin-winrt/xaml-sdk-preview/$directory"
         val module = WinRTModuleData(":app", root, "$root/build", "2.4.0", "", listOf(
             WinRTSourceSetData("main", listOf("$root/src/main/kotlin"), emptyList(), listOf("$root/src/main/appxResources"))),
             emptyList(), emptyList(), emptyList(), staticPreview = WinRTStaticPreviewData("runWinRTXamlSdkPreview", "$host/KotlinWinUIXamlPreview.exe", host, "$host/../references.json"))

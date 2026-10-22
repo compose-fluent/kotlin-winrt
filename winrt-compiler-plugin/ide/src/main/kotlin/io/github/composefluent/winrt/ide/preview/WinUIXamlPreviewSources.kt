@@ -62,8 +62,10 @@ internal class WinUIXamlPreviewSources(private val project: Project, private val
     /** Native image/font loading retains package URIs; only passive assets are copied. */
     fun stageAssets() {
         val host = module.staticPreview?.workingDirectory?.let(Path::of)?.toAbsolutePath()?.normalize() ?: return
-        val expected = Path.of(module.buildDirectory).toAbsolutePath().normalize().resolve("kotlin-winrt/xaml-sdk-preview/host")
-        require(host == expected) { "The design host must use this module's owned preview directory." }
+        val previewRoot = Path.of(module.buildDirectory).toAbsolutePath().normalize().resolve("kotlin-winrt/xaml-sdk-preview")
+        require(host == previewRoot.resolve("host") || host == previewRoot.resolve("AppX")) {
+            "The design host must use this module's owned preview directory."
+        }
         lookup?.entries.orEmpty().filter { entry -> entry.target.substringAfterLast('.').lowercase() in
             setOf("png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico", "ttf", "otf") }.forEach { entry ->
             val input = Path.of(entry.source)
