@@ -1677,10 +1677,19 @@ private fun configureWinAppTasks(
     // registered concurrently by an aggregate run task.
     val nativeProjectPreview = mingwApplicationEntryTask.flatMap { it.xamlPreviewHost }
         .zip(options.mainClass.orElse("")) { generated, main -> generated && main.isNotBlank() }
+    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+    val nativeCompilerHome = selectedVariant.flatMap { variant ->
+        if (variant.kind != WinAppVariantKind.MingwX64) project.provider { "" } else {
+            val target = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+                .targets.getByName(variant.targetName) as KotlinNativeTarget
+            target.compilations.getByName(variant.compilationName).compileTaskProvider.get().konanHome
+        }
+    }
     project.tasks.register(taskName("runWinAppNative"), RunWinAppHostTask::class.java) { task ->
         task.group = "windows-package"
         task.description = "Runs the staged Kotlin/Native application with XAML development session support."
         task.supportsXamlPreview.set(nativeProjectPreview)
+        task.nativeCompilerHome.set(nativeCompilerHome)
         task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.MingwX64 }
         task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
             packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.MingwX64
@@ -1716,6 +1725,7 @@ private fun configureWinAppTasks(
                 it == WindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
+            task.nativeCompilerHome.set(nativeCompilerHome)
             task.supportsDevelopmentRun.set(options.packageType.zip(options.windowsAppSdkDeployment) { packageType, deployment ->
                 packageType == WindowsPackageType.Packaged && deployment != WindowsAppSdkDeployment.SelfContained
             })

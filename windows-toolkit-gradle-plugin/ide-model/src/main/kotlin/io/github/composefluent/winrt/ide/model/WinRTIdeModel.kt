@@ -33,12 +33,14 @@ interface WinRTIdeModel : Serializable {
         val metadataReferencesFile: String
     }
 
-    /** Development JVM launch tasks and isolated preview host paths. */
+    /** Development launch tasks and isolated preview host paths. */
     interface HotReloadLaunch : Serializable {
         val taskName: String
         val executable: String
         val workingDirectory: String
         val previewExecutable: String
+        /** Empty for JVM launches; Native uses the exact compiler's debugger formatters. */
+        val nativeCompilerHome: String
     }
 
     /** Actual staging/restore outputs, which need not exist during synchronization. */
@@ -82,6 +84,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 7
+        const val SCHEMA_VERSION: Int = 8
     }
 }

@@ -65,6 +65,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Input
     abstract val applicationVariant: Property<String>
 
+    @get:Internal
+    abstract val nativeCompilerHome: Property<String>
+
     @get:Input
     @get:Option(option = "args", description = "Windows command line to pass to the packaged application.")
     abstract val args: Property<String>

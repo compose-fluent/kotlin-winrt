@@ -58,6 +58,9 @@ abstract class RunWinAppHostTask @Inject constructor(
     abstract val supportsXamlPreview: org.gradle.api.provider.Property<Boolean>
 
     @get:Internal
+    abstract val nativeCompilerHome: org.gradle.api.provider.Property<String>
+
+    @get:Internal
     abstract val sdkPreview: org.gradle.api.provider.Property<Boolean>
 
     @get:Internal

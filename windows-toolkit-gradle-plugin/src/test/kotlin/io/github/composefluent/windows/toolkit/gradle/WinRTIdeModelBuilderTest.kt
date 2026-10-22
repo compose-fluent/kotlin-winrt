@@ -44,6 +44,8 @@ class WinRTIdeModelBuilderTest {
             it.previewExecutable.isNotBlank() && it.previewExecutable != it.executable
         })
         val launch = launches.single { it.taskName == run.name }
+        assertEquals("JVM launches must not offer Native debugging", "", launch.nativeCompilerHome)
+        assertTrue(launches.filter { it.taskName.startsWith("runWinAppPackageMingwX64") }.all { it.nativeCompilerHome.isNotBlank() })
         val runTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
         assertTrue(runTasks.toString(), runTasks.contains("runWinAppPackageDesktopMain"))
         assertTrue(runTasks.toString(), runTasks.any { it.startsWith("runWinAppPackageMingwX64") })
@@ -71,6 +73,7 @@ class WinRTIdeModelBuilderTest {
             .filter { it.taskName.startsWith("runWinAppNative") }
         assertTrue(nativeLaunches.isNotEmpty())
         assertTrue(nativeLaunches.all { it.previewExecutable == it.executable })
+        assertTrue(nativeLaunches.all { it.nativeCompilerHome.isNotBlank() })
         val nativeRuntimeStages = project.tasks.withType(StageWindowsPackageRuntimeAssetsTask::class.java)
             .filter { it.name.startsWith("stageWindowsPackageRuntimeAssetsMingwX64") }
         assertTrue(nativeRuntimeStages.isNotEmpty())

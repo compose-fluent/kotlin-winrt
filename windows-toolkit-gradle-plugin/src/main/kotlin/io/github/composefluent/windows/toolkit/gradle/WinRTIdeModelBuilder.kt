@@ -83,10 +83,10 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             hotReloadLaunches = if (windows == null) emptyList() else (
                 hostRuns.filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath,
-                        if (it.supportsXamlPreview.get()) it.hostExecutable.get().asFile.absolutePath else "")
+                        if (it.supportsXamlPreview.get()) it.hostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty())
                 } + packageRuns.filter { it.supportsXamlHotReload.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath,
-                        if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "")
+                        if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty())
                 }).sortedBy { it.taskName },
             staticPreview = if (windows?.packageReferences?.nugetPackages?.any {
                     it.packageId.startsWith("Microsoft.WindowsAppSDK", true) } != true) null else
@@ -139,6 +139,7 @@ private data class IdeHotReloadLaunch(
     override val executable: String,
     override val workingDirectory: String,
     override val previewExecutable: String = executable,
+    override val nativeCompilerHome: String = "",
 ) : WinRTIdeModel.HotReloadLaunch
 
 private data class IdePackageLayout(
