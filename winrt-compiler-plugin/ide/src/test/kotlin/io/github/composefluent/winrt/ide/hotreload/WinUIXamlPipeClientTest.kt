@@ -35,6 +35,28 @@ class WinUIXamlPipeClientTest : BasePlatformTestCase() {
         assertEquals(0, process.exitValue())
     }
 
+    fun testConsecutiveRequestsWaitForPreviousServerInstanceToDisconnect() = withPipe(false, replies = 2, releaseDelay = 250) { client, _, process ->
+        repeat(2) { assertEquals("pipe reply", client.request().message) }
+        assertTrue(process.waitFor(5, TimeUnit.SECONDS))
+        assertEquals(0, process.exitValue())
+    }
+
+    fun testClosingClientCancelsWaitingForBusyPipe() = withPipe(true) { client, directory, _ ->
+        val executor = Executors.newFixedThreadPool(2)
+        val first = executor.submit<WinUIXamlHotReloadReply> { client.request() }
+        try {
+            awaitFile(directory.resolve("received"))
+            val waiting = executor.submit<WinUIXamlHotReloadReply> { client.request() }
+            Thread.sleep(150)
+            assertFalse("Second request must wait for the busy server", waiting.isDone)
+            client.close()
+            for (request in listOf(first, waiting)) {
+                try { request.get(2, TimeUnit.SECONDS); fail("Closed client cannot complete") }
+                catch (expected: java.util.concurrent.ExecutionException) { assertNotNull(expected.cause) }
+            }
+        } finally { executor.shutdownNow() }
+    }
+
     fun testClosingClientCancelsBlockedPipeRead() = withPipe(true) { client, directory, _ ->
         val executor = Executors.newSingleThreadExecutor()
         val request = executor.submit<WinUIXamlHotReloadReply> { client.request() }
@@ -72,7 +94,7 @@ class WinUIXamlPipeClientTest : BasePlatformTestCase() {
         assertTrue("Pipe server did not publish $file", Files.exists(file))
     }
 
-    private fun withPipe(stall: Boolean, action: (WinUIXamlHotReloadClient, Path, Process) -> Unit) {
+    private fun withPipe(stall: Boolean, replies: Int = 1, releaseDelay: Int = 0, action: (WinUIXamlHotReloadClient, Path, Process) -> Unit) {
         if (!System.getProperty("os.name").startsWith("Windows")) return
         val directory = Files.createTempDirectory("winrt-pipe-client-")
         val token = "p".repeat(43)
@@ -89,6 +111,7 @@ class WinUIXamlPipeClientTest : BasePlatformTestCase() {
             try {
                 [IO.File]::WriteAllText((Join-Path ${'$'}directory 'pipe.session'),
                     "protocol=${WinUIXamlHotReloadProtocol.VERSION}`nport=0`npipe=${'$'}name`ntoken=$token`npid=${'$'}PID`n")
+                for (${'$'}iteration = 0; ${'$'}iteration -lt $replies; ${'$'}iteration++) {
                 if (-not ${'$'}pipe.WaitForConnectionAsync().Wait(15000)) { throw 'No client' }
                 ${'$'}expected = [Convert]::FromBase64String('$expected')
                 ${'$'}actual = New-Object byte[] ${'$'}expected.Length
@@ -104,6 +127,9 @@ class WinUIXamlPipeClientTest : BasePlatformTestCase() {
                 ${'$'}reply = [Convert]::FromBase64String('$response')
                 ${'$'}pipe.Write(${'$'}reply, 0, ${'$'}reply.Length)
                 if (${'$'}pipe.ReadByte() -ne 0x6b) { throw 'Missing reply receipt' }
+                ${if (releaseDelay > 0) "Start-Sleep -Milliseconds $releaseDelay" else ""}
+                ${'$'}pipe.Disconnect()
+                }
             } finally { ${'$'}pipe.Dispose() }
         """.trimIndent()
         val log = directory.resolve("server.log")

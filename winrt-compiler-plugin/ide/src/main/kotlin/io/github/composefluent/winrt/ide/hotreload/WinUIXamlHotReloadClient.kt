@@ -43,7 +43,7 @@ internal class WinUIXamlHotReloadClient private constructor(
     }
 
     private fun exchangePipe(name: String, send: (OutputStream) -> Unit): WinUIXamlHotReloadReply {
-        val pipe = WinRTDevelopmentPipe("\\\\.\\pipe\\${pipeNamespace.replace('/', '\\')}\\$name")
+        val pipe = WinRTDevelopmentPipe("\\\\.\\pipe\\${pipeNamespace.replace('/', '\\')}\\$name", isCancelled = { closed })
         connections += pipe.cancellation
         try {
             check(!closed) { "The development connection is closed." }

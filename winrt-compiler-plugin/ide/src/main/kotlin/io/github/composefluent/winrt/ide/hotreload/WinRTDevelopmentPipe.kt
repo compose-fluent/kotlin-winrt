@@ -14,14 +14,33 @@ import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
 /** Windows transport boundary. JDK file-channel close can wait for a synchronous pipe read. */
-internal class WinRTDevelopmentPipe(path: String, timeoutMillis: Long = 12_000) {
+internal class WinRTDevelopmentPipe(path: String, timeoutMillis: Long = 12_000, isCancelled: () -> Boolean = { false }) {
     private val gate = Any()
     private var cancelled = false
     private var disposed = false
     private val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
-    private val handle = kernel.getFunction("CreateFileW").invokePointer(arrayOf(
-        WString(path), 0xc0000000.toInt(), 0, null, 3, 0x40000000, null))
-        .also { if (it == null || Pointer.nativeValue(it) == -1L) throw failure("Open development pipe") }
+    private val handle = open(path, isCancelled)
+
+    private fun open(path: String, isCancelled: () -> Boolean): Pointer {
+        while (true) {
+            if (isCancelled() || Thread.currentThread().isInterrupted) throw IOException("The development connection is closed.")
+            val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
+            if (remaining <= 0) throw SocketTimeoutException("The development pipe remained busy within the request timeout.")
+            val opened = kernel.getFunction("CreateFileW").invokePointer(arrayOf(
+                WString(path), 0xc0000000.toInt(), 0, null, 3, 0x40000000, null))
+            if (opened != null && Pointer.nativeValue(opened) != -1L) return opened
+            val error = Native.getLastError()
+            if (error != 231 && error != 2) throw failure("Open development pipe", error)
+            // The server may still be acknowledging the previous frame, or be
+            // recreating its instance. Wait in bounded slices so project close
+            // cancels an exchange even before it has acquired a HANDLE.
+            if (call("WaitNamedPipeW", WString(path), minOf(remaining, 50).toInt()) == 0) {
+                val waitError = Native.getLastError()
+                if (waitError == 2) Thread.sleep(minOf(remaining, 10))
+                else if (waitError != 121) throw failure("Wait for development pipe", waitError)
+            }
+        }
+    }
 
     val input = object : InputStream() {
         override fun read(): Int = ByteArray(1).let { if (read(it) < 0) -1 else it[0].toInt() and 255 }
