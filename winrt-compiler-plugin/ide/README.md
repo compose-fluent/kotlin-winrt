@@ -508,7 +508,17 @@ has no source tag, navigation falls back to its nearest identifiable source owne
 Settings includes viewport presets (360×640, 800×600, 1280×720 and 1920×1080),
 width/height swapping, theme, project-code rebuild and reconnect. The regular
 toolbar keeps refresh, stop and canvas navigation available. During preparation,
-Cancel stops the native IDE Gradle execution associated with that preview session.
+Cancel stops the native IDE Gradle execution associated with that preview session,
+using a background progress context so Gradle JVM resolution does not block EDT.
+Refresh status replaces one line in place, keeping the toolbar and canvas stationary.
+
+Desktop acceptance in the isolated IDEA host covers cancellation followed by retry,
+source Button selection and canvas double-click navigation, viewport presets and
+width/height swapping with a real Native dependency control rendered in the canvas.
+A dependency control exposed by the visual snapshot only as the platform
+`UserControl` has no authored-type identity for cross-file navigation; its unnamed
+internals currently fall back to the nearest identifiable containing source element.
+This does not claim exact navigation into that dependency's XAML.
 
 When a project-code launch is available, the preview defaults to rendering real
 project controls. The per-module choice is saved across editor and IDE restarts.
