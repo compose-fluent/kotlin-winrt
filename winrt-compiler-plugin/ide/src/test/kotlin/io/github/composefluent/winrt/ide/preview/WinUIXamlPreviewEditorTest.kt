@@ -131,7 +131,8 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
             fun labels(node: SemanticsNode): List<String> = node.config.getOrNull(SemanticsProperties.Text)
                 .orEmpty().map { it.text } + node.children.flatMap(::labels)
             scene.render().close()
-            val expand = nodes().first { "Show preview options" in labels(it) && it.config.getOrNull(SemanticsActions.OnClick) != null }
+            assertFalse("Dimensions stay out of the default canvas workspace", nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
+            val expand = nodes().first { "Settings" in labels(it) && it.config.getOrNull(SemanticsActions.OnClick) != null }
             assertTrue(expand.config[SemanticsActions.OnClick].action!!.invoke())
             scene.render().close()
             val scroll = nodes().single { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }

@@ -495,10 +495,18 @@ completion, caret state and refactoring. The selected mode survives reopening.
 New documents default to **Split**, opening the designer automatically for the
 document's imported module. Saved mode choices still survive reopening. The
 preview pane is active only while visible in the selected editor. The static
-image fits the available preview area; **Visual Tree and properties** adds the
-inspector when needed.
+image initially fits the available area. **Fit**, **−**, **100%** and **+** control
+the canvas scale; drag the canvas to pan. Fit recenters it. **Settings** reveals
+dimensions and theme without permanently occupying the artboard. **Visual Tree
+and properties** adds the inspector when needed.
 
-The default uses a fixed SDK-only host for the imported XAML framework and reads
+When a project-code launch is available, the preview defaults to rendering real
+project controls. The per-module choice is saved across editor and IDE restarts.
+Disable **Render project controls (requires compilation)** to use the independent
+SDK designer when application code cannot build. Without a project-code launch,
+the SDK designer is selected automatically.
+
+The SDK mode uses a fixed host for the imported XAML framework and reads
 current XAML, without compiling the application, running XAMLC,
 constructing the user's Application or invoking user main. Application Kotlin
 errors do not block this designer. The first launch prepares a host for the
@@ -540,22 +548,23 @@ renders its ToggleButton page and main window. The SDK-only designer preserves
 built-in visual children and local resources inside unavailable custom containers;
 their appearance uses a placeholder rather than executing the custom control.
 Loose design dictionaries establish theme resources before loading merged styles.
-A rejected design document clears the previous image and reports its XAML/resource
-error; refreshing after a correction renders the new document.
+A rejected design document reports its XAML/resource error. The editor retains the
+last successful image for that document and mode, labels it out of date, and replaces
+it after a successful update. It also keeps the image visible while preparing edits.
 The artboard uses the preview theme's page background so transparent pages remain
 legible in both light and dark IDE themes.
 
-**Enable project code (requires compilation)** switches to the existing isolated
+**Render project controls (requires compilation)** switches to the existing isolated
 application-derived host to render custom Kotlin controls. Packaged project-code
 hosts use a separate `.preview` identity and deployment folder and can run beside
-the application's `.dev` package. The default SDK designer is independent of the
+the application's `.dev` package. The SDK designer is independent of the
 application's packaging mode. Static and live sessions have independent
 connections and process ownership; closing the project stops its design host.
 Synchronize Gradle after updating the toolkit to import version 8 of the IDE model.
 
 Static rendering preserves StaticResource, ThemeResource, local dictionaries,
 application resources and their original package-relative Source paths. In the
-default designer, relative and `ms-appx:///` dictionaries are read recursively
+SDK designer, relative and `ms-appx:///` dictionaries are read recursively
 from source, including unsaved edits. Named project ResourceDictionary classes
 can contribute their XAML without executing their constructors. Missing files
 and dictionary cycles are reported. Passive image/font assets are copied to the
@@ -719,9 +728,9 @@ to an existing WinUI application. This uses the native project lifecycle inside
 the platform host; full desktop IDE restart remains separate interactive acceptance.
 The runtime engine and development wire codec are shared by JVM and `mingwX64`.
 Native desktop launches expose the same authenticated session, property updates and
-visual inspection channel. Static preview defaults to an independent SDK designer:
-JVM for desktop WinUI and Native AppContainer for UWP.
-“Enable project code” also supports desktop mingwX64 applications with a configured
+visual inspection channel. The independent SDK preview uses JVM for desktop WinUI
+and Native AppContainer for UWP.
+“Render project controls” also supports desktop mingwX64 applications with a configured
 `mainClass` and generated XAML host. The native entry wrapper selects the isolated
 designer before calling user main, using the same compiled project/dependency XAML
 registrars as the JVM designer. Both unpackaged native runs and framework-dependent

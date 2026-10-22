@@ -1,8 +1,8 @@
 package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldState
@@ -13,12 +13,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
@@ -81,7 +85,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var launchName by remember(module?.projectDirectory) { mutableStateOf<String?>(null) }
     val launches = module?.hotReloadLaunches.orEmpty().filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
     val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
-    var projectCode by remember(module?.projectDirectory) { mutableStateOf(false) }
+    val preferences = remember(project) { PropertiesComponent.getInstance(project) }
+    val projectCodeKey = "winrt.preview.projectCode.${module?.projectDirectory.orEmpty()}"
+    var preferProjectCode by remember(projectCodeKey) { mutableStateOf(preferences.getBoolean(projectCodeKey, true)) }
+    val projectCode = preferProjectCode && launches.isNotEmpty()
     val designLaunch = if (projectCode) launch else module?.staticPreview?.launch()
     val catalogService = project.service<WinUIXamlCatalogService>()
     val catalogRevision by catalogService.changes.collectAsState()
@@ -109,6 +116,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var failure by remember { mutableStateOf<String?>(null) }
     var manualRefresh by remember { mutableIntStateOf(0) }
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+    var zoom by remember(source) { mutableStateOf<Float?>(null) }
+    var resetViewport by remember(source) { mutableIntStateOf(0) }
+    var lastView by remember(source, projectCode, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
     val scope = rememberCoroutineScope()
     fun selectPath(path: List<Int>) { if (static) staticPath = path else selection.path.value = path }
     DisposableEffect(project, source) {
@@ -166,9 +177,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly))
         }
     }
-    val view = state.inspection.takeIf { failure == null && (!static || prepared != null) }
+    val currentView = state.inspection.takeIf { failure == null && (!static || prepared != null) }
+    LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
+    val view = currentView ?: lastView.takeIf { static }
     BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
-      val controlsHeight = if (view == null) maxHeight else maxHeight * 0.5f
+      val controlsHeight = if (view == null) maxHeight else maxHeight * (if (showSettings) 0.5f else 0.3f)
       Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
        // Keep settings reachable at large IDE zoom levels without measuring the
        // weighted image/tree inside an unbounded scrolling column.
@@ -194,13 +207,27 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (state.pid != null) DefaultButton(onClick = session::stop) { Text(if (static) "Stop preview" else "Stop application") }
         }
         Text(state.message)
+        if (view != null && static && (failure != null || state.inspectionError != null || prepared == null || state.inspecting))
+            Text(if (failure != null || state.inspectionError != null) "Preview out of date — showing the last successful render." else "Updating preview — showing the last successful render.")
+        state.inspectionError?.let { Text(it) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            DefaultButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Hide settings" else "Settings") }
+            if (!treeOnly && view != null) {
+                DefaultButton(onClick = { zoom = null; resetViewport++ }) { Text("Fit") }
+                DefaultButton(onClick = { zoom = ((zoom ?: 1f) / 1.25f).coerceAtLeast(0.1f) }) { Text("−") }
+                DefaultButton(onClick = { zoom = 1f }) { Text(zoom?.let { "${(it * 100).toInt()}%" } ?: "100%") }
+                DefaultButton(onClick = { zoom = ((zoom ?: 1f) * 1.25f).coerceAtMost(8f) }) { Text("+") }
+            }
+        }
         if (staticFile != null && (module == null || designLaunch == null))
             Text("Synchronize a Kotlin WinRT module with a Windows App SDK reference to preview this document.")
         if (static) {
-            CheckboxRow("Enable project code (requires compilation)", projectCode, { projectCode = it }, enabled = launches.isNotEmpty())
+            CheckboxRow("Render project controls (requires compilation)", projectCode, {
+                preferProjectCode = it; preferences.setValue(projectCodeKey, it, true)
+            }, enabled = launches.isNotEmpty())
             if (staticFile == null) WinRTChoice("XAML document", files.map { it to (module?.projectDirectory?.let { dir -> it.removePrefix(dir.replace('\\', '/') + "/") } ?: it) }, source) { source = it }
             else Text(Path.of(staticFile).fileName.toString())
-            WinRTDetails("preview options") {
+            if (showSettings) {
               Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }) }
                 Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }) }
@@ -208,14 +235,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
               WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it }
               notes.forEach { Text(it) }
             }
-            if (notes.isNotEmpty()) Text("Design values and control defaults replace compiled bindings and event handlers. See preview options for details.")
+            if (notes.isNotEmpty() && showSettings) Text("Design values and control defaults replace compiled bindings and event handlers.")
         } else {
             if (roots.size > 1) WinRTChoice("Window", roots.map { WinUIXamlVisualInspectionSelection.key(it) to it.className.substringAfterLast('.') }, root?.let(WinUIXamlVisualInspectionSelection::key)) { selection.selectRoot(it) }
             if ((root?.instances ?: 0) > 1) WinRTChoice("Instance", (0 until root!!.instances).map { it.toString() to "Instance ${it + 1}" }, instance.toString()) {
                 selection.instance.value = it.toInt(); selection.path.value = emptyList()
             }
         }
-        CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
+        if (showSettings) CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
         if (staticFile != null) CheckboxRow("Visual Tree and properties", showInspector, { showInspector = it })
         failure?.let { Text(it) }
         if (view == null) Text(when {
@@ -241,7 +268,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
        }
         if (view != null) {
-            if (!treeOnly) PreviewImage(view, selectedPath, ::selectPath, Modifier.weight(1f).fillMaxWidth())
+            if (!treeOnly) key(source, resetViewport) { PreviewImage(view, selectedPath, ::selectPath, zoom, Modifier.weight(1f).fillMaxWidth()) }
             if (showInspector) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 @Composable fun tree(modifier: Modifier) { key(root?.className, root?.resourcePath, instance, static) {
                     VisualTree(view.nodes, selectedPath, ::selectPath, modifier)
@@ -290,27 +317,30 @@ internal fun visualInspectionTree(nodes: List<WinUIXamlVisualNode>): Tree<WinUIX
 }
 
 @Composable
-private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, modifier: Modifier) {
+private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, zoom: Float?, modifier: Modifier) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
     }
     val root = view.nodes.firstOrNull()?.bounds ?: return
     if (root.width <= 0 || root.height <= 0) return
-    BoxWithConstraints(modifier) {
-      val ratio = image.width.toFloat() / image.height
-      val displayWidth = minOf(maxWidth, maxHeight * ratio)
-      Box(Modifier.width(displayWidth).aspectRatio(ratio)) {
-        bitmap?.let { Image(it, "WinUI XAML preview", Modifier.matchParentSize()) }
-        Canvas(Modifier.matchParentSize().pointerInput(view.nodes) { detectTapGestures { point ->
-            WinUIXamlVisualInspectionSelection.hit(view.nodes, point.x / size.width * root.width, point.y / size.height * root.height)?.let { select(it.path) }
+    var pan by remember(zoom) { mutableStateOf(Offset.Zero) }
+    Canvas(modifier.clipToBounds().semantics { contentDescription = "WinUI XAML preview. Drag to pan; use Fit to reset." }
+        .pointerInput(zoom) { detectDragGestures { change, delta -> change.consume(); pan += delta } }
+        .pointerInput(view.nodes, zoom, pan) { detectTapGestures { point ->
+            val factor = zoom?.times(density) ?: minOf(size.width / root.width, size.height / root.height).toFloat()
+            val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
+            WinUIXamlVisualInspectionSelection.hit(view.nodes, (point.x - origin.x) / factor.toDouble(), (point.y - origin.y) / factor.toDouble())?.let { select(it.path) }
         } }) {
+        val factor = zoom?.times(density) ?: minOf(size.width / root.width, size.height / root.height).toFloat()
+        val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
+        translate(origin.x, origin.y) { scale(factor, factor, Offset.Zero) {
+            bitmap?.let { drawImage(it, dstSize = androidx.compose.ui.unit.IntSize(root.width.toInt(), root.height.toInt())) }
             view.nodes.firstOrNull { it.path == selected }?.bounds?.let { r ->
-                drawRect(Color(0xFF4BA3FF), Offset((r.x / root.width * size.width).toFloat(), (r.y / root.height * size.height).toFloat()),
-                    Size((r.width / root.width * size.width).toFloat(), (r.height / root.height * size.height).toFloat()), style = Stroke(2.dp.toPx()))
+                drawRect(Color(0xFF4BA3FF), Offset(r.x.toFloat(), r.y.toFloat()),
+                    Size(r.width.toFloat(), r.height.toFloat()), style = Stroke(2.dp.toPx() / factor))
             }
-        }
-      }
+        } }
     }
 }
 
