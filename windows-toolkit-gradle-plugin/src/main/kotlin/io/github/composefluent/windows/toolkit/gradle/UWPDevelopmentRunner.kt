@@ -91,6 +91,7 @@ namespace KotlinWinRT.UWP {
         }
     }
 }
+$nativeDebugOutputSource
 '@
 $nativeDebugHandshakeScript
 if (${'$'}ResumeActivation) {
@@ -98,7 +99,13 @@ if (${'$'}ResumeActivation) {
     try {
         if (Test-Path -LiteralPath ${'$'}debugConfiguration) {
             ${'$'}debug = Get-Content -LiteralPath ${'$'}debugConfiguration -Raw -Encoding UTF8 | ConvertFrom-Json
-            Wait-NativeDebugger ${'$'}p ${'$'}tid ([string]${'$'}debug.directory)
+            if (-not [string]::IsNullOrWhiteSpace([string]${'$'}debug.output)) {
+                [KotlinWinRT.UWP.DebugOutput]::Capture(${'$'}p, ${'$'}tid, [string]${'$'}debug.output)
+                exit 0
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]${'$'}debug.directory)) {
+                Wait-NativeDebugger ${'$'}p ${'$'}tid ([string]${'$'}debug.directory)
+            }
         }
         [KotlinWinRT.UWP.Launcher]::ResumeActivation(${'$'}p, ${'$'}tid)
     } catch {
@@ -217,8 +224,9 @@ try {
 if (${'$'}NoLaunch) { exit 0 }
 ${'$'}applicationId = ${'$'}package.PackageFamilyName + '!' + ${'$'}application.Id
 ${'$'}development = -not [string]::IsNullOrWhiteSpace([string]${'$'}configurationData.developmentSessionDirectory)
+${'$'}debugging = ${'$'}development -or ${'$'}configurationData.debugOutput -or -not [string]::IsNullOrWhiteSpace([string]${'$'}configurationData.nativeDebugDirectory)
 ${'$'}watcherStarted = ${'$'}false
-if (${'$'}development) {
+if (${'$'}debugging) {
     ${'$'}owner = [Guid]::NewGuid().ToString('N')
     ${'$'}localState = Join-Path ${'$'}env:LOCALAPPDATA ('Packages\' + ${'$'}package.PackageFamilyName + '\LocalState\KotlinWinRT')
     ${'$'}sessionDirectory = Join-Path ${'$'}localState ${'$'}owner
@@ -228,25 +236,26 @@ if (${'$'}development) {
     # per-activation helper independent of arbitrarily deep project/build paths.
     ${'$'}sessionScript = Join-Path ([IO.Path]::GetTempPath()) ('kwrt-' + ${'$'}owner + '.ps1')
     [IO.File]::Copy(${'$'}PSCommandPath, ${'$'}sessionScript)
-    if (-not [string]::IsNullOrWhiteSpace([string]${'$'}configurationData.nativeDebugDirectory)) {
+    if (${'$'}configurationData.debugOutput -or -not [string]::IsNullOrWhiteSpace([string]${'$'}configurationData.nativeDebugDirectory)) {
         [IO.File]::WriteAllText(${'$'}sessionScript + '.debug.json',
-            (@{ directory = [string]${'$'}configurationData.nativeDebugDirectory } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new(${'$'}false))
+            (@{ directory = [string]${'$'}configurationData.nativeDebugDirectory; output = [string]${'$'}configurationData.debugOutputFile } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new(${'$'}false))
     }
-    ${'$'}environment = @(('KOTLIN_WINRT_HOT_RELOAD_DIRECTORY=' + ${'$'}sessionDirectory), 'KOTLIN_WINRT_DEVELOPMENT_TRANSPORT=pipe')
+    ${'$'}environment = @()
+    if (${'$'}development) { ${'$'}environment = @(('KOTLIN_WINRT_HOT_RELOAD_DIRECTORY=' + ${'$'}sessionDirectory), 'KOTLIN_WINRT_DEVELOPMENT_TRANSPORT=pipe') }
     if (${'$'}configurationData.designPreview) { ${'$'}environment += 'KOTLIN_WINRT_XAML_PREVIEW=1' }
 }
 try {
-if (${'$'}development) {
+if (${'$'}debugging) {
     # Windows requires a startup debugger when supplying an environment block.
-    # Following Microsoft's Store profiler bootstrap, this helper only resumes the
-    # supplied activation thread; it does not attach or reserve a debugger port.
+    # Following Microsoft's Store profiler bootstrap, the helper resumes the
+    # supplied activation thread, handing off to LLDB or capturing output when requested.
     ${'$'}resumer = '"' + (Join-Path ${'$'}PSHOME 'powershell.exe') + '" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + ${'$'}sessionScript + '" -ResumeActivation'
     if (${'$'}resumer.Length -ge 260) { throw 'The Windows startup debugger command exceeds MAX_PATH. Configure a shorter TEMP directory.' }
     [KotlinWinRT.UWP.Launcher]::DevelopmentEnvironment(${'$'}package.PackageFullName, ${'$'}ownerFile, ${'$'}owner, ${'$'}environment, ${'$'}resumer)
 }
 ${'$'}applicationProcessId = [KotlinWinRT.UWP.Launcher]::Activate(${'$'}applicationId, [string]${'$'}configurationData.applicationArguments)
 Write-Output "Activated ${'$'}applicationId (PID ${'$'}applicationProcessId)"
-if (${'$'}development) {
+if (${'$'}debugging) {
     ${'$'}applicationProcess = Get-Process -Id ${'$'}applicationProcessId -ErrorAction Stop
     # A separate hidden watcher restores package lifecycle even when Gradle is cancelled.
     ${'$'}watchArguments = @(${'$'}sessionScript, ${'$'}package.PackageFullName, [string]${'$'}applicationProcessId,
@@ -258,6 +267,8 @@ if (${'$'}development) {
     ${'$'}encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(${'$'}watchCommand))
     Start-Process -FilePath (Join-Path ${'$'}PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', ${'$'}encoded) | Out-Null
     ${'$'}watcherStarted = ${'$'}true
+}
+if (${'$'}development) {
     ${'$'}sourceSession = Join-Path ${'$'}sessionDirectory ("${'$'}applicationProcessId-0.session")
     ${'$'}deadline = [DateTime]::UtcNow.AddSeconds(30)
     while (-not (Test-Path -LiteralPath ${'$'}sourceSession)) {
@@ -272,6 +283,23 @@ if (${'$'}development) {
     [IO.File]::Copy(${'$'}sourceSession, ${'$'}temporary)
     [IO.File]::Move(${'$'}temporary, (Join-Path ${'$'}destination ([IO.Path]::GetFileName(${'$'}sourceSession))))
 }
+if (${'$'}configurationData.debugOutput) {
+    Write-Output ('Native debug output: ' + [string]${'$'}configurationData.debugOutputFile)
+    if (-not ${'$'}Detach) {
+        ${'$'}stream = [IO.File]::Open([string]${'$'}configurationData.debugOutputFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        ${'$'}reader = [IO.StreamReader]::new(${'$'}stream, [Text.Encoding]::UTF8)
+        try {
+            while (-not ${'$'}applicationProcess.HasExited) {
+                ${'$'}text = ${'$'}reader.ReadToEnd()
+                if (${'$'}text.Length -gt 0) { Write-Host -NoNewline ${'$'}text }
+                Start-Sleep -Milliseconds 100
+            }
+            Start-Sleep -Milliseconds 100
+            ${'$'}text = ${'$'}reader.ReadToEnd()
+            if (${'$'}text.Length -gt 0) { Write-Host -NoNewline ${'$'}text }
+        } finally { ${'$'}reader.Dispose(); ${'$'}stream.Dispose() }
+    }
+}
 if (-not ${'$'}Detach) {
     ${'$'}applicationProcess = Get-Process -Id ${'$'}applicationProcessId -ErrorAction SilentlyContinue
     if (${'$'}applicationProcess) {
@@ -283,12 +311,12 @@ if (-not ${'$'}Detach) {
     }
 }
 } catch {
-    if (${'$'}development -and ${'$'}applicationProcess -and -not ${'$'}applicationProcess.HasExited) {
+    if (${'$'}debugging -and ${'$'}applicationProcess -and -not ${'$'}applicationProcess.HasExited) {
         Stop-Process -InputObject ${'$'}applicationProcess -ErrorAction SilentlyContinue
     }
     throw
 } finally {
-    if (${'$'}development -and -not ${'$'}watcherStarted) {
+    if (${'$'}debugging -and -not ${'$'}watcherStarted) {
         [KotlinWinRT.UWP.Launcher]::DevelopmentEnvironment(${'$'}package.PackageFullName, ${'$'}ownerFile, ${'$'}owner, ${'$'}null)
         [IO.File]::Delete(${'$'}sessionScript + '.debug.json')
         [IO.File]::Delete(${'$'}sessionScript)

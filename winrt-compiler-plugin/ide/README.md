@@ -3,7 +3,7 @@
 The application templates and SDK-only designer target WinUI 3. Project-code
 previews and Hot Reload also support Kotlin/Native UWP applications through an
 isolated development package. Native Debug supports desktop and UWP startup
-breakpoints; UWP packaged `--debug-output` capture remains separate work.
+breakpoints; UWP packaged `--debug-output` captures native output and exceptions.
 See the [UWP guide](../../docs/UWP.md) for package configuration and activation.
 
 This is a standalone IDE build beneath the compiler tooling owner. It does not

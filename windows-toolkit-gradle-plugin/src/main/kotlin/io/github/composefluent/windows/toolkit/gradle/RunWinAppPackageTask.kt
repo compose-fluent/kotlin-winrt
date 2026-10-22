@@ -80,7 +80,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
     abstract val detach: Property<Boolean>
 
     @get:Input
-    @get:Option(option = "debug-output", description = "Capture native debug output and exceptions through WinApp CLI.")
+    @get:Option(option = "debug-output", description = "Capture native debug output and exceptions through the package launcher.")
     abstract val debugOutput: Property<Boolean>
 
     @get:Input
@@ -217,7 +217,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
             require(!designPreview.get() || supportsXamlPreview.get() && supportsXamlHotReload.get()) {
                 "UWP XAML preview requires a generated Kotlin/Native preview host."
             }
-            require(!debugOutput.get()) { "UWP launch does not capture WinApp CLI debug output; attach a native debugger to the reported PID." }
+            require(!debugOutput.get() || nativeDebugDirectory.orNull.isNullOrBlank()) {
+                "Choose either Native IDE debugging or --debug-output; Windows permits one debugger per process."
+            }
             val restoredRoots = dependencyLockFiles.files.filter(java.io.File::isFile).let { lockFiles ->
                 if (lockFiles.isEmpty()) emptyList() else readWinAppRestoredPackageRoots(
                     lockFiles = lockFiles, rootPackageSpecs = dependencyPackageSpecs.get(),
@@ -255,6 +257,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
                 put("applicationArguments", args.get())
                 put("designPreview", designPreview.get())
                 put("nativeDebugDirectory", nativeDebugDirectory.orNull.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true }.orEmpty())
+                put("debugOutput", debugOutput.get())
+                put("debugOutputFile", if (debugOutput.get()) temporaryDir.resolve("native-debug-output.log").absolutePath else "")
                 put("developmentSessionDirectory", developmentSessionDirectory.orNull
                     .takeIf { supportsXamlHotReload.get() && !noLaunch.get() }.orEmpty())
                 put("dependencyPackages", JsonArray(dependencyPaths.map { path ->
@@ -293,6 +297,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
         } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
         val nativeDebug = nativeDebugDirectory.orNull?.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true && !noLaunch.get() }
+        require(nativeDebug == null || !debugOutput.get()) {
+            "Choose either Native IDE debugging or --debug-output; Windows permits one debugger per process."
+        }
         val arguments = buildList {
             add("run")
             add(input.toString())

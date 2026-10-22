@@ -248,7 +248,18 @@ markup, actual templates/pixels/property readback, live text/button updates,
 transaction rollback and process-exit cleanup. IDE runtime tests accept
 `-Pwinrt.ide.uwpPreviewSession=<directory>` and
 `-Pwinrt.ide.uwpHotReloadSession=<directory>` for these real application sessions.
-The packaged runner's `--debug-output` capture and full Native IDE debugging remain
-separate work; use application-data logs and an external debugger meanwhile.
+Native IDE **Debug** builds and activates the selected Native Debug executable,
+attaches LLDB before application code and supports source breakpoints, stepping,
+thread stacks and Kotlin object fields. Configure LLDB under Kotlin WinRT settings;
+the Gradle model supplies the matching Kotlin/Native compiler formatter.
+
+`runWinAppPackage... --debug-output` captures Windows `OutputDebugString` messages
+(including Unicode), first/second-chance exception notifications and process exit.
+Application exception handlers still receive their exceptions. Output streams to
+the Gradle console and is retained at `build/tmp/<run-task>/native-debug-output.log`.
+With `--detach`, capture continues in the activation helper and the task prints the
+log path. This captures native debugger output, not ordinary stdout/stderr.
+Windows permits one debugger per process, so `--debug-output` and IDE LLDB Debug
+are separate launch modes. The helper and package debug lease end with the app.
 See the [XAML compiler guide](../windows-toolkit-gradle-plugin/XAML.md) and
 [runtime ABI contract](../winrt-runtime/XAML_CONTRACT.md) for shared contracts.
