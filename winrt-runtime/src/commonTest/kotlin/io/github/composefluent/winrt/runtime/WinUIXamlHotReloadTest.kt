@@ -137,6 +137,49 @@ class WinUIXamlHotReloadTest {
         assertNotSame(first.style, laterFirst.style)
     }
 
+    @Test fun dictionary_key_changes_rollback_and_replay_in_order_for_new_pages() {
+        // CsWinRT InteropServices/Collections/IDictionaryMethods owns Insert/Remove;
+        // the development registry owns transactional updates and instance replay.
+        val queue = mutableListOf<() -> Unit>()
+        val registry = registry(queue) { markup ->
+            if (markup == "first") mapOf("Keep" to Element("reloaded style"), "New" to Element("new"))
+            else mapOf("Final" to Element("final"))
+        }
+        val original = Element("original")
+        val owner = Page(mutableMapOf("Keep" to original, "Removed" to Element()))
+        val consumer = Element(style = original, rejectStyle = true)
+        fun connect(page: Page, element: Element) {
+            registry.observe(page, "probe.Page", "Page.xaml", hash, "Consumer", element)
+            registry.observe(page, "probe.Page", "Page.xaml", hash, null, null)
+        }
+        connect(owner, consumer)
+        val target = WinUIXamlHotReloadTarget(path = listOf(WinUIXamlHotReloadStep.Property("Resources")))
+        val update = WinUIXamlHotReloadResources(target, "first", listOf("Keep", "Removed"), listOf(
+            WinUIXamlHotReloadResourceReference(WinUIXamlHotReloadTarget("Consumer"), "Style", "Keep")))
+        fun send(value: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var result: WinUIXamlHotReloadReply? = null
+            registry.submit(value) { result = it }; queue.removeAt(0).invoke()
+            return requireNotNull(result)
+        }
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(patch().copy(resources = listOf(update))).status)
+        assertEquals(setOf<Any?>("Keep", "Removed"), owner.resources.keys)
+        assertSame(original, owner.resources["Keep"])
+        consumer.rejectStyle = false
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(patch().copy(resources = listOf(update))).status)
+        assertEquals(setOf<Any?>("Keep", "New"), owner.resources.keys)
+        val second = update.copy(xaml = "second", expectedKeys = listOf("Keep", "New"),
+            references = update.references.map { it.copy(key = "Final") })
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(patch().copy(expectedHash = next,
+            sourceHash = "c".repeat(64), version = 2, resources = listOf(second))).status)
+        val later = Page(mutableMapOf("Keep" to Element(), "Removed" to Element()))
+        val laterConsumer = Element()
+        connect(later, laterConsumer)
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, registry.snapshot().status)
+        assertEquals(setOf<Any?>("Final"), later.resources.keys)
+        assertEquals("final", laterConsumer.style?.text)
+        assertSame(later.resources["Final"], laterConsumer.style)
+    }
+
     /** IList.net5.cs owns IndexOf/Insert/RemoveAt. The loader is supplied by the
      * SDK, and existing indices describe retained instances, never new controls. */
     @Test fun child_updates_keep_objects_and_replay_ordered_history_for_later_components() {

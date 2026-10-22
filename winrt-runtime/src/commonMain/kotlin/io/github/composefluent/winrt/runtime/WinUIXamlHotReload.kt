@@ -93,7 +93,7 @@ internal class WinUIXamlHotReloadRegistry(
                 roots.map { it.thread }.distinct().size != 1 -> "Components on multiple UI threads require restarting."
                 patch.changes.size + patch.resources.sumOf { 1 + it.references.size } + patch.reads.size +
                     patch.children.sumOf { 1 + it.items.size } > 512 || patch.resources.size > 64 || patch.children.size > 64 -> "The update contains too many changes."
-                (page.graphActive || patch.children.isNotEmpty()) &&
+                (page.graphActive || patch.children.isNotEmpty() || patch.resources.isNotEmpty()) &&
                     (patch.changes.isNotEmpty() || patch.resources.isNotEmpty() || patch.children.isNotEmpty()) &&
                     (page.history.size + (if (!page.graphActive && (page.overrides.isNotEmpty() || page.resourceOverrides.isNotEmpty())) 1 else 0) >= 64 ||
                         page.history.sumOf(::storedSize) + storedSize(patch) +
@@ -120,7 +120,7 @@ internal class WinUIXamlHotReloadRegistry(
                     lock.withLock {
                         check(page.restart == null) { page.restart.orEmpty() }
                         page.hash = patch.sourceHash; page.version = patch.version
-                        if (!page.graphActive && patch.children.isNotEmpty()) {
+                        if (!page.graphActive && (patch.children.isNotEmpty() || patch.resources.isNotEmpty())) {
                             if (page.overrides.isNotEmpty() || page.resourceOverrides.isNotEmpty())
                                 page.history += patch.copy(changes = page.overrides.values.toList(),
                                     resources = page.resourceOverrides.values.toList(), reads = emptyList(), children = emptyList())
@@ -280,13 +280,21 @@ internal class WinUIXamlHotReloadRegistry(
                     "The live dictionary's keys no longer match XAML; rebuild or restart."
                 }
                 val replacement = loadResources(update.xaml)
-                require(replacement.keys.toSet() == expected) { "Changing resource keys requires rebuilding." }
+                require(replacement.size <= 4096 && replacement.keys.all { it is String }) {
+                    "The replacement dictionary must contain explicit string keys."
+                }
                 val previous = expected.associateWith { dictionary[it] }
-                val next = expected.associateWith { replacement[it] }
+                val next = replacement.toMap()
                 replacements[update.target] = next
-                add(Prepared({ next.forEach { (key, value) -> dictionary[key] = value } },
-                    { previous.forEach { (key, value) -> dictionary[key] = value } }, {
-                        WinUIXamlHotReloadValue(update.target.element, "Resources", expected.sorted().joinToString(), update.target.path)
+                // CsWinRT IDictionaryMethods maps index assignment to IMap.Insert
+                // and removal to IMap.Remove. Keep the dictionary identity while
+                // replaying the exact key set, including rollback after a setter fails.
+                fun replace(values: Map<out Any?, Any?>) {
+                    dictionary.keys.toList().filterNot(values::containsKey).forEach(dictionary::remove)
+                    values.forEach { (key, value) -> dictionary[key] = value }
+                }
+                add(Prepared({ replace(next) }, { replace(previous) }, {
+                        WinUIXamlHotReloadValue(update.target.element, "Resources", next.keys.map { it as String }.sorted().joinToString(), update.target.path)
                     }))
                 update.references.forEach { reference ->
                     require(next.containsKey(reference.key)) { "Resource '${reference.key}' is not part of this dictionary." }

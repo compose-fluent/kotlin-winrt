@@ -133,7 +133,13 @@ class WinUIXamlHotReloadTest {
                 .patch(WinUIXamlHotReloadMarkup.parse(text), resourceRoot(text)) }.isFailure)
         }
         val added = resourceSource.replace("</ResourceDictionary>", "<SolidColorBrush x:Key=\"Extra\"/></ResourceDictionary>")
-        assertTrue(runCatching { WinUIXamlHotReloadMarkup.parse(added).patch(WinUIXamlHotReloadMarkup.parse(resourceSource), resourceRoot()) }.isFailure)
+        val patch = WinUIXamlHotReloadMarkup.parse(added).patch(WinUIXamlHotReloadMarkup.parse(resourceSource), resourceRoot())
+        assertEquals(listOf("Accent", "GreetingStyle"), patch.resources.single().expectedKeys)
+        assertTrue(patch.resources.single().xaml.contains("Extra"))
+        val removed = resourceSource.replace(Regex("<SolidColorBrush[^>]+/>"), "")
+        assertTrue("A still-referenced key cannot be removed", runCatching {
+            WinUIXamlHotReloadMarkup.parse(removed).patch(WinUIXamlHotReloadMarkup.parse(resourceSource), resourceRoot())
+        }.isFailure)
     }
 
     private fun content(uri: String, type: String, property: String?): WinUIXamlContentMember? =

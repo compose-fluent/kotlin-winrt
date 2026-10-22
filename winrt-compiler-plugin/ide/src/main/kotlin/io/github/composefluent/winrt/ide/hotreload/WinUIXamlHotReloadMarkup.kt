@@ -222,12 +222,12 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                         val nextEntries = resourceEntries(b)
                         val oldByKey = oldEntries.associateBy(::key)
                         val nextByKey = nextEntries.associateBy(::key)
-                        require(oldByKey.keys == nextByKey.keys) { "Adding or removing resource keys requires rebuilding." }
                         val resourceTarget = target.copy(path = target.path + WinUIXamlHotReloadStep.Property("Resources"))
-                        if (nextEntries.any { styleChanged(oldByKey.getValue(key(it)), it) }) {
+                        if (oldByKey.keys != nextByKey.keys || nextEntries.any { styleChanged(oldByKey.getValue(key(it)), it) }) {
                             nextEntries.forEach { validateFragment(it, nextByKey.keys) }
-                            val consumers = references(next, b, target, nextByKey.keys)
-                            resources += WinUIXamlHotReloadResources(resourceTarget, dictionaryMarkup(b), nextEntries.map(::key), consumers)
+                            val consumers = references(next, b, target, oldByKey.keys + nextByKey.keys)
+                            require(consumers.all { it.key in nextByKey }) { "A removed resource still has live consumers; update those references before removing its key." }
+                            resources += WinUIXamlHotReloadResources(resourceTarget, dictionaryMarkup(b), oldEntries.map(::key), consumers)
                             consumers.filter { it.property == "Style" }.forEach { consumer ->
                                 fun setterProperties(element: XamlElement): List<String> =
                                     element.content.filterIsInstance<XamlElement>().flatMap { child ->
