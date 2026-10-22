@@ -181,7 +181,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
     BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
-      val controlsHeight = if (view == null) maxHeight else maxHeight * (if (showSettings) 0.5f else 0.3f)
+      val controlsHeight = if (view == null) maxHeight else maxHeight * (if (showSettings) 0.5f else 0.4f)
       Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
        // Keep settings reachable at large IDE zoom levels without measuring the
        // weighted image/tree inside an unbounded scrolling column.
@@ -190,7 +190,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (!treeOnly && staticFile == null) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RadioButtonRow("Live Preview", !static, { static = false }); RadioButtonRow("Static Preview", static, { static = true })
         }
-        if ((!state.connected && (!static || staticFile == null)) || static && projectCode) {
+        if ((!state.connected && (!static || staticFile == null)) || static && projectCode && showSettings) {
             @Composable fun buildOptions() {
                 WinRTModulePicker(project)
                 if (!static || projectCode) WinRTChoice("Application", launches.map { it.taskName to it.taskName }, launch?.taskName) { launchName = it }
@@ -222,11 +222,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (staticFile != null && (module == null || designLaunch == null))
             Text("Synchronize a Kotlin WinRT module with a Windows App SDK reference to preview this document.")
         if (static) {
-            CheckboxRow("Render project controls (requires compilation)", projectCode, {
+            if (showSettings) CheckboxRow("Render project controls (requires compilation)", projectCode, {
                 preferProjectCode = it; preferences.setValue(projectCodeKey, it, true)
             }, enabled = launches.isNotEmpty())
             if (staticFile == null) WinRTChoice("XAML document", files.map { it to (module?.projectDirectory?.let { dir -> it.removePrefix(dir.replace('\\', '/') + "/") } ?: it) }, source) { source = it }
-            else Text(Path.of(staticFile).fileName.toString())
+            else if (view == null || showSettings) Text(Path.of(staticFile).fileName.toString())
             if (showSettings) {
               Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }) }
@@ -251,7 +251,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             static -> "Start the design host to render this document with WinUI."
             else -> "Connect a development application to inspect its actual visual tree."
         })
-        if (view != null) {
+        if (view != null && showInspector) {
             val node = view.nodes.firstOrNull { it.path == selectedPath }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 node?.let { Text(it.name.ifEmpty { it.typeName.substringAfterLast('.') }) }
