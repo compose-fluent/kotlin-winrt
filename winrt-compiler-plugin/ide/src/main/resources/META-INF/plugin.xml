@@ -17,6 +17,7 @@
     </dependencies>
     <extensions defaultExtensionNs="com.intellij">
         <configurationType implementation="io.github.composefluent.winrt.ide.run.WinRTApplicationConfigurationType"/>
+        <programRunner implementation="io.github.composefluent.winrt.ide.debug.WinRTNativeDebugRunner" order="first"/>
         <xdebugger.breakpointType implementation="io.github.composefluent.winrt.ide.debug.WinRTNativeLineBreakpointType"/>
         <applicationConfigurable id="KotlinWinRT.Settings" parentId="tools" displayName="Kotlin WinRT"
                                  instance="io.github.composefluent.winrt.ide.settings.WinRTIdeConfigurable"/>

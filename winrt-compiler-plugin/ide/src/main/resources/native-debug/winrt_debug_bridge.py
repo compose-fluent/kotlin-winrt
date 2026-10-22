@@ -26,10 +26,25 @@ class Session:
         self.last_state = None
         self.last_stop = None
         self.generation = 0
+        self.startup_loader_break = False
+        self.listener = lldb.SBListener("Kotlin WinRT process events")
+        self.pending_attach_stop = False
 
     def checked(self, error):
         if error.Fail():
             raise RuntimeError(error.GetCString())
+
+    def detach(self):
+        if not self.process or not self.process.IsValid() or self.process.GetState() in (lldb.eStateExited, lldb.eStateDetached):
+            return
+        # The Windows process plugin can leave threads suspended when detaching
+        # directly from a step. Resume through its normal state transition first.
+        # https://lldb.llvm.org/cpp_reference/ProcessWindows_8cpp_source.html
+        self.target.DeleteAllBreakpoints()
+        if self.process.GetState() == lldb.eStateStopped:
+            self.checked(self.process.Continue())
+        if self.process.GetState() not in (lldb.eStateExited, lldb.eStateDetached):
+            self.checked(self.process.Detach())
 
     def stopped(self):
         if not self.process or self.process.GetState() != lldb.eStateStopped:
@@ -83,19 +98,25 @@ class Session:
             return {"removed": self.target.BreakpointDelete(int(request["breakpoint"]))}
         if command == "attach":
             error = lldb.SBError()
-            self.process = self.target.AttachToProcessWithID(self.debugger.GetListener(), int(request["pid"]), error)
+            self.process = self.target.AttachToProcessWithID(self.listener, int(request["pid"]), error)
             self.checked(error)
+            self.pending_attach_stop = True
             return {"pid": self.process.GetProcessID()}
+        if command == "resumeStartup":
+            self.stopped()
+            self.startup_loader_break = True
+            self.checked(self.process.Continue())
+            return {}
         if command == "launch":
             info = lldb.SBLaunchInfo(request.get("arguments", []))
+            info.SetListener(self.listener)
             info.SetWorkingDirectory(request["directory"])
             error = lldb.SBError()
             self.process = self.target.Launch(info, error)
             self.checked(error)
             return {"pid": self.process.GetProcessID()}
         if command == "detach":
-            if self.process and self.process.IsValid() and self.process.GetState() not in (lldb.eStateExited, lldb.eStateDetached):
-                self.checked(self.process.Detach())
+            self.detach()
             return {}
         if command == "pause":
             self.checked(self.process.Stop())
@@ -124,7 +145,8 @@ class Session:
         if command == "variables":
             frame = self.frame(request)
             variables = frame.GetVariables(True, True, False, True)
-            return {"values": [self.value(variables.GetValueAtIndex(i)) for i in range(min(variables.GetSize(), 100))]}
+            start = max(0, int(request.get("start", 0)))
+            return {"values": [self.value(variables.GetValueAtIndex(i)) for i in range(start, min(variables.GetSize(), start + 100))], "total": variables.GetSize()}
         if command == "children":
             self.frame(request)
             value = self.values.get(int(request["value"]))
@@ -138,11 +160,34 @@ class Session:
     def poll(self):
         if not self.process or not self.process.IsValid():
             return
-        state = self.process.GetState()
+        # State polling observes internal single-step stops that LLDB immediately
+        # restarts. Only publish non-restarted public process events to the IDE.
+        state = None
+        event = lldb.SBEvent()
+        while self.listener.GetNextEvent(event):
+            if lldb.SBProcess.EventIsProcessEvent(event) and not lldb.SBProcess.GetRestartedFromEvent(event):
+                state = lldb.SBProcess.GetStateFromEvent(event)
+        if self.pending_attach_stop:
+            self.pending_attach_stop = False
+            state = self.process.GetState()
         stop = self.process.GetStopID()
-        if state != self.last_state or (state == lldb.eStateStopped and stop != self.last_stop):
+        if state is not None and (state != self.last_state or (state == lldb.eStateStopped and stop != self.last_stop)):
             self.last_state, self.last_stop = state, stop
             if state == lldb.eStateStopped:
+                if self.startup_loader_break:
+                    self.startup_loader_break = False
+                    # Windows emits a loader breakpoint after a CREATE_SUSPENDED
+                    # startup is released. Consume only that first ntdll INT3;
+                    # never suppress application breakpoints or other exceptions.
+                    # https://learn.microsoft.com/windows-hardware/drivers/debugger/initial-breakpoint
+                    reasons = [thread for thread in self.process if thread.GetStopReason() not in (lldb.eStopReasonNone, lldb.eStopReasonInvalid)]
+                    if len(reasons) == 1:
+                        thread = reasons[0]
+                        module = thread.GetFrameAtIndex(0).GetModule().GetFileSpec().GetFilename() or ""
+                        if (thread.GetStopReason() == lldb.eStopReasonException and module.lower() == "ntdll.dll"
+                                and "0x80000003" in (thread.GetStopDescription(1024) or "").lower()):
+                            self.checked(self.process.Continue())
+                            return
                 self.values.clear()
                 self.generation += 1
                 threads = []
@@ -206,6 +251,7 @@ def run(debugger):
                 if request["command"] == "detach":
                     return
     finally:
-        if session.process and session.process.IsValid() and session.process.GetState() not in (lldb.eStateExited, lldb.eStateDetached):
-            session.process.Detach()
-        connection.close()
+        try:
+            session.detach()
+        finally:
+            connection.close()

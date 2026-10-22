@@ -50,7 +50,8 @@ class WinRTNativeDebuggerBackendTest {
                 request("configure", "konanHome" to konan.toString(), "executable" to executable.toString())
                 val breakpoint = request("breakpoint", "file" to source.toString(), "line" to breakpointLine)
                 assertTrue(breakpoint["locations"].asInt > 0)
-                request("launch", "directory" to directory.toString())
+                val launched = request("launch", "directory" to directory.toString())
+                val process = ProcessHandle.of(launched["pid"].asLong).orElseThrow()
                 val stop = stopped()
                 val thread = stop["thread"].asLong
                 val generation = stop["generation"].asInt
@@ -62,11 +63,27 @@ class WinRTNativeDebuggerBackendTest {
                     .getAsJsonArray("values").map { it.asJsonObject }.associate { it["name"].asString.removePrefix("*") to it["value"].asString }
                 assertEquals("native fields", children["text"])
                 assertEquals("42", children["count"])
+                val numbers = values.map { it.asJsonObject }.single { it["name"].asString == "numbers" }
+                val firstPage = request("children", "thread" to thread, "frame" to 0, "generation" to generation, "value" to numbers["id"].asInt)
+                assertEquals(125, firstPage["total"].asInt)
+                assertEquals(100, firstPage.getAsJsonArray("values").size())
+                val lastPage = request("children", "thread" to thread, "frame" to 0, "generation" to generation, "value" to numbers["id"].asInt, "start" to 100)
+                assertEquals(25, lastPage.getAsJsonArray("values").size())
+                assertEquals("124", lastPage.getAsJsonArray("values").last().asJsonObject["value"].asString)
                 request("stepOver", "thread" to thread)
                 val stepped = stopped()
                 val after = request("stack", "thread" to stepped["thread"].asLong)
                 assertEquals(stepLine, after.getAsJsonArray("frames")[0].asJsonObject["line"].asInt)
+                request("stepInto", "thread" to stepped["thread"].asLong)
+                val entered = stopped()
+                val inside = request("stack", "thread" to entered["thread"].asLong)
+                assertTrue(inside.toString(), inside.getAsJsonArray("frames")[0].asJsonObject["name"].asString.contains("increment"))
+                request("stepOut", "thread" to entered["thread"].asLong)
+                val returned = stopped()
+                val caller = request("stack", "thread" to returned["thread"].asLong)
+                assertTrue(caller.toString(), caller.getAsJsonArray("frames")[0].asJsonObject["name"].asString.contains("main"))
                 request("detach")
+                process.onExit().get(15, TimeUnit.SECONDS)
             }
         } finally {
             // Only the fresh test-owned directory is traversed.

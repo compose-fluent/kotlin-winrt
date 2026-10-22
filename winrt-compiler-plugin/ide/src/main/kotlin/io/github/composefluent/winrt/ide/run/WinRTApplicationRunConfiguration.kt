@@ -16,6 +16,12 @@ import io.github.composefluent.winrt.ide.settings.WinRTIdeSettings
 import io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol
 import java.nio.file.Path
 import java.util.UUID
+import com.intellij.execution.executors.DefaultDebugExecutor
+import com.intellij.execution.executors.DefaultRunExecutor
+import io.github.composefluent.winrt.ide.debug.WinRTNativeDebugLaunch
+import io.github.composefluent.winrt.ide.debug.WinRTAttachNativeDebuggerAction
+import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
+import io.github.composefluent.winrt.ide.gradle.WinUIXamlHotReloadLaunchData
 
 /** Keeps Gradle's execution, debugging, target and option serialization contracts intact. */
 class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationFactory, name: String) :
@@ -25,27 +31,40 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
 
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState? {
         environment.putUserData(WinRTApplicationHotReload.KEY, null)
-        if (!service<WinRTIdeSettings>().hotReloadEnabled) return super.getState(executor, environment)
+        environment.putUserData(WinRTNativeDebugLaunch.KEY, null)
+        val (module, launch) = developmentLaunch() ?: return super.getState(executor, environment)
+        val nativeDebug = executor.id == DefaultDebugExecutor.EXECUTOR_ID && launch.nativeCompilerHome.isNotBlank()
+        if (!service<WinRTIdeSettings>().hotReloadEnabled && !nativeDebug) return super.getState(executor, environment)
+        val directory = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}").toAbsolutePath().normalize()
+        val execution = clone() as WinRTApplicationRunConfiguration
+        execution.settings.env = settings.env + (WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory.toString())
+        if (nativeDebug) {
+            if (launch.taskName.contains("ReleaseExecutable")) throw RuntimeConfigurationError("Select a Native Debug executable to use source breakpoints and stepping.")
+            val lldb = WinRTAttachNativeDebuggerAction.findLldb(service<WinRTIdeSettings>().nativeDebuggerExecutable)
+                ?: throw RuntimeConfigurationError("Set the Windows LLDB executable in Settings | Tools | Kotlin WinRT.")
+            val debugDirectory = directory.resolve("debug")
+            execution.settings.env = execution.settings.env + ("KOTLIN_WINRT_DEBUG_DIRECTORY" to debugDirectory.toString())
+            execution.settings.taskNames = listOf(if (module.projectPath == ":") launch.taskName else "${module.projectPath}:${launch.taskName}")
+            environment.putUserData(WinRTNativeDebugLaunch.KEY, WinRTNativeDebugLaunch(debugDirectory, Path.of(launch.executable), Path.of(launch.nativeCompilerHome), lldb, Path.of(module.projectDirectory)))
+        }
+        val state = execution.gradleState(if (nativeDebug) DefaultRunExecutor.getRunExecutorInstance() else executor, environment)
+        if (state != null) environment.putUserData(WinRTApplicationHotReload.KEY, WinRTApplicationHotReload(module, launch, directory))
+        return state
+    }
+
+    internal fun developmentLaunch(): Pair<WinRTModuleData, WinUIXamlHotReloadLaunchData>? {
         val models = project.service<WinRTProjectService>()
         val module = project.service<WinRTRunConfigurationNames>().applicationModule(this, models.modules.value)
-            ?: return super.getState(executor, environment)
-        val task = settings.taskNames.single().substringAfterLast(':')
-        val name = WinRTRunConfigurationNames.taskName(module, task) ?: return super.getState(executor, environment)
+            ?: return null
+        val task = settings.taskNames.singleOrNull()?.substringAfterLast(':') ?: return null
+        val name = WinRTRunConfigurationNames.taskName(module, task) ?: return null
         val launch = module.hotReloadLaunches.firstOrNull { it.taskName == task }
             ?: module.hotReloadLaunches.firstOrNull {
                 WinRTRunConfigurationNames.taskName(module, it.taskName) == name &&
                     (!task.startsWith("runDebugExecutable") && !task.startsWith("runReleaseExecutable") ||
                         it.taskName.contains("ReleaseExecutable") == task.startsWith("runReleaseExecutable"))
-            } ?: return super.getState(executor, environment)
-        val directory = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}").toAbsolutePath().normalize()
-        // The platform runner requires ExternalSystemRunnableState, including
-        // for Debug. Clone the native configuration rather than wrapping its state
-        // or mutating the user's persistent environment for each execution.
-        val execution = clone() as WinRTApplicationRunConfiguration
-        execution.settings.env = settings.env + (WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory.toString())
-        val state = execution.gradleState(executor, environment)
-        if (state != null) environment.putUserData(WinRTApplicationHotReload.KEY, WinRTApplicationHotReload(module, launch, directory))
-        return state
+            } ?: return null
+        return module to launch
     }
 
     private fun gradleState(executor: Executor, environment: ExecutionEnvironment): RunProfileState? = super.getState(executor, environment)

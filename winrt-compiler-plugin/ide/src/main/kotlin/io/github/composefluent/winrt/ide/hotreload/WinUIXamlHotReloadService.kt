@@ -76,8 +76,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     /** Drain the last UI transaction before LLDB suspends the process. */
     fun suspendForDebugger(pid: Long): java.util.concurrent.CompletableFuture<Unit> {
         val result = java.util.concurrent.CompletableFuture<Unit>()
-        if (client?.process?.pid() != pid) { result.complete(Unit); return result }
         debuggerPid = pid
+        if (client?.process?.pid() != pid) { result.complete(Unit); return result }
         val drain = scope.launch(Dispatchers.IO) {
             try {
                 mutex.withLock {

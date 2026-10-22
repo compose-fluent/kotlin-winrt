@@ -43,7 +43,8 @@ class WinRTAttachNativeDebuggerAction : AnAction() {
             require(Files.isRegularFile(konan.resolve("tools/konan_lldb.py"))) { "The project's Kotlin/Native debugger formatters are missing. Build its Native target first." }
             XDebuggerManager.getInstance(project).startSessionAndShowTab("Kotlin WinRT Native ($pid)", null,
                 object : XDebugProcessStarter() {
-                    override fun start(session: XDebugSession): XDebugProcess = WinRTNativeDebugProcess(session, lldb, konan, executable, pid)
+                    override fun start(session: XDebugSession): XDebugProcess = WinRTNativeDebugProcess(session, lldb, konan,
+                        target = { WinRTNativeDebugTarget(pid, executable, process.info().startInstant().orElseThrow()) }, sourceDirectory = Path.of(module.projectDirectory))
                 })
         } catch (error: Exception) {
             Messages.showErrorDialog(project, error.message ?: "Cannot attach the Native debugger.", "Kotlin WinRT Native Debugger")

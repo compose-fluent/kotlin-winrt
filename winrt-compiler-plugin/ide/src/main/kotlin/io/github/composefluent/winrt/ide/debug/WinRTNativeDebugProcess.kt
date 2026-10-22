@@ -2,6 +2,10 @@ package io.github.composefluent.winrt.ide.debug
 
 import com.google.gson.JsonObject
 import com.intellij.execution.process.ProcessHandler
+import com.intellij.execution.ExecutionResult
+import com.intellij.execution.process.ProcessAdapter
+import com.intellij.execution.process.ProcessEvent
+import com.intellij.execution.ui.ExecutionConsole
 import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
@@ -47,13 +51,19 @@ class WinRTNativeLineBreakpointType : XLineBreakpointType<WinRTNativeBreakpointP
 
 internal class WinRTNativeDebugProcess(
     session: XDebugSession, private val lldb: Path, private val konanHome: Path,
-    private val executable: Path, private val pid: Long,
+    private val target: (() -> Boolean) -> WinRTNativeDebugTarget,
+    private val launchExecution: ExecutionResult? = null,
+    private val cancelLaunch: () -> Unit = {},
+    private val sourceDirectory: Path? = null,
 ) : XDebugProcess(session) {
     private val ready = CompletableFuture<WinRTNativeDebuggerBackend>()
     private val stopped = AtomicBoolean()
     private val breakpoints = ConcurrentHashMap<XLineBreakpoint<WinRTNativeBreakpointProperties>, Int>()
     private val registrations = ConcurrentHashMap<XLineBreakpoint<WinRTNativeBreakpointProperties>, Any>()
     private var activeThread = 0L
+    @Volatile private var processTarget: WinRTNativeDebugTarget? = null
+    @Volatile private var suppressAttachStop = false
+    private val pid get() = processTarget?.pid ?: 0L
     private val handler = object : ProcessHandler() {
         override fun destroyProcessImpl() = stop()
         override fun detachProcessImpl() = stop()
@@ -63,6 +73,7 @@ internal class WinRTNativeDebugProcess(
     }
 
     override fun doGetProcessHandler(): ProcessHandler = handler
+    override fun createConsole(): ExecutionConsole = launchExecution?.executionConsole ?: super.createConsole()
     override fun getEditorsProvider() = object : XDebuggerEditorsProvider() {
         override fun getFileType(): FileType = PlainTextFileType.INSTANCE
         override fun createDocument(project: Project, text: String, sourcePosition: XSourcePosition?, mode: EvaluationMode): Document =
@@ -71,21 +82,34 @@ internal class WinRTNativeDebugProcess(
 
     override fun sessionInitialized() {
         session.setPauseActionSupported(true)
+        launchExecution?.processHandler?.addProcessListener(object : ProcessAdapter() {
+            override fun processTerminated(event: ProcessEvent) {
+                if (event.exitCode != 0 && !stopped.get()) { failure(IllegalStateException("Native application build or launch failed (${event.exitCode}).")); stop() }
+            }
+        })
         AppExecutorUtil.getAppExecutorService().execute {
             var backend: WinRTNativeDebuggerBackend? = null
             try {
+                val application = target(stopped::get)
+                processTarget = application
+                if (stopped.get()) return@execute
                 val connected = WinRTNativeDebuggerBackend.start(lldb, ::onEvent) { text ->
                     ui { session.consoleView.print("$text\n", ConsoleViewContentType.SYSTEM_OUTPUT) }
                 }
                 backend = connected
-                connected.request("configure", "konanHome" to konanHome.toString(), "executable" to executable.toString()).join()
+                connected.request("configure", "konanHome" to konanHome.toString(), "executable" to application.executable.toString()).join()
                 if (stopped.get()) { connected.close(); ready.completeExceptionally(IllegalStateException("Debug session closed.")); return@execute }
                 // Queued breakpoint registrations are written before attaching.
                 ready.complete(connected)
                 session.project.service<WinUIXamlHotReloadService>().suspendForDebugger(pid).join()
                 session.project.service<WinRTStaticPreviewService>().suspendForDebugger(pid).join()
-                connected.request("attach", "pid" to pid).exceptionally { failure(it); stop(); null }
-            } catch (error: Exception) { backend?.close(); ready.completeExceptionally(error); failure(error); stop() }
+                suppressAttachStop = application.startupDirectory != null
+                connected.request("attach", "pid" to pid).join()
+                application.startupDirectory?.let { directory ->
+                    java.nio.file.Files.writeString(directory.resolve("ready"), application.token)
+                    connected.request("resumeStartup").join()
+                }
+            } catch (error: Exception) { backend?.close(); ready.completeExceptionally(error); if (!stopped.get()) failure(error); stop() }
         }
     }
 
@@ -132,6 +156,15 @@ internal class WinRTNativeDebugProcess(
     }
     override fun stop() {
         if (stopped.compareAndSet(false, true)) {
+            if (launchExecution != null) {
+                runCatching(cancelLaunch)
+                processTarget?.let { application ->
+                    ProcessHandle.of(application.pid).ifPresent { process ->
+                        if (process.info().startInstant().orElse(null) == application.started) process.destroy()
+                    }
+                }
+                launchExecution.processHandler.destroyProcess()
+            }
             ready.thenAccept { backend -> backend.request("detach").whenComplete { _, _ -> backend.close() } }
             ui { handler.finished() }
         }
@@ -140,6 +173,7 @@ internal class WinRTNativeDebugProcess(
     private fun onEvent(event: JsonObject) {
         when (event["event"].asString) {
             "stopped" -> {
+                if (suppressAttachStop) { suppressAttachStop = false; return }
                 activeThread = event["thread"].asLong
                 val generation = event["generation"].asInt
                 val stacks = event.getAsJsonArray("threads").map { value ->
@@ -184,10 +218,12 @@ internal class WinRTNativeDebugProcess(
 
     private inner class NativeFrame(val stack: NativeStack, val data: JsonObject) : XStackFrame() {
         val index = data["index"].asInt
-        fun fields() = arrayOf("thread" to stack.thread, "frame" to index, "generation" to stack.generation)
+        fun fields(): Array<Pair<String, Any?>> = arrayOf("thread" to stack.thread, "frame" to index, "generation" to stack.generation)
         override fun getEqualityObject(): Any = Triple(stack.thread, index, stack.generation)
         override fun getSourcePosition(): XSourcePosition? {
-            val file = LocalFileSystem.getInstance().findFileByPath(data["file"].asString.replace('\\', '/')) ?: return null
+            val path = resolveNativeSource(data["file"].asString,
+                listOfNotNull(sourceDirectory) + session.project.service<WinRTProjectService>().modules.value.map { Path.of(it.projectDirectory) }) ?: return null
+            val file = LocalFileSystem.getInstance().findFileByPath(path.toString().replace('\\', '/')) ?: return null
             val line = data["line"].asInt
             return if (line > 0) XDebuggerUtil.getInstance().createPosition(file, line - 1) else null
         }
@@ -196,12 +232,18 @@ internal class WinRTNativeDebugProcess(
             component.setIcon(AllIcons.Debugger.Frame)
         }
         override fun computeChildren(node: XCompositeNode) {
-            request("variables", *fields()).thenAccept { addValues(node, this, it) }
-                .exceptionally { node.setErrorMessage(it.message ?: "Cannot read native variables"); null }
+            loadValues(node, this, "variables", fields(), 0)
         }
     }
 
-    private fun addValues(node: XCompositeNode, frame: NativeFrame, result: JsonObject) {
+    private fun loadValues(node: XCompositeNode, frame: NativeFrame, command: String, fields: Array<out Pair<String, Any?>>, start: Int) {
+        if (node.isObsolete) return
+        request(command, *fields, "start" to start).thenAccept { result ->
+            addValues(node, frame, result, start) { next -> loadValues(node, frame, command, fields, next) }
+        }.exceptionally { node.setErrorMessage(it.message ?: "Cannot read native values"); null }
+    }
+
+    private fun addValues(node: XCompositeNode, frame: NativeFrame, result: JsonObject, start: Int, more: (Int) -> Unit) {
         if (node.isObsolete) return
         val values = XValueChildrenList()
         result.getAsJsonArray("values").forEach { entry ->
@@ -209,17 +251,28 @@ internal class WinRTNativeDebugProcess(
             values.add(value["name"].asString.removePrefix("*"), NativeValue(frame, value))
         }
         node.addChildren(values, true)
+        val next = start + result.getAsJsonArray("values").size()
+        val remaining = result["total"].asInt - next
+        if (remaining > 0) node.tooManyChildren(remaining, Runnable { more(next) })
     }
     private inner class NativeValue(val frame: NativeFrame, val data: JsonObject) : XValue() {
         override fun computePresentation(node: XValueNode, place: XValuePlace) {
             node.setPresentation(AllIcons.Debugger.Value, data["type"].asString, data["value"].asString, data["children"].asBoolean)
         }
         override fun computeChildren(node: XCompositeNode) {
-            request("children", *frame.fields(), "value" to data["id"].asInt).thenAccept { addValues(node, frame, it) }
-                .exceptionally { node.setErrorMessage(it.message ?: "Cannot read native fields"); null }
+            loadValues(node, frame, "children", frame.fields() + ("value" to data["id"].asInt), 0)
         }
     }
 
     private fun failure(error: Throwable) = ui { session.reportError(error.cause?.message ?: error.message ?: "Native debugging failed.") }
     private fun ui(action: () -> Unit) { ApplicationManager.getApplication().invokeLater { if (!session.project.isDisposed) action() } }
+}
+
+/** Kotlin/Native Gradle compilation records module-relative DWARF paths. */
+internal fun resolveNativeSource(source: String, directories: List<Path>): Path? {
+    val path = runCatching { Path.of(source.replace('\\', '/')) }.getOrNull() ?: return null
+    if (path.isAbsolute) return path.takeIf(java.nio.file.Files::isRegularFile)
+    // Do not jump to an arbitrary same-named file in another dependency module.
+    return directories.distinct().map { it.resolve(path).normalize() }
+        .filter(java.nio.file.Files::isRegularFile).distinct().singleOrNull()
 }
