@@ -61,8 +61,10 @@ editor, with preview-only mode, arrow-key tree expansion/selection and effective
 property inspection. Android Studio stable has also passed dark/light switching,
 100/150/200% layout, scrolling to the last option with a rendered artboard,
 Tab/Shift-Tab between dimensions, focus return from Settings, Space activation,
-SDK rendering, stopping preview and normal IDE exit. Its full restart recovery,
-screen-reader output and Canary interaction checks remain separate acceptance work.
+SDK rendering, stopping preview and normal IDE exit. A full stable IDE restart
+restores the XAML split editor and light theme, imports the module and renders
+again using the existing SDK host build. Screen-reader output and Canary
+interaction checks remain separate acceptance work.
 
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
 NuGet references, with navigation to the module build script and explicit
