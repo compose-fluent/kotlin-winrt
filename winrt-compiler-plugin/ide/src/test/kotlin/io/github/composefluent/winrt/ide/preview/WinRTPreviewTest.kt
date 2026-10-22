@@ -76,6 +76,29 @@ class WinRTPreviewTest {
         assertFalse(result.markup.contains("Runtime"))
         assertTrue(result.markup.contains("Design"))
     }
+    @Test fun serialized_design_data_resolves_plain_bindings_without_constructing_project_types() {
+        val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:local="using:sample" d:DataContext="{d:DesignData Source=../Data/Sample.xaml}">
+          <StackPanel><TextBlock x:Name="Title" Text="{Binding Title}"/>
+          <TextBlock x:Name="Nested" Text="{Binding Path=Person.Name}"/>
+          <TextBlock x:Name="Compiled" Text="{x:Bind Title}"/>
+          <StackPanel><d:DataContext><local:Model Title="Inner"/></d:DataContext><TextBlock x:Name="Inner" Text="{Binding Title}"/></StackPanel>
+          <ListView><ListView.ItemTemplate><DataTemplate><TextBlock x:Name="Item" Text="{Binding Title}"/></DataTemplate></ListView.ItemTemplate></ListView>
+          </StackPanel></Page>""", packagePath = "UI/Page.xaml", resource = { uri, origin ->
+            assertEquals("../Data/Sample.xaml", uri); assertEquals("UI/Page.xaml", origin)
+            WinUIXamlDesignResource("""<local:Model $namespaces xmlns:local="using:sample" Title="Sample"><local:Model.Person><local:Person Name="Ada"/></local:Model.Person></local:Model>""", "Data/Sample.xaml")
+        }, sdkType = { _, _ -> false })
+        val document = parse(result.markup)
+        val texts = document.getElementsByTagNameNS("*", "TextBlock")
+        val values = (0 until texts.length).map { texts.item(it) as org.w3c.dom.Element }.associate {
+            it.getAttributeNS("http://schemas.microsoft.com/winfx/2006/xaml", "Name") to it.getAttribute("Text")
+        }
+        assertEquals("Sample", values["Title"])
+        assertEquals("Ada", values["Nested"])
+        assertEquals("Inner", values["Inner"])
+        assertEquals("", values["Compiled"])
+        assertEquals("{Binding Title}", values["Item"])
+        assertFalse(result.markup.contains("local:Model"))
+    }
     @Test fun application_resources_and_relative_dictionaries_keep_their_original_package_scope() {
         val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="../Styles/Page.xaml"/></Page.Resources><TextBlock/></Page>""",
             """<Application $namespaces xmlns:local="using:sample"><Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>

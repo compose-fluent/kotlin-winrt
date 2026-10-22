@@ -20,6 +20,7 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
             resource: ((String, String) -> WinUIXamlDesignResource?)? = null,
             sdkType: ((String, String) -> Boolean)? = null,
             visualType: ((String, String) -> Boolean)? = null,
+            designData: ((String, String) -> WinUIXamlDesignResource?)? = resource,
             event: (String, String, String) -> Boolean = { _, _, _ -> false }): WinUIXamlDesignDocument {
             val factory = DocumentBuilderFactory.newInstance().apply {
                 isNamespaceAware = true
@@ -32,6 +33,7 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
             var root = document.documentElement
             require(root.localName !in listOf("Application", "ResourceDictionary")) { "Select a visual Window, Page or UserControl to preview." }
             val notes = linkedSetOf<String>()
+            WinUIXamlDesignData.apply(root, packagePath, designData, { parse(it).documentElement }, notes)
             val omittedResources = linkedSetOf<String>()
             fun children(tag: Element) = (0 until tag.childNodes.length).mapNotNull { tag.childNodes.item(it) as? Element }
             fun namespaces(from: Element, to: Element) { (0 until from.attributes.length).map { from.attributes.item(it) }

@@ -133,6 +133,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     WinUIXamlDesignDocument.prepare(documents.read(source), application?.let(documents::read),
                         documents.target(source), application?.let(documents::target).orEmpty(),
                         resource = if (projectCode) null else documents::resolve,
+                        designData = documents::resolve,
                         sdkType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type) != null },
                         visualType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type)?.let(catalog::isVisual) == true }) { uri, type, attribute ->
                         catalog.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == attribute && member.isEvent } } == true
