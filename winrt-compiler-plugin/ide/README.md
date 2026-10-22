@@ -551,6 +551,12 @@ Loose design dictionaries establish theme resources before loading merged styles
 A rejected design document reports its XAML/resource error. The editor retains the
 last successful image for that document and mode, labels it out of date, and replaces
 it after a successful update. It also keeps the image visible while preparing edits.
+The updated workspace has desktop Canary coverage with a packaged Native host and
+a Kotlin control from a dependent project: default project-code launch, settings
+expansion/collapse, 125% zoom, drag panning and Fit recentering. An invalid unsaved
+XAML edit retains the image with an out-of-date warning; undoing the edit restores
+the current render without rebuilding Kotlin. The editor regression suite and
+plugin ownership check pass for all three packaged distributions.
 The artboard uses the preview theme's page background so transparent pages remain
 legible in both light and dark IDE themes.
 
