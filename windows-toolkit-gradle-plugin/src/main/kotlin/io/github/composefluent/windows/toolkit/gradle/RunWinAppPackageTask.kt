@@ -310,8 +310,12 @@ abstract class RunWinAppPackageTask @Inject constructor(
             add(manifest.toString())
             add("--output-appx-directory")
             add(output.toString())
-            if (detach.get()) add("--detach")
-            if (debugOutput.get()) add("--debug-output")
+            // Native debugging registers with WinApp, then owns the suspended
+            // launch below. WinApp rejects launch options with --no-launch.
+            if (!noLaunch.get() && nativeDebug == null) {
+                if (detach.get()) add("--detach")
+                if (debugOutput.get()) add("--debug-output")
+            }
             if (noLaunch.get() || nativeDebug != null) add("--no-launch")
             if (applicationArguments.isNotEmpty()) {
                 add(winAppRunArgumentsOption(applicationArguments))
