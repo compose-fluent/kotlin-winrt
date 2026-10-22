@@ -1053,6 +1053,12 @@ private fun RawAddress.writeBytes(values: ByteArray) {
 }
 
 actual object WinRTPlatformApi {
+    init {
+        if (kotlin.native.Platform.isDebugBinary) {
+            io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_retain_debug_api()
+        }
+    }
+
     private val combaseModule by lazy {
         LoadLibraryA("combase.dll")
     }
