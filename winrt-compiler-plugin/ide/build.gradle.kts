@@ -215,6 +215,10 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.hotReloadSession").orNull?.let { systemProperty("winrt.ide.hotReloadSession", it) }
     providers.gradleProperty("winrt.ide.previewSession").orNull?.let { systemProperty("winrt.ide.previewSession", it) }
     providers.gradleProperty("winrt.ide.uwpPreviewSession").orNull?.let { systemProperty("winrt.ide.uwpPreviewSession", it) }
+    listOf("winrt.ide.nativeDebugLldb", "winrt.ide.nativeDebugKonanHome").forEach { name ->
+        providers.gradleProperty(name).orNull?.let { systemProperty(name, it) }
+    }
+    systemProperty("winrt.ide.nativeDebugHeader", file("../../winrt-runtime/src/nativeInterop/cinterop/kotlin_winrt_debug.h").absolutePath)
     providers.gradleProperty("winrt.ide.uwpHotReloadSession").orNull?.let { systemProperty("winrt.ide.uwpHotReloadSession", it) }
     providers.gradleProperty("winrt.ide.sdkPreviewSession").orNull?.let { systemProperty("winrt.ide.sdkPreviewSession", it) }
     providers.gradleProperty("winrt.ide.sdkPreviewProject").orNull?.let { systemProperty("winrt.ide.sdkPreviewProject", it) }
