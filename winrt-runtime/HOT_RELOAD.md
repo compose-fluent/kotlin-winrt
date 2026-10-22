@@ -39,6 +39,11 @@ projected dictionary keys and collection indices. An index includes the expected
 collection size; a changed live shape rejects the update. Mutable resource values,
 such as a shared SolidColorBrush, receive literal property updates in place,
 preserving StaticResource and ThemeResource consumers' references.
+The IDE also addresses mutable entries in inline merged and theme dictionaries,
+including a compiled ResourceDictionary root. Dictionary keys, group structure
+and collection sizes must remain stable; source dictionaries and sealed values
+still require rebuilding. This path changes the existing resource object, leaving
+the consuming resource expression intact.
 
 Applied WinUI Styles are sealed. Their update constructs a fresh local dictionary
 with the SDK's `XamlReader.Load`, as used by CsWinRT's resource tests in

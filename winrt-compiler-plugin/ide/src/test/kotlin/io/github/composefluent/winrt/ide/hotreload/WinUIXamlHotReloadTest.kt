@@ -120,6 +120,33 @@ class WinUIXamlHotReloadTest {
             .patch(WinUIXamlHotReloadMarkup.parse(implicit), resourceRoot(implicit)).resources.size)
     }
 
+    @Test fun nested_theme_and_merged_brushes_update_in_place_without_replacing_resource_expressions() {
+        val text = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Page">
+          <Page.Resources><ResourceDictionary><ResourceDictionary.ThemeDictionaries>
+          <ResourceDictionary x:Key="Dark"><SolidColorBrush x:Key="Accent" Color="Red"/></ResourceDictionary>
+          </ResourceDictionary.ThemeDictionaries><ResourceDictionary.MergedDictionaries>
+          <ResourceDictionary><SolidColorBrush x:Key="Merged" Color="Blue"/></ResourceDictionary>
+          </ResourceDictionary.MergedDictionaries></ResourceDictionary></Page.Resources>
+          <TextBlock Foreground="{ThemeResource Accent}"/></Page>"""
+        val before = WinUIXamlHotReloadMarkup.parse(text)
+        val loaded = WinUIXamlHotReloadRoot("sample.Page", "Page.xaml", before.hash, 0, emptyList())
+        val patch = WinUIXamlHotReloadMarkup.parse(text.replace("Color=\"Red\"", "Color=\"Green\"").replace("Color=\"Blue\"", "Color=\"Yellow\""))
+            .patch(before, loaded)
+        assertTrue(patch.resources.isEmpty())
+        assertEquals(listOf("Green", "Yellow"), patch.changes.map { it.literal })
+        assertEquals(listOf(WinUIXamlHotReloadStep.Property("Resources"), WinUIXamlHotReloadStep.Property("ThemeDictionaries"),
+            WinUIXamlHotReloadStep.Key("Dark"), WinUIXamlHotReloadStep.Key("Accent")), patch.changes[0].path)
+        assertEquals(listOf(WinUIXamlHotReloadStep.Property("Resources"), WinUIXamlHotReloadStep.Property("MergedDictionaries"),
+            WinUIXamlHotReloadStep.Index(0, 1), WinUIXamlHotReloadStep.Key("Merged")), patch.changes[1].path)
+        assertTrue(runCatching { WinUIXamlHotReloadMarkup.parse(text.replace("x:Key=\"Dark\"", "x:Key=\"Light\""))
+            .patch(before, loaded) }.isFailure)
+        val standalone = """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Colors"><SolidColorBrush x:Key="Accent" Color="Red"/></ResourceDictionary>"""
+        val original = WinUIXamlHotReloadMarkup.parse(standalone)
+        val direct = WinUIXamlHotReloadMarkup.parse(standalone.replace("Red", "Blue")).patch(original,
+            WinUIXamlHotReloadRoot("sample.Colors", "Colors.xaml", original.hash, 0, emptyList()))
+        assertEquals(listOf(WinUIXamlHotReloadStep.Key("Accent")), direct.changes.single().path)
+    }
+
     @Test fun style_replacement_rejects_theme_implicit_keys_and_unresolved_connection_lifetimes() {
         val unsupported = listOf(
             resourceSource.replace("{StaticResource GreetingStyle}", "{ThemeResource GreetingStyle}"),

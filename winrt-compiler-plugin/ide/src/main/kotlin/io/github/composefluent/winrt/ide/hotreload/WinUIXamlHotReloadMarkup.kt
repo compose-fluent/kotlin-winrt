@@ -85,6 +85,65 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
             return entries
         }
         fun key(entry: XamlElement) = entry.attributes.getValue(Name(WinUIXamlCatalog.XAML, "Key"))
+        fun dictionary(container: XamlElement): XamlElement = container.content.filterIsInstance<XamlElement>()
+            .singleOrNull()?.takeIf { it.type == Name(WinUIXamlCatalog.PRESENTATION, "ResourceDictionary") } ?: container
+        val dictionaryGroups = setOf("ResourceDictionary.MergedDictionaries", "ResourceDictionary.ThemeDictionaries")
+        fun hasDictionaryGroups(container: XamlElement) = dictionary(container).content.filterIsInstance<XamlElement>()
+            .any { it.type.uri == WinUIXamlCatalog.PRESENTATION && it.type.local in dictionaryGroups }
+        fun compareNestedDictionary(old: XamlElement, next: XamlElement, target: WinUIXamlHotReloadTarget,
+            compareValue: (XamlElement, XamlElement, WinUIXamlHotReloadTarget) -> Unit) {
+            if (old.matches(next)) return
+            require(old.type == next.type && old.attributes == next.attributes && !next.attributes.containsKey(Name("", "Source"))) {
+                "Changing dictionary sources or directives requires rebuilding."
+            }
+            require(old.content.all { it is XamlElement } && next.content.all { it is XamlElement }) { "Resource text changes require rebuilding." }
+            val before = old.content.filterIsInstance<XamlElement>()
+            val after = next.content.filterIsInstance<XamlElement>()
+            val oldGroups = before.filter { it.type.uri == WinUIXamlCatalog.PRESENTATION && it.type.local in dictionaryGroups }
+            val newGroups = after.filter { it.type.uri == WinUIXamlCatalog.PRESENTATION && it.type.local in dictionaryGroups }
+            require(oldGroups.map { it.type }.distinct().size == oldGroups.size &&
+                newGroups.map { it.type }.distinct().size == newGroups.size) { "Duplicate dictionary groups require fixing XAML before updating." }
+            require(oldGroups.map { it.type } == newGroups.map { it.type }) { "Changing dictionary group structure requires rebuilding." }
+            oldGroups.zip(newGroups).forEach { (a, b) ->
+                require(a.attributes == b.attributes && a.content.all { it is XamlElement } && b.content.all { it is XamlElement }) {
+                    "Dictionary groups must retain their directives and element structure."
+                }
+                val oldChildren = a.content.filterIsInstance<XamlElement>()
+                val newChildren = b.content.filterIsInstance<XamlElement>()
+                val address = target.copy(path = target.path + WinUIXamlHotReloadStep.Property(b.type.local.substringAfter('.')))
+                if (b.type.local.endsWith(".ThemeDictionaries")) {
+                    val first = oldChildren.associateBy(::key); val second = newChildren.associateBy(::key)
+                    require(first.size == oldChildren.size && second.size == newChildren.size && first.keys == second.keys) {
+                        "Changing theme dictionary keys requires rebuilding."
+                    }
+                    second.forEach { (name, child) -> compareNestedDictionary(first.getValue(name), child,
+                        address.copy(path = address.path + WinUIXamlHotReloadStep.Key(name)), compareValue) }
+                } else {
+                    require(oldChildren.size == newChildren.size) { "Changing merged dictionary order or count requires rebuilding." }
+                    oldChildren.zip(newChildren).forEachIndexed { index, (first, second) ->
+                        compareNestedDictionary(first, second, address.copy(path = address.path +
+                            WinUIXamlHotReloadStep.Index(index, newChildren.size)), compareValue)
+                    }
+                }
+            }
+            val oldEntries = before - oldGroups.toSet(); val newEntries = after - newGroups.toSet()
+            require(oldEntries.size == newEntries.size) { "Changing nested resource keys requires rebuilding." }
+            for (entries in listOf(oldEntries, newEntries)) {
+                val keys = entries.mapNotNull { it.attributes[Name(WinUIXamlCatalog.XAML, "Key")] }
+                require(keys.distinct().size == keys.size) { "Duplicate resource keys require fixing XAML before updating." }
+            }
+            val oldByKey = oldEntries.filter { it.attributes.containsKey(Name(WinUIXamlCatalog.XAML, "Key")) }.associateBy(::key)
+            newEntries.forEachIndexed { index, entry ->
+                val name = entry.attributes[Name(WinUIXamlCatalog.XAML, "Key")]
+                val previous = name?.let(oldByKey::get) ?: oldEntries[index]
+                if (!previous.matches(entry)) {
+                    require(name != null && name in oldByKey && entry.type.local !in setOf("Style", "ControlTemplate", "DataTemplate")) {
+                        "Replacing sealed styles, templates or implicit keys in nested dictionaries requires rebuilding."
+                    }
+                    compareValue(previous, entry, target.copy(path = target.path + WinUIXamlHotReloadStep.Key(name)))
+                }
+            }
+        }
         fun styleChanged(old: XamlElement, next: XamlElement): Boolean = !old.matches(next) &&
             (old.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") || next.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") ||
                 old.content.filterIsInstance<XamlElement>().zip(next.content.filterIsInstance<XamlElement>()).any { (a, b) -> styleChanged(a, b) })
@@ -218,11 +277,17 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                         require(!template && target != null && a.type == b.type && a.attributes == b.attributes) {
                             "The resource owner must be root or named; rebuild to establish its identity."
                         }
+                        val resourceTarget = target.copy(path = target.path + WinUIXamlHotReloadStep.Property("Resources"))
+                        if (hasDictionaryGroups(a) || hasDictionaryGroups(b)) {
+                            compareNestedDictionary(dictionary(a), dictionary(b), resourceTarget) { first, second, address ->
+                                compare(first, second, address, false, true)
+                            }
+                            return@forEach
+                        }
                         val oldEntries = resourceEntries(a)
                         val nextEntries = resourceEntries(b)
                         val oldByKey = oldEntries.associateBy(::key)
                         val nextByKey = nextEntries.associateBy(::key)
-                        val resourceTarget = target.copy(path = target.path + WinUIXamlHotReloadStep.Property("Resources"))
                         if (oldByKey.keys != nextByKey.keys || nextEntries.any { styleChanged(oldByKey.getValue(key(it)), it) }) {
                             nextEntries.forEach { validateFragment(it, nextByKey.keys) }
                             val consumers = references(next, b, target, oldByKey.keys + nextByKey.keys)
@@ -276,7 +341,9 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 }
             }
         }
-        compare(previous.root, root, WinUIXamlHotReloadTarget(), false)
+        if (isResourceDictionary) compareNestedDictionary(previous.root, root, WinUIXamlHotReloadTarget()) { first, second, address ->
+            compare(first, second, address, false, true)
+        } else compare(previous.root, root, WinUIXamlHotReloadTarget(), false)
         val readbacks = reads.distinct()
         require(changes.size + resources.sumOf { 1 + it.references.size } + readbacks.size + children.sumOf { 1 + it.items.size } <= 512 &&
             resources.size <= 64 && children.size <= 64) { "Too many changes; rebuild the application." }
