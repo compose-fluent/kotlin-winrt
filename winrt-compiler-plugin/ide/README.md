@@ -63,8 +63,14 @@ property inspection. Android Studio stable has also passed dark/light switching,
 Tab/Shift-Tab between dimensions, focus return from Settings, Space activation,
 SDK rendering, stopping preview and normal IDE exit. A full stable IDE restart
 restores the XAML split editor and light theme, imports the module and renders
-again using the existing SDK host build. Screen-reader output and Canary
-interaction checks remain separate acceptance work.
+again using the existing SDK host build. Canary has also passed dark/light
+switching, 100/150/200% layout, scrolling to the final visual-tree and source
+navigation controls, Tab between dimensions, focus return from Settings and
+Space activation of the visual-tree checkbox. Its SDK designer renders eight
+visual nodes; normal exit terminates the preview, and a full restart restores
+the light theme and XAML split editor and renders again using the cached SDK
+host build. Actual Windows screen-reader output remains unverified; accessible
+names and keyboard checks do not substitute for spoken-output acceptance.
 
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
 NuGet references, with navigation to the module build script and explicit
