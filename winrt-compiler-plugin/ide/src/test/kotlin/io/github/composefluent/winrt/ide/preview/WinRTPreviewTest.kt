@@ -82,6 +82,7 @@ class WinRTPreviewTest {
           <TextBlock x:Name="Nested" Text="{Binding Path=Person.Name}"/>
           <TextBlock x:Name="Compiled" Text="{x:Bind Title}"/>
           <StackPanel><d:DataContext><local:Model Title="Inner"/></d:DataContext><TextBlock x:Name="Inner" Text="{Binding Title}"/></StackPanel>
+          <StackPanel><d:StackPanel.DataContext><local:Model Title="Qualified"/></d:StackPanel.DataContext><TextBlock x:Name="Qualified" Text="{Binding Title}"/></StackPanel>
           <ListView><ListView.ItemTemplate><DataTemplate><TextBlock x:Name="Item" Text="{Binding Title}"/></DataTemplate></ListView.ItemTemplate></ListView>
           </StackPanel></Page>""", packagePath = "UI/Page.xaml", resource = { uri, origin ->
             assertEquals("../Data/Sample.xaml", uri); assertEquals("UI/Page.xaml", origin)
@@ -95,6 +96,7 @@ class WinRTPreviewTest {
         assertEquals("Sample", values["Title"])
         assertEquals("Ada", values["Nested"])
         assertEquals("Inner", values["Inner"])
+        assertEquals("Qualified", values["Qualified"])
         assertEquals("", values["Compiled"])
         assertEquals("{Binding Title}", values["Item"])
         assertFalse(result.markup.contains("local:Model"))

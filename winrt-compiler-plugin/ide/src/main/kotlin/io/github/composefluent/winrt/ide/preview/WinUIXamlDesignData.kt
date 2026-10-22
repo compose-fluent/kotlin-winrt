@@ -41,7 +41,8 @@ internal object WinUIXamlDesignData {
                     context = parse(data.text)
                 }
             }
-            children(tag).firstOrNull { it.namespaceURI == DESIGN && it.localName == "DataContext" }?.let { property ->
+            children(tag).firstOrNull { it.namespaceURI == DESIGN &&
+                (it.localName == "DataContext" || it.localName == "${tag.localName}.DataContext") }?.let { property ->
                 context = children(property).singleOrNull()
                 tag.removeChild(property)
             }
