@@ -1279,8 +1279,7 @@ private fun configureWinAppTasks(
             task.mainClass.set(options.mainClass)
             task.xamlPreviewHost.set(project.provider {
                 val header = project.tasks.named("generateWinRTXamlApplicationHeader", GenerateWinUIXamlApplicationHeaderTask::class.java).get()
-                header.previewHost.get() && header.emitSources.get() &&
-                    options.applicationModel.get() == WindowsApplicationModel.Desktop
+                header.previewHost.get() && header.emitSources.get()
             })
         },
     )
@@ -1724,7 +1723,9 @@ private fun configureWinAppTasks(
                 packageType == WindowsPackageType.Packaged && variant.kind in setOf(WinAppVariantKind.Jvm, WinAppVariantKind.MingwX64)
             }.zip(options.windowsAppSdkDeployment) { developmentPackage, deployment ->
                 developmentPackage && deployment != WindowsAppSdkDeployment.SelfContained
-            }.zip(options.applicationModel) { enabled, model -> enabled && model == WindowsApplicationModel.Desktop })
+            }.zip(options.applicationModel.zip(selectedVariant) { model, variant ->
+                model == WindowsApplicationModel.Desktop || variant.kind == WinAppVariantKind.MingwX64
+            }) { enabled, supportedModel -> enabled && supportedModel })
             task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
             task.supportsXamlPreview.set(selectedVariant.zip(nativeProjectPreview) { variant, nativePreview ->
                 variant.kind == WinAppVariantKind.Jvm || variant.kind == WinAppVariantKind.MingwX64 && nativePreview

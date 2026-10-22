@@ -13,6 +13,45 @@ import javax.imageio.ImageIO
 /** Opt-in acceptance against a built, running WinUI development host. No mock
  * controls, screenshots of another application, or substituted layout engine. */
 class WinRTPreviewRuntimeTest {
+    @Test fun uwp_native_appcontainer_previews_unsaved_markup_and_reads_effective_properties() {
+        val folder = System.getProperty("winrt.ide.uwpPreviewSession")
+        assumeTrue("Supply a real UWP Native preview session", !folder.isNullOrEmpty())
+        connect(folder!!).use { client ->
+            val before = client.request()
+            val root = before.roots.single { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }
+            assertEquals("The user's UWP application must not be instantiated", listOf(root), before.roots)
+            var previousPixels: ByteArray? = null
+            for ((theme, text) in listOf("Light" to "UWP Native preview", "Dark" to "Unsaved UWP edit")) {
+                val document = WinUIXamlDesignDocument.prepare("""<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.DesignPage">
+                    <StackPanel Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="24" Spacing="16">
+                        <TextBlock x:Name="Greeting" Text="$text" FontSize="28"/>
+                        <Button x:Name="Action" Content="AppContainer preview"/>
+                    </StackPanel></Page>""")
+                val reply = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
+                    previewMarkup = document.markup, width = 640, height = 480, theme = theme))
+                assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+                val view = requireNotNull(reply.inspection)
+                assertTrue("Native templates must be rendered", view.nodes.size > 5)
+                val greeting = view.nodes.single { it.name == "Greeting" }
+                val values = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
+                    selectedPath = greeting.path, capture = false))
+                assertEquals(text, values.inspection!!.properties.single { it.name == "Text" }.value)
+                val image = requireNotNull(view.image)
+                assertTrue("UWP design layout is empty: root=${view.nodes.first().bounds}, greeting=${greeting.bounds}, bitmap=${image.width}x${image.height}",
+                    greeting.bounds.width > 0 && greeting.bounds.height > 0)
+                assertEquals("UWP viewport: root=${view.nodes.first().bounds}, bitmap=${image.width}x${image.height}",
+                    4.0 / 3.0, image.width.toDouble() / image.height, 0.01)
+                assertBoundedPixels(image)
+                previousPixels?.let { assertFalse(it.contentEquals(image.pixels)) }
+                previousPixels = image.pixels
+                System.getProperty("winrt.ide.previewOutput")?.let { output ->
+                    val path = Path.of(output); Files.createDirectories(path.parent)
+                    ImageIO.write(bgraImage(image), "png", path.toFile())
+                }
+                assertEquals(root.version, reply.roots.single().version)
+            }
+        }
+    }
     @Test fun sdk_designer_renders_without_application_classes_and_reloads_source_resources() {
         val folder = System.getProperty("winrt.ide.sdkPreviewSession")
         assumeTrue("Supply the SDK-only WinUI designer session", !folder.isNullOrEmpty())

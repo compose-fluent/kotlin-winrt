@@ -48,6 +48,7 @@ typedef struct kotlin_winrt_development_pipe {
     CRITICAL_SECTION lock;
     int closed;
     char name[96];
+    char object_namespace[320];
 } kotlin_winrt_development_pipe;
 
 static inline kotlin_winrt_development_pipe *kotlin_winrt_development_pipe_open(void) {
@@ -72,6 +73,30 @@ static inline kotlin_winrt_development_pipe *kotlin_winrt_development_pipe_open(
     pipe->handle = CreateNamedPipeW(path, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
         PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
         1, 65536, 65536, 3000, &attributes);
+    if (pipe->handle != INVALID_HANDLE_VALUE) {
+        /* LOCAL is redirected inside AppContainer. Publish the OS-owned namespace
+         * for desktop clients, using forward slashes to preserve Java properties. */
+        HANDLE token = NULL;
+        DWORD container = 0, size = 0, session = 0;
+        wchar_t object_path[256];
+        ULONG required = 0;
+        int valid = OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) &&
+            GetTokenInformation(token, TokenIsAppContainer, &container, sizeof(container), &size);
+        if (valid && container) {
+            /* Kotlin/Native's bundled MinGW headers omit this Windows 8 API. */
+            typedef BOOL (WINAPI *get_container_path_fn)(HANDLE, PSID, ULONG, LPWSTR, PULONG);
+            get_container_path_fn get_container_path = (get_container_path_fn)GetProcAddress(
+                GetModuleHandleW(L"kernel32.dll"), "GetAppContainerNamedObjectPath");
+            valid = ProcessIdToSessionId(GetCurrentProcessId(), &session) &&
+                get_container_path && get_container_path(token, NULL, 256, object_path, &required);
+            if (valid) {
+                snprintf(pipe->object_namespace, sizeof(pipe->object_namespace), "Sessions/%lu/%ls", session, object_path);
+                for (char *c = pipe->object_namespace; *c; ++c) if (*c == '\\') *c = '/';
+            }
+        } else if (valid) snprintf(pipe->object_namespace, sizeof(pipe->object_namespace), "LOCAL");
+        if (token) CloseHandle(token);
+        if (!valid) { CloseHandle(pipe->handle); pipe->handle = INVALID_HANDLE_VALUE; }
+    }
 done:
     LocalFree(acl);
     if (pipe->handle == INVALID_HANDLE_VALUE) { DeleteCriticalSection(&pipe->lock); free(pipe); return NULL; }

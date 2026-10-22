@@ -19,6 +19,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 internal class WinUIXamlHotReloadClient private constructor(
     val sessionFile: Path, val process: ProcessHandle, val started: Instant,
     private val port: Int, private val token: String, private val pipeName: String? = null,
+    private val pipeNamespace: String = "LOCAL",
 ) : AutoCloseable {
     private val connections = ConcurrentHashMap.newKeySet<AutoCloseable>()
     @Volatile private var closed = false
@@ -46,7 +47,7 @@ internal class WinUIXamlHotReloadClient private constructor(
     }
 
     private fun exchangePipe(name: String, send: (OutputStream) -> Unit): WinUIXamlHotReloadReply =
-        RandomAccessFile("\\\\.\\pipe\\LOCAL\\$name", "rw").use { pipe ->
+        RandomAccessFile("\\\\.\\pipe\\${pipeNamespace.replace('/', '\\')}\\$name", "rw").use { pipe ->
             connections += pipe
             val timeout = AppExecutorUtil.getAppScheduledExecutorService().schedule(
                 { runCatching { pipe.close() } }, 12, TimeUnit.SECONDS)
@@ -86,6 +87,11 @@ internal class WinUIXamlHotReloadClient private constructor(
             val token = properties.getProperty("token").also { require(it.matches(Regex("[A-Za-z0-9_-]{43}"))) }
             val pid = properties.getProperty("pid").toLong()
             val pipe = properties.getProperty("pipe")?.takeIf(String::isNotBlank)
+            val pipeNamespace = properties.getProperty("pipeNamespace")?.takeIf(String::isNotBlank) ?: "LOCAL"
+            require(pipeNamespace == "LOCAL" || pipeNamespace.matches(
+                Regex("Sessions/[0-9]+/AppContainerNamedObjects/S-1-15-2-(?:[0-9]+-){6}[0-9]+"))) {
+                "Invalid development pipe namespace."
+            }
             require(if (pipe == null) port in 1..65535 else port == 0 &&
                 pipe.matches(Regex("KotlinWinRT\\.$pid\\.[0-9a-f]{32}"))) { "Invalid development endpoint." }
             val process = ProcessHandle.of(pid).orElseThrow { IllegalStateException("The application has exited.") }
@@ -94,7 +100,7 @@ internal class WinUIXamlHotReloadClient private constructor(
                 "The development process does not match this application host."
             }
             val started = process.info().startInstant().orElseThrow { IllegalStateException("Cannot verify the development process lifetime.") }
-            return WinUIXamlHotReloadClient(file, process, started, port, token, pipe)
+            return WinUIXamlHotReloadClient(file, process, started, port, token, pipe, pipeNamespace)
         }
     }
 }

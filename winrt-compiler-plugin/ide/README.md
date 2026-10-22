@@ -533,7 +533,9 @@ WinUI owns layout/rendering. Captures are premultiplied BGRA8, scaled to at most
 limitations apply, including content outside the captured visual such as popups.
 The protocol is version 4: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
-adapters are shared Kotlin; the development transport currently supports JVM.
+adapters are shared Kotlin; development transports support desktop JVM/Native
+WinUI and Native UWP. Native UWP project-code previews and application launches
+use isolated packages and authenticated AppContainer pipes; see [UWP support](../../docs/UWP.md).
 
 ## XAML Hot Reload
 

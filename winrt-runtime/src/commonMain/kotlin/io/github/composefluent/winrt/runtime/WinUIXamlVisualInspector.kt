@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** SDK calls live in the compiler-generated typed adapter. Runtime ownership,
  * bounded traversal and UI dispatch mirror CsWinRT's generated accessor/runtime split.
- * The same contract is usable by JVM and mingwX64; only the current transport is JVM. */
+ * The same contract is used by JVM and mingwX64 development transports. */
 class WinUIXamlVisualInspector(
     private val visualRoot: (Any) -> Any?,
     private val children: (Any) -> List<Any>,

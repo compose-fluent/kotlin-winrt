@@ -220,6 +220,10 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               stage = "attach the visual tree"
               window.content = element
               stage = "lay out the visual tree"
+              // UWP defers the first Window content layout until rendering. Establish
+              // the requested artboard before capture chooses its bounded pixel size.
+              element.measure(windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))
+              element.arrange(windows.foundation.Rect(0f, 0f, request.width.toFloat(), request.height.toFloat()))
               element.updateLayout()
             } catch (error: Exception) { throw IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error) }
           },

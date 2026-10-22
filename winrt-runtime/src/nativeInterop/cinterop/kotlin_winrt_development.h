@@ -74,8 +74,8 @@ static inline int kotlin_winrt_development_publish(kotlin_winrt_development_serv
     swprintf(server->session, length, L"%ls\\%lu-%u.session", directory, GetCurrentProcessId(), server->port);
     file = CreateFileW(temporary, GENERIC_WRITE, 0, &attributes, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file != INVALID_HANDLE_VALUE) {
-        char properties[320];
-        int count = snprintf(properties, sizeof(properties), "protocol=%d\nport=%u\ntoken=%s\npid=%lu\npipe=%s\n", server->protocol, server->port, server->token, GetCurrentProcessId(), server->pipe ? server->pipe->name : "");
+        char properties[768];
+        int count = snprintf(properties, sizeof(properties), "protocol=%d\nport=%u\ntoken=%s\npid=%lu\npipe=%s\npipeNamespace=%s\n", server->protocol, server->port, server->token, GetCurrentProcessId(), server->pipe ? server->pipe->name : "", server->pipe ? server->pipe->object_namespace : "");
         DWORD written = 0;
         success = WriteFile(file, properties, count, &written, NULL) && written == (DWORD)count && FlushFileBuffers(file);
         CloseHandle(file); file = INVALID_HANDLE_VALUE;

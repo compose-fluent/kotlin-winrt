@@ -1,9 +1,9 @@
 # XAML development updates
 
-The development transport documented here applies to JVM and Kotlin/Native mingwX64 desktop WinUI applications.
-UWP AppContainer Hot Reload is not implemented; the shared metadata/property
-engine does not by itself provide a UWP development session. See the
-[UWP guide](../docs/UWP.md) for supported build configuration and remaining checks.
+The development transport applies to JVM and Kotlin/Native mingwX64 desktop WinUI
+applications, and to Kotlin/Native UWP AppContainer applications. UWP package
+activation and session handoff are owned by the Gradle toolkit; see the
+[UWP guide](../docs/UWP.md) for configuration and the remaining JVM limitation.
 
 The common property engine uses the compiler's existing XAML type/member
 registrations. Property discovery reuses `WinUIAuthoredTypeMetadata.customProperty`,
@@ -170,10 +170,12 @@ Native hosts can select a local named pipe with
 `KOTLIN_WINRT_DEVELOPMENT_TRANSPORT=pipe`. It uses the same authenticated frames,
 bounded overlapped I/O and owner-thread dispatch. Its ACL includes only the current
 user and, when present, the current AppContainer SID. The IDE accepts only the
-process-bound `LOCAL` pipe name recorded in the session and cancels pending reads
+process-bound pipe name and restricted LOCAL/AppContainer namespace recorded in
+the session and cancels pending reads
 on session close. A bounded receipt keeps DisconnectNamedPipe from discarding an
 unread reply. Windows Native transport and IDE pipe interoperability tests cover
-this channel; UWP activation/session-directory integration remains a separate gate.
+this channel. Real UWP Native acceptance also covers package activation, the
+AppContainer namespace, preview rendering, live property updates and rollback.
 
 The native application entry wrapper also reads these arguments before choosing
 the project-code static designer. Preview mode starts the generated Application,
@@ -186,4 +188,4 @@ them. Changing their Kotlin implementation requires rebuilding/restarting the ho
 CsWinRT has no IDE socket/session counterpart. The Windows transport is a tooling
 adaptation; projection ownership, custom-property accessors, conversion and UI
 dispatch remain in their existing CsWinRT-aligned owners. This does not provide
-Kotlin code replacement, new bindings/connections, or UWP AppContainer transport.
+Kotlin code replacement or new bindings/connections.

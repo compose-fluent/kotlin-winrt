@@ -15,6 +15,47 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 class UWPDevelopmentRunnerTest {
+    @Test fun activation_resumer_checks_thread_ownership_and_resumes_the_supplied_thread() {
+        // Windows Store startup debugging requires a helper which resumes the supplied
+        // thread (Microsoft's CLR Profilers and Windows Store Apps, Startup load).
+        assumeTrue(isWindowsHost())
+        val root = Files.createTempDirectory("uwp-activation-resumer-")
+        val script = root.resolve("resumer.ps1")
+        val bridge = uwpDevelopmentRunnerScript.substringAfter("Add-Type -TypeDefinition @'\n").substringBefore("\n'@")
+        Files.writeString(script, """
+            ${'$'}ErrorActionPreference = 'Stop'
+            Add-Type -TypeDefinition @'
+            $bridge
+            public static class ResumerProbe {
+                [System.Runtime.InteropServices.UnmanagedFunctionPointer(System.Runtime.InteropServices.CallingConvention.Winapi)]
+                delegate uint Entry(System.IntPtr argument);
+                [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError=true)]
+                static extern System.IntPtr CreateThread(System.IntPtr attributes, System.UIntPtr stack, Entry entry, System.IntPtr argument, uint flags, out uint id);
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern uint WaitForSingleObject(System.IntPtr handle, uint timeout);
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool CloseHandle(System.IntPtr handle);
+                public static void Verify() {
+                    bool ran = false;
+                    Entry entry = delegate(System.IntPtr unused) { ran = true; return 0; };
+                    uint id;
+                    var thread = CreateThread(System.IntPtr.Zero, System.UIntPtr.Zero, entry, System.IntPtr.Zero, 4, out id);
+                    if (thread == System.IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
+                    try {
+                        bool rejected = false;
+                        try { KotlinWinRT.UWP.Launcher.ResumeActivation(0, id); }
+                        catch (System.InvalidOperationException) { rejected = true; }
+                        if (!rejected || ran) throw new System.Exception("Mismatched process was accepted");
+                        KotlinWinRT.UWP.Launcher.ResumeActivation((uint)System.Diagnostics.Process.GetCurrentProcess().Id, id);
+                        if (WaitForSingleObject(thread, 5000) != 0 || !ran) throw new System.Exception("Activation thread was not resumed");
+                    } finally { CloseHandle(thread); System.GC.KeepAlive(entry); }
+                }
+            }
+'@
+            [ResumerProbe]::Verify()
+        """.trimIndent())
+        try { runPowerShell(script) }
+        finally { Files.deleteIfExists(script); Files.deleteIfExists(root) }
+    }
+
     @Test fun powershell_preserves_activation_arguments_and_installs_frameworks_before_registration() {
         // SDK IApplicationActivationManager::ActivateApplication takes a single LPCWSTR. Its
         // contents must survive PowerShell's -File binding without becoming script parameters.

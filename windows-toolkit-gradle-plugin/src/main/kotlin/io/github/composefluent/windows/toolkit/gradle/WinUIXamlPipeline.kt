@@ -143,8 +143,7 @@ internal fun configureWinUIXamlPipeline(
         task.outputFile.set(project.layout.buildDirectory.file("generated/kotlin-winrt/xaml/application/KotlinXaml.winmd"))
         task.sourceOutputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml/application/src"))
         task.emitSources.set(hasXaml)
-        task.previewHost.set(project.provider { extension.applicationEnabled.get() &&
-            extension.xaml.framework.get() == io.github.composefluent.winrt.runtime.XamlFramework.WinUI })
+        task.previewHost.set(extension.applicationEnabled)
         task.onlyIf { hasXaml.get() || exportsLibrarySchema.get() }
         task.dependsOn(removeStaleXaml)
     }

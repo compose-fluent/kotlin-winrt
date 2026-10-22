@@ -235,6 +235,34 @@ class WinUIXamlHotReloadTest {
         } finally { server.close(); executor.shutdownNow(); Files.deleteIfExists(file); Files.deleteIfExists(folder) }
     }
 
+    @Test fun real_uwp_native_appcontainer_updates_named_properties_and_rolls_back_invalid_changes() {
+        val directory = System.getProperty("winrt.ide.uwpHotReloadSession")
+        assumeTrue("Supply a real Native UWP application session", directory != null)
+        val clients = WinUIXamlHotReloadClient.discover(Path.of(directory))
+        assertEquals(1, clients.size)
+        clients.single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainPage") && "resultText" in it.elements }
+            val patch = WinUIXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash, "b".repeat(64), root.version + 1,
+                listOf(WinUIXamlHotReloadChange("resultText", "Text", "Reloaded inside AppContainer"),
+                    WinUIXamlHotReloadChange("incrementButton", "Content", "Increment after reload")))
+            val applied = client.request(patch)
+            assertEquals(applied.message, WinUIXamlHotReloadProtocol.APPLIED, applied.status)
+            assertEquals("Reloaded inside AppContainer", applied.values.single { it.property == "Text" }.value)
+            assertEquals("Increment after reload", applied.values.single { it.property == "Content" }.value)
+            val current = applied.roots.single { it.className == root.className }
+            val invalid = patch.copy(expectedHash = current.sourceHash, sourceHash = "c".repeat(64), version = current.version + 1,
+                changes = listOf(WinUIXamlHotReloadChange("resultText", "Text", "must roll back"),
+                    WinUIXamlHotReloadChange("resultText", "Width", "-1")))
+            val rejected = client.request(invalid)
+            assertEquals(rejected.message, WinUIXamlHotReloadProtocol.REJECTED, rejected.status)
+            val inspected = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, capture = false))
+            val node = inspected.inspection!!.nodes.single { it.name == "resultText" }
+            val selected = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, selectedPath = node.path, capture = false))
+            assertEquals("Reloaded inside AppContainer", selected.inspection!!.properties.single { it.name == "Text" }.value)
+            assertEquals(current.sourceHash, selected.roots.single { it.className == root.className }.sourceHash)
+        }
+    }
+
     /** A real compiler-generated WinUI host supplies the session; no test-only XAML runtime glue. */
     @Test fun real_winui_host_updates_text_dimensions_and_brush_on_its_ui_thread() {
         val directory = System.getProperty("winrt.ide.hotReloadSession")

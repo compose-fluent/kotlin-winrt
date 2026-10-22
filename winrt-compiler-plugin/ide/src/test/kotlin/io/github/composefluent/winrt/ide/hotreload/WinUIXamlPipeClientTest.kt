@@ -10,6 +10,23 @@ import java.util.concurrent.TimeUnit
 
 /** Exercises the actual Windows named-pipe path, including cancellation of a blocked read. */
 class WinUIXamlPipeClientTest : BasePlatformTestCase() {
+    fun testSessionCannotRedirectPipeToAnArbitraryPathOrAllPackages() {
+        val file = Files.createTempFile("winrt-pipe-namespace-", ".session")
+        val pid = ProcessHandle.current().pid()
+        try {
+            for (namespace in listOf("../elsewhere", "//remote/pipe", "Sessions/2/AppContainerNamedObjects/S-1-15-2-1")) {
+                Files.writeString(file, "protocol=${WinUIXamlHotReloadProtocol.VERSION}\nport=0\n" +
+                    "token=${"p".repeat(43)}\npid=$pid\npipe=KotlinWinRT.$pid.${"a".repeat(32)}\npipeNamespace=$namespace\n")
+                try {
+                    WinUIXamlHotReloadClient.read(file).close()
+                    fail("Invalid namespace was accepted: $namespace")
+                } catch (expected: IllegalArgumentException) {
+                    assertEquals("Invalid development pipe namespace.", expected.message)
+                }
+            }
+        } finally { Files.deleteIfExists(file) }
+    }
+
     fun testPipeFramesAndReceipt() = withPipe(false) { client, _, process ->
         val reply = client.request()
         assertEquals(WinUIXamlHotReloadProtocol.APPLIED, reply.status)

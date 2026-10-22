@@ -208,7 +208,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
             throw GradleException("Cannot run packaged application from $input:\n${errors.joinToString("\n")}")
         }
         if (applicationModel.get() == WindowsApplicationModel.UWP) {
-            require(!designPreview.get()) { "The WinUI designer is not a UWP AppContainer launch mode." }
+            require(!designPreview.get() || supportsXamlPreview.get() && supportsXamlHotReload.get()) {
+                "UWP XAML preview requires a generated Kotlin/Native preview host."
+            }
             require(!debugOutput.get()) { "UWP launch does not capture WinApp CLI debug output; attach a native debugger to the reported PID." }
             val restoredRoots = dependencyLockFiles.files.filter(java.io.File::isFile).let { lockFiles ->
                 if (lockFiles.isEmpty()) emptyList() else readWinAppRestoredPackageRoots(
@@ -245,6 +247,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
             // through UTF-8 JSON so ActivateApplication receives the original command-line string.
             Files.writeString(configuration, buildJsonObject {
                 put("applicationArguments", args.get())
+                put("designPreview", designPreview.get())
+                put("developmentSessionDirectory", developmentSessionDirectory.orNull
+                    .takeIf { supportsXamlHotReload.get() && !noLaunch.get() }.orEmpty())
                 put("dependencyPackages", JsonArray(dependencyPaths.map { path ->
                     val identity = AppxManifestPackageSupport.validateFrameworkPackageArchive(path, runtimeIdentifier.get())
                     buildJsonObject {

@@ -214,6 +214,8 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.xamlCompiler").orNull?.let { systemProperty("winrt.ide.xamlCompiler", it) }
     providers.gradleProperty("winrt.ide.hotReloadSession").orNull?.let { systemProperty("winrt.ide.hotReloadSession", it) }
     providers.gradleProperty("winrt.ide.previewSession").orNull?.let { systemProperty("winrt.ide.previewSession", it) }
+    providers.gradleProperty("winrt.ide.uwpPreviewSession").orNull?.let { systemProperty("winrt.ide.uwpPreviewSession", it) }
+    providers.gradleProperty("winrt.ide.uwpHotReloadSession").orNull?.let { systemProperty("winrt.ide.uwpHotReloadSession", it) }
     providers.gradleProperty("winrt.ide.sdkPreviewSession").orNull?.let { systemProperty("winrt.ide.sdkPreviewSession", it) }
     providers.gradleProperty("winrt.ide.sdkPreviewProject").orNull?.let { systemProperty("winrt.ide.sdkPreviewProject", it) }
     providers.gradleProperty("winrt.ide.previewOutput").orNull?.let { systemProperty("winrt.ide.previewOutput", it) }
