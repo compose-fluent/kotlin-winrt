@@ -56,7 +56,9 @@ checks that the last option remains reachable at double density and that both
 dimension fields expose accessible names. Desktop IDEA verification also confirms
 scrolling to the final option at 200%, Tab focus and Space activation of the
 checkboxes, cancellation of a Native preview build and restoration of the split
-editor after restarting. Screen-reader output and equivalent interaction checks
+editor after restarting. The SDK designer has also rendered inside that desktop
+editor, with preview-only mode, arrow-key tree expansion/selection and effective
+property inspection. Screen-reader output and equivalent interaction checks
 in Android Studio remain separate acceptance work.
 
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
