@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.ide.preview
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
@@ -115,6 +116,34 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
         assertFalse(design.state.value.connected)
         assertNotSame(live.state, design.state)
         assertFalse(design.automatic.value)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun testPreviewOptionsRemainReachableAtDoubleScale() {
+        val file = myFixture.addFileToProject("Scaled.xaml", markup).virtualFile
+        val scene = ImageComposeScene(600, 800, Density(2f))
+        try {
+            scene.setContent { SwingBridgeTheme { WinUIXamlPreviewPanel(project, staticFile = file.path) } }
+            fun nodes(): List<SemanticsNode> {
+                fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
+                return scene.semanticsOwners.flatMap { visit(it.unmergedRootSemanticsNode) }
+            }
+            fun labels(node: SemanticsNode): List<String> = node.config.getOrNull(SemanticsProperties.Text)
+                .orEmpty().map { it.text } + node.children.flatMap(::labels)
+            scene.render().close()
+            val expand = nodes().first { "Show preview options" in labels(it) && it.config.getOrNull(SemanticsActions.OnClick) != null }
+            assertTrue(expand.config[SemanticsActions.OnClick].action!!.invoke())
+            scene.render().close()
+            val scroll = nodes().single { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
+            assertTrue("Expanded options must scroll in a small high-DPI viewport", scroll.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > 0f)
+            assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f, 2000f))
+            scene.render().close()
+            scene.render().close()
+            val lastOption = nodes().first { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text == "Visual Tree and properties" } }
+            assertTrue("The final option must be visible after scrolling", lastOption.boundsInWindow.height > 0f && lastOption.boundsInWindow.bottom <= 800f)
+            assertTrue(nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
+            assertTrue(nodes().any { "Preview height in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
+        } finally { scene.close() }
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

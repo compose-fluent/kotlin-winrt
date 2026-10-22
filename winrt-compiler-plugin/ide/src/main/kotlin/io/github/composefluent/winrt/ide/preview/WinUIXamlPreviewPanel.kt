@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -164,7 +166,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly))
         }
     }
-    Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val view = state.inspection.takeIf { failure == null && (!static || prepared != null) }
+    BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
+      val controlsHeight = if (view == null) maxHeight else maxHeight * 0.5f
+      Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+       // Keep settings reachable at large IDE zoom levels without measuring the
+       // weighted image/tree inside an unbounded scrolling column.
+       Column(Modifier.fillMaxWidth().heightIn(max = controlsHeight).verticalScroll(rememberScrollState()),
+           verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!treeOnly && staticFile == null) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RadioButtonRow("Live Preview", !static, { static = false }); RadioButtonRow("Static Preview", static, { static = true })
         }
@@ -193,8 +202,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             else Text(Path.of(staticFile).fileName.toString())
             WinRTDetails("preview options") {
               Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth()) }
-                Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth()) }
+                Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }) }
+                Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }) }
               }
               WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it }
               notes.forEach { Text(it) }
@@ -209,11 +218,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
         if (staticFile != null) CheckboxRow("Visual Tree and properties", showInspector, { showInspector = it })
         failure?.let { Text(it) }
-        val view = state.inspection.takeIf { failure == null && (!static || prepared != null) }
+        if (view == null) Text(when {
+            static && (failure != null || state.inspectionError != null) -> "This document could not be rendered. Fix the reported XAML or resource error, then refresh."
+            static && state.connected -> "Rendering this XAML document…"
+            static -> "Start the design host to render this document with WinUI."
+            else -> "Connect a development application to inspect its actual visual tree."
+        })
         if (view != null) {
-            if (!treeOnly) PreviewImage(view, selectedPath, ::selectPath,
-                if (staticFile != null && !showInspector) Modifier.weight(1f).fillMaxWidth()
-                else Modifier.fillMaxWidth().heightIn(max = 280.dp))
             val node = view.nodes.firstOrNull { it.path == selectedPath }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 node?.let { Text(it.name.ifEmpty { it.typeName.substringAfterLast('.') }) }
@@ -227,6 +238,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     }
                 }) { Text("Go to XAML") }
             }
+        }
+       }
+        if (view != null) {
+            if (!treeOnly) PreviewImage(view, selectedPath, ::selectPath, Modifier.weight(1f).fillMaxWidth())
             if (showInspector) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 @Composable fun tree(modifier: Modifier) { key(root?.className, root?.resourcePath, instance, static) {
                     VisualTree(view.nodes, selectedPath, ::selectPath, modifier)
@@ -240,12 +255,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     tree(Modifier.weight(1f).fillMaxWidth()); properties(Modifier.weight(1f).fillMaxWidth())
                 }
             }
-        } else Text(when {
-            static && (failure != null || state.inspectionError != null) -> "This document could not be rendered. Fix the reported XAML or resource error, then refresh."
-            static && state.connected -> "Rendering this XAML document…"
-            static -> "Start the design host to render this document with WinUI."
-            else -> "Connect a development application to inspect its actual visual tree."
-        })
+        }
+      }
     }
 }
 
