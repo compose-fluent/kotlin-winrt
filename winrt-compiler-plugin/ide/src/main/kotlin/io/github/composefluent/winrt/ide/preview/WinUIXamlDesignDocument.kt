@@ -38,6 +38,37 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                 .filter { it.namespaceURI == XMLConstants.XMLNS_ATTRIBUTE_NS_URI }.forEach { to.setAttributeNS(it.namespaceURI, it.nodeName, it.nodeValue) } }
             var expandedSize = text.length + application.orEmpty().length
             fun sanitize(tag: Element, sourcePath: String, stack: Set<String> = setOf(sourcePath)) {
+                // Visual Studio's design-time properties override their runtime
+                // counterparts before the ordinary XAML processing pipeline.
+                // This also gives d:Source the resource's original package base.
+                (0 until tag.attributes.length).map { tag.attributes.item(it) }
+                    .filter { it.namespaceURI == DESIGN }.forEach { attribute ->
+                        val name = attribute.localName
+                        val value = attribute.nodeValue
+                        tag.removeAttributeNode(attribute as org.w3c.dom.Attr)
+                        val extension = Regex("^\\{\\s*([^\\s,{}]+)").find(value)?.groupValues?.get(1)
+                        val designExtension = extension?.contains(':') == true &&
+                            tag.lookupNamespaceURI(extension.substringBefore(':')) == DESIGN
+                        when {
+                            name == "IsHidden" -> if (value.equals("true", true)) tag.setAttribute("Visibility", "Collapsed")
+                            name in setOf("DesignWidth", "DesignHeight") -> {
+                                val property = name.removePrefix("Design")
+                                if (!tag.hasAttribute(property)) tag.setAttribute(property, value)
+                            }
+                            designExtension -> notes += "Design extension '$extension' needs explicit design values or inline design data."
+                            else -> tag.setAttribute(name, value)
+                        }
+                    }
+                children(tag).filter { it.namespaceURI == DESIGN && '.' in it.localName }.forEach { design ->
+                    val member = design.localName.substringAfter('.')
+                    // A design property replaces, rather than appends to, the
+                    // runtime property. Items must not coexist with ItemsSource.
+                    tag.removeAttribute(member)
+                    if (member == "Items") tag.removeAttribute("ItemsSource")
+                    children(tag).filter { it !== design && it.namespaceURI != DESIGN &&
+                        (it.localName == design.localName || member == "Items" && it.localName.endsWith(".ItemsSource"))
+                    }.forEach(tag::removeChild)
+                }
                 if (tag.namespaceURI == WinUIXamlCatalog.XAML && tag.localName == "Properties") {
                     tag.parentNode.removeChild(tag)
                     notes += "Authored property declarations are excluded from static preview."
@@ -130,8 +161,6 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                     return
                 }
                 val attributes = (0 until tag.attributes.length).map { tag.attributes.item(it) }
-                val designValues = attributes.filter { it.namespaceURI == DESIGN && it.localName in setOf("Text", "Content", "Width", "Height", "Visibility") }
-                    .associate { it.localName to it.nodeValue }
                 attributes.forEach { attr ->
                     val uri = attr.namespaceURI.orEmpty(); val local = attr.localName ?: attr.nodeName
                     val extension = Regex("^\\{\\s*([^\\s,{}]+)").find(attr.nodeValue)?.groupValues?.get(1).orEmpty()
@@ -155,7 +184,6 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                         }
                     }
                 }
-                designValues.forEach { (name, value) -> tag.setAttribute(name, value) }
                 children(tag).forEach { child ->
                     if (child.namespaceURI == DESIGN) {
                         if (child.localName in setOf("DesignInstance", "DesignData", "DataContext")) {

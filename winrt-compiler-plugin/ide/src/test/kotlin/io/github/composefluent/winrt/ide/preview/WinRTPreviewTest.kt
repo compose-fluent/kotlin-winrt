@@ -43,7 +43,38 @@ class WinRTPreviewTest {
         assertTrue(result.markup.contains("{ThemeResource TextFillColorPrimaryBrush}"))
         assertTrue(result.markup.contains("{Binding Message}"))
         assertFalse(result.markup.contains("x:Class"))
-        assertEquals(2, result.notes.size)
+        assertEquals(listOf("Event handlers are excluded from static preview."), result.notes)
+    }
+    @Test fun design_properties_override_runtime_values_before_normalizing_resources() {
+        // Microsoft XAML Designer: d: can override any ordinary property;
+        // the IDE owns this markup transformation, not the WinRT projection.
+        val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" d:DesignWidth="400" Width="300" d:DesignHeight="200">
+          <StackPanel><Image Source="{x:Bind Picture}" d:Source="../Assets/Design picture.png"/>
+          <TextBlock Text="{Binding Name}" d:Text="Preview" d:Foreground="Red" d:FontSize="24"/>
+          <Button d:IsHidden="True"/></StackPanel></Page>""", packagePath = "UI/Page.xaml")
+        val document = parse(result.markup)
+        val page = document.getElementsByTagNameNS("*", "Page").item(0) as org.w3c.dom.Element
+        assertEquals("300", page.getAttribute("Width"))
+        assertEquals("200", page.getAttribute("Height"))
+        val image = document.getElementsByTagNameNS("*", "Image").item(0) as org.w3c.dom.Element
+        assertEquals("ms-appx:///Assets/Design%20picture.png", image.getAttribute("Source"))
+        val text = document.getElementsByTagNameNS("*", "TextBlock").item(0) as org.w3c.dom.Element
+        assertEquals("Preview", text.getAttribute("Text"))
+        assertEquals("Red", text.getAttribute("Foreground"))
+        assertEquals("24", text.getAttribute("FontSize"))
+        assertEquals("Collapsed", (document.getElementsByTagNameNS("*", "Button").item(0) as org.w3c.dom.Element).getAttribute("Visibility"))
+        assertTrue(result.notes.isEmpty())
+    }
+    @Test fun design_collection_replaces_runtime_items_and_binding() {
+        val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008">
+          <ListView ItemsSource="{Binding Rows}"><ListView.Items><TextBlock Text="Runtime"/></ListView.Items>
+          <d:ListView.Items><TextBlock Text="Design"/></d:ListView.Items></ListView></Page>""")
+        val document = parse(result.markup)
+        val list = document.getElementsByTagNameNS("*", "ListView").item(0) as org.w3c.dom.Element
+        assertFalse(list.hasAttribute("ItemsSource"))
+        assertEquals(1, document.getElementsByTagNameNS("*", "ListView.Items").length)
+        assertFalse(result.markup.contains("Runtime"))
+        assertTrue(result.markup.contains("Design"))
     }
     @Test fun application_resources_and_relative_dictionaries_keep_their_original_package_scope() {
         val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="../Styles/Page.xaml"/></Page.Resources><TextBlock/></Page>""",
