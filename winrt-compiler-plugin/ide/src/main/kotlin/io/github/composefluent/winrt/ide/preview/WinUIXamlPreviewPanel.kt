@@ -241,13 +241,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if ((staticFile == null || state.pid != null) && showSettings) OutlinedButton(enabled = !state.busy, onClick = session::reconnect) { Text("Reconnect") }
             if (state.pid != null || state.busy) OutlinedButton(onClick = session::stop) { Text(if (state.busy) "Cancel" else if (static) "Stop preview" else "Stop application") }
         }
-        Text(state.message)
-        if (view != null && static && (!state.connected || failure != null || state.inspectionError != null || prepared == null || state.inspecting))
-            Text(when {
-                !state.connected && !state.busy -> "Preview disconnected — showing the last successful render."
-                failure != null || state.inspectionError != null -> "Preview out of date — showing the last successful render."
-                else -> "Updating preview — showing the last successful render."
-            })
+        // Replace the status in place: inserting a transient row moves Settings
+        // and the viewport under the pointer during every selection/refresh.
+        Text(if (view != null && static) when {
+            !state.connected && !state.busy -> "Preview disconnected — showing the last successful render."
+            failure != null || state.inspectionError != null -> "Preview out of date — showing the last successful render."
+            !state.connected || prepared == null || state.inspecting -> "Updating preview — showing the last successful render."
+            else -> state.message
+        } else state.message, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         state.inspectionError?.let { Text(it) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             OutlinedButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Hide settings" else "Settings") }
