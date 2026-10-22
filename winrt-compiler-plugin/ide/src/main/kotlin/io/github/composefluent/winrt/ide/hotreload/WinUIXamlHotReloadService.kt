@@ -160,7 +160,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
                             if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
                         onProcessStarted = { handler ->
-                            if (!withCurrent(request) { gradleProcess = handler }) handler.destroyProcess()
+                            if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
                         },
                         onFailure = { withCurrent(request) { if (client == null) {
                             worker?.cancel(); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
@@ -489,7 +489,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val buildProcess = gradleProcess.takeIf { building }
         val request = beginRequest(WinUIXamlHotReloadState("Stopping the development application…", busy = true,
             pid = owned?.process?.takeIf { it.isAlive }?.pid()))
-        if (buildProcess != null) ApplicationManager.getApplication().invokeLater { buildProcess.destroyProcess() }
+        if (buildProcess != null) WinRTGradleTasks.cancel(project, buildProcess)
         worker = scope.launch(Dispatchers.IO) { mutex.withLock {
             if (!isCurrent(request)) return@withLock
             runCatching { stopOwned() }.fold({ withCurrent(request) { display.value = WinUIXamlHotReloadState("Development application stopped.") } },

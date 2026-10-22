@@ -28,6 +28,27 @@ class WinRTDevelopmentLaunchTest : BasePlatformTestCase() {
 
     fun testHotReloadLaunchSavesDocumentsFromNakedEdtBeforePreparation() = launch(sdk = false, preview = false)
 
+    fun testBuildCancellationUsesBackgroundProgressFromNakedEdt() {
+        val cancelled = java.util.concurrent.CompletableFuture<Pair<Boolean, Boolean>>()
+        val handler = object : com.intellij.execution.process.ProcessHandler() {
+            override fun destroyProcessImpl() {
+                cancelled.complete(ApplicationManager.getApplication().isDispatchThread to
+                    (com.intellij.openapi.progress.ProgressManager.getInstance().progressIndicator != null))
+                notifyProcessTerminated(0)
+            }
+            override fun detachProcessImpl() = notifyProcessDetached()
+            override fun detachIsDefault() = false
+            override fun getProcessInput(): java.io.OutputStream? = null
+        }
+        handler.startNotify()
+        EdtTestUtil.runInEdtAndWait<Exception>({
+            io.github.composefluent.winrt.ide.project.WinRTGradleTasks.cancel(project, handler)
+        }, false)
+        val context = cancelled.get(10, java.util.concurrent.TimeUnit.SECONDS)
+        assertFalse("Gradle cancellation must not run on EDT", context.first)
+        assertTrue("Gradle JVM lookup requires a progress context", context.second)
+    }
+
     private fun launch(sdk: Boolean, preview: Boolean) {
         val original = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Text="Saved"/></Page>"""
         val edited = original.replace("Saved", "Unsaved")

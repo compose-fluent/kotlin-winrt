@@ -17,6 +17,15 @@ import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import org.jetbrains.plugins.gradle.util.GradleConstants
 
 object WinRTGradleTasks {
+    /** Gradle cancellation resolves the JVM and may block: it requires both a
+     * background thread and a platform progress context, including late launches. */
+    fun cancel(project: Project, handler: ProcessHandler) {
+        object : com.intellij.openapi.progress.Task.Backgroundable(project, "Cancel XAML preview build", false) {
+            override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
+                handler.destroyProcess()
+            }
+        }.queue()
+    }
     fun prepareXaml(project: Project, module: WinRTModuleData) {
         run(project, module, buildList {
             if (module.xamlCompilations.isNotEmpty()) add("analyzeWinRTXaml")
