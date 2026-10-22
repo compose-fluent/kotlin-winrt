@@ -53,9 +53,11 @@ from Settings and cancelling project import during IDE exit. The 200% check
 exposed inaccessible preview options; the controls now scroll within a bounded
 area while leaving space for the artboard and inspector. A Compose scene test
 checks that the last option remains reachable at double density and that both
-dimension fields expose accessible names. Desktop verification of that fix,
-screen-reader output and equivalent interaction checks in Android Studio remain
-separate acceptance work.
+dimension fields expose accessible names. Desktop IDEA verification also confirms
+scrolling to the final option at 200%, Tab focus and Space activation of the
+checkboxes, cancellation of a Native preview build and restoration of the split
+editor after restarting. Screen-reader output and equivalent interaction checks
+in Android Studio remain separate acceptance work.
 
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
 NuGet references, with navigation to the module build script and explicit
