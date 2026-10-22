@@ -47,6 +47,16 @@ screen reader, cancellation during real work and closing/reopening a full IDE mu
 still be checked in the installed desktop distribution. Platform tests validate
 editor semantics and native import/cache recovery; they do not claim those UI checks.
 
+Interactive checks in the isolated IDEA baseline have covered dark/light theme
+switching, 100/150% layout, Tab/Shift-Tab between preview dimensions, focus return
+from Settings and cancelling project import during IDE exit. The 200% check
+exposed inaccessible preview options; the controls now scroll within a bounded
+area while leaving space for the artboard and inspector. A Compose scene test
+checks that the last option remains reachable at double density and that both
+dimension fields expose accessible names. Desktop verification of that fix,
+screen-reader output and equivalent interaction checks in Android Studio remain
+separate acceptance work.
+
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
 NuGet references, with navigation to the module build script and explicit
 application manifest. NuGet references describe configuration rather than
