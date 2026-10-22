@@ -1,10 +1,10 @@
 # Kotlin WinRT IntelliJ integration
 
-The application templates, designer and Hot Reload workflows described here target
-WinUI 3. UWP designer/preview, Hot Reload and packaged `--debug-output` capture are
-not implemented. Use the Gradle configuration and package activation steps in the
-[UWP guide](../../docs/UWP.md); selecting UWP in the build does not enable those IDE
-workflows.
+The application templates and SDK-only designer target WinUI 3. Project-code
+previews and Hot Reload also support Kotlin/Native UWP applications through an
+isolated development package. Native Debug supports desktop and UWP startup
+breakpoints; UWP packaged `--debug-output` capture remains separate work.
+See the [UWP guide](../../docs/UWP.md) for package configuration and activation.
 
 This is a standalone IDE build beneath the compiler tooling owner. It does not
 add IntelliJ dependencies to the WinRT runtime, metadata, generator or main
@@ -34,8 +34,8 @@ both lines. The JVM 17 ide-model transport stays independent of both adapters.
 The analysis compiler is read from the Kotlin plugin's analysis libraries, rather
 than its separate JPS compiler. Changes to the build compiler do not implicitly
 upgrade the IDE adapter; embedded Kotlin is selected by the IDE distribution.
-The current baseline is JVM first. Native development transport and Native
-application/template validation remain separate parity work.
+The projection baseline is JVM first; Native development transport, project-code
+preview and LLDB debugging have their own Windows integration coverage.
 
 Forms use the IDE theme bridge, scroll long wizard/module/source lists, and expose
 text-field accessible names. Project services use IDE-injected scopes, UI requests
@@ -537,9 +537,40 @@ adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches
 use isolated packages and authenticated AppContainer pipes; see [UWP support](../../docs/UWP.md).
 
+## Native debugging
+
+Select a Native Debug executable in the Kotlin WinRT application configuration
+and use **Debug**. Gradle builds and stages the application; its JVM is not the
+debug target. The launcher suspends the new executable before application code,
+the IDE installs Kotlin WinRT Native line breakpoints, and LLDB attaches before
+the launcher resumes it. UWP uses the same handoff through its package debugger
+activation helper. Cancelling the launch terminates only that launch's process.
+
+Configure a Windows LLDB executable under **Settings → Tools → Kotlin WinRT**.
+An Android NDK LLDB can also be discovered through `ANDROID_HOME` or
+`ANDROID_SDK_ROOT`. The imported Gradle model supplies the actual Kotlin/Native
+compiler home, so variable formatting follows the project's compiler version.
+Debug builds retain Kotlin's public debug field API; release executables are not
+accepted for source debugging. No project `.lldbinit` is executed.
+
+The Debug tool window supports source breakpoints, pause/resume, step over/into/out,
+run to cursor, thread stacks and paged Kotlin object/array values. Relative DWARF
+paths resolve against imported modules when unambiguous. This does not provide a
+Kotlin expression evaluator. **Run → Attach Kotlin WinRT Native Debugger** attaches
+to the authenticated development process; closing an attach session resumes and
+detaches from that app. Stopping a Debug launch terminates its owned application.
+XAML updates and preview inspection pause while a debugger is attached and resume
+after detaching, preventing UI-thread transactions from blocking on breakpoints.
+
+Windows integration tests exercise Kotlin object fields, arrays larger than 100
+items, all three step operations and continuation after detach. Actual UWP and
+desktop Native startup checks also reach source breakpoints before application
+entry continues. Interactive Debug tool-window acceptance remains distinct from
+these backend and platform tests.
+
 ## XAML Hot Reload
 
-IDE **Run** and **Debug** automatically connect imported JVM WinUI application
+IDE **Run** and **Debug** automatically connect imported JVM and Native application
 profiles to XAML Hot Reload. This is enabled by default and can be disabled under
 **Settings → Tools → Kotlin WinRT**. Each execution adds a fresh session directory
 to its native Gradle state without changing the saved configuration's environment.
@@ -547,7 +578,7 @@ The native runner retains build output, debugger settings and cancellation.
 The **Hot Reload** tab provides session status and explicit lifecycle actions;
 opening the tab or pressing Launch is not required for IDE application runs.
 
-The tab can also start an imported JVM application's
+The tab can also start an imported application's
 actual Gradle launch task with a fresh development session. Gradle owns the build,
 Run output and build cancellation. The panel applies unsaved XAML document changes
 automatically or on request, reports property results and source versions, and
