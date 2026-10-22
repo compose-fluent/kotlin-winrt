@@ -500,6 +500,16 @@ the canvas scale; drag the canvas to pan. Fit recenters it. **Settings** reveals
 dimensions and theme without permanently occupying the artboard. **Visual Tree
 and properties** adds the inspector when needed.
 
+Double-click a rendered element to open its XAML source. Moving the source caret
+into a uniquely identifiable element selects its visual bounds. Matching prefers
+`x:Name`, then a unique control type within a named parent; repeated unnamed
+controls and template internals are not guessed. When an internal visual child
+has no source tag, navigation falls back to its nearest identifiable source owner.
+Settings includes viewport presets (360×640, 800×600, 1280×720 and 1920×1080),
+width/height swapping, theme, project-code rebuild and reconnect. The regular
+toolbar keeps refresh, stop and canvas navigation available. During preparation,
+Cancel stops the native IDE Gradle execution associated with that preview session.
+
 When a project-code launch is available, the preview defaults to rendering real
 project controls. The per-module choice is saved across editor and IDE restarts.
 Disable **Render project controls (requires compilation)** to use the independent

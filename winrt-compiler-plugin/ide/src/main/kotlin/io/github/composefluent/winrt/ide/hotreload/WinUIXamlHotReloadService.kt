@@ -70,6 +70,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var inspectionOwner: Triple<String, String, Int>? = null
     private var uncertain = false
     private var owned: WinUIXamlHotReloadClient? = null
+    @Volatile private var gradleProcess: com.intellij.execution.process.ProcessHandler? = null
     private var savedLaunch = WinUIXamlHotReloadLaunchState()
     @Volatile private var debuggerPid: Long? = null
 
@@ -128,6 +129,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
         val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true))
+        gradleProcess = null
         worker = scope.launch(Dispatchers.IO) {
             try {
                 // Compose effects and clicks run on EDT without the platform's
@@ -157,6 +159,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         listOf(launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
                         environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
                             if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
+                        onProcessStarted = { handler ->
+                            if (!withCurrent(request) { gradleProcess = handler }) handler.destroyProcess()
+                        },
                         onFailure = { withCurrent(request) { if (client == null) {
                             worker?.cancel(); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
                         } } })
@@ -480,8 +485,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     fun stop() {
         if (disposed || project.isDisposed) return
+        val building = display.value.busy && owned == null
+        val buildProcess = gradleProcess.takeIf { building }
         val request = beginRequest(WinUIXamlHotReloadState("Stopping the development application…", busy = true,
             pid = owned?.process?.takeIf { it.isAlive }?.pid()))
+        if (buildProcess != null) ApplicationManager.getApplication().invokeLater { buildProcess.destroyProcess() }
         worker = scope.launch(Dispatchers.IO) { mutex.withLock {
             if (!isCurrent(request)) return@withLock
             runCatching { stopOwned() }.fold({ withCurrent(request) { display.value = WinUIXamlHotReloadState("Development application stopped.") } },

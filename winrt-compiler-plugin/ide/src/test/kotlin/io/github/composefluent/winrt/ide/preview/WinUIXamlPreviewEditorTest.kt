@@ -124,6 +124,12 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
         val scene = ImageComposeScene(600, 800, Density(2f))
         try {
             scene.setContent { SwingBridgeTheme { WinUIXamlPreviewPanel(project, staticFile = file.path) } }
+            var frameTime = System.nanoTime()
+            fun settleFrames() = repeat(30) {
+                frameTime += 20_000_000L
+                scene.render(frameTime).close()
+                PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            }
             fun nodes(): List<SemanticsNode> {
                 fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
                 return scene.semanticsOwners.flatMap { visit(it.unmergedRootSemanticsNode) }
@@ -134,14 +140,16 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
             assertFalse("Dimensions stay out of the default canvas workspace", nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
             val expand = nodes().first { "Settings" in labels(it) && it.config.getOrNull(SemanticsActions.OnClick) != null }
             assertTrue(expand.config[SemanticsActions.OnClick].action!!.invoke())
-            scene.render().close()
+            settleFrames()
             val scroll = nodes().single { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
             assertTrue("Expanded options must scroll in a small high-DPI viewport", scroll.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > 0f)
-            assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f, 2000f))
-            scene.render().close()
-            scene.render().close()
+            assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f, scroll.config[SemanticsProperties.VerticalScrollAxisRange].maxValue()))
+            // Accessibility scrolling and focus bring-into-view use frame-clock
+            // animations. Advance the offscreen clock as well as the UI queue.
+            settleFrames()
             val lastOption = nodes().first { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text == "Visual Tree and properties" } }
-            assertTrue("The final option must be visible after scrolling", lastOption.boundsInWindow.height > 0f && lastOption.boundsInWindow.bottom <= 800f)
+            val axis = scroll.config[SemanticsProperties.VerticalScrollAxisRange]
+            assertTrue("The final option must be visible after scrolling: bounds=${lastOption.boundsInWindow}, scroll=${axis.value()}/${axis.maxValue()}", lastOption.boundsInWindow.height > 0f && lastOption.boundsInWindow.bottom <= 800f)
             assertTrue(nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
             assertTrue(nodes().any { "Preview height in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
         } finally { scene.close() }

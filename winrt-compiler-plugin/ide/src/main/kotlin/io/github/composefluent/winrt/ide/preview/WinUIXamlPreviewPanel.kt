@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -28,6 +29,8 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.editor.event.CaretEvent
+import com.intellij.openapi.editor.event.CaretListener
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -35,6 +38,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.XmlFile
 import com.intellij.psi.xml.XmlTag
@@ -180,6 +184,37 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val currentView = state.inspection.takeIf { failure == null && (!static || prepared != null) }
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
+    fun openSource(path: List<Int>) {
+        val snapshot = view ?: return
+        val node = snapshot.nodes.firstOrNull { it.path == path } ?: return
+        val owner = snapshot.nodes.filter { it.path.size <= path.size && path.take(it.path.size) == it.path }
+            .sortedByDescending { it.path.size }
+            .firstNotNullOfOrNull { item -> session.sourcePath(item.typeName)?.let { it to item.path } }
+        val file = owner?.first ?: if (static) source else root?.let { session.sourcePath(it) }
+        if (file != null) scope.launch(Dispatchers.IO) { navigate(project, file, node, snapshot.nodes, owner?.second.orEmpty()) }
+    }
+    DisposableEffect(project, source, static, view?.nodes) {
+        val disposable = Disposer.newDisposable("WinRT preview caret selection")
+        if (static && view != null) {
+            val nodes = view.nodes
+            EditorFactory.getInstance().eventMulticaster.addCaretListener(object : CaretListener {
+                override fun caretPositionChanged(event: CaretEvent) {
+                    val editor = event.editor
+                    val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
+                    if (!file.path.equals(source.replace('\\', '/'), true)) return
+                    val documents = PsiDocumentManager.getInstance(project)
+                    documents.performForCommittedDocument(editor.document) {
+                        if (Disposer.isDisposed(disposable) || editor.isDisposed) return@performForCommittedDocument
+                        val xml = documents.getPsiFile(editor.document) as? XmlFile ?: return@performForCommittedDocument
+                        val element = xml.findElementAt(editor.caretModel.offset.coerceAtMost((xml.textLength - 1).coerceAtLeast(0)))
+                        val tag = PsiTreeUtil.getParentOfType(element, XmlTag::class.java, false) ?: return@performForCommittedDocument
+                        WinUIXamlSourceSelection.node(tag, nodes)?.let { selectPath(it.path) }
+                    }
+                }
+            }, disposable)
+        }
+        onDispose { Disposer.dispose(disposable) }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
       val controlsHeight = if (view == null) maxHeight else maxHeight * (if (showSettings) 0.5f else 0.4f)
       Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -200,23 +235,27 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (!state.connected) DefaultButton(enabled = module != null && (if (static) designLaunch else launch) != null && !state.busy && state.pid == null,
                 onClick = { session.start(module!!, (if (static) designLaunch else launch)!!, preview = static) }) { Text(if (static) "Retry preview" else "Start application") }
-            if (static && projectCode && state.connected) DefaultButton(enabled = !state.busy,
+            if (static && projectCode && state.connected && showSettings) OutlinedButton(enabled = !state.busy,
                 onClick = { session.start(module!!, launch!!, restart = true, preview = true) }) { Text("Build project code") }
-            DefaultButton(enabled = state.connected && !state.inspecting, onClick = { selectPath(emptyList()); manualRefresh++ }) { Text("Refresh") }
-            if (staticFile == null || state.pid != null) DefaultButton(enabled = !state.busy, onClick = session::reconnect) { Text("Reconnect") }
-            if (state.pid != null) DefaultButton(onClick = session::stop) { Text(if (static) "Stop preview" else "Stop application") }
+            OutlinedButton(enabled = state.connected && !state.inspecting, onClick = { manualRefresh++ }) { Text("Refresh") }
+            if ((staticFile == null || state.pid != null) && showSettings) OutlinedButton(enabled = !state.busy, onClick = session::reconnect) { Text("Reconnect") }
+            if (state.pid != null || state.busy) OutlinedButton(onClick = session::stop) { Text(if (state.busy) "Cancel" else if (static) "Stop preview" else "Stop application") }
         }
         Text(state.message)
-        if (view != null && static && (failure != null || state.inspectionError != null || prepared == null || state.inspecting))
-            Text(if (failure != null || state.inspectionError != null) "Preview out of date — showing the last successful render." else "Updating preview — showing the last successful render.")
+        if (view != null && static && (!state.connected || failure != null || state.inspectionError != null || prepared == null || state.inspecting))
+            Text(when {
+                !state.connected && !state.busy -> "Preview disconnected — showing the last successful render."
+                failure != null || state.inspectionError != null -> "Preview out of date — showing the last successful render."
+                else -> "Updating preview — showing the last successful render."
+            })
         state.inspectionError?.let { Text(it) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            DefaultButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Hide settings" else "Settings") }
+            OutlinedButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Hide settings" else "Settings") }
             if (!treeOnly && view != null) {
-                DefaultButton(onClick = { zoom = null; resetViewport++ }) { Text("Fit") }
-                DefaultButton(onClick = { zoom = ((zoom ?: 1f) / 1.25f).coerceAtLeast(0.1f) }) { Text("−") }
-                DefaultButton(onClick = { zoom = 1f }) { Text(zoom?.let { "${(it * 100).toInt()}%" } ?: "100%") }
-                DefaultButton(onClick = { zoom = ((zoom ?: 1f) * 1.25f).coerceAtMost(8f) }) { Text("+") }
+                OutlinedButton(onClick = { zoom = null; resetViewport++ }) { Text("Fit") }
+                OutlinedButton(modifier = Modifier.semantics { contentDescription = "Zoom out" }, onClick = { zoom = ((zoom ?: 1f) / 1.25f).coerceAtLeast(0.1f) }) { Text("−") }
+                OutlinedButton(onClick = { zoom = 1f }) { Text(zoom?.let { "${(it * 100).toInt()}%" } ?: "100%") }
+                OutlinedButton(modifier = Modifier.semantics { contentDescription = "Zoom in" }, onClick = { zoom = ((zoom ?: 1f) * 1.25f).coerceAtMost(8f) }) { Text("+") }
             }
         }
         if (staticFile != null && (module == null || designLaunch == null))
@@ -228,6 +267,15 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (staticFile == null) WinRTChoice("XAML document", files.map { it to (module?.projectDirectory?.let { dir -> it.removePrefix(dir.replace('\\', '/') + "/") } ?: it) }, source) { source = it }
             else if (view == null || showSettings) Text(Path.of(staticFile).fileName.toString())
             if (showSettings) {
+              val presets = listOf("360×640", "800×600", "1280×720", "1920×1080")
+              WinRTChoice("Viewport preset", presets.map { it to it }, "${width.text}×${height.text}") { preset ->
+                  val dimensions = preset.split('×')
+                  width.setTextAndPlaceCursorAtEnd(dimensions[0]); height.setTextAndPlaceCursorAtEnd(dimensions[1])
+              }
+              OutlinedButton(onClick = {
+                  val previousWidth = width.text.toString()
+                  width.setTextAndPlaceCursorAtEnd(height.text.toString()); height.setTextAndPlaceCursorAtEnd(previousWidth)
+              }) { Text("Swap width and height") }
               Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }) }
                 Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }) }
@@ -246,6 +294,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (staticFile != null) CheckboxRow("Visual Tree and properties", showInspector, { showInspector = it })
         failure?.let { Text(it) }
         if (view == null) Text(when {
+            state.busy -> "Preparing the preview. You can continue editing XAML while it builds."
             static && (failure != null || state.inspectionError != null) -> "This document could not be rendered. Fix the reported XAML or resource error, then refresh."
             static && state.connected -> "Rendering this XAML document…"
             static -> "Start the design host to render this document with WinUI."
@@ -255,20 +304,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             val node = view.nodes.firstOrNull { it.path == selectedPath }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 node?.let { Text(it.name.ifEmpty { it.typeName.substringAfterLast('.') }) }
-                DefaultButton(enabled = node != null, onClick = {
-                    val owner = node?.let { selected -> view.nodes.filter { it.path.size <= selected.path.size &&
-                        selected.path.take(it.path.size) == it.path }.sortedByDescending { it.path.size }
-                        .firstNotNullOfOrNull { item -> session.sourcePath(item.typeName)?.let { it to item.path } } }
-                    val path = owner?.first ?: if (static) source else root?.let { session.sourcePath(it) }
-                    if (path != null && node != null) scope.launch(Dispatchers.IO) {
-                        navigate(project, path, node, view.nodes, owner?.second.orEmpty())
-                    }
-                }) { Text("Go to XAML") }
+                OutlinedButton(enabled = node != null, onClick = { openSource(selectedPath) }) { Text("Go to XAML") }
             }
         }
        }
         if (view != null) {
-            if (!treeOnly) key(source, resetViewport) { PreviewImage(view, selectedPath, ::selectPath, zoom, Modifier.weight(1f).fillMaxWidth()) }
+            if (!treeOnly) key(source, resetViewport) { PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, Modifier.weight(1f).fillMaxWidth()) }
             if (showInspector) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 @Composable fun tree(modifier: Modifier) { key(root?.className, root?.resourcePath, instance, static) {
                     VisualTree(view.nodes, selectedPath, ::selectPath, modifier)
@@ -317,7 +358,7 @@ internal fun visualInspectionTree(nodes: List<WinUIXamlVisualNode>): Tree<WinUIX
 }
 
 @Composable
-private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, zoom: Float?, modifier: Modifier) {
+private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, openSource: (List<Int>) -> Unit, zoom: Float?, modifier: Modifier) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
@@ -325,13 +366,17 @@ private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, sel
     val root = view.nodes.firstOrNull()?.bounds ?: return
     if (root.width <= 0 || root.height <= 0) return
     var pan by remember(zoom) { mutableStateOf(Offset.Zero) }
-    Canvas(modifier.clipToBounds().semantics { contentDescription = "WinUI XAML preview. Drag to pan; use Fit to reset." }
+    Canvas(modifier.clipToBounds().semantics { contentDescription = "WinUI XAML preview. Double-click to open XAML. Drag to pan; use Fit to reset." }
         .pointerInput(zoom) { detectDragGestures { change, delta -> change.consume(); pan += delta } }
-        .pointerInput(view.nodes, zoom, pan) { detectTapGestures { point ->
+        .pointerInput(view.nodes, zoom, pan) {
+          fun hit(point: Offset): WinUIXamlVisualNode? {
             val factor = zoom?.times(density) ?: minOf(size.width / root.width, size.height / root.height).toFloat()
             val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
-            WinUIXamlVisualInspectionSelection.hit(view.nodes, (point.x - origin.x) / factor.toDouble(), (point.y - origin.y) / factor.toDouble())?.let { select(it.path) }
-        } }) {
+            return WinUIXamlVisualInspectionSelection.hit(view.nodes, (point.x - origin.x) / factor.toDouble(), (point.y - origin.y) / factor.toDouble())
+          }
+          detectTapGestures(onTap = { point -> hit(point)?.let { select(it.path) } },
+              onDoubleTap = { point -> hit(point)?.let { select(it.path); openSource(it.path) } })
+        }) {
         val factor = zoom?.times(density) ?: minOf(size.width / root.width, size.height / root.height).toFloat()
         val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
         translate(origin.x, origin.y) { scale(factor, factor, Offset.Zero) {
@@ -359,12 +404,7 @@ private fun navigate(project: Project, path: String, node: WinUIXamlVisualNode, 
     val location = ReadAction.compute<Pair<com.intellij.openapi.vfs.VirtualFile, Int>?, RuntimeException> {
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return@compute null
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return@compute null
-        val tags = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java)
-        val ancestors = nodes.filter { it.path.size <= node.path.size && node.path.take(it.path.size) == it.path &&
-            it.path.size >= component.size && it.path.take(component.size) == component }.sortedByDescending { it.path.size }
-        val tag = ancestors.firstNotNullOfOrNull { item -> item.name.takeIf(String::isNotEmpty)?.let { name ->
-            tags.firstOrNull { tag -> tag.attributes.any { it.localName == "Name" && it.value == name } }
-        } } ?: ancestors.firstNotNullOfOrNull { item -> tags.filter { it.localName == item.typeName.substringAfterLast('.') }.singleOrNull() }
+        val tag = WinUIXamlSourceSelection.tag(xml, node, nodes, component)
         file to (tag ?: xml.rootTag)?.textOffset.orEmptyOffset()
     }
     ApplicationManager.getApplication().invokeLater { if (!project.isDisposed && location != null)
