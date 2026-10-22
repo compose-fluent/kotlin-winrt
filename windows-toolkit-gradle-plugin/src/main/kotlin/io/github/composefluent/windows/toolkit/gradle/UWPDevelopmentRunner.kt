@@ -92,8 +92,20 @@ namespace KotlinWinRT.UWP {
     }
 }
 '@
+$nativeDebugHandshakeScript
 if (${'$'}ResumeActivation) {
-    [KotlinWinRT.UWP.Launcher]::ResumeActivation(${'$'}p, ${'$'}tid)
+    ${'$'}debugConfiguration = ${'$'}PSCommandPath + '.debug.json'
+    try {
+        if (Test-Path -LiteralPath ${'$'}debugConfiguration) {
+            ${'$'}debug = Get-Content -LiteralPath ${'$'}debugConfiguration -Raw -Encoding UTF8 | ConvertFrom-Json
+            Wait-NativeDebugger ${'$'}p ${'$'}tid ([string]${'$'}debug.directory)
+        }
+        [KotlinWinRT.UWP.Launcher]::ResumeActivation(${'$'}p, ${'$'}tid)
+    } catch {
+        # This activation is still suspended and belongs to the startup helper.
+        Stop-Process -Id ${'$'}p -ErrorAction SilentlyContinue
+        throw
+    }
     exit 0
 }
 if (${'$'}WatchPackage) {
@@ -112,7 +124,10 @@ if (${'$'}WatchPackage) {
                 ${'$'}finishedSession = Join-Path ${'$'}finishedDirectory ("${'$'}WatchProcess-0.session")
                 if (Test-Path -LiteralPath ${'$'}finishedSession) { [IO.File]::Delete(${'$'}finishedSession) }
                 if (Test-Path -LiteralPath ${'$'}finishedDirectory) { [IO.Directory]::Delete(${'$'}finishedDirectory, ${'$'}false) }
-            } finally { [IO.File]::Delete(${'$'}PSCommandPath) }
+            } finally {
+                [IO.File]::Delete(${'$'}PSCommandPath + '.debug.json')
+                [IO.File]::Delete(${'$'}PSCommandPath)
+            }
         }
     }
     exit 0
@@ -213,6 +228,10 @@ if (${'$'}development) {
     # per-activation helper independent of arbitrarily deep project/build paths.
     ${'$'}sessionScript = Join-Path ([IO.Path]::GetTempPath()) ('kwrt-' + ${'$'}owner + '.ps1')
     [IO.File]::Copy(${'$'}PSCommandPath, ${'$'}sessionScript)
+    if (-not [string]::IsNullOrWhiteSpace([string]${'$'}configurationData.nativeDebugDirectory)) {
+        [IO.File]::WriteAllText(${'$'}sessionScript + '.debug.json',
+            (@{ directory = [string]${'$'}configurationData.nativeDebugDirectory } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new(${'$'}false))
+    }
     ${'$'}environment = @(('KOTLIN_WINRT_HOT_RELOAD_DIRECTORY=' + ${'$'}sessionDirectory), 'KOTLIN_WINRT_DEVELOPMENT_TRANSPORT=pipe')
     if (${'$'}configurationData.designPreview) { ${'$'}environment += 'KOTLIN_WINRT_XAML_PREVIEW=1' }
 }
@@ -271,6 +290,7 @@ if (-not ${'$'}Detach) {
 } finally {
     if (${'$'}development -and -not ${'$'}watcherStarted) {
         [KotlinWinRT.UWP.Launcher]::DevelopmentEnvironment(${'$'}package.PackageFullName, ${'$'}ownerFile, ${'$'}owner, ${'$'}null)
+        [IO.File]::Delete(${'$'}sessionScript + '.debug.json')
         [IO.File]::Delete(${'$'}sessionScript)
     }
 }

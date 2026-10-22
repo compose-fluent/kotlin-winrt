@@ -68,6 +68,9 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal
     abstract val nativeCompilerHome: Property<String>
 
+    @get:Internal
+    val nativeDebugDirectory = project.providers.environmentVariable(NATIVE_DEBUG_DIRECTORY)
+
     @get:Input
     @get:Option(option = "args", description = "Windows command line to pass to the packaged application.")
     abstract val args: Property<String>
@@ -251,6 +254,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
             Files.writeString(configuration, buildJsonObject {
                 put("applicationArguments", args.get())
                 put("designPreview", designPreview.get())
+                put("nativeDebugDirectory", nativeDebugDirectory.orNull.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true }.orEmpty())
                 put("developmentSessionDirectory", developmentSessionDirectory.orNull
                     .takeIf { supportsXamlHotReload.get() && !noLaunch.get() }.orEmpty())
                 put("dependencyPackages", JsonArray(dependencyPaths.map { path ->
@@ -288,6 +292,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
             WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT
         } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
+        val nativeDebug = nativeDebugDirectory.orNull?.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true && !noLaunch.get() }
         val arguments = buildList {
             add("run")
             add(input.toString())
@@ -297,7 +302,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
             add(output.toString())
             if (detach.get()) add("--detach")
             if (debugOutput.get()) add("--debug-output")
-            if (noLaunch.get()) add("--no-launch")
+            if (noLaunch.get() || nativeDebug != null) add("--no-launch")
             if (applicationArguments.isNotEmpty()) {
                 add(winAppRunArgumentsOption(applicationArguments))
             }
@@ -308,6 +313,22 @@ abstract class RunWinAppPackageTask @Inject constructor(
             spec.commandLine(winAppCliCommandLine(cli.command, arguments))
             spec.workingDir = winAppWorkspace.get().asFile
             spec.environment.remove(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY)
+        }
+        if (nativeDebug != null) {
+            val script = temporaryDir.toPath().resolve("native-debug.ps1")
+            val configuration = temporaryDir.toPath().resolve("native-debug.json")
+            Files.writeString(script, nativeDebugLauncherScript)
+            Files.writeString(configuration, buildJsonObject {
+                put("executable", hostExecutable.get().asFile.absolutePath)
+                put("directory", output.toString())
+                put("debugDirectory", nativeDebug)
+                put("argumentString", applicationArguments)
+                put("detach", detach.get())
+            }.toString())
+            execOperations.exec { spec ->
+                spec.commandLine(powerShellExecutable.get(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.toString(), "-Configuration", configuration.toString())
+                spec.workingDir = output.toFile()
+            }
         }
     }
 }
