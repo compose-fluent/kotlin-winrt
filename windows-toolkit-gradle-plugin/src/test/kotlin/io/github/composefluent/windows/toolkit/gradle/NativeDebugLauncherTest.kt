@@ -75,6 +75,8 @@ class NativeDebugLauncherTest {
             assertTrue(Files.readString(directory.resolve("launcher.log")), Files.exists(descriptorFile))
             val descriptor = Json.parseToJsonElement(Files.readString(descriptorFile)).jsonObject
             childPid = descriptor["pid"]!!.jsonPrimitive.long
+            // Process.MainModule/Path can be null before the suspended loader has run.
+            assertTrue(Files.isSameFile(executable, Path.of(descriptor["executable"]!!.jsonPrimitive.content)))
             action(directory, launch, descriptor, output, expected)
         } finally {
             childPid?.let { ProcessHandle.of(it).ifPresent { child -> if (child.isAlive) child.destroyForcibly() } }

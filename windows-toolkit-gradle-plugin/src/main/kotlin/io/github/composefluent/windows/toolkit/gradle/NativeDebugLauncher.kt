@@ -4,6 +4,24 @@ internal const val NATIVE_DEBUG_DIRECTORY = "KOTLIN_WINRT_DEBUG_DIRECTORY"
 
 /** Startup handoff runs outside the app, including outside UWP's AppContainer. */
 internal val nativeDebugHandshakeScript = """
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+namespace KotlinWinRT.NativeDebug {
+    public static class ProcessImage {
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder name, ref uint size);
+        public static string Read(IntPtr process) {
+            var name = new StringBuilder(32768);
+            uint size = (uint)name.Capacity;
+            if (!QueryFullProcessImageName(process, 0, name, ref size))
+                throw new System.ComponentModel.Win32Exception();
+            return name.ToString();
+        }
+    }
+}
+'@
 function Wait-NativeDebugger([int]${'$'}processId, [int]${'$'}threadId, [string]${'$'}directory) {
     ${'$'}process = Get-Process -Id ${'$'}processId -ErrorAction Stop
     ${'$'}null = ${'$'}process.Handle
@@ -14,7 +32,7 @@ function Wait-NativeDebugger([int]${'$'}processId, [int]${'$'}threadId, [string]
     ${'$'}ready = Join-Path ${'$'}directory 'ready'
     ${'$'}cancel = Join-Path ${'$'}directory 'cancel'
     ${'$'}data = @{ pid = ${'$'}processId; thread = ${'$'}threadId; token = ${'$'}token;
-        executable = ${'$'}process.Path; startedMillis = [long]((${'$'}process.StartTime.ToUniversalTime().Ticks - 621355968000000000) / 10000) }
+        executable = [KotlinWinRT.NativeDebug.ProcessImage]::Read(${'$'}process.Handle); startedMillis = [long]((${'$'}process.StartTime.ToUniversalTime().Ticks - 621355968000000000) / 10000) }
     try {
         [IO.File]::WriteAllText(${'$'}temporary, (${'$'}data | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new(${'$'}false))
         [IO.File]::Move(${'$'}temporary, ${'$'}descriptor)
