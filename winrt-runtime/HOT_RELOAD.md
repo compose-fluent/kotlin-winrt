@@ -45,7 +45,7 @@ with the SDK's `XamlReader.Load`, as used by CsWinRT's resource tests in
 `src/Tests/ObjectLifetimeTests/CustomGroupedItemPages.cs`. Generated application
 glue supplies that typed SDK loader; the common runtime never parses XAML or
 implements another projection model. The transaction keeps the original live
-dictionary and controls, replaces values with the same explicit string keys and
+dictionary and controls, replaces explicit string-keyed values and
 reassigns this page's explicit StaticResource consumers. Readbacks inspect effective
 style properties on the UI thread. Prepared replacements also supply subsequent
 literal overrides when a new component finishes loading its original XBF.
@@ -57,7 +57,10 @@ by another dictionary/template, new names, events and binding expressions requir
 rebuilding. A ThemeResource consumer cannot be reassigned as a local value without
 losing its theme expression, so it rejects replacement rather than claiming theme
 invalidation. References held outside this page's XAML/connected objects do not
-participate in the update. Changing dictionary keys also requires rebuilding.
+participate in the update. A local explicit dictionary may add or remove keys;
+the previous key set is checked before mutation, and a removed key must have no
+remaining consumers. These dictionary changes use ordered replay for future
+instances, so later replacements validate against the preceding generation.
 Parser, key-shape, getter, conversion or setter failure preserves the previous
 version; attempted mutations roll back dictionary values and consumer properties
 together. Rollback failure still requires restarting.
@@ -136,7 +139,8 @@ Subscribe/Unsubscribe ownership. Binding tracking remains separately owned.
 Compiled event bindings have a separate connection state on the page binding owner
 or individual template scope. Tracking refresh and recycling retain those event
 connections; replacing a slot or unloading a deferred element releases them.
-Ordinary events on template children still need template-generation ownership.
+Ordinary template events follow their target lifetime, matching CSharpPagePass2's
+page Connect method; binding-scope recycling does not disconnect these handlers.
 A transactional compiler-emitted reconnect artifact also remains separate;
 retaining event subscriptions does not make generated fields extensible.
 
