@@ -34,6 +34,8 @@ import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CancellationException
 
 class WinRTNativeBreakpointProperties : XBreakpointProperties<WinRTNativeBreakpointProperties>() {
     override fun getState() = this
@@ -58,6 +60,7 @@ internal class WinRTNativeDebugProcess(
 ) : XDebugProcess(session) {
     private val ready = CompletableFuture<WinRTNativeDebuggerBackend>()
     private val stopped = AtomicBoolean()
+    private val ownership = AtomicReference<AutoCloseable?>()
     private val breakpoints = ConcurrentHashMap<XLineBreakpoint<WinRTNativeBreakpointProperties>, Int>()
     private val registrations = ConcurrentHashMap<XLineBreakpoint<WinRTNativeBreakpointProperties>, Any>()
     private var activeThread = 0L
@@ -91,8 +94,9 @@ internal class WinRTNativeDebugProcess(
             var backend: WinRTNativeDebuggerBackend? = null
             try {
                 val application = target(stopped::get)
+                ownership.set(WinRTNativeDebugOwnership.acquire(application.pid, application.started))
                 processTarget = application
-                if (stopped.get()) return@execute
+                if (stopped.get()) throw CancellationException("Debug session closed.")
                 val connected = WinRTNativeDebuggerBackend.start(lldb, ::onEvent) { text ->
                     ui { session.consoleView.print("$text\n", ConsoleViewContentType.SYSTEM_OUTPUT) }
                 }
@@ -103,6 +107,7 @@ internal class WinRTNativeDebugProcess(
                 ready.complete(connected)
                 session.project.service<WinUIXamlHotReloadService>().suspendForDebugger(pid).join()
                 session.project.service<WinRTStaticPreviewService>().suspendForDebugger(pid).join()
+                if (stopped.get()) throw CancellationException("Debug session closed.")
                 suppressAttachStop = application.startupDirectory != null
                 connected.request("attach", "pid" to pid).join()
                 application.startupDirectory?.let { directory ->
@@ -165,10 +170,15 @@ internal class WinRTNativeDebugProcess(
                 }
                 launchExecution.processHandler.destroyProcess()
             }
-            ready.thenAccept { backend -> backend.request("detach").whenComplete { _, _ -> backend.close() } }
+            ready.whenComplete { backend, _ ->
+                if (backend == null) releaseOwnership()
+                else backend.request("detach").whenComplete { _, _ -> backend.close(); releaseOwnership() }
+            }
             ui { handler.finished() }
         }
     }
+
+    private fun releaseOwnership() { ownership.getAndSet(null)?.close() }
 
     private fun onEvent(event: JsonObject) {
         when (event["event"].asString) {
@@ -195,6 +205,7 @@ internal class WinRTNativeDebugProcess(
             "error" -> failure(IllegalStateException(event["message"].asString))
             "terminated", "closed" -> {
                 stopped.set(true)
+                releaseOwnership()
                 ui {
                     session.project.service<WinUIXamlHotReloadService>().resumeAfterDebugger(pid)
                     session.project.service<WinRTStaticPreviewService>().resumeAfterDebugger(pid)

@@ -20,7 +20,8 @@ class WinRTAttachNativeDebuggerAction : AnAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
     override fun update(event: AnActionEvent) {
         val project = event.project
-        event.presentation.isEnabled = project != null && project.service<WinUIXamlHotReloadService>().state.value.pid != null
+        val pid = project?.service<WinUIXamlHotReloadService>()?.state?.value?.pid
+        event.presentation.isEnabled = pid != null && !WinRTNativeDebugOwnership.contains(pid)
     }
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
