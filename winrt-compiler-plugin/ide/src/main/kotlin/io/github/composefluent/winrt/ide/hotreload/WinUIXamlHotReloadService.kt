@@ -71,6 +71,33 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var uncertain = false
     private var owned: WinUIXamlHotReloadClient? = null
     private var savedLaunch = WinUIXamlHotReloadLaunchState()
+    @Volatile private var debuggerPid: Long? = null
+
+    /** Drain the last UI transaction before LLDB suspends the process. */
+    fun suspendForDebugger(pid: Long): java.util.concurrent.CompletableFuture<Unit> {
+        val result = java.util.concurrent.CompletableFuture<Unit>()
+        if (client?.process?.pid() != pid) { result.complete(Unit); return result }
+        debuggerPid = pid
+        val drain = scope.launch(Dispatchers.IO) {
+            try {
+                mutex.withLock {
+                    if (client?.process?.pid() == pid) display.value = display.value.copy(
+                        message = "XAML updates are paused while the Native debugger is attached.", inspecting = false)
+                }
+                result.complete(Unit)
+            } catch (error: Throwable) { result.completeExceptionally(error) }
+        }
+        drain.invokeOnCompletion { error -> if (error != null) result.completeExceptionally(error) }
+        return result
+    }
+
+    fun resumeAfterDebugger(pid: Long) {
+        if (debuggerPid != pid) return
+        debuggerPid = null
+        if (automatic.value) apply()
+    }
+
+    private fun debuggerAttached() = client?.process?.pid()?.let { it == debuggerPid } == true
 
     override fun getState(): WinUIXamlHotReloadLaunchState = synchronized(lifecycle) { savedLaunch.copy() }
     override fun loadState(state: WinUIXamlHotReloadLaunchState) = synchronized(lifecycle) {
@@ -285,6 +312,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     private fun refresh(connection: WinUIXamlHotReloadClient, request: Long) {
+        if (connection.process.pid() == debuggerPid) return
         val reply = connection.request()
         if (!isCurrent(request) || client !== connection) return
         val pages = project.service<io.github.composefluent.winrt.ide.analysis.WinUIXamlSnapshotService>()
@@ -328,12 +356,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     fun apply() {
-        if (disposed || project.isDisposed || update?.isActive == true) return
+        if (disposed || project.isDisposed || update?.isActive == true || debuggerAttached()) return
         val request = generation.get()
         update = scope.launch(Dispatchers.IO) {
             mutex.withLock {
                 if (!isCurrent(request)) return@withLock
                 val connection = client ?: return@withLock
+                if (debuggerAttached()) return@withLock
                 if (uncertain || !display.value.connected) return@withLock
                 try {
                     val results = mutableListOf<WinUIXamlHotReloadValue>()
@@ -397,6 +426,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     fun inspect(request: WinUIXamlInspectionRequest) {
         synchronized(lifecycle) {
+            if (debuggerAttached()) return
             val connection = client ?: return
             val epoch = generation.get()
             if (!isCurrent(epoch)) return
@@ -417,7 +447,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 if (it == null) { inspection = null; display.value = display.value.copy(inspecting = false) }
                             }
                         } ?: break
-                        val reply = mutex.withLock { runInterruptible { connection.inspect(next) } }
+                        val reply = mutex.withLock {
+                            if (debuggerAttached()) null else runInterruptible { connection.inspect(next) }
+                        } ?: break
                         if (client === connection) withCurrent(epoch) {
                             if (next.previewMarkup.isNotEmpty() && reply.status != WinUIXamlHotReloadProtocol.APPLIED) {
                                 display.value = display.value.copy(inspection = null, inspectionError = reply.message, message = reply.message)

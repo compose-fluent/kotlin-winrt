@@ -17,6 +17,7 @@
     </dependencies>
     <extensions defaultExtensionNs="com.intellij">
         <configurationType implementation="io.github.composefluent.winrt.ide.run.WinRTApplicationConfigurationType"/>
+        <xdebugger.breakpointType implementation="io.github.composefluent.winrt.ide.debug.WinRTNativeLineBreakpointType"/>
         <applicationConfigurable id="KotlinWinRT.Settings" parentId="tools" displayName="Kotlin WinRT"
                                  instance="io.github.composefluent.winrt.ide.settings.WinRTIdeConfigurable"/>
         <postStartupActivity implementation="io.github.composefluent.winrt.ide.project.WinRTProjectActivity"/>
@@ -68,6 +69,10 @@
                   topic="com.intellij.execution.ExecutionListener"/>
     </projectListeners>
     <actions>
+        <action id="KotlinWinRT.AttachNativeDebugger" class="io.github.composefluent.winrt.ide.debug.WinRTAttachNativeDebuggerAction"
+                text="Attach Kotlin WinRT Native Debugger" description="Debug the running Native application with LLDB">
+            <add-to-group group-id="RunMenu" anchor="last"/>
+        </action>
         <action id="KotlinWinRT.NewXamlPage" class="io.github.composefluent.winrt.ide.templates.WinUINewXamlPageAction"
                 text="XAML Page" description="Create a Kotlin WinRT Page with matching Kotlin and XAML files" icon="AllIcons.FileTypes.Xml">
             <add-to-group group-id="NewGroup" anchor="last"/>

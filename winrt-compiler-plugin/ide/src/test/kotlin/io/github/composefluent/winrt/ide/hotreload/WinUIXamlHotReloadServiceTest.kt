@@ -65,6 +65,35 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(0, fixture.requests.get())
     }
 
+    fun testNativeDebuggerDrainsInspectionAndResumesEditorUpdatesAfterDetach() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+        fixture.await("Inspection is in progress", entered)
+        val pid = ProcessHandle.current().pid()
+        val drained = service.suspendForDebugger(pid)
+        assertFalse("Do not attach LLDB in the middle of a UI transaction", drained.isDone)
+        release.countDown()
+        PlatformTestUtil.waitWithEventsDispatching("Drain before attach", { drained.isDone }, 10)
+        drained.get(1, TimeUnit.SECONDS)
+        val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(fixture.source)!!
+        val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)!!
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            document.setText(markup.replace("Hello", "Edited while debugging"))
+        }
+        service.apply()
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+        assertEquals(0, fixture.patches.get())
+        assertEquals(1, fixture.inspections.size)
+        service.resumeAfterDebugger(pid + 1)
+        assertEquals(0, fixture.patches.get())
+        service.resumeAfterDebugger(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Apply after debugger detaches", { fixture.patches.get() == 1 }, 10)
+        assertEquals("Edited while debugging", fixture.lastPatch.get()!!.changes.single().literal)
+    }
+
     fun testInspectionCoalescesNewSelectionsAndKeepsThePendingDesignDocument() = session { fixture ->
         val service = fixture.service()
         service.reconnect(); fixture.connected(service)
