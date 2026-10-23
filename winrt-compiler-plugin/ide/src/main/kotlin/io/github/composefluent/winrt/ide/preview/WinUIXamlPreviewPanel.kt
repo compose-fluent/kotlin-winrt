@@ -251,16 +251,16 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }
         }
     }
-    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes) {
+    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes, captureScale) {
         if (root != null && state.connected && (!static || prepared != null && state.inspection != null && state.inspectionPath != selectedPath)) {
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
-                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static))
+                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static, renderScale = captureScale))
         }
     }
-    LaunchedEffect(root, state.connected, static, automatic, selectedPath, instance, treeOnly) {
+    LaunchedEffect(root, state.connected, static, automatic, selectedPath, instance, treeOnly, captureScale) {
         if (!static && automatic && state.connected && root != null) while (true) {
             delay(1000)
-            session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly))
+            session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly, renderScale = captureScale))
         }
     }
     val currentView = state.inspection.takeIf { failure == null && (!static || prepared != null) }
