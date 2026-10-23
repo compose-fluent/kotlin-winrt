@@ -146,7 +146,8 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
             assertFalse("Dimensions stay out of the default canvas workspace", nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
             val workspaceBefore = nodes().first { "Preview workspace" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }.boundsInWindow
             val expand = nodes().first { "Preview settings" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() && it.config.getOrNull(SemanticsActions.OnClick) != null }
-            assertTrue(expand.config[SemanticsActions.OnClick].action!!.invoke())
+            scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, expand.boundsInWindow.center, button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+            scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, expand.boundsInWindow.center, button = androidx.compose.ui.input.pointer.PointerButton.Primary)
             settleFrames()
             assertEquals("Opening settings must not resize or move the artboard", workspaceBefore,
                 nodes().first { "Preview workspace" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }.boundsInWindow)

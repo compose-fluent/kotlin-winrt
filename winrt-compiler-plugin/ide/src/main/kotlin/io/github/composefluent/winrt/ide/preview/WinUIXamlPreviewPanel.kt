@@ -316,7 +316,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     PreviewAction("Zoom in", "+", view != null) { zoom = (actualZoom * 1.25f).coerceAtMost(8f) }
                     PreviewAction("Fit all", "Fit", view != null, 32) { zoom = null; resetViewport++ }
                 }
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(12.dp))
                 PreviewAction("Preview settings", "⚙") { showSettings = true }
                 if (!treeOnly) PreviewAction(if (showInspector) "Hide inspector" else "Show inspector", "▤") { showInspector = !showInspector }
                 PreviewAction("Preview session", "⋯") { showSession = true }

@@ -496,7 +496,7 @@ New documents default to **Split**, opening the designer automatically for the
 document's imported module. Saved mode choices still survive reopening. The
 preview pane is active only while visible in the selected editor. The static
 image initially fits the available area. **Fit**, **−**, the percentage and **+** control
-the canvas scale from a fixed bottom toolbar; drag the canvas to pan. Fit recenters
+the canvas scale from a fixed bottom-left toolbar; drag the canvas to pan. Fit recenters
 it and the percentage reports the actual DIP scale, including Fit mode. Click the
 percentage to reset to 100%; zoom steps start at the current scale. The settings
 gear opens a dismissible popup without resizing the artboard. The inspector toggle
