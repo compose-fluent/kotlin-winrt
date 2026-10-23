@@ -3,6 +3,8 @@
 package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import org.jetbrains.jewel.ui.icon.PathIconKey
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.Alignment
@@ -30,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
@@ -134,10 +137,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var manualRefresh by remember { mutableIntStateOf(0) }
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var showZoom by remember { mutableStateOf(false) }
+    val customZoom = remember { TextFieldState("100") }
     var showSession by remember { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var actualZoom by remember(source) { mutableFloatStateOf(1f) }
     var zoom by remember(source) { mutableStateOf<Float?>(null) }
+    var fitSelection by remember(source) { mutableStateOf(false) }
     var resetViewport by remember(source) { mutableIntStateOf(0) }
     var lastView by remember(source, projectCode, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
     val scope = rememberCoroutineScope()
@@ -246,7 +252,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Inspector", Modifier.weight(1f))
-                if (!treeOnly) PreviewAction("Close inspector", "×") { showInspector = false }
+                if (!treeOnly) PreviewAction("Close inspector", "close") { showInspector = false }
             }
             val node = view?.nodes?.firstOrNull { it.path == selectedPath }
             Text(node?.let { it.name.ifEmpty { it.typeName.substringAfterLast('.') } } ?: "Select an element")
@@ -272,7 +278,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     @Composable fun canvas() {
         Box(Modifier.fillMaxSize().padding(16.dp).semantics { contentDescription = "Preview workspace" }, contentAlignment = Alignment.Center) {
             if (view != null && !treeOnly) key(source, resetViewport) {
-                PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, { actualZoom = it }, Modifier.fillMaxSize())
+                PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, fitSelection, { actualZoom = it }, Modifier.fillMaxSize())
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())
@@ -309,20 +315,52 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }
             Divider(Orientation.Horizontal)
             // One fixed-height command strip; popups never participate in artboard measurement.
-            Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(36.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
                 if (!treeOnly) {
-                    PreviewAction("Zoom out", "−", view != null) { zoom = (actualZoom / 1.25f).coerceAtLeast(.1f) }
-                    PreviewAction("Actual size (100%)", "${(actualZoom * 100).roundToInt()}%", view != null, 58) { zoom = 1f }
-                    PreviewAction("Zoom in", "+", view != null) { zoom = (actualZoom * 1.25f).coerceAtMost(8f) }
-                    PreviewAction("Fit all", "Fit", view != null, 32) { zoom = null; resetViewport++ }
+                    PreviewAction("Zoom out", "zoomOut", view != null && actualZoom > .125f) {
+                        zoom = previewZoomStep(actualZoom, false); fitSelection = false
+                    }
+                    val percent = previewZoomLabel(actualZoom)
+                    Dropdown(modifier = Modifier.width(112.dp).semantics { contentDescription = "Preview zoom" },
+                        enabled = view != null, menuContent = {
+                            selectableItem(selected = zoom == null && !fitSelection, onClick = {
+                                fitSelection = false; zoom = null; resetViewport++
+                            }) { Text("Fit all") }
+                            selectableItem(selected = zoom == null && fitSelection,
+                                enabled = view?.nodes?.any { it.path == selectedPath && it.bounds.width > 0 && it.bounds.height > 0 } == true,
+                                onClick = { fitSelection = true; zoom = null; resetViewport++ }) { Text("Fit selection") }
+                            selectableItem(selected = false, onClick = {
+                                customZoom.setTextAndPlaceCursorAtEnd(previewZoomLabel(actualZoom).removeSuffix("%"))
+                                showZoom = true
+                            }) { Text("Custom zoom…") }
+                            previewZoomLevels.forEach { level ->
+                                selectableItem(selected = zoom == level, onClick = { zoom = level; fitSelection = false }) {
+                                    Text(previewZoomLabel(level))
+                                }
+                            }
+                        }) { Text(if (zoom == null) (if (fitSelection) "Sel " else "Fit ") + percent else percent) }
+                    PreviewAction("Zoom in", "zoomIn", view != null && actualZoom < 8f) {
+                        zoom = previewZoomStep(actualZoom, true); fitSelection = false
+                    }
+                    PreviewAction("Fit all", "fit", view != null, selected = zoom == null && !fitSelection) {
+                        fitSelection = false; zoom = null; resetViewport++
+                    }
                 }
-                Spacer(Modifier.width(12.dp))
-                PreviewAction("Preview settings", "⚙") { showSettings = true }
-                if (!treeOnly) PreviewAction(if (showInspector) "Hide inspector" else "Show inspector", "▤") { showInspector = !showInspector }
-                PreviewAction("Preview session", "⋯") { showSession = true }
+                Spacer(Modifier.width(8.dp))
+                Divider(Orientation.Vertical, Modifier.height(20.dp))
+                Spacer(Modifier.width(8.dp))
+                PreviewAction("Preview settings", "settings", selected = showSettings) { showSettings = true }
+                if (!treeOnly) PreviewAction("Show inspector", "inspector", selected = showInspector) { showInspector = !showInspector }
+                PreviewAction("Refresh preview", "refresh", state.connected && !state.inspecting && !state.busy) { manualRefresh++ }
+                PreviewAction("Preview session", "more", selected = showSession) { showSession = true }
             }
             Divider(Orientation.Horizontal)
             Row(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (state.busy || state.inspecting || (static && state.connected && prepared == null)) {
+                    CircularProgressIndicator(Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                }
                 Tooltip(tooltip = { Text(error ?: status) }, modifier = Modifier.weight(1f)) {
                     Text(error?.let { "Preview error · $it" } ?: status,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
@@ -330,6 +368,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 if (state.busy) Link("Cancel", onClick = session::stop)
                 else if (error != null) Link("Details", onClick = { showDiagnostics = true })
             }
+        }
+        if (showZoom) PreviewPopup("Custom zoom", popupWidth, popupHeight, { showZoom = false }) {
+            Text("Zoom percentage (12.5–800%)")
+            TextField(customZoom, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Zoom percentage" })
+            val value = parsePreviewZoom(customZoom.text.toString())
+            if (value == null) Text("Enter a percentage between 12.5 and 800.")
+            DefaultButton(enabled = value != null, onClick = { zoom = value; fitSelection = false; showZoom = false }) { Text("Apply zoom") }
         }
         if (showSettings) PreviewPopup("Preview settings", popupWidth, popupHeight, { showSettings = false }) {
             if (static) {
@@ -380,10 +425,15 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
 }
 
 @Composable
-private fun PreviewAction(label: String, glyph: String, enabled: Boolean = true, width: Int = 28, action: () -> Unit) {
+private fun PreviewAction(label: String, icon: String, enabled: Boolean = true, selected: Boolean? = null, action: () -> Unit) {
     Tooltip(tooltip = { Text(label) }) {
-        IconButton(onClick = action, enabled = enabled,
-            modifier = Modifier.width(width.dp).height(28.dp).semantics { contentDescription = label }) { Text(glyph) }
+        val modifier = Modifier.size(28.dp).semantics { contentDescription = label }
+        val key = PathIconKey("icons/preview/$icon.svg", WinUIXamlPreviewEditorProvider::class.java)
+        if (selected == null) IconButton(onClick = action, enabled = enabled, modifier = modifier) {
+            Icon(key, null, Modifier.size(16.dp).then(if (enabled) Modifier else Modifier.alpha(.4f)))
+        } else SelectableIconButton(selected = selected, onClick = action, enabled = enabled, modifier = modifier) {
+            Icon(key, null, Modifier.size(16.dp).then(if (enabled) Modifier else Modifier.alpha(.4f)))
+        }
     }
 }
 
@@ -397,7 +447,7 @@ private fun PreviewPopup(title: String, width: androidx.compose.ui.unit.Dp, maxH
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f))
-                PreviewAction("Close $title", "×", action = close)
+                PreviewAction("Close $title", "close", action = close)
             }
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
@@ -434,31 +484,33 @@ internal fun visualInspectionTree(nodes: List<WinUIXamlVisualNode>): Tree<WinUIX
 }
 
 @Composable
-private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, openSource: (List<Int>) -> Unit, zoom: Float?, onZoom: (Float) -> Unit, modifier: Modifier) {
+private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, openSource: (List<Int>) -> Unit, zoom: Float?, fitSelection: Boolean, onZoom: (Float) -> Unit, modifier: Modifier) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
     }
     val root = view.nodes.firstOrNull()?.bounds ?: return
     if (root.width <= 0 || root.height <= 0) return
+    val target = if (fitSelection) view.nodes.firstOrNull { it.path == selected }?.bounds
+        ?.takeIf { it.width > 0 && it.height > 0 } ?: root else root
     val density = LocalDensity.current.density
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    val effectiveZoom = previewScale(viewport.width, viewport.height, root.width, root.height, density, zoom)
+    val effectiveZoom = previewScale(viewport.width, viewport.height, target.width, target.height, density, zoom).let { if (fitSelection) it.coerceAtMost(8f) else it }
     SideEffect { onZoom(effectiveZoom) }
-    var pan by remember(zoom) { mutableStateOf(Offset.Zero) }
+    var pan by remember(zoom, fitSelection, if (fitSelection) selected else null) { mutableStateOf(Offset.Zero) }
     Canvas(modifier.onSizeChanged { viewport = it }.clipToBounds().semantics { contentDescription = "WinUI XAML preview. Double-click to open XAML. Drag to pan; use Fit to reset." }
         .pointerInput(zoom) { detectDragGestures { change, delta -> change.consume(); pan += delta } }
-        .pointerInput(view.nodes, effectiveZoom, pan) {
+        .pointerInput(view.nodes, target, effectiveZoom, pan) {
           fun hit(point: Offset): WinUIXamlVisualNode? {
             val factor = effectiveZoom * density
-            val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
+            val origin = previewOrigin(size.width.toFloat(), size.height.toFloat(), target, factor) + pan
             return WinUIXamlVisualInspectionSelection.hit(view.nodes, (point.x - origin.x) / factor.toDouble(), (point.y - origin.y) / factor.toDouble())
           }
           detectTapGestures(onTap = { point -> hit(point)?.let { select(it.path) } },
               onDoubleTap = { point -> hit(point)?.let { select(it.path); openSource(it.path) } })
         }) {
         val factor = effectiveZoom * density
-        val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
+        val origin = previewOrigin(size.width.toFloat(), size.height.toFloat(), target, factor) + pan
         translate(origin.x, origin.y) { scale(factor, factor, Offset.Zero) {
             bitmap?.let { drawImage(it, dstSize = androidx.compose.ui.unit.IntSize(root.width.toInt(), root.height.toInt())) }
             view.nodes.firstOrNull { it.path == selected }?.bounds?.let { r ->

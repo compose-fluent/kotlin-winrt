@@ -114,6 +114,24 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
         assertEquals(1f, previewScale(400, 600, 800.0, 600.0, 2f, 1f))
     }
 
+    fun testDesignerZoomNavigationAndSelectionCentering() {
+        // Microsoft XAML Designer: 12.5%–800%, Fit all and Fit selection.
+        assertEquals(1f, previewZoomStep(.79f, true))
+        assertEquals(.75f, previewZoomStep(.79f, false))
+        assertEquals(8f, previewZoomStep(8f, true))
+        assertEquals(.125f, previewZoomStep(.125f, false))
+        assertEquals("12.5%", previewZoomLabel(.125f))
+        assertEquals(.375f, parsePreviewZoom(" 37.5% "))
+        assertNull(parsePreviewZoom("NaN"))
+        assertNull(parsePreviewZoom("801"))
+        assertNull(parsePreviewZoom("0"))
+        val target = io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(100.0, 50.0, 200.0, 100.0)
+        val factor = previewScale(800, 600, target.width, target.height, 2f, null) * 2f
+        val origin = previewOrigin(800f, 600f, target, factor)
+        assertEquals(0f, origin.x + target.x.toFloat() * factor)
+        assertEquals(100f, origin.y + target.y.toFloat() * factor)
+    }
+
     fun testBothNativePreviewServicesInitializeAndRemainIndependent() {
         // Regression for the packaged UI's NoSuchFieldError during composition.
         val live = project.service<WinUIXamlHotReloadService>()

@@ -495,14 +495,22 @@ completion, caret state and refactoring. The selected mode survives reopening.
 New documents default to **Split**, opening the designer automatically for the
 document's imported module. Saved mode choices still survive reopening. The
 preview pane is active only while visible in the selected editor. The static
-image initially fits the available area. **Fit**, **−**, the percentage and **+** control
-the canvas scale from a fixed bottom-left toolbar; drag the canvas to pan. Fit recenters
-it and the percentage reports the actual DIP scale, including Fit mode. Click the
-percentage to reset to 100%; zoom steps start at the current scale. The settings
-gear opens a dismissible popup without resizing the artboard. The inspector toggle
-opens a resizable right sidebar with separately resizable tree and property areas.
-Toolbar actions have hover labels and accessible names. Status and cancellation
-stay in a fixed bottom line, with errors available through Details.
+image initially fits the available area. The fixed bottom-left toolbar provides
+zoom out/in, a zoom menu, Fit all, settings, inspector, refresh and session actions.
+Drag the canvas to pan. Fit all recenters it; the zoom menu reports the actual
+DIP scale and distinguishes Fit and Selection modes. Choose Fit all, Fit selection,
+a preset from 12.5% to 800%, or Custom zoom. Custom values are validated before
+applying; zoom buttons move to the adjacent preset and disable at the limits.
+These navigation choices follow the
+[Visual Studio XAML Designer](https://learn.microsoft.com/en-us/visualstudio/xaml-tools/creating-a-ui-by-using-xaml-designer-in-visual-studio?view=vs-2022)
+design-view commands.
+
+The settings gear opens a dismissible popup without resizing the artboard.
+The inspector opens a resizable right sidebar with separate tree and property areas.
+Toolbar actions use 16px SVG icons with light/dark variants, hover labels and
+accessible names. Fit and inspector controls retain selected-state feedback.
+Refresh disables while a request is in flight; busy work shows a progress indicator.
+Status and cancellation stay in a fixed bottom line, with errors available through Details.
 
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
