@@ -825,3 +825,5 @@ The implementation queue remains in the local, uncommitted
 behavior rather than revising root `PLAN.md`.
 
 Project previews open an independent SDK artboard first and compile project controls in the background. The existing artboard remains visible until the project host connects and renders; project build cancellation does not stop the basic designer.
+
+The Toolbox supports search, drag-to-insert and select-then-place. Insertion uses the metadata content contract and never replaces existing content or bindings. Ctrl/Shift+click selects multiple source elements; dragging, nudging and shared properties apply in one undoable command. Align/match-size commands use the last selected sibling in Grid or Canvas. Edge/center snap guides can be toggled; hold Alt to bypass them. Template-generated visuals remain navigation-only when no exact source mapping exists.

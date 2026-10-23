@@ -73,4 +73,53 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
         WinUIXamlDesignerEditing.apply(project, target, mapOf("Width" to null), "Reset Width")
         assertNull(target.pointer.element!!.getAttributeValue("Width"))
     }
+
+    fun testBatchValidationIsAtomicAndBatchUndoRestoresEveryElement() {
+        val first = selection("Width=\"100\"")
+        val tag = first.pointer.element!!
+        val secondTag = WriteCommandAction.writeCommandAction(project).compute<com.intellij.psi.xml.XmlTag, RuntimeException> { tag.parentTag!!.addSubTag(tag.copy() as com.intellij.psi.xml.XmlTag, false) }
+        val second = first.copy(pointer = SmartPointerManager.getInstance(project).createSmartPsiElementPointer(secondTag), text = secondTag.text)
+        val invalid = second.copy(properties = second.properties.map { it.copy(writable = false) })
+        assertNotNull(runCatching { WinUIXamlDesignerEditing.applyBatch(project,
+            listOf(first to mapOf("Width" to "200"), invalid to mapOf("Width" to "300")), "Batch width") }.exceptionOrNull())
+        assertEquals("100", tag.getAttributeValue("Width"))
+        WinUIXamlDesignerEditing.applyBatch(project, listOf(first to mapOf("Width" to "200"), second to mapOf("Width" to "300")), "Batch width")
+        assertEquals("200", tag.getAttributeValue("Width")); assertEquals("300", secondTag.getAttributeValue("Width"))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(2, Regex("Width=\"100\"").findAll(myFixture.editor.document.text).count())
+    }
+
+    fun testAlignmentUsesLastSelectionAndRejectsFlowContainers() {
+        val first = selection("Canvas.Left=\"20\" Canvas.Top=\"30\"", "Canvas")
+        val secondTag = WriteCommandAction.writeCommandAction(project).compute<com.intellij.psi.xml.XmlTag, RuntimeException> { first.pointer.element!!.parentTag!!.addSubTag(first.pointer.element!!.copy() as com.intellij.psi.xml.XmlTag, false) }
+        val second = first.copy(pointer = SmartPointerManager.getInstance(project).createSmartPsiElementPointer(secondTag),
+            bounds = WinUIXamlVisualBounds(80.0, 90.0, 100.0, 40.0))
+        val edits = designerAlign(listOf(first, second), DesignerAlignment.LEFT)
+        assertEquals("80", edits.single().second["Canvas.Left"])
+        assertEquals("30", edits.single().second["Canvas.Top"])
+        val flow = selection(parent = "StackPanel")
+        assertNotNull(runCatching { designerAlign(listOf(flow, flow), DesignerAlignment.TOP) }.exceptionOrNull())
+    }
+
+    fun testSnapUsesDipEdgesAndCentersAndKeepsSmallResizeValid() {
+        val bounds = WinUIXamlVisualBounds(10.0, 20.0, 100.0, 40.0)
+        val neighbor = WinUIXamlVisualBounds(150.0, 80.0, 100.0, 40.0)
+        val snap = designerSnap(bounds, DesignerTransform(37.0, 17.0), listOf(neighbor), 4.0)
+        assertEquals(40.0, snap.change.x, 0.001)
+        assertEquals(20.0, snap.change.y, 0.001)
+        assertEquals(150.0, snap.vertical!!, 0.001)
+        assertEquals(80.0, snap.horizontal!!, 0.001)
+        val far = designerSnap(bounds, DesignerTransform(1.0, 1.0), listOf(neighbor), 2.0)
+        assertNull(far.vertical); assertNull(far.horizontal)
+        val resize = designerSnap(bounds, DesignerTransform(0.0, 0.0, 38.0, 0.0, true), listOf(neighbor), 3.0)
+        assertEquals(40.0, resize.change.width, 0.001)
+        assertEquals(0.0, resize.change.height, 0.001)
+    }
+
+    fun testResourceExpressionsAndNestedPropertyElementsAreNotFlattenedByBatchEdit() {
+        val target = selection("Width=\"{StaticResource PreferredWidth}\" Margin=\"{Binding Position}\"")
+        assertNotNull(runCatching { WinUIXamlDesignerEditing.layout(target, DesignerTransform(0.0, 0.0, 20.0, 10.0, true)) }.exceptionOrNull())
+        assertTrue(target.pointer.element!!.text.contains("{StaticResource PreferredWidth}"))
+        assertTrue(target.pointer.element!!.text.contains("{Binding Position}"))
+    }
 }

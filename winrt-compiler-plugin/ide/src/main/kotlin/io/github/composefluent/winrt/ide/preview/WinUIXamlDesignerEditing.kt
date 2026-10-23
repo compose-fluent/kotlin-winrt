@@ -47,22 +47,31 @@ internal object WinUIXamlDesignerEditing {
             properties, selected.bounds, tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() })
     }
 
-    fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) {
+    fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =
+        applyBatch(project, listOf(selection to changes), title)
+
+    /** Validate the entire command before touching any tag. One gesture = one undo. */
+    fun applyBatch(project: Project, edits: List<Pair<DesignerSelection, Map<String, String?>>>, title: String) {
         WriteCommandAction.writeCommandAction(project).withName(title).run<RuntimeException> {
-            val tag = selection.pointer.element ?: error("The selected element no longer exists. Select it again.")
-            val document = PsiDocumentManager.getInstance(project).getDocument(tag.containingFile) ?: error("No editable XAML document.")
-            PsiDocumentManager.getInstance(project).commitDocument(document)
-            check(tag.isValid && tag.text == selection.text) { "XAML changed during this edit. Select the element again." }
-            check(tag.containingFile.isWritable) { "This XAML file is read only." }
-            changes.forEach { (name, value) ->
-                val property = selection.properties.firstOrNull { it.name == name }
-                    ?: error("$name is not available on this element.")
-                check(property.writable) { "$name is read only." }
-                check(!property.elementValue) { "$name uses a property element. Edit it in XAML." }
-                value?.let { validate(property, it)?.let { message -> error(message) } }
+            val documents = PsiDocumentManager.getInstance(project)
+            documents.commitAllDocuments()
+            val validated = edits.map { (selection, changes) ->
+                val tag = selection.pointer.element ?: error("The selected element no longer exists. Select it again.")
+                check(tag.isValid && tag.text == selection.text) { "XAML changed during this edit. Select the element again." }
+                check(tag.containingFile.isWritable) { "This XAML file is read only." }
+                changes.forEach { (name, value) ->
+                    val property = selection.properties.firstOrNull { it.name == name }
+                        ?: error("$name is not available on this element.")
+                    check(property.writable) { "$name is read only." }
+                    check(!property.elementValue) { "$name uses a property element. Edit it in XAML." }
+                    value?.let { validate(property, it)?.let { message -> error(message) } }
+                }
+                tag to changes
             }
-            changes.forEach { (name, value) -> tag.setAttribute(name, value) }
-            PsiDocumentManager.getInstance(project).doPostponedOperationsAndUnblockDocument(document)
+            validated.forEach { (tag, changes) -> changes.forEach { (name, value) -> tag.setAttribute(name, value) } }
+            validated.map { it.first.containingFile }.distinct().forEach { file ->
+                documents.getDocument(file)?.let(documents::doPostponedOperationsAndUnblockDocument)
+            }
         }
     }
 

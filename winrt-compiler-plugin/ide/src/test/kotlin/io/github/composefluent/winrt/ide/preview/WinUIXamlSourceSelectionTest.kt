@@ -49,4 +49,13 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertNull(WinUIXamlSourceSelection.node(inside, nodes))
         assertSame(file.rootTag, WinUIXamlSourceSelection.tag(file, nodes[1], nodes, emptyList()))
     }
+
+    fun testOrderedUnnamedSiblingsResolveOnlyWhenWholeVisualSequenceMatches() {
+        val file = xml("<Grid.Children><Button/><Button/><TextBlock/></Grid.Children>")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button"), node(listOf(1), "Button"), node(listOf(2), "TextBlock"))
+        val tags = file.rootTag!!.subTags.single().subTags
+        assertEquals(nodes[1], WinUIXamlSourceSelection.node(tags[0], nodes))
+        assertEquals(nodes[2], WinUIXamlSourceSelection.node(tags[1], nodes))
+        assertNull(WinUIXamlSourceSelection.node(tags[1], nodes + node(listOf(3), "Button")))
+    }
 }

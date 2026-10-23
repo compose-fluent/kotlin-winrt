@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -28,7 +30,11 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit,
     openSource: (List<Int>) -> Unit, zoom: Float?, fitSelection: Boolean, panTool: Boolean,
-    onZoom: (Float) -> Unit, setZoom: (Float) -> Unit, fitAll: () -> Unit, modifier: Modifier, resetViewport: Int = 0, editable: Boolean = false, changeLayout: (DesignerTransform) -> Unit = {}) {
+    onZoom: (Float) -> Unit, setZoom: (Float) -> Unit, fitAll: () -> Unit, modifier: Modifier, resetViewport: Int = 0, editable: Boolean = false, changeLayout: (DesignerTransform) -> Unit = {},
+    selectedPaths: Set<List<Int>> = setOf(selected), toggleSelection: (List<Int>) -> Unit = select,
+    snapEnabled: Boolean = true, armedTool: String? = null, toolDrop: DesignerToolDrop? = null,
+    finishDrop: () -> Unit = {}, insert: (String, List<Int>, Double, Double) -> Unit = { _, _, _, _ -> },
+    cancelTool: () -> Unit = {}) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
@@ -39,6 +45,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
         ?.takeIf { it.width > 0 && it.height > 0 } ?: root else root
     val density = LocalDensity.current.density
     var viewport by remember { mutableStateOf(IntSize.Zero) }
+    var canvasOrigin by remember { mutableStateOf(Offset.Zero) }
     val effectiveZoom by remember(target, density, zoom, fitSelection) { derivedStateOf {
         previewScale(viewport.width, viewport.height, target.width, target.height, density, zoom)
             .let { if (fitSelection) it.coerceAtMost(8f) else it }
@@ -83,16 +90,37 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     val latestEditable by rememberUpdatedState(editable)
     val latestSelected by rememberUpdatedState(selected)
     val latestLayout by rememberUpdatedState(changeLayout)
+    val latestSelectedPaths by rememberUpdatedState(selectedPaths)
+    val latestToggle by rememberUpdatedState(toggleSelection)
+    val latestSnap by rememberUpdatedState(snapEnabled)
+    val latestTool by rememberUpdatedState(armedTool)
+    val latestInsert by rememberUpdatedState(insert)
+    fun dropTool(type: String, point: Offset) {
+        val active = previewScale(viewport.width, viewport.height, currentTarget.width, currentTarget.height, density, currentZoom)
+            .let { if (currentFitSelection) it.coerceAtMost(8f) else it } * density
+        val origin = previewOrigin(viewport.width.toFloat(), viewport.height.toFloat(), currentTarget, active) + pan
+        latestHit(point)?.let { node -> latestInsert(type, node.path, ((point.x - origin.x) / active).toDouble(), ((point.y - origin.y) / active).toDouble()) }
+    }
+    val latestDrop by rememberUpdatedState<(String, Offset) -> Unit>(::dropTool)
+    LaunchedEffect(toolDrop) {
+        toolDrop?.let { drop ->
+            val point = drop.point - canvasOrigin
+            if (point.x in 0f..viewport.width.toFloat() && point.y in 0f..viewport.height.toFloat()) latestDrop(drop.type, point)
+            finishDrop()
+        }
+    }
+    var guides by remember { mutableStateOf<DesignerSnap?>(null) }
     var manipulation by remember { mutableStateOf<DesignerTransform?>(null) }
     var cancelDrag by remember { mutableStateOf(false) }
     var hoverPoint by remember { mutableStateOf<Offset?>(null) }
-    val hoveredHandle = if (!editable || panTool || space) null else view.nodes.firstOrNull { it.path == selected }?.bounds?.let { bounds ->
+    val hoveredHandle = if (!editable || selectedPaths.size != 1 || panTool || space) null else view.nodes.firstOrNull { it.path == selected }?.bounds?.let { bounds ->
         val origin = previewOrigin(viewport.width.toFloat(), viewport.height.toFloat(), target, factor) + pan
         hoverPoint?.let { point -> designerHandles.firstOrNull { (hx, hy) ->
             (origin + Offset((bounds.x + bounds.width * hx / 2).toFloat(), (bounds.y + bounds.height * hy / 2).toFloat()) * factor - point).getDistance() <= 7 * density
         } }
     }
     val cursor = when {
+        armedTool != null -> PointerIcon.Crosshair
         panTool || space -> PointerIcon.Hand
         hoveredHandle != null -> PointerIcon(java.awt.Cursor.getPredefinedCursor(when {
             hoveredHandle.first == 1 -> java.awt.Cursor.N_RESIZE_CURSOR
@@ -102,7 +130,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
         }))
         else -> PointerIcon.Default
     }
-    Canvas(modifier.onSizeChanged { viewport = it }.clipToBounds()
+    Canvas(modifier.onGloballyPositioned { canvasOrigin = it.positionInRoot() }.onSizeChanged { viewport = it }.clipToBounds()
         .focusRequester(focus).onFocusChanged { focused = it.isFocused; if (!focused) space = false }
         .onKeyEvent { event ->
             if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) false
@@ -122,19 +150,20 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                 Key.DirectionRight -> { pan -= Offset(40f * density, 0f); true }
                 Key.DirectionUp -> { pan += Offset(0f, 40f * density); true }
                 Key.DirectionDown -> { pan -= Offset(0f, 40f * density); true }
-                Key.Escape -> { if (manipulation != null) { cancelDrag = true; manipulation = null } else select(selected.dropLast(1)); true }
+                Key.Escape -> { if (armedTool != null) cancelTool() else if (manipulation != null) { cancelDrag = true; manipulation = null } else select(selected.dropLast(1)); true }
                 Key.Enter, Key.NumPadEnter -> { openSource(selected); true }
                 else -> false
             }
         }.focusable()
         .pointerHoverIcon(cursor)
-        .semantics { contentDescription = "WinUI XAML preview. Click to select; double-click or Enter to open XAML. Ctrl+wheel to zoom, wheel to pan. Space+drag or middle drag to pan. Plus/minus zoom; 0 actual size; F fit; Drag the selected element or its resize handles to edit layout. Arrows nudge; Shift+arrows nudge ten DIP. Escape cancels a drag or selects the parent." }
+        .semantics { contentDescription = "WinUI XAML preview. Click to select; Ctrl+click or Shift+click toggles multiple elements; Alt disables snapping; double-click or Enter to open XAML. Ctrl+wheel to zoom, wheel to pan. Space+drag or middle drag to pan. Plus/minus zoom; 0 actual size; F fit; Drag the selected element or its resize handles to edit layout. Arrows nudge; Shift+arrows nudge ten DIP. Escape cancels a drag or selects the parent." }
         .pointerInput(Unit) {
             awaitPointerEventScope {
                 var down: Offset? = null
                 var dragged = false
                 var panning = false
                 var layoutDrag = false
+                var multiple = false
                 var handle: Pair<Int, Int>? = null
                 var dragFactor = 1f
                 var dragBounds: WinUIXamlVisualBounds? = null
@@ -156,21 +185,24 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                                 focus.requestFocus()
                                 down = change.position; dragged = false
                                 panning = latestPanTool || space || event.buttons.isTertiaryPressed
-                                cancelDrag = false; manipulation = null; layoutDrag = false; handle = null
+                                cancelDrag = false; manipulation = null; guides = null; layoutDrag = false; handle = null
+                                multiple = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isShiftPressed
                                 if (!panning) {
                                     val active = previewScale(viewport.width, viewport.height, currentTarget.width, currentTarget.height, density, currentZoom)
                                         .let { if (currentFitSelection) it.coerceAtMost(8f) else it }
                                     dragFactor = active * density
                                     val bounds = currentNodes.firstOrNull { it.path == latestSelected }?.bounds
                                     val origin = previewOrigin(viewport.width.toFloat(), viewport.height.toFloat(), currentTarget, dragFactor) + pan
-                                    if (latestEditable && bounds != null) {
+                                    if (latestEditable && latestSelectedPaths.size == 1 && bounds != null) {
                                         handle = designerHandles.firstOrNull { (hx, hy) ->
                                             val position = origin + Offset((bounds.x + bounds.width * hx / 2).toFloat(), (bounds.y + bounds.height * hy / 2).toFloat()) * dragFactor
                                             (position - change.position).getDistance() <= 7 * density
                                         }
                                     }
                                     val hit = latestHit(change.position)
-                                    if (handle != null || hit?.path == latestSelected) {
+                                    if (latestTool != null) { /* The release inserts into its target. */ }
+                                    else if (multiple && hit != null) latestToggle(hit.path)
+                                    else if (handle != null || hit?.path in latestSelectedPaths) {
                                         layoutDrag = latestEditable; dragBounds = bounds
                                     } else if (hit != null) latestSelect(hit.path)
                                 }
@@ -184,15 +216,20 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                             else if (layoutDrag && dragged && !cancelDrag) {
                                 val delta = (change.position - down!!) / dragFactor
                                 val bounds = dragBounds!!
-                                manipulation = designerTransform(handle, delta.x.toDouble(), delta.y.toDouble(), bounds)
+                                val raw = designerTransform(handle, delta.x.toDouble(), delta.y.toDouble(), bounds)
+                                guides = if (latestSnap && !event.keyboardModifiers.isAltPressed) designerSnap(bounds, raw,
+                                    currentNodes.filter { it.path !in latestSelectedPaths && it.path.dropLast(1) == latestSelected.dropLast(1) }.map { it.bounds },
+                                    6.0 * density / dragFactor) else DesignerSnap(raw)
+                                manipulation = guides!!.change
                                 change.consume()
                             }
                         }
                         PointerEventType.Release -> if (down != null && !change.pressed) {
                             if (layoutDrag && dragged && !cancelDrag) manipulation?.let(latestLayout)
-                            manipulation = null
-                            if (!panning && !dragged) latestHit(change.position)?.let { node ->
-                                latestSelect(node.path)
+                            manipulation = null; guides = null
+                            if (!panning && !dragged && latestTool != null) latestDrop(latestTool!!, change.position)
+                            else if (!panning && !dragged && !multiple) latestHit(change.position)?.let { node ->
+                                if (node.path !in latestSelectedPaths) latestSelect(node.path)
                                 if (change.uptimeMillis - lastTap in 1..viewConfiguration.doubleTapTimeoutMillis &&
                                     (change.position - lastPoint).getDistance() < viewConfiguration.touchSlop) {
                                     latestOpen(node.path); lastTap = 0
@@ -207,13 +244,18 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
         val origin = previewOrigin(size.width, size.height, target, factor) + pan
         translate(origin.x, origin.y) { scale(factor, factor, Offset.Zero) {
             bitmap?.let { drawImage(it, dstSize = IntSize(root.width.toInt(), root.height.toInt())) }
-            view.nodes.firstOrNull { it.path == selected }?.bounds?.let { original ->
+            guides?.let { snap ->
+                snap.vertical?.let { x -> drawLine(Color(0xFFDC64CA), Offset(x.toFloat(), 0f), Offset(x.toFloat(), root.height.toFloat()), 1.dp.toPx() / factor) }
+                snap.horizontal?.let { y -> drawLine(Color(0xFFDC64CA), Offset(0f, y.toFloat()), Offset(root.width.toFloat(), y.toFloat()), 1.dp.toPx() / factor) }
+            }
+            view.nodes.filter { it.path in selectedPaths }.forEach { node ->
+                val original = node.bounds
                 val edit = manipulation
                 val bounds = if (edit == null) original else original.copy(x = original.x + edit.x, y = original.y + edit.y,
                     width = original.width + edit.width, height = original.height + edit.height)
                 drawRect(Color(0xFF4BA3FF), Offset(bounds.x.toFloat(), bounds.y.toFloat()),
                     Size(bounds.width.toFloat(), bounds.height.toFloat()), style = Stroke(2.dp.toPx() / factor))
-                if (editable) designerHandles.forEach { (hx, hy) ->
+                if (editable && selectedPaths.size == 1) designerHandles.forEach { (hx, hy) ->
                     val center = Offset((bounds.x + bounds.width * hx / 2).toFloat(), (bounds.y + bounds.height * hy / 2).toFloat())
                     val side = 7.dp.toPx() / factor
                     drawRect(Color.White, center - Offset(side / 2, side / 2), Size(side, side))

@@ -31,6 +31,19 @@ internal object WinUIXamlSourceSelection {
                     ?.let { return it }
             }
         }
+        // Ordered siblings are exact only when the entire direct visual sequence
+        // agrees. Never guess through control-template or item-container children.
+        val visualParentTag = sourceParent?.let { if ('.' in it.localName) it.parentTag else it }
+        if (visualParentTag != null) node(visualParentTag, nodes)?.let { visualParent ->
+            val sourceChildren = visualParentTag.subTags.flatMap { child ->
+                if (child.localName.endsWith(".Children")) child.subTags.toList() else listOf(child)
+            }.filter { '.' !in it.localName && !it.inTemplate() }
+            val visualChildren = nodes.filter { it.path.dropLast(1) == visualParent.path && it.path.size == visualParent.path.size + 1 }
+                .sortedBy { it.path.last() }
+            if (sourceChildren.map { it.localName } == visualChildren.map { it.typeName.substringAfterLast('.') }) {
+                sourceChildren.indexOf(tag).takeIf { it >= 0 }?.let { return visualChildren[it] }
+            }
+        }
         val parentName = generateSequence(tag.parentTag) { it.parentTag }.firstNotNullOfOrNull { it.xamlName() }
         val parent = parentName?.let { value -> nodes.singleOrNull { it.name == value } } ?: if (parentName != null) return null else null
         return nodes.filter { it.typeName.substringAfterLast('.') == type &&

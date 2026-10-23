@@ -94,7 +94,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val instance by selection.instance.collectAsState()
     val livePath by selection.path.collectAsState()
     var staticPath by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var multiPaths by remember { mutableStateOf<Set<List<Int>>>(emptySet()) }
     val selectedPath = if (static) staticPath else livePath
+    val selectedPaths = if (static) multiPaths + setOf(staticPath) else setOf(livePath)
+    var showToolbox by remember { mutableStateOf(false) }
+    var armedTool by remember { mutableStateOf<String?>(null) }
+    var toolDrop by remember { mutableStateOf<DesignerToolDrop?>(null) }
+    var snapEnabled by remember { mutableStateOf(true) }
     val modules by project.service<WinRTProjectService>().modules.collectAsState()
     val selectedModule = selectedWinRTModule(project)
     val module = staticFile?.let { path -> modules.filter { candidate -> runCatching {
@@ -169,7 +175,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var resetViewport by remember(source) { mutableIntStateOf(0) }
     var lastView by remember(source, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
     val scope = rememberCoroutineScope()
-    fun selectPath(path: List<Int>) { if (static) staticPath = path else selection.path.value = path }
+    fun selectPath(path: List<Int>) { if (static) { staticPath = path; multiPaths = emptySet() } else selection.path.value = path }
+    fun togglePath(path: List<Int>) {
+        if (!static) { selectPath(path); return }
+        val next = if (path in selectedPaths) selectedPaths - setOf(path) else
+            selectedPaths.filterNot { it.take(path.size) == path || path.take(it.size) == it }.toSet() + setOf(path)
+        if (next.isNotEmpty()) { staticPath = if (path in next) path else next.last(); multiPaths = next - setOf(staticPath) }
+    }
     DisposableEffect(project, source) {
         val disposable = Disposer.newDisposable("WinRT preview document listener")
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
@@ -242,33 +254,67 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
     }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
-    val editable by produceState<DesignerSelection?>(null, selectedPath, revision, view?.nodes, static, source, state.connected, failure, state.inspectionError) {
-        value = null
+    val editables by produceState<List<DesignerSelection>>(emptyList(), selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError) {
+        value = emptyList()
         val snapshot = view ?: return@produceState
-        val node = snapshot.nodes.firstOrNull { it.path == selectedPath } ?: return@produceState
         if (!static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) return@produceState
-        val owner = snapshot.nodes.filter { it.path.size <= selectedPath.size && selectedPath.take(it.path.size) == it.path }
-            .sortedByDescending { it.path.size }.firstNotNullOfOrNull { session.sourcePath(it.typeName) }
-        value = withContext(Dispatchers.IO) { ReadAction.compute<DesignerSelection?, RuntimeException> {
-            WinUIXamlDesignerEditing.selection(project, owner ?: source, node, snapshot.nodes)
+        value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerSelection>, RuntimeException> {
+            selectedPaths.mapNotNull { path ->
+                val node = snapshot.nodes.firstOrNull { it.path == path } ?: return@mapNotNull null
+                val owner = snapshot.nodes.filter { it.path.size <= path.size && path.take(it.path.size) == it.path }
+                    .sortedByDescending { it.path.size }.firstNotNullOfOrNull { session.sourcePath(it.typeName) }
+                WinUIXamlDesignerEditing.selection(project, owner ?: source, node, snapshot.nodes)
+            }.takeIf { it.size == selectedPaths.size }.orEmpty()
         } }
     }
-    val currentEditable by rememberUpdatedState(editable)
-    fun applyEdit(changes: Map<String, String?>, title: String) {
-        val target = currentEditable ?: return
+    val editable = editables.lastOrNull()?.let { primary ->
+        primary.copy(properties = primary.properties.filter { property -> editables.all { target ->
+            target.properties.any { it.name == property.name && it.writable && !it.elementValue }
+        } }.map { property -> property.copy(value = property.value.takeIf { value ->
+            editables.all { target -> target.properties.first { it.name == property.name }.value == value }
+        }) })
+    }
+    val currentEditables by rememberUpdatedState(editables)
+    fun applyBatch(edits: List<Pair<DesignerSelection, Map<String, String?>>>, title: String) {
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) {
-                runCatching { WinUIXamlDesignerEditing.apply(project, target, changes, title) }
-                    .onSuccess { editFeedback = "$title · Ctrl+Z to undo" }
-                    .onFailure { editFeedback = it.message ?: "Could not update XAML" }
+            if (!project.isDisposed) runCatching { WinUIXamlDesignerEditing.applyBatch(project, edits, title) }
+                .onSuccess { editFeedback = "$title · Ctrl+Z to undo" }
+                .onFailure { editFeedback = it.message ?: "Could not update XAML" }
+        }
+    }
+    fun applyEdit(changes: Map<String, String?>, title: String) = applyBatch(currentEditables.map { it to changes }, title)
+    fun changeLayout(change: DesignerTransform) {
+        runCatching { currentEditables.map { it to WinUIXamlDesignerEditing.layout(it, change) } }
+            .onSuccess { applyBatch(it, if (change.resize) "Resize XAML element" else "Move XAML elements") }
+            .onFailure { editFeedback = it.message }
+    }
+    fun align(operation: DesignerAlignment) {
+        runCatching { designerAlign(currentEditables, operation) }
+            .onSuccess { applyBatch(it, operation.label) }.onFailure { editFeedback = it.message }
+    }
+    fun insertTool(type: String, path: List<Int>, x: Double, y: Double) {
+        val snapshot = view ?: return
+        armedTool = null
+        scope.launch {
+            val target = withContext(Dispatchers.IO) { ReadAction.compute<DesignerSelection?, RuntimeException> {
+                // A native template descendant is only a hit target; walk to an
+                // exact source ancestor before inserting any new content.
+                snapshot.nodes.filter { path.take(it.path.size) == it.path }.sortedByDescending { it.path.size }
+                    .firstNotNullOfOrNull { node -> WinUIXamlDesignerEditing.selection(project, source, node, snapshot.nodes) }
+            } }
+            if (target == null) { editFeedback = "Select a source container for insertion."; return@launch }
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) runCatching { DesignerInsertion.insert(project, target, type, x, y) }
+                    .onSuccess { editFeedback = "Inserted $type · Ctrl+Z to undo" }
+                    .onFailure { editFeedback = it.message }
             }
         }
     }
-    fun changeLayout(change: DesignerTransform) {
-        val target = currentEditable ?: return
-        runCatching { WinUIXamlDesignerEditing.layout(target, change) }
-            .onSuccess { applyEdit(it, if (change.resize) "Resize XAML element" else "Move XAML element") }
-            .onFailure { editFeedback = it.message }
+    val toolboxTypes by produceState<List<String>>(emptyList(), source, catalogRevision) {
+        value = withContext(Dispatchers.IO) {
+            val catalog = catalogService.forFile(source)
+            designerToolbox.keys.filter { name -> catalog?.resolve(io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.PRESENTATION, name)?.let(catalog::isVisual) == true }
+        }
     }
     fun openSource(path: List<Int>) {
         val snapshot = view ?: return
@@ -324,7 +370,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 if (!treeOnly) PreviewAction("Close inspector", "close") { showInspector = false }
             }
             val node = view?.nodes?.firstOrNull { it.path == selectedPath }
-            Text(node?.let { it.name.ifEmpty { it.typeName.substringAfterLast('.') } } ?: "Select an element")
+            Text(if (selectedPaths.size > 1) "${selectedPaths.size} selected · last selected is the alignment anchor" else node?.let { it.name.ifEmpty { it.typeName.substringAfterLast('.') } } ?: "Select an element")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Link("Go to XAML", enabled = node != null, onClick = { openSource(selectedPath) })
                 Link("Parent", enabled = selectedPath.isNotEmpty(), onClick = { selectPath(selectedPath.dropLast(1)) })
@@ -367,7 +413,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (view != null && !treeOnly) key(source) {
                 PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, fitSelection, panTool,
                     { actualZoom = it }, { zoom = it; fitSelection = false },
-                    { fitSelection = false; zoom = null; resetViewport++ }, Modifier.fillMaxSize(), resetViewport, editable != null, ::changeLayout)
+                    { fitSelection = false; zoom = null; resetViewport++ }, Modifier.fillMaxSize(), resetViewport, editable != null, ::changeLayout,
+                    selectedPaths, ::togglePath, snapEnabled, armedTool, toolDrop, { toolDrop = null }, ::insertTool, { armedTool = null })
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())
@@ -393,7 +440,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 RadioButtonRow("Live Preview", !static, { static = false })
                 RadioButtonRow("Static Preview", static, { static = true })
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            @Composable fun workspace() {
                 if (treeOnly) inspector()
                 else if (showInspector) HorizontalSplitLayout(
                     first = { canvas() }, second = { inspector() },
@@ -402,13 +449,27 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     modifier = Modifier.fillMaxSize(),
                 ) else canvas()
             }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (showToolbox && static) HorizontalSplitLayout(
+                    first = { DesignerToolbox(toolboxTypes, armedTool, { armedTool = it; panTool = false }, { toolDrop = it }, { showToolbox = false; armedTool = null }) },
+                    second = { workspace() }, state = rememberSplitLayoutState(.25f),
+                    firstPaneMinWidth = 160.dp, secondPaneMinWidth = 120.dp, modifier = Modifier.fillMaxSize())
+                else workspace()
+            }
             Divider(Orientation.Horizontal)
             // One fixed-height command strip; popups never participate in artboard measurement.
             Row(Modifier.fillMaxWidth().height(36.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (!treeOnly) {
                     PreviewAction("Select elements", "select", view != null, selected = !panTool) { panTool = false }
-                    PreviewAction("Pan canvas", "hand", view != null, selected = panTool) { panTool = true }
+                    PreviewAction("Pan canvas", "hand", view != null, selected = panTool) { panTool = true; armedTool = null }
+                    if (static) {
+                        PreviewAction("Toolbox", "toolbox", selected = showToolbox) { showToolbox = !showToolbox }
+                        PreviewAction("Snap to edges and centers (Alt to bypass)", "snap", selected = snapEnabled) { snapEnabled = !snapEnabled }
+                        Dropdown(enabled = editables.size > 1, menuContent = {
+                            DesignerAlignment.entries.forEach { operation -> selectableItem(selected = false, onClick = { align(operation) }) { Text(operation.label) } }
+                        }) { Text("Align") }
+                    }
                     PreviewAction("Zoom out", "zoomOut", view != null && actualZoom > .125f) {
                         zoom = previewZoomStep(actualZoom, false); fitSelection = false
                     }
@@ -503,6 +564,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
             }
             CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
+            Text("Ctrl/Shift+click selects multiple elements. Align uses the last selection. Alt temporarily disables snapping. Toolbox controls can be dragged into the canvas.")
             Text("Canvas: drag a selected element or its handles to edit layout. Arrows nudge (Shift: 10 DIP). Ctrl+wheel zooms; wheel, hand mode arrows or Space+drag pan.")
             Text("With canvas focus: +/− zoom, 0 shows 100%, F fits all, Escape selects the parent, Enter opens XAML.")
         }
