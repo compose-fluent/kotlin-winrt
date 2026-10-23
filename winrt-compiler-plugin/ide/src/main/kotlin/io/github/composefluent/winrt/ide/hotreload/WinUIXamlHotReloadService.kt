@@ -38,7 +38,8 @@ data class WinUIXamlHotReloadState(val message: String = "Start a JVM applicatio
     val connected: Boolean = false, val busy: Boolean = false, val pid: Long? = null,
     val roots: List<WinUIXamlHotReloadRoot> = emptyList(), val values: List<WinUIXamlHotReloadValue> = emptyList(),
     val inspection: WinUIXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
-    val inspectionRoots: List<WinUIXamlHotReloadRoot> = emptyList())
+    val inspectionRoots: List<WinUIXamlHotReloadRoot> = emptyList(),
+    val startupMillis: Long? = null, val renderMillis: Long? = null, val reusedBuild: Boolean = false)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
@@ -73,6 +74,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     @Volatile private var gradleProcess: com.intellij.execution.process.ProcessHandler? = null
     private var savedLaunch = WinUIXamlHotReloadLaunchState()
     @Volatile private var debuggerPid: Long? = null
+    private var directPreview: Process? = null
+    private var launchStartedNanos = 0L
+    private var firstFrameReported = false
+    private val log = com.intellij.openapi.diagnostic.Logger.getInstance(WinRTDevelopmentSession::class.java)
 
     /** Drain the last UI transaction before LLDB suspends the process. */
     fun suspendForDebugger(pid: Long): java.util.concurrent.CompletableFuture<Unit> {
@@ -126,9 +131,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false) {
         if (disposed || project.isDisposed) return
         val sdkPreview = preview && launch == module.staticPreview?.launch()
+        val startedAt = System.nanoTime()
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
         val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true))
+        launchStartedNanos = startedAt; firstFrameReported = false
         gradleProcess = null
         worker = scope.launch(Dispatchers.IO) {
             try {
@@ -154,23 +161,60 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     Files.createDirectories(directory!!)
                     withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString()) }
                 }
-                ApplicationManager.getApplication().invokeLater {
-                    if (isCurrent(request)) WinRTGradleTasks.run(project, module,
-                        listOf(launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
-                        environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
-                            if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
-                        onProcessStarted = { handler ->
-                            if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
-                        },
-                        onFailure = { withCurrent(request) { if (client == null) {
-                            worker?.cancel(); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
-                        } } })
+                val cache = if (preview && launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage")) WinRTPreviewLaunchCache(
+                    Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
+                    project.service<WinRTProjectService>().modules.value, module, launch) else null
+                val inputs = cache?.let { runCatching { it.inputs() }.getOrNull() }
+                var reused = false
+                if (cache != null && inputs != null && !restart && cache.reusable(inputs)) {
+                    try {
+                        val process = ProcessBuilder(launch.previewExecutable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
+                            .directory(cache.deployment.toFile())
+                            .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
+                            .apply { environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = directory!!.toString()
+                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
+                        if (!withCurrent(request) {
+                            directPreview = process
+                            display.value = display.value.copy(message = "Starting the built preview host…")
+                        }) { process.destroy(); return@launch }
+                        withTimeout(10_000) {
+                            awaitConnection(request, directory!!, launch.previewExecutable, process)
+                        }
+                        reused = true
+                    } catch (error: Exception) {
+                        if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                        currentCoroutineContext().ensureActive()
+                        mutex.withLock { stopOwned(); client?.close(); client = null }
+                        cache.invalidate()
+                        log.info("Cached preview launch failed; rebuilding through Gradle", error)
+                    }
                 }
-                if (!withCurrent(request) {
-                    display.value = WinUIXamlHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
-                        else "Building and waiting for the application. See Gradle Run output.", busy = true)
-                }) return@launch
-                awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable)
+                if (!reused) {
+                    ApplicationManager.getApplication().invokeLater {
+                        if (isCurrent(request)) WinRTGradleTasks.run(project, module,
+                            listOf(launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
+                            environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
+                                if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
+                            onProcessStarted = { handler ->
+                                if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
+                            },
+                            onFailure = { withCurrent(request) { if (client == null) {
+                                worker?.cancel(); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
+                            } } })
+                    }
+                    if (!withCurrent(request) {
+                        display.value = WinUIXamlHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
+                            else "Building and waiting for the application. See Gradle Run output.", busy = true)
+                    }) return@launch
+                    awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable)
+                    // Never bless inputs edited while Gradle was compiling an earlier version.
+                    if (inputs != null && cache != null && isCurrent(request)) runCatching {
+                        if (display.value.connected && inputs == cache.inputs()) cache.remember(inputs)
+                    }.onFailure { log.debug("Preview launch cache unavailable", it) }
+                }
+                val elapsed = (System.nanoTime() - startedAt) / 1_000_000
+                withCurrent(request) { display.value = display.value.copy(startupMillis = elapsed, reusedBuild = reused) }
+                if (preview) log.info("XAML preview connected: ${elapsed}ms, reusedBuild=$reused")
                 if (sdkPreview && isCurrent(request)) {
                     project.service<WinUIXamlCatalogService>().refresh()
                     project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
@@ -223,8 +267,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         Unit
     }
 
-    private suspend fun awaitConnection(request: Long, folder: Path, executable: String) = withTimeout(10 * 60_000L) {
+    private suspend fun awaitConnection(request: Long, folder: Path, executable: String, process: Process? = null) = withTimeout(10 * 60_000L) {
         while (isActive && isCurrent(request)) {
+            check(process == null || process.isAlive) { "The cached preview host exited before connecting." }
             val found = WinUIXamlHotReloadClient.discover(folder, executable)
             require(found.size <= 1) { "Multiple development processes use this session directory. Stop them before reconnecting." }
             val candidate = found.singleOrNull()
@@ -235,9 +280,16 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }
                     refresh(candidate, request)
                 }
+                // A session file can precede creation of the preview root. Do not
+                // make the first document wait for the two-second health poll.
+                while (isolatedPreview && isCurrent(request) && display.value.inspectionRoots.none {
+                        it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }) {
+                    delay(50)
+                    mutex.withLock { if (isCurrent(request)) refresh(candidate, request) }
+                }
                 return@withTimeout
             }
-            delay(750)
+            delay(100)
         }
     }
 
@@ -452,6 +504,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 if (it == null) { inspection = null; display.value = display.value.copy(inspecting = false) }
                             }
                         } ?: break
+                        val renderStarted = System.nanoTime()
                         val reply = mutex.withLock {
                             if (debuggerAttached()) null else runInterruptible { connection.inspect(next) }
                         } ?: break
@@ -467,7 +520,15 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             val owner = Triple(next.className, next.resourcePath, next.instance)
                             val image = display.value.inspection?.image.takeIf { inspectionOwner == owner }
                             display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(image = it.image ?: image) } ?: display.value.inspection,
-                                message = reply.message, roots = reply.roots.ifEmpty { display.value.roots }, inspectionError = null)
+                                message = reply.message, roots = reply.roots.ifEmpty { display.value.roots }, inspectionError = null,
+                                renderMillis = (System.nanoTime() - renderStarted) / 1_000_000)
+                            if (next.previewMarkup.isNotEmpty()) {
+                                log.info("XAML preview rendered: ${display.value.renderMillis}ms")
+                                if (!firstFrameReported && launchStartedNanos != 0L && reply.inspection?.image != null) {
+                                    firstFrameReported = true
+                                    log.info("XAML preview first frame: ${(System.nanoTime() - launchStartedNanos) / 1_000_000}ms")
+                                }
+                            }
                             if (reply.inspection != null) inspectionOwner = owner
                         }
                     }
@@ -509,6 +570,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             Files.deleteIfExists(previous.sessionFile)
         }
         owned = null
+        directPreview?.let { process ->
+            if (process.isAlive) { process.destroy(); check(process.waitFor(8, TimeUnit.SECONDS)) { "Preview host did not stop." } }
+        }
+        directPreview = null
     }
 
     private fun documentText(path: String): String = ReadAction.compute<String?, RuntimeException> {
@@ -548,6 +613,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     override fun dispose() = synchronized(lifecycle) {
         disposed = true; generation.incrementAndGet(); cancelRequests()
+        directPreview?.destroy()
+        directPreview = null
         owned?.let { process ->
             if (isolatedPreview && process.process.isAlive && process.process.info().startInstant().orElse(null) == process.started)
                 process.process.destroy()

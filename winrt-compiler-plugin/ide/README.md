@@ -512,6 +512,23 @@ accessible names. Fit and inspector controls retain selected-state feedback.
 Refresh disables while a request is in flight; busy work shows a progress indicator.
 Status and cancellation stay in a fixed bottom line, with errors available through Details.
 
+Opening another document reuses the project preview session. Pure XAML edits render
+in that host without a Gradle launch; initial document preparation has no typing
+debounce, and selecting an element reads its properties without recapturing pixels.
+SDK catalogs share identical WinMD inputs across targets and reuse the metadata
+module's content-keyed normalized model cache across IDE restarts.
+For a previously successful WinUI Native desktop packaged preview, the IDE can
+start the deployed preview executable directly. It validates project/dependency
+source contents, build configuration, the imported model, deployed files and the
+toolchain locations before reusing the build. Changed inputs or a failed direct launch
+fall back to Gradle. **Rebuild project code** always bypasses this cache. First builds,
+UWP activation and JVM launch configuration still use Gradle. Startup and render
+durations are recorded as `XAML preview connected`, `XAML preview rendered` and
+`XAML preview first frame` in
+the IDE log. This cache does not replace Gradle dependency resolution; explicitly
+rebuild after changing an external unpublished dependency without changing its
+version or project configuration, or changing environment-dependent build inputs.
+
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
 `x:Name`, then a unique control type within a named parent; repeated unnamed

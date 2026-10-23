@@ -13,7 +13,10 @@ import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import io.github.composefluent.winrt.ide.gradle.WinUIXamlCompilationData
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
-import io.github.composefluent.winrt.metadata.WinRTMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRTMetadataCache
+import io.github.composefluent.winrt.metadata.WinRTMetadataModelCodec
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +33,8 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
     @Volatile private var catalogs: Map<String, WinUIXamlCatalog> = emptyMap()
     private val revision = AtomicLong()
     private var loading: Job? = null
+    private val loadMutex = Mutex()
+    private val sharedCatalogs = mutableMapOf<String, WinUIXamlCatalog>()
 
     init {
         project.messageBus.connect(this).subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
@@ -59,13 +64,14 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
     private fun referenceFiles() = compilations().map { it.inputFile } + project.service<WinRTProjectService>().modules.value
         .mapNotNull { it.staticPreview?.metadataReferencesFile }
 
-    private suspend fun load() {
+    private suspend fun load() = loadMutex.withLock {
         val request = revision.incrementAndGet()
         val current = referenceFiles().distinct()
         // Opening a manifest in an ordinary project needs no XAML catalog
         // invalidation. Avoid restarting its highlighting during initial load.
-        if (current.isEmpty() && catalogs.isEmpty()) return
-        val next = current.mapNotNull { referenceFile ->
+        if (current.isEmpty() && catalogs.isEmpty()) return@withLock
+        val next = linkedMapOf<String, WinUIXamlCatalog>()
+        current.forEach { referenceFile ->
             coroutineContext.ensureActive()
             val catalog = runCatching {
                 val input = Json.parseToJsonElement(Files.readString(Path.of(referenceFile))).jsonObject
@@ -73,12 +79,30 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
                     (item.jsonObject["FullPath"] ?: item.jsonObject["ItemSpec"])?.jsonPrimitive?.content?.let(Path::of)
                 }.filter { it.toString().endsWith(".winmd", true) && Files.isRegularFile(it) }.distinct()
                 require(paths.isNotEmpty())
-                WinUIXamlCatalog(WinRTMetadataLoader.load(paths))
-            }.getOrNull() ?: return@mapNotNull null
-            referenceFile to catalog
-        }.toMap()
+                // The metadata owner supplies the content-keyed normalized model cache.
+                // Multiple targets/reference manifests often describe the same SDK.
+                val key = WinRTMetadataModelCodec.cacheKey(paths)
+                sharedCatalogs.getOrPut(key) {
+                    val started = System.nanoTime()
+                    val directory = Path.of(com.intellij.openapi.application.PathManager.getSystemPath())
+                        .resolve("kotlin-winrt/xaml-models")
+                    val metadata = WinRTMetadataCache(paths)
+                    WinUIXamlCatalog(runCatching { metadata.load(directory) }.getOrElse { metadata.load() }).also {
+                        com.intellij.openapi.diagnostic.Logger.getInstance(WinUIXamlCatalogService::class.java)
+                            .info("XAML catalog ready: ${(System.nanoTime() - started) / 1_000_000}ms")
+                    }
+                }
+            }.getOrNull() ?: return@forEach
+            next[referenceFile] = catalog
+            coroutineContext.ensureActive()
+            // A project preview must not wait for unrelated SDK/target catalogs.
+            if (revision.get() == request) publish(next)
+        }
         coroutineContext.ensureActive()
-        if (revision.get() == request) publish(next)
+        if (revision.get() == request) {
+            sharedCatalogs.entries.removeIf { it.value !in next.values }
+            if (next.isEmpty()) publish(next)
+        }
     }
 
     internal fun publish(next: Map<String, WinUIXamlCatalog>) {

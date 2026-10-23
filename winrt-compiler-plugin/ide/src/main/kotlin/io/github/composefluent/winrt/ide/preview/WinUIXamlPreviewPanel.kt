@@ -136,6 +136,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var failure by remember { mutableStateOf<String?>(null) }
     var manualRefresh by remember { mutableIntStateOf(0) }
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
+    var submitted by remember(source, projectCode, static) {
+        mutableStateOf<Triple<WinUIXamlInspectionRequest, Long?, Pair<Int, Long>>?>(null)
+    }
     var showSettings by remember { mutableStateOf(false) }
     var showZoom by remember { mutableStateOf(false) }
     val customZoom = remember { TextFieldState("100") }
@@ -158,10 +161,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }, disposable)
         onDispose { Disposer.dispose(disposable) }
     }
-    LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, if (automatic) revision else 0L, manualRefresh, state.connected, width.text, height.text, theme) {
+    LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, if (automatic) revision else 0L, manualRefresh, width.text, height.text, theme) {
         prepared = null; failure = null
-        if (static && state.connected && source.isNotEmpty() && module != null) {
-            delay(350)
+        if (static && source.isNotEmpty() && module != null) {
+            // Debounce typing, not opening an already prepared document.
+            if (revision > 0) delay(150)
             try {
                 prepared = withContext(Dispatchers.IO) {
                     val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
@@ -183,18 +187,24 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(root, state.connected, static, prepared, width.text, height.text, theme) {
+    LaunchedEffect(root, state.connected, state.pid, static, prepared, width.text, height.text, theme, manualRefresh, resourceRevision) {
         if (static && root != null && state.connected && prepared != null) {
             val w = width.text.toString().toIntOrNull(); val h = height.text.toString().toIntOrNull()
             if (w == null || h == null || w !in 64..4096 || h !in 64..4096) failure = "Enter a width and height between 64 and 4096 DIP."
-            else session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
-                prepared!!.markup, w, h, theme))
+            else {
+                val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
+                    prepared!!.markup, w, h, theme)
+                val key = Triple(request, state.pid, manualRefresh to resourceRevision)
+                // Metadata notifications can prepare the same document again. Keep
+                // explicit refresh and asset changes, but avoid duplicate bitmaps.
+                if (submitted != key) { session.inspect(request); submitted = key }
+            }
         }
     }
     LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance) {
-        if (root != null && state.connected && (!static || prepared != null)) {
+        if (root != null && state.connected && (!static || prepared != null && selectedPath.isNotEmpty())) {
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
-                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly))
+                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static))
         }
     }
     LaunchedEffect(root, state.connected, static, automatic, selectedPath, instance, treeOnly) {
