@@ -325,6 +325,30 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         val moved = DesignerStructureEditing.reorder(project, target, forward)
         pendingStructureSelection = com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(moved)
     }
+    fun clipboardAction(action: String) {
+        val targets = currentEditables
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) runCatching {
+                val clipboard = com.intellij.openapi.ide.CopyPasteManager.getInstance()
+                when (action) {
+                    "copy", "cut" -> {
+                        val text = com.intellij.openapi.application.WriteAction.compute<String, RuntimeException> { DesignerClipboard.copy(targets) }
+                        if (action == "cut") DesignerClipboard.remove(project, targets)
+                        clipboard.setContents(java.awt.datatransfer.StringSelection(text))
+                    }
+                    "delete" -> DesignerClipboard.remove(project, targets)
+                    "paste" -> {
+                        val target = targets.lastOrNull() ?: error("Select a destination container.")
+                        val text = clipboard.getContents(java.awt.datatransfer.DataFlavor.stringFlavor) as? String ?: error("The clipboard has no XAML text.")
+                        structureNodesBefore = view?.nodes
+                        val inserted = DesignerClipboard.paste(project, target, text)
+                        pendingStructureSelection = com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(inserted.last())
+                    }
+                }
+            }.onSuccess { editFeedback = if (action == "copy") "Copied XAML" else "Updated XAML · Ctrl+Z to undo" }
+                .onFailure { editFeedback = it.message ?: "Could not edit XAML" }
+        }
+    }
     fun applyEdit(changes: Map<String, String?>, title: String) = applyBatch(currentEditables.map { it to changes }, title)
     fun changeLayout(change: DesignerTransform) {
         runCatching { currentEditables.map { it to WinUIXamlDesignerEditing.layout(it, change) } }
@@ -478,6 +502,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         if (static) multiPaths = view.nodes.filter { it.path.size == selectedPath.size && it.path.dropLast(1) == selectedPath.dropLast(1) }
                             .map { it.path }.toSet() - setOf(staticPath)
                     }, authoredPaths, buildList {
+                        if (editables.isNotEmpty()) {
+                            add("Copy" to { clipboardAction("copy") })
+                            add("Cut" to { clipboardAction("cut") })
+                            add("Paste" to { clipboardAction("paste") })
+                            add("Delete" to { clipboardAction("delete") })
+                        }
                         add("Go to XAML" to { openSource(selectedPath) })
                         add("Properties" to { showInspector = true })
                         add("Fit selection" to { fitSelection = true; zoom = null; resetViewport++ })
@@ -487,9 +517,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     }, { paths ->
                         if (static) {
                             staticPath = paths.lastOrNull().orEmpty()
+                            selectedSourceIdentity = null
                             multiPaths = paths - setOf(staticPath)
                         }
-                    })
+                    }, ::clipboardAction)
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())

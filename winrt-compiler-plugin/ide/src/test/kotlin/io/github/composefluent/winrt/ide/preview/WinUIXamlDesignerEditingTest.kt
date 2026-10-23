@@ -21,6 +21,40 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
         return DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text, properties,
             WinUIXamlVisualBounds(20.0, 30.0, 100.0, 40.0), parent, tag.attributes.associate { it.name to it.value.orEmpty() })
     }
+    fun testClipboardRenamesInternalNameReferencesWithoutChangingTextOrBindingPaths() {
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            val copied = DesignerClipboard.fragment(project, """<StackPanel><Button x:Name="First" Content="First"/><TextBlock Text="{Binding Content, ElementName=First}"/><TextBlock Text="{x:Bind First.Content}"/><TextBlock Text="{Binding First.Content}"/></StackPanel>""", setOf("First", "First1")).single()
+            assertTrue(copied.text.contains("x:Name=\"First2\""))
+            assertTrue(copied.text.contains("Content=\"First\""))
+            assertTrue(copied.text.contains("ElementName=First2"))
+            assertTrue(copied.text.contains("{x:Bind First2.Content}"))
+            assertTrue(copied.text.contains("{Binding First.Content}"))
+            assertTrue(copied.text.contains("xmlns:x="))
+        }
+    }
+
+    fun testClipboardDeleteIsUndoableAndRejectsStaleSelection() {
+        val target = selection()
+        val before = myFixture.editor.document.text
+        DesignerClipboard.remove(project, listOf(target))
+        assertFalse(myFixture.editor.document.text.contains("<Button"))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(before, myFixture.editor.document.text)
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val current = selection()
+        WriteCommandAction.runWriteCommandAction(project) { current.pointer.element!!.setAttribute("Width", "200") }
+        assertTrue(runCatching { DesignerClipboard.remove(project, listOf(current)) }.isFailure)
+        assertTrue(myFixture.editor.document.text.contains("<Button"))
+    }
+
+    fun testClipboardRejectsBrokenMarkupAndClassDocuments() {
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            listOf("<Button>", "</Grid><Button/>", "<Window x:Class=\"Sample.Main\"/>", "plain text").forEach { invalid ->
+                assertTrue(invalid, runCatching { DesignerClipboard.fragment(project, invalid, emptySet()) }.isFailure)
+            }
+        }
+    }
+
     fun testOneGestureIsOneUndoableSourceEdit() {
         val target = selection()
         WinUIXamlDesignerEditing.apply(project, target, mapOf("Width" to "140", "Height" to "60"), "Resize XAML element")
