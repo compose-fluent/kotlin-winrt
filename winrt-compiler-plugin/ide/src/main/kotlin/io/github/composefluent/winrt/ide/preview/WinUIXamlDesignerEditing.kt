@@ -102,19 +102,24 @@ internal object WinUIXamlDesignerEditing {
         val width = (selection.bounds.width + change.width).coerceAtLeast(1.0)
         val height = (selection.bounds.height + change.height).coerceAtLeast(1.0)
         if (change.resize) {
-            listOf("Width", "Height").forEach { name ->
-                check(attributes[name]?.startsWith("{") != true) { "$name is bound. Edit it in Properties before resizing." }
+            // A side handle owns only its axis; preserve Auto, bindings and
+            // stretch alignment on the untouched axis.
+            listOf("Width" to change.width, "Height" to change.height).forEach { (name, delta) ->
+                if (delta != 0.0) {
+                    check(attributes[name]?.startsWith("{") != true) { "$name is bound. Edit it in Properties before resizing." }
+                    result[name] = number(if (name == "Width") width else height)
+                }
             }
-            result["Width"] = number(width); result["Height"] = number(height)
         }
         if (selection.parent == "Canvas") {
             val prefix = selection.properties.firstOrNull { it.name.endsWith("Canvas.Left") }?.name?.removeSuffix("Left") ?: "Canvas."
-            result[prefix + "Left"] = number(literal(prefix + "Left") + change.x)
-            result[prefix + "Top"] = number(literal(prefix + "Top") + change.y)
+            if (change.x != 0.0) result[prefix + "Left"] = number(literal(prefix + "Left") + change.x)
+            if (change.y != 0.0) result[prefix + "Top"] = number(literal(prefix + "Top") + change.y)
         } else {
             val margin = attributes["Margin"]?.let { thickness(it) ?: error("Margin is an expression. Edit it in Properties before dragging.") }
                 ?: doubleArrayOf(0.0, 0.0, 0.0, 0.0)
             fun axis(alignment: String, leading: Int, trailing: Int, offset: Double, sizeDelta: Double) {
+                if (offset == 0.0 && sizeDelta == 0.0) return
                 val align = attributes[alignment] ?: "Stretch"
                 check(align in setOf("Left", "Right", "Top", "Bottom", "Center", "Stretch")) { "$alignment is an expression. Edit it in Properties." }
                 when (align) {

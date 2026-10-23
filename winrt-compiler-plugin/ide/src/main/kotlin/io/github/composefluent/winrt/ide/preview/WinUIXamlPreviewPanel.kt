@@ -266,6 +266,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         } }
     }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
+    LaunchedEffect(revision) { editFeedback = null }
     val editables by produceState<List<DesignerSelection>>(emptyList(), selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError) {
         value = emptyList()
         val snapshot = view ?: return@produceState
@@ -395,11 +396,15 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     }
                 },
                 second = {
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp),
+                    Column(Modifier.fillMaxSize().padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Properties")
                         Text("Filter properties")
                         TextField(propertyFilter, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Filter properties" })
+                        val propertyScroll = rememberScrollState()
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(Modifier.fillMaxSize().padding(end = 12.dp).verticalScroll(propertyScroll),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
                         Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath) Text("Reading selection…")
@@ -415,8 +420,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             }
                         }
                     }
+                        androidx.compose.foundation.VerticalScrollbar(
+                            adapter = androidx.compose.foundation.rememberScrollbarAdapter(propertyScroll),
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+                        }
+                    }
                 },
-                state = rememberSplitLayoutState(.55f),
+                state = rememberSplitLayoutState(.4f),
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
         }

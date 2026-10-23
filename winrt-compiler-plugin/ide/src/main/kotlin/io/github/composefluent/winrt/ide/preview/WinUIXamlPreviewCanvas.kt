@@ -231,7 +231,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                             manipulation = null; guides = null
                             if (!panning && !dragged && latestTool != null) latestDrop(latestTool!!, change.position)
                             else if (!panning && !dragged && !multiple) latestHit(change.position)?.let { node ->
-                                if (node.path !in latestSelectedPaths) latestSelect(node.path)
+                                if (latestSelectedPaths.size != 1 || node.path !in latestSelectedPaths) latestSelect(node.path)
                                 if (change.uptimeMillis - lastTap in 1..viewConfiguration.doubleTapTimeoutMillis &&
                                     (change.position - lastPoint).getDistance() < viewConfiguration.touchSlop) {
                                     latestOpen(node.path); lastTap = 0

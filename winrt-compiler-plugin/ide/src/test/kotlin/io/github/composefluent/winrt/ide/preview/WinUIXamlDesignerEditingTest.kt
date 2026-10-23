@@ -96,7 +96,7 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
             bounds = WinUIXamlVisualBounds(80.0, 90.0, 100.0, 40.0))
         val edits = designerAlign(listOf(first, second), DesignerAlignment.LEFT)
         assertEquals("80", edits.single().second["Canvas.Left"])
-        assertEquals("30", edits.single().second["Canvas.Top"])
+        assertFalse(edits.single().second.containsKey("Canvas.Top"))
         val flow = selection(parent = "StackPanel")
         assertNotNull(runCatching { designerAlign(listOf(flow, flow), DesignerAlignment.TOP) }.exceptionOrNull())
     }
@@ -122,4 +122,17 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
         assertTrue(target.pointer.element!!.text.contains("{StaticResource PreferredWidth}"))
         assertTrue(target.pointer.element!!.text.contains("{Binding Position}"))
     }
+    fun testSideResizePreservesUntouchedAutoBindingAndAlignment() {
+        val target = selection("Height=\"{Binding DesiredHeight}\"", "Canvas")
+        val changes = WinUIXamlDesignerEditing.layout(target, DesignerTransform(0.0, 0.0, 40.0, 0.0, true))
+        assertEquals(mapOf("Width" to "140"), changes)
+        WinUIXamlDesignerEditing.apply(project, target, changes, "Resize width")
+        assertEquals("{Binding DesiredHeight}", target.pointer.element!!.getAttributeValue("Height"))
+        val grid = selection()
+        val resized = WinUIXamlDesignerEditing.layout(grid, DesignerTransform(0.0, 0.0, 20.0, 0.0, true))
+        assertFalse(resized.containsKey("Height"))
+        assertFalse(resized.containsKey("VerticalAlignment"))
+        assertEquals("Left", resized["HorizontalAlignment"])
+    }
+
 }
