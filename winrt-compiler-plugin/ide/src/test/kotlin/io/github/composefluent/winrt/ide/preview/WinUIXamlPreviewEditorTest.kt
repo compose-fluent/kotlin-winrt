@@ -108,6 +108,12 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
         } finally { provider.disposeEditor(reopened) }
     }
 
+    fun testFitZoomUsesViewportAndDisplayDensity() {
+        assertEquals(.5f, previewScale(800, 600, 800.0, 600.0, 2f, null))
+        assertEquals(.25f, previewScale(400, 600, 800.0, 600.0, 2f, null))
+        assertEquals(1f, previewScale(400, 600, 800.0, 600.0, 2f, 1f))
+    }
+
     fun testBothNativePreviewServicesInitializeAndRemainIndependent() {
         // Regression for the packaged UI's NoSuchFieldError during composition.
         val live = project.service<WinUIXamlHotReloadService>()
@@ -121,7 +127,7 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
     @OptIn(ExperimentalComposeUiApi::class)
     fun testPreviewOptionsRemainReachableAtDoubleScale() {
         val file = myFixture.addFileToProject("Scaled.xaml", markup).virtualFile
-        val scene = ImageComposeScene(600, 800, Density(2f))
+        val scene = ImageComposeScene(600, 500, Density(2f))
         try {
             scene.setContent { SwingBridgeTheme { WinUIXamlPreviewPanel(project, staticFile = file.path) } }
             var frameTime = System.nanoTime()
@@ -138,18 +144,22 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
                 .orEmpty().map { it.text } + node.children.flatMap(::labels)
             scene.render().close()
             assertFalse("Dimensions stay out of the default canvas workspace", nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
-            val expand = nodes().first { "Settings" in labels(it) && it.config.getOrNull(SemanticsActions.OnClick) != null }
+            val workspaceBefore = nodes().first { "Preview workspace" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }.boundsInWindow
+            val expand = nodes().first { "Preview settings" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() && it.config.getOrNull(SemanticsActions.OnClick) != null }
             assertTrue(expand.config[SemanticsActions.OnClick].action!!.invoke())
             settleFrames()
-            val scroll = nodes().single { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
+            assertEquals("Opening settings must not resize or move the artboard", workspaceBefore,
+                nodes().first { "Preview workspace" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }.boundsInWindow)
+            val scroll = nodes().filter { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
+                .maxBy { it.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() }
             assertTrue("Expanded options must scroll in a small high-DPI viewport", scroll.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > 0f)
             assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f, scroll.config[SemanticsProperties.VerticalScrollAxisRange].maxValue()))
             // Accessibility scrolling and focus bring-into-view use frame-clock
             // animations. Advance the offscreen clock as well as the UI queue.
             settleFrames()
-            val lastOption = nodes().first { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text == "Visual Tree and properties" } }
+            val lastOption = nodes().first { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text == "Update after XAML edits" } }
             val axis = scroll.config[SemanticsProperties.VerticalScrollAxisRange]
-            assertTrue("The final option must be visible after scrolling: bounds=${lastOption.boundsInWindow}, scroll=${axis.value()}/${axis.maxValue()}", lastOption.boundsInWindow.height > 0f && lastOption.boundsInWindow.bottom <= 800f)
+            assertTrue("The final option must be visible after scrolling: bounds=${lastOption.boundsInWindow}, scroll=${axis.value()}/${axis.maxValue()}", lastOption.boundsInWindow.height > 0f && lastOption.boundsInWindow.bottom <= 500f)
             assertTrue(nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
             assertTrue(nodes().any { "Preview height in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
         } finally { scene.close() }

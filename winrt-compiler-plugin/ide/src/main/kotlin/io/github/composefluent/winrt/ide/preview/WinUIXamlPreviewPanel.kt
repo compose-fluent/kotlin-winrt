@@ -1,6 +1,19 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.ui.Orientation
+import kotlin.math.roundToInt
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -121,6 +134,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var manualRefresh by remember { mutableIntStateOf(0) }
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var showSession by remember { mutableStateOf(false) }
+    var showDiagnostics by remember { mutableStateOf(false) }
+    var actualZoom by remember(source) { mutableFloatStateOf(1f) }
     var zoom by remember(source) { mutableStateOf<Float?>(null) }
     var resetViewport by remember(source) { mutableIntStateOf(0) }
     var lastView by remember(source, projectCode, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
@@ -215,120 +231,179 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
         onDispose { Disposer.dispose(disposable) }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
-      val controlsHeight = if (view == null) maxHeight else maxHeight * (if (showSettings) 0.5f else 0.4f)
-      Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-       // Keep settings reachable at large IDE zoom levels without measuring the
-       // weighted image/tree inside an unbounded scrolling column.
-       Column(Modifier.fillMaxWidth().heightIn(max = controlsHeight).verticalScroll(rememberScrollState()),
-           verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (!treeOnly && staticFile == null) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            RadioButtonRow("Live Preview", !static, { static = false }); RadioButtonRow("Static Preview", static, { static = true })
-        }
-        if ((!state.connected && (!static || staticFile == null)) || static && projectCode && showSettings) {
-            @Composable fun buildOptions() {
-                WinRTModulePicker(project)
-                if (!static || projectCode) WinRTChoice("Application", launches.map { it.taskName to it.taskName }, launch?.taskName) { launchName = it }
+    val status = if (view != null && static) when {
+        !state.connected && !state.busy -> "Disconnected · last successful render"
+        failure != null || state.inspectionError != null -> "Out of date · last successful render"
+        !state.connected || prepared == null || state.inspecting -> "Updating preview…"
+        else -> state.message
+    } else state.message
+    val error = failure ?: state.inspectionError
+    val missingModule = staticFile != null && (module == null || designLaunch == null)
+    fun startPreview() = session.start(module!!, (if (static) designLaunch else launch)!!, preview = static)
+    val canStart = module != null && (if (static) designLaunch else launch) != null && !state.busy && state.pid == null
+
+    @Composable fun inspector() {
+        Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Inspector", Modifier.weight(1f))
+                if (!treeOnly) PreviewAction("Close inspector", "×") { showInspector = false }
             }
-            if (staticFile != null) WinRTDetails("project code options") { buildOptions() } else buildOptions()
+            val node = view?.nodes?.firstOrNull { it.path == selectedPath }
+            Text(node?.let { it.name.ifEmpty { it.typeName.substringAfterLast('.') } } ?: "Select an element")
+            Link("Go to XAML", enabled = node != null, onClick = { openSource(selectedPath) })
+            VerticalSplitLayout(
+                first = {
+                    if (view != null) key(root?.className, root?.resourcePath, instance, static) {
+                        VisualTree(view.nodes, selectedPath, ::selectPath, Modifier.fillMaxSize())
+                    }
+                },
+                second = {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Effective properties")
+                        view?.properties?.forEach { Text("${it.name}: ${it.value}") }
+                    }
+                },
+                state = rememberSplitLayoutState(.55f),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (!state.connected) DefaultButton(enabled = module != null && (if (static) designLaunch else launch) != null && !state.busy && state.pid == null,
-                onClick = { session.start(module!!, (if (static) designLaunch else launch)!!, preview = static) }) { Text(if (static) "Retry preview" else "Start application") }
-            if (static && projectCode && state.connected && showSettings) OutlinedButton(enabled = !state.busy,
-                onClick = { session.start(module!!, launch!!, restart = true, preview = true) }) { Text("Build project code") }
-            OutlinedButton(enabled = state.connected && !state.inspecting, onClick = { manualRefresh++ }) { Text("Refresh") }
-            if ((staticFile == null || state.pid != null) && showSettings) OutlinedButton(enabled = !state.busy, onClick = session::reconnect) { Text("Reconnect") }
-            if (state.pid != null || state.busy) OutlinedButton(onClick = session::stop) { Text(if (state.busy) "Cancel" else if (static) "Stop preview" else "Stop application") }
-        }
-        // Replace the status in place: inserting a transient row moves Settings
-        // and the viewport under the pointer during every selection/refresh.
-        Text(if (view != null && static) when {
-            !state.connected && !state.busy -> "Preview disconnected — showing the last successful render."
-            failure != null || state.inspectionError != null -> "Preview out of date — showing the last successful render."
-            !state.connected || prepared == null || state.inspecting -> "Updating preview — showing the last successful render."
-            else -> state.message
-        } else state.message, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-        state.inspectionError?.let { Text(it) }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            OutlinedButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Hide settings" else "Settings") }
-            if (!treeOnly && view != null) {
-                OutlinedButton(onClick = { zoom = null; resetViewport++ }) { Text("Fit") }
-                OutlinedButton(modifier = Modifier.semantics { contentDescription = "Zoom out" }, onClick = { zoom = ((zoom ?: 1f) / 1.25f).coerceAtLeast(0.1f) }) { Text("−") }
-                OutlinedButton(onClick = { zoom = 1f }) { Text(zoom?.let { "${(it * 100).toInt()}%" } ?: "100%") }
-                OutlinedButton(modifier = Modifier.semantics { contentDescription = "Zoom in" }, onClick = { zoom = ((zoom ?: 1f) * 1.25f).coerceAtMost(8f) }) { Text("+") }
-            }
-        }
-        if (staticFile != null && (module == null || designLaunch == null))
-            Text("Synchronize a Kotlin WinRT module with a Windows App SDK reference to preview this document.")
-        if (static) {
-            if (showSettings) CheckboxRow("Render project controls (requires compilation)", projectCode, {
-                preferProjectCode = it; preferences.setValue(projectCodeKey, it, true)
-            }, enabled = launches.isNotEmpty())
-            if (staticFile == null) WinRTChoice("XAML document", files.map { it to (module?.projectDirectory?.let { dir -> it.removePrefix(dir.replace('\\', '/') + "/") } ?: it) }, source) { source = it }
-            else if (view == null || showSettings) Text(Path.of(staticFile).fileName.toString())
-            if (showSettings) {
-              val presets = listOf("360×640", "800×600", "1280×720", "1920×1080")
-              WinRTChoice("Viewport preset", presets.map { it to it }, "${width.text}×${height.text}") { preset ->
-                  val dimensions = preset.split('×')
-                  width.setTextAndPlaceCursorAtEnd(dimensions[0]); height.setTextAndPlaceCursorAtEnd(dimensions[1])
-              }
-              OutlinedButton(onClick = {
-                  val previousWidth = width.text.toString()
-                  width.setTextAndPlaceCursorAtEnd(height.text.toString()); height.setTextAndPlaceCursorAtEnd(previousWidth)
-              }) { Text("Swap width and height") }
-              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }) }
-                Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }) }
-              }
-              WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it }
-              notes.forEach { Text(it) }
-            }
-            if (notes.isNotEmpty() && showSettings) Text("Design values and control defaults replace compiled bindings and event handlers.")
-        } else {
-            if (roots.size > 1) WinRTChoice("Window", roots.map { WinUIXamlVisualInspectionSelection.key(it) to it.className.substringAfterLast('.') }, root?.let(WinUIXamlVisualInspectionSelection::key)) { selection.selectRoot(it) }
-            if ((root?.instances ?: 0) > 1) WinRTChoice("Instance", (0 until root!!.instances).map { it.toString() to "Instance ${it + 1}" }, instance.toString()) {
-                selection.instance.value = it.toInt(); selection.path.value = emptyList()
-            }
-        }
-        if (showSettings) CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
-        if (staticFile != null) CheckboxRow("Visual Tree and properties", showInspector, { showInspector = it })
-        failure?.let { Text(it) }
-        if (view == null) Text(when {
-            state.busy -> "Preparing the preview. You can continue editing XAML while it builds."
-            static && (failure != null || state.inspectionError != null) -> "This document could not be rendered. Fix the reported XAML or resource error, then refresh."
-            static && state.connected -> "Rendering this XAML document…"
-            static -> "Start the design host to render this document with WinUI."
-            else -> "Connect a development application to inspect its actual visual tree."
-        })
-        if (view != null && showInspector) {
-            val node = view.nodes.firstOrNull { it.path == selectedPath }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                node?.let { Text(it.name.ifEmpty { it.typeName.substringAfterLast('.') }) }
-                OutlinedButton(enabled = node != null, onClick = { openSource(selectedPath) }) { Text("Go to XAML") }
-            }
-        }
-       }
-        if (view != null) {
-            if (!treeOnly) key(source, resetViewport) { PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, Modifier.weight(1f).fillMaxWidth()) }
-            if (showInspector) BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                @Composable fun tree(modifier: Modifier) { key(root?.className, root?.resourcePath, instance, static) {
-                    VisualTree(view.nodes, selectedPath, ::selectPath, modifier)
-                } }
-                @Composable fun properties(modifier: Modifier) { Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Effective properties"); view.properties.forEach { Text("${it.name}: ${it.value}") }
-                } }
-                if (maxWidth >= 600.dp) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    tree(Modifier.weight(1f).fillMaxHeight()); properties(Modifier.weight(1f).fillMaxHeight())
-                } else Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    tree(Modifier.weight(1f).fillMaxWidth()); properties(Modifier.weight(1f).fillMaxWidth())
+    }
+    @Composable fun canvas() {
+        Box(Modifier.fillMaxSize().padding(16.dp).semantics { contentDescription = "Preview workspace" }, contentAlignment = Alignment.Center) {
+            if (view != null && !treeOnly) key(source, resetViewport) {
+                PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, { actualZoom = it }, Modifier.fillMaxSize())
+            } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (staticFile != null) Text(Path.of(staticFile).fileName.toString())
+                Text(when {
+                    missingModule -> "Synchronize a Kotlin WinRT module with a Windows App SDK reference to preview this document."
+                    state.busy -> "Preparing the preview. You can continue editing XAML while it builds."
+                    error != null -> error
+                    state.connected -> "Rendering this XAML document…"
+                    static -> "Start the design host to render this document with WinUI."
+                    else -> "Connect a development application to inspect its visual tree."
+                })
+                if (!state.connected && !state.busy) DefaultButton(enabled = canStart, onClick = ::startPreview) {
+                    Text(if (static) "Retry preview" else "Start application")
                 }
             }
         }
-      }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val popupWidth = (maxWidth - 24.dp).coerceIn(180.dp, 400.dp)
+        val popupHeight = (maxHeight - 24.dp).coerceAtLeast(100.dp)
+        Column(Modifier.fillMaxSize()) {
+            if (staticFile == null && !treeOnly) Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                RadioButtonRow("Live Preview", !static, { static = false })
+                RadioButtonRow("Static Preview", static, { static = true })
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (treeOnly) inspector()
+                else if (showInspector) HorizontalSplitLayout(
+                    first = { canvas() }, second = { inspector() },
+                    state = rememberSplitLayoutState(.65f),
+                    firstPaneMinWidth = 80.dp, secondPaneMinWidth = 160.dp,
+                    modifier = Modifier.fillMaxSize(),
+                ) else canvas()
+            }
+            Divider(Orientation.Horizontal)
+            // One fixed-height command strip; popups never participate in artboard measurement.
+            Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!treeOnly) {
+                    PreviewAction("Zoom out", "−", view != null) { zoom = (actualZoom / 1.25f).coerceAtLeast(.1f) }
+                    PreviewAction("Actual size (100%)", "${(actualZoom * 100).roundToInt()}%", view != null, 58) { zoom = 1f }
+                    PreviewAction("Zoom in", "+", view != null) { zoom = (actualZoom * 1.25f).coerceAtMost(8f) }
+                    PreviewAction("Fit all", "Fit", view != null, 32) { zoom = null; resetViewport++ }
+                }
+                Spacer(Modifier.weight(1f))
+                PreviewAction("Preview settings", "⚙") { showSettings = true }
+                if (!treeOnly) PreviewAction(if (showInspector) "Hide inspector" else "Show inspector", "▤") { showInspector = !showInspector }
+                PreviewAction("Preview session", "⋯") { showSession = true }
+            }
+            Divider(Orientation.Horizontal)
+            Row(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Tooltip(tooltip = { Text(error ?: status) }, modifier = Modifier.weight(1f)) {
+                    Text(error?.let { "Preview error · $it" } ?: status,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+                if (state.busy) Link("Cancel", onClick = session::stop)
+                else if (error != null) Link("Details", onClick = { showDiagnostics = true })
+            }
+        }
+        if (showSettings) PreviewPopup("Preview settings", popupWidth, popupHeight, { showSettings = false }) {
+            if (static) {
+                if (staticFile == null) WinRTChoice("XAML document", files.map { it to Path.of(it).fileName.toString() }, source) { source = it }
+                val presets = listOf("360×640", "800×600", "1280×720", "1920×1080")
+                WinRTChoice("Viewport preset", presets.map { it to it }, "${width.text}×${height.text}") { preset ->
+                    val dimensions = preset.split('×')
+                    width.setTextAndPlaceCursorAtEnd(dimensions[0]); height.setTextAndPlaceCursorAtEnd(dimensions[1])
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }) }
+                    Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }) }
+                }
+                Link("Swap width and height", onClick = {
+                    val previousWidth = width.text.toString()
+                    width.setTextAndPlaceCursorAtEnd(height.text.toString()); height.setTextAndPlaceCursorAtEnd(previousWidth)
+                })
+                WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it }
+            } else {
+                if (roots.size > 1) WinRTChoice("Window", roots.map { WinUIXamlVisualInspectionSelection.key(it) to it.className.substringAfterLast('.') }, root?.let(WinUIXamlVisualInspectionSelection::key)) { selection.selectRoot(it) }
+                if ((root?.instances ?: 0) > 1) WinRTChoice("Instance", (0 until root!!.instances).map { it.toString() to "Instance ${it + 1}" }, instance.toString()) {
+                    selection.instance.value = it.toInt(); selection.path.value = emptyList()
+                }
+            }
+            CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
+        }
+        if (showSession) PreviewPopup("Preview session", popupWidth, popupHeight, { showSession = false }) {
+            WinRTModulePicker(project)
+            if (!static || projectCode) WinRTChoice("Application", launches.map { it.taskName to it.taskName }, launch?.taskName) { launchName = it }
+            if (static) CheckboxRow("Render project controls (requires compilation)", projectCode, {
+                preferProjectCode = it; preferences.setValue(projectCodeKey, it, true)
+            }, enabled = launches.isNotEmpty())
+            if (!state.connected) Link(if (static) "Retry preview" else "Start application", enabled = canStart, onClick = { showSession = false; startPreview() })
+            Link("Refresh", enabled = state.connected && !state.inspecting, onClick = { manualRefresh++; showSession = false })
+            if (static && projectCode) Link("Rebuild project code", enabled = state.connected && !state.busy, onClick = {
+                showSession = false; session.start(module!!, launch!!, restart = true, preview = true)
+            })
+            Link("Reconnect", enabled = !state.busy, onClick = { showSession = false; session.reconnect() })
+            Link(if (state.busy) "Cancel build" else "Stop preview", enabled = state.pid != null || state.busy,
+                onClick = { showSession = false; session.stop() })
+            if (notes.isNotEmpty()) Link("Design-time notes", onClick = { showSession = false; showDiagnostics = true })
+        }
+        if (showDiagnostics) PreviewPopup("Preview details", popupWidth, popupHeight, { showDiagnostics = false }) {
+            Text(error ?: status)
+            notes.forEach { Text(it) }
+        }
     }
 }
 
+@Composable
+private fun PreviewAction(label: String, glyph: String, enabled: Boolean = true, width: Int = 28, action: () -> Unit) {
+    Tooltip(tooltip = { Text(label) }) {
+        IconButton(onClick = action, enabled = enabled,
+            modifier = Modifier.width(width.dp).height(28.dp).semantics { contentDescription = label }) { Text(glyph) }
+    }
+}
+
+@Composable
+private fun PreviewPopup(title: String, width: androidx.compose.ui.unit.Dp, maxHeight: androidx.compose.ui.unit.Dp,
+    close: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    Popup(alignment = Alignment.Center, onDismissRequest = close, properties = PopupProperties(focusable = true)) {
+        Column(Modifier.width(width).heightIn(max = maxHeight)
+            .background(JewelTheme.globalColors.panelBackground)
+            .border(1.dp, if (JewelTheme.isDark) Color(0xFF55575A) else Color(0xFFC9CDD3)).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f))
+                PreviewAction("Close $title", "×", action = close)
+            }
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+        }
+    }
+}
 @OptIn(ExperimentalJewelApi::class)
 @Composable
 private fun VisualTree(nodes: List<WinUIXamlVisualNode>, selected: List<Int>, select: (List<Int>) -> Unit, modifier: Modifier) {
@@ -359,26 +434,30 @@ internal fun visualInspectionTree(nodes: List<WinUIXamlVisualNode>): Tree<WinUIX
 }
 
 @Composable
-private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, openSource: (List<Int>) -> Unit, zoom: Float?, modifier: Modifier) {
+private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, openSource: (List<Int>) -> Unit, zoom: Float?, onZoom: (Float) -> Unit, modifier: Modifier) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
     }
     val root = view.nodes.firstOrNull()?.bounds ?: return
     if (root.width <= 0 || root.height <= 0) return
+    val density = LocalDensity.current.density
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    val effectiveZoom = previewScale(viewport.width, viewport.height, root.width, root.height, density, zoom)
+    SideEffect { onZoom(effectiveZoom) }
     var pan by remember(zoom) { mutableStateOf(Offset.Zero) }
-    Canvas(modifier.clipToBounds().semantics { contentDescription = "WinUI XAML preview. Double-click to open XAML. Drag to pan; use Fit to reset." }
+    Canvas(modifier.onSizeChanged { viewport = it }.clipToBounds().semantics { contentDescription = "WinUI XAML preview. Double-click to open XAML. Drag to pan; use Fit to reset." }
         .pointerInput(zoom) { detectDragGestures { change, delta -> change.consume(); pan += delta } }
-        .pointerInput(view.nodes, zoom, pan) {
+        .pointerInput(view.nodes, effectiveZoom, pan) {
           fun hit(point: Offset): WinUIXamlVisualNode? {
-            val factor = zoom?.times(density) ?: minOf(size.width / root.width, size.height / root.height).toFloat()
+            val factor = effectiveZoom * density
             val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
             return WinUIXamlVisualInspectionSelection.hit(view.nodes, (point.x - origin.x) / factor.toDouble(), (point.y - origin.y) / factor.toDouble())
           }
           detectTapGestures(onTap = { point -> hit(point)?.let { select(it.path) } },
               onDoubleTap = { point -> hit(point)?.let { select(it.path); openSource(it.path) } })
         }) {
-        val factor = zoom?.times(density) ?: minOf(size.width / root.width, size.height / root.height).toFloat()
+        val factor = effectiveZoom * density
         val origin = Offset((size.width - root.width.toFloat() * factor) / 2, (size.height - root.height.toFloat() * factor) / 2) + pan
         translate(origin.x, origin.y) { scale(factor, factor, Offset.Zero) {
             bitmap?.let { drawImage(it, dstSize = androidx.compose.ui.unit.IntSize(root.width.toInt(), root.height.toInt())) }
@@ -389,6 +468,11 @@ private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, sel
         } }
     }
 }
+
+/** Zoom is measured in DIP; fit and explicit zoom share draw/hit-test coordinates. */
+internal fun previewScale(width: Int, height: Int, rootWidth: Double, rootHeight: Double, density: Float, zoom: Float?): Float =
+    zoom ?: if (width <= 0 || height <= 0 || rootWidth <= 0 || rootHeight <= 0) 1f
+    else minOf(width / rootWidth, height / rootHeight).toFloat() / density
 
 internal fun bgraImage(image: WinUIXamlVisualImage): BufferedImage {
     require(image.width in 1..768 && image.height in 1..768 && image.pixels.size == image.width * image.height * 4)

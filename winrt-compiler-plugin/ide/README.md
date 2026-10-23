@@ -495,10 +495,14 @@ completion, caret state and refactoring. The selected mode survives reopening.
 New documents default to **Split**, opening the designer automatically for the
 document's imported module. Saved mode choices still survive reopening. The
 preview pane is active only while visible in the selected editor. The static
-image initially fits the available area. **Fit**, **−**, **100%** and **+** control
-the canvas scale; drag the canvas to pan. Fit recenters it. **Settings** reveals
-dimensions and theme without permanently occupying the artboard. **Visual Tree
-and properties** adds the inspector when needed.
+image initially fits the available area. **Fit**, **−**, the percentage and **+** control
+the canvas scale from a fixed bottom toolbar; drag the canvas to pan. Fit recenters
+it and the percentage reports the actual DIP scale, including Fit mode. Click the
+percentage to reset to 100%; zoom steps start at the current scale. The settings
+gear opens a dismissible popup without resizing the artboard. The inspector toggle
+opens a resizable right sidebar with separately resizable tree and property areas.
+Toolbar actions have hover labels and accessible names. Status and cancellation
+stay in a fixed bottom line, with errors available through Details.
 
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
@@ -506,8 +510,8 @@ into a uniquely identifiable element selects its visual bounds. Matching prefers
 controls and template internals are not guessed. When an internal visual child
 has no source tag, navigation falls back to its nearest identifiable source owner.
 Settings includes viewport presets (360×640, 800×600, 1280×720 and 1920×1080),
-width/height swapping, theme, project-code rebuild and reconnect. The regular
-toolbar keeps refresh, stop and canvas navigation available. During preparation,
+width/height swapping, theme and automatic updates. The session menu (**…**) owns
+launch selection, project-code mode, refresh, rebuild, stop and reconnect. During preparation,
 Cancel stops the native IDE Gradle execution associated with that preview session,
 using a background progress context so Gradle JVM resolution does not block EDT.
 Refresh status replaces one line in place, keeping the toolbar and canvas stationary.
