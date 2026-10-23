@@ -197,7 +197,16 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 val logicalHeight = element.actualHeight.takeIf { it.isFinite() && it > 0 }
                   ?: element.height.takeIf { it.isFinite() && it > 0 } ?: 1.0
                 val (width, height) = winUIXamlCaptureSize(logicalWidth, logicalHeight, dpi, renderScale)
-                requireNotNull(bitmap.renderAsync(element, width, height)).await()
+                ${if (framework == XamlFramework.WinUI) """// WinUI hwwalk.cpp propagates UIElement.RasterizationScale through
+                // the subtree's realization transform, without changing DIP layout.
+                // RenderAsync's output size alone can enlarge existing glyph textures.
+                val previousRasterizationScale = element.rasterizationScale
+                try {
+                  element.rasterizationScale = maxOf(previousRasterizationScale, width / logicalWidth, height / logicalHeight)
+                  requireNotNull(bitmap.renderAsync(element, width, height)).await()
+                } finally { element.rasterizationScale = previousRasterizationScale }""" else """// Windows.UI.Xaml has no public UIElement.RasterizationScale setter.
+                // UWP retains RenderAsync density scaling without changing its layout.
+                requireNotNull(bitmap.renderAsync(element, width, height)).await()"""}
                 stage = "read the rendered pixels"
                 val buffer = requireNotNull(requireNotNull(bitmap.getPixelsAsync()).await())
                 require(bitmap.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && bitmap.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {

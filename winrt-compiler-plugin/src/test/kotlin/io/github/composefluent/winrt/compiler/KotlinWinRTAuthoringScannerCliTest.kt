@@ -96,6 +96,8 @@ class KotlinWinRTAuthoringScannerCliTest {
         assertTrue(inspector.contains("val layoutSize = item.renderSize"))
         assertTrue(inspector.contains("layoutSize.width, layoutSize.height"))
         assertTrue(inspector.contains("windows.ui.viewmanagement.ApplicationView.getForCurrentView()"))
+        assertTrue(!inspector.contains("element.rasterizationScale"))
+        assertTrue(inspector.contains("bitmap.renderAsync(element, width, height)"))
         assertTrue((host + inspector).let { !it.contains("microsoft.ui.") && !it.contains("XamlControlsResources") && !it.contains("window.appWindow") })
     }
 
@@ -105,6 +107,14 @@ class KotlinWinRTAuthoringScannerCliTest {
         // an authored IApplicationOverrides so native OnLaunched reaches Kotlin.
         val root = Files.createTempDirectory("kotlin-winrt-preview-authoring-")
         io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList())
+        // WinUI UIElement.RasterizationScale affects subtree rasterization, not
+        // layout. Preserve the authored value across successful and failed capture.
+        val inspector = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_preview.kt").readText()
+        val capture = inspector.substringAfter("capture = ").substringBefore("preview = ")
+        assertTrue(capture.contains("val previousRasterizationScale = element.rasterizationScale"))
+        assertTrue(capture.contains("maxOf(previousRasterizationScale, width / logicalWidth, height / logicalHeight)"))
+        assertTrue(capture.contains("finally { element.rasterizationScale = previousRasterizationScale }"))
+        assertTrue(!capture.contains("element.width =") && !capture.contains("element.height =") && !capture.contains("renderTransform"))
         val index = root.resolve("index.tsv")
         index.writeText("Microsoft.UI.Xaml.Application\tRuntimeClass\tMicrosoft.UI.Xaml.IApplicationOverrides\n" +
             "Microsoft.UI.Xaml.IApplicationOverrides\tInterface\t\n")
