@@ -227,6 +227,35 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 .firstOrNull { path -> view.nodes.any { it.path == path } }.orEmpty()
         }
     }
+    var editFeedback by remember(source) { mutableStateOf<String?>(null) }
+    val editable by produceState<DesignerSelection?>(null, selectedPath, revision, view?.nodes, static, source, state.connected, failure, state.inspectionError) {
+        value = null
+        val snapshot = view ?: return@produceState
+        val node = snapshot.nodes.firstOrNull { it.path == selectedPath } ?: return@produceState
+        if (!static || !state.connected || failure != null || state.inspectionError != null) return@produceState
+        val owner = snapshot.nodes.filter { it.path.size <= selectedPath.size && selectedPath.take(it.path.size) == it.path }
+            .sortedByDescending { it.path.size }.firstNotNullOfOrNull { session.sourcePath(it.typeName) }
+        value = withContext(Dispatchers.IO) { ReadAction.compute<DesignerSelection?, RuntimeException> {
+            WinUIXamlDesignerEditing.selection(project, owner ?: source, node, snapshot.nodes)
+        } }
+    }
+    val currentEditable by rememberUpdatedState(editable)
+    fun applyEdit(changes: Map<String, String?>, title: String) {
+        val target = currentEditable ?: return
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) {
+                runCatching { WinUIXamlDesignerEditing.apply(project, target, changes, title) }
+                    .onSuccess { editFeedback = "$title · Ctrl+Z to undo" }
+                    .onFailure { editFeedback = it.message ?: "Could not update XAML" }
+            }
+        }
+    }
+    fun changeLayout(change: DesignerTransform) {
+        val target = currentEditable ?: return
+        runCatching { WinUIXamlDesignerEditing.layout(target, change) }
+            .onSuccess { applyEdit(it, if (change.resize) "Resize XAML element" else "Move XAML element") }
+            .onFailure { editFeedback = it.message }
+    }
     fun openSource(path: List<Int>) {
         val snapshot = view ?: return
         val node = snapshot.nodes.firstOrNull { it.path == path } ?: return
@@ -290,9 +319,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 second = {
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Effective properties · read only")
+                        Text("Properties")
                         Text("Filter properties")
                         TextField(propertyFilter, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Filter properties" })
+                        DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
+                        Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath) Text("Reading selection…")
                         else androidx.compose.foundation.text.selection.SelectionContainer {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -317,7 +348,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (view != null && !treeOnly) key(source) {
                 PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, fitSelection, panTool,
                     { actualZoom = it }, { zoom = it; fitSelection = false },
-                    { fitSelection = false; zoom = null; resetViewport++ }, Modifier.fillMaxSize(), resetViewport)
+                    { fitSelection = false; zoom = null; resetViewport++ }, Modifier.fillMaxSize(), resetViewport, editable != null, ::changeLayout)
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())
@@ -403,7 +434,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     Spacer(Modifier.width(6.dp))
                 }
                 Tooltip(tooltip = { Text(error ?: status) }, modifier = Modifier.weight(1f)) {
-                    Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: status,
+                    Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: editFeedback ?: status,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
                 if (state.busy) Link("Cancel", onClick = session::stop)
@@ -452,7 +483,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
             }
             CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
-            Text("Canvas: Ctrl+wheel zooms at the pointer. Wheel or arrow keys pan; Space+drag temporarily uses the hand tool.")
+            Text("Canvas: drag a selected element or its handles to edit layout. Arrows nudge (Shift: 10 DIP). Ctrl+wheel zooms; wheel, hand mode arrows or Space+drag pan.")
             Text("With canvas focus: +/− zoom, 0 shows 100%, F fits all, Escape selects the parent, Enter opens XAML.")
         }
         if (showSession) PreviewPopup("Preview session", popupWidth, popupHeight, { showSession = false }) {

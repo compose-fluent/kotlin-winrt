@@ -93,6 +93,8 @@ class KotlinWinRTAuthoringScannerCliTest {
         assertTrue(host.contains("XamlRuntime.initialize(XamlFramework.UWP)"))
         assertTrue(host.contains("windows.applicationmodel.activation.LaunchActivatedEventArgs"))
         assertTrue(inspector.contains("windows.system.DispatcherQueue.getForCurrentThread()"))
+        assertTrue(inspector.contains("val layoutSize = item.renderSize"))
+        assertTrue(inspector.contains("layoutSize.width, layoutSize.height"))
         assertTrue(inspector.contains("windows.ui.viewmanagement.ApplicationView.getForCurrentView()"))
         assertTrue((host + inspector).let { !it.contains("microsoft.ui.") && !it.contains("XamlControlsResources") && !it.contains("window.appWindow") })
     }

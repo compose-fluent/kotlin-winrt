@@ -70,4 +70,30 @@ class WinUIXamlPreviewCanvasTest : BasePlatformTestCase() {
             settle(); assertEquals("Consecutive wheel events use the updated zoom", 4f, zoom)
         } finally { scene.close() }
     }
+    fun testLayoutGestureCommitsOnceInDipAndHandleResizes() {
+        val scene = ImageComposeScene(400, 400)
+        val changes = mutableListOf<DesignerTransform>()
+        val view = WinUIXamlVisualSnapshot(listOf(
+            WinUIXamlVisualNode(emptyList(), "Grid", "", WinUIXamlVisualBounds(0.0, 0.0, 200.0, 200.0)),
+            WinUIXamlVisualNode(listOf(0), "Button", "", WinUIXamlVisualBounds(20.0, 20.0, 40.0, 40.0))),
+            emptyList(), WinUIXamlVisualImage(1, 1, byteArrayOf(-1, -1, -1, -1)))
+        var time = System.nanoTime()
+        fun settle() = repeat(15) { Thread.sleep(10); time += 20_000_000; androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications(); scene.render(time).close(); PlatformTestUtil.dispatchAllEventsInIdeEventQueue() }
+        fun drag(from: Offset, to: Offset) {
+            scene.sendPointerEvent(PointerEventType.Press, from, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+            settle()
+            scene.sendPointerEvent(PointerEventType.Move, to, buttons = PointerButtons(isPrimaryPressed = true))
+            settle()
+            assertEquals("No source writes while pointer is held", 0, changes.size)
+            scene.sendPointerEvent(PointerEventType.Release, to, buttons = PointerButtons(), button = PointerButton.Primary)
+            settle()
+        }
+        try {
+            scene.setContent { PreviewImage(view, listOf(0), {}, {}, null, false, false, {}, {}, {}, Modifier.fillMaxSize(), editable = true, changeLayout = changes::add) }
+            settle(); drag(Offset(80f, 80f), Offset(100f, 110f))
+            assertEquals(listOf(DesignerTransform(10.0, 15.0)), changes)
+            changes.clear(); drag(Offset(120f, 120f), Offset(160f, 140f))
+            assertEquals(listOf(DesignerTransform(0.0, 0.0, 20.0, 10.0, true)), changes)
+        } finally { scene.close() }
+    }
 }

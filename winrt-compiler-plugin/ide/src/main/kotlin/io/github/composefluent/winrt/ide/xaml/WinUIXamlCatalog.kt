@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.ide.xaml
 
 import io.github.composefluent.winrt.metadata.*
 
-data class WinUIXamlMember(val name: String, val typeName: String, val owner: String, val isEvent: Boolean = false)
+data class WinUIXamlMember(val name: String, val typeName: String, val owner: String, val isEvent: Boolean = false, val isWritable: Boolean = false)
 data class WinUIXamlContentMember(val name: String, val collection: Boolean)
 
 /** An editor view of normalized WinMD, not a second control or projection registry. */
@@ -71,7 +71,7 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
                 closure.resolveRuntimeClass(owner).instanceInterfaceClosure.mapNotNull { it.definitionType } else emptyList()
             definitions.forEach { definition ->
                 definition.properties.filter { !it.isStatic && it.hasValidAccessors }.forEach {
-                    add(WinUIXamlMember(it.name, it.typeName, owner.qualifiedName))
+                    add(WinUIXamlMember(it.name, it.typeName, owner.qualifiedName, isWritable = !it.isReadOnly))
                 }
                 definition.events.filter { !it.isStatic && it.hasValidAccessors }.forEach {
                     add(WinUIXamlMember(it.name, it.delegateTypeName, owner.qualifiedName, true))
@@ -93,7 +93,7 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
             val name = getter.name.removePrefix("Get")
             val setter = methods.firstOrNull { it.name == "Set$name" && it.parameters.size == 2 }
             if (setter != null && getter.returnTypeName != setter.parameters[1].typeName) return@mapNotNull null
-            WinUIXamlMember(name, getter.returnTypeName, type.qualifiedName)
+            WinUIXamlMember(name, getter.returnTypeName, type.qualifiedName, isWritable = setter != null)
         }.distinctBy { it.name }
     }
 

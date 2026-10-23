@@ -154,8 +154,10 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           describe = { value, root ->
             val element = runCatching { value.asWinRT<FrameworkElement>() }.getOrNull()
             val bounds = element?.let { item -> runCatching {
+              // UIElement.GetRenderSize uses layout storage; TextBlock.ActualWidth/Height describe text ink.
+              val layoutSize = item.renderSize
               val rect = requireNotNull(item.transformToVisual(root.asWinRT<UIElement>())).transformBounds(
-                windows.foundation.Rect(0f, 0f, item.actualWidth.toFloat(), item.actualHeight.toFloat()))
+                windows.foundation.Rect(0f, 0f, layoutSize.width, layoutSize.height))
               WinUIXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
             }.getOrNull() } ?: WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0)
             val type = (value as IWinRTObject).nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()

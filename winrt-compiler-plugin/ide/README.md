@@ -529,16 +529,24 @@ the IDE log. This cache does not replace Gradle dependency resolution; explicitl
 rebuild after changing an external unpublished dependency without changing its
 version or project configuration, or changing environment-dependent build inputs.
 
-The canvas has separate selection and hand tools. Ordinary selection drags do not
-move the canvas or edit XAML geometry. Space+drag and middle-button drag temporarily
+The canvas has separate selection and hand tools. Select an exactly mapped source
+element, then drag to edit its layout or use its eight handles to resize it. Space+drag and middle-button drag temporarily
 pan; the wheel pans and Ctrl+wheel zooms around the pointer. With canvas focus,
-arrow keys pan, +/− zoom, 0 selects 100%, F/Home fits all, Escape selects the parent,
+arrow keys nudge editable elements (Shift uses 10 DIP), or pan in hand mode; +/− zoom, 0 selects 100%, F/Home fits all, Escape cancels a drag or selects the parent,
 and Enter opens the selected element's source. Fit keeps keyboard focus.
 Custom zoom focuses its input and accepts Enter. The inspector offers a parent
-selection action and a filterable, selectable read-only property list; property
+selection action, searchable writable XAML properties with Apply/Reset, and effective read-only values; property
 results are associated with the selected visual path. Rendering preserves selection
 when its path still exists. Failed renders retain the last frame with an Out of date
 status and a direct Retry action; disconnected previews expose Retry preview.
+
+Designer edits are source commands with Ctrl+Z/Ctrl+Shift+Z undo/redo. Writable properties
+come from WinMD setter metadata; enum and Boolean choices, numeric validation and XAML
+expressions are supported. Canvas moves use attached offsets; other panels use margins
+and alignment. Resizing writes Width/Height and preserves the leading edge. Layout
+gestures do not replace bindings/resources or property elements. Ambiguous/template-only
+nodes remain inspection-only, and stale source edits are rejected instead of overwriting
+concurrent changes. This does not implement cross-container reparenting or template authoring.
 
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
