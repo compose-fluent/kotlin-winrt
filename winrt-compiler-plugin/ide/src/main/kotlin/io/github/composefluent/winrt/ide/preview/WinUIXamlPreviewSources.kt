@@ -72,12 +72,14 @@ internal class WinUIXamlPreviewSources(private val project: Project, private val
             if (!Files.isRegularFile(input)) return@forEach
             val output = host.resolve(entry.target.toSafeRelativePath("Design asset")).normalize()
             require(output.startsWith(host))
-            if (!Files.isRegularFile(output) || Files.size(input) != Files.size(output) ||
-                Files.getLastModifiedTime(input) != Files.getLastModifiedTime(output)) {
-                Files.createDirectories(output.parent)
-                Files.copy(input, output, REPLACE_EXISTING)
-                Files.setLastModifiedTime(output, Files.getLastModifiedTime(input))
-            }
+            // Gradle may deploy identical assets with different timestamps. The
+            // running WinUI host keeps package icons open, so even rewriting the
+            // same bytes can fail with a sharing violation. Compare content before
+            // touching the destination; actual asset changes still surface errors.
+            if (Files.isRegularFile(output) && Files.mismatch(input, output) == -1L) return@forEach
+            Files.createDirectories(output.parent)
+            Files.copy(input, output, REPLACE_EXISTING)
+            Files.setLastModifiedTime(output, Files.getLastModifiedTime(input))
         }
     }
 }

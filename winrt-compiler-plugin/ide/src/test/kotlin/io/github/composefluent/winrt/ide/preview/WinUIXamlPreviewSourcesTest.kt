@@ -10,6 +10,10 @@ import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.resources.WinRTResourceIndex
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.OpenOption
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.FileTime
+import com.sun.nio.file.ExtendedOpenOption
 
 class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
     override fun createTempDirTestFixture() = com.intellij.testFramework.fixtures.impl.TempDirTestFixtureImpl()
@@ -49,7 +53,27 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
         assertEquals(relative, sources.resolve("using:sample.Colors", "UI/Page.xaml"))
         assertNull(sources.resolve("../../../outside.xaml", "UI/Page.xaml"))
         sources.stageAssets()
-        assertEquals("passive asset", Files.readString(Path.of(host, "Assets/Logo.png")))
+        val staged = Path.of(host, "Assets/Logo.png")
+        assertEquals("passive asset", Files.readString(staged))
+        // Simulate an existing deployment and WinUI retaining its package icon.
+        // A timestamp difference must not rewrite unchanged, locked bytes.
+        val deploymentTime = FileTime.fromMillis(1_000)
+        Files.setLastModifiedTime(staged, deploymentTime)
+        Files.newByteChannel(staged, setOf<OpenOption>(StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE)).use {
+            sources.stageAssets()
+            assertEquals(deploymentTime, Files.getLastModifiedTime(staged))
+            assertEquals("passive asset", Files.readString(staged))
+        }
+        // The content check must also detect changes hidden by matching metadata.
+        val input = Path.of(asset.path)
+        Files.writeString(input, "changed asset")
+        Files.setLastModifiedTime(input, deploymentTime)
+        Files.newByteChannel(staged, setOf<OpenOption>(StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE)).use {
+            val failure = runCatching { sources.stageAssets() }.exceptionOrNull()
+            assertTrue("A changed, locked asset must report its write failure", failure is java.nio.file.FileSystemException)
+        }
+        sources.stageAssets()
+        assertEquals("changed asset", Files.readString(staged))
         assertFalse(Files.exists(Path.of(root, "build/classes/kotlin")))
     }
 }
