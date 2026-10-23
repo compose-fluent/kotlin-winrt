@@ -236,11 +236,12 @@ class RunWinAppPackageTaskTest {
         write(root.resolve("build output/App.exe"), "test executable")
         write(root.resolve("build output/Assets/Logo.png"), "test logo")
 
-        fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null, preview: Boolean = false) =
+        fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null, preview: Boolean = false, registerOnly: Boolean = false) =
             GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
-                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW") } +
+                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW", "KOTLIN_WINRT_REGISTER_ONLY") } +
                     (session?.let { mapOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" to it) } ?: emptyMap()) +
-                    if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1") else emptyMap())
+                    (if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1") else emptyMap()) +
+                    if (registerOnly) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap())
                 .withArguments(listOf("runFixture", "--configuration-cache", "--offline", "--stacktrace") + options)
         val first = runner().build()
         assertEquals(TaskOutcome.SUCCESS, first.task(":runFixture")?.outcome)
@@ -290,6 +291,12 @@ class RunWinAppPackageTaskTest {
         val previewRegistration = Files.readAllLines(root.resolve("invocations.log")).last()
         assertTrue(previewRegistration, previewRegistration.contains("--no-launch"))
         assertFalse(previewRegistration, previewRegistration.contains("--args"))
+        runner(emptyList(), session = nextSession, preview = true, registerOnly = true).build()
+        val ideRegistration = Files.readAllLines(root.resolve("invocations.log")).last()
+        assertTrue(ideRegistration, ideRegistration.contains("--no-launch"))
+        assertFalse(ideRegistration, ideRegistration.contains("--args"))
+        runner(emptyList(), session = nextSession, preview = true, registerOnly = false).build()
+        assertFalse(Files.readAllLines(root.resolve("invocations.log")).last().contains("--no-launch"))
         runner(listOf("--no-launch"), session = nextSession).build()
         assertFalse(Files.readAllLines(root.resolve("invocations.log")).last().contains(WINAPP_HOT_RELOAD_ARGUMENT))
         runner(listOf("--no-launch", "-PsdkApi=10.0.28000.0", "-Pminimum=10.0.22000.0")).build()

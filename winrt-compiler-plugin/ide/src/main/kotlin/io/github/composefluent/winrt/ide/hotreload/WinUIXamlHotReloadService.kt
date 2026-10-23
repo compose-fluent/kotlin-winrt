@@ -203,7 +203,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module,
                             listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
                             environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
-                                if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
+                                (if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap()) +
+                                if (detachedNative) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap(),
                             arguments = if (detachedNative) "--no-launch" else "",
                             onProcessStarted = { handler ->
                                 if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)

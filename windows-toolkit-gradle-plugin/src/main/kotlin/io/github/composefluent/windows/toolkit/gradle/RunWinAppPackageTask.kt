@@ -140,7 +140,10 @@ abstract class RunWinAppPackageTask @Inject constructor(
         args.convention("")
         detach.convention(false)
         debugOutput.convention(false)
-        noLaunch.convention(false)
+        // Android Studio replaces BuildLauncher.forTasks after Gradle's task-option
+        // setup. Carry registration intent through the session environment too.
+        noLaunch.convention(project.providers.environmentVariable("KOTLIN_WINRT_REGISTER_ONLY")
+            .map { it == "1" }.orElse(false))
         winAppCliExecutable.convention("winapp")
         winAppCliVersion.convention(WinAppCliDefaults.VERSION)
         winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
