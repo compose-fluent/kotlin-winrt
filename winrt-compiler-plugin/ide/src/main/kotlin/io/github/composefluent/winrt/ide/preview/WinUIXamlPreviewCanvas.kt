@@ -34,7 +34,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     selectedPaths: Set<List<Int>> = setOf(selected), toggleSelection: (List<Int>) -> Unit = select,
     snapEnabled: Boolean = true, armedTool: String? = null, toolDrop: DesignerToolDrop? = null,
     finishDrop: () -> Unit = {}, insert: (String, List<Int>, Double, Double) -> Unit = { _, _, _, _ -> },
-    cancelTool: () -> Unit = {}) {
+    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
@@ -133,7 +133,8 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     Canvas(modifier.onGloballyPositioned { canvasOrigin = it.positionInRoot() }.onSizeChanged { viewport = it }.clipToBounds()
         .focusRequester(focus).onFocusChanged { focused = it.isFocused; if (!focused) space = false }
         .onKeyEvent { event ->
-            if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) false
+            if (event.isCtrlPressed && event.key == Key.A && event.type == KeyEventType.KeyDown) { selectSiblings(); true }
+            else if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) false
             else if (event.key == Key.Spacebar) { space = event.type == KeyEventType.KeyDown; true }
             else if (event.type != KeyEventType.KeyDown) false
             else if (editable && !panTool && event.key in listOf(Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown)) {

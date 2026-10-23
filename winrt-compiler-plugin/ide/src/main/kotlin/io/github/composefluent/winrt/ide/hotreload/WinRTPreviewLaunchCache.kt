@@ -8,7 +8,8 @@ import java.security.MessageDigest
 
 /** IDE launch optimization only; Gradle remains the owner of compilation and deployment.
  * Reuse is limited to the desktop Native package path that already supports CreateProcess
- * in NativeDebugLauncher. UWP activation and JVM environment setup still use Gradle.
+ * in NativeDebugLauncher, plus the SDK designer with its staged JVM launcher.
+ * UWP activation and ordinary JVM application environment setup still use Gradle.
  */
 internal class WinRTPreviewLaunchCache(
     private val buildRoot: Path,
@@ -16,14 +17,18 @@ internal class WinRTPreviewLaunchCache(
     private val module: WinRTModuleData,
     private val launch: WinUIXamlHotReloadLaunchData,
 ) {
+    private val sdk = launch.taskName == "runWinRTXamlSdkPreview" && module.staticPreview?.launch() == launch
     private val executable = Path.of(launch.previewExecutable).toAbsolutePath().normalize()
     val deployment: Path = executable.parent
     private val receipt = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-preview-launch/" +
         digest(launch.taskName.toByteArray()) + ".txt")
 
-    fun supported(): Boolean = launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage") &&
-        executable.startsWith(Path.of(module.buildDirectory).toAbsolutePath().normalize()) && Files.isRegularFile(executable) &&
-        runCatching { Files.readString(deployment.resolve("AppxManifest.xml")).contains("Windows.FullTrustApplication") }.getOrDefault(false)
+    fun supported(): Boolean {
+        if (!executable.startsWith(Path.of(module.buildDirectory).toAbsolutePath().normalize()) || !Files.isRegularFile(executable)) return false
+        if (sdk) return module.staticPreview?.metadataReferencesFile?.let { Files.isRegularFile(Path.of(it)) } == true
+        return launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage") &&
+            runCatching { Files.readString(deployment.resolve("AppxManifest.xml")).contains("Windows.FullTrustApplication") }.getOrDefault(false)
+    }
 
     /** Content hashes catch edits with preserved timestamps and additions/deletions in dependencies.
      * Build outputs are excluded here and separately checked in the deployment fingerprint.
@@ -36,7 +41,7 @@ internal class WinRTPreviewLaunchCache(
                 m.xamlCompilations.flatMap { it.sourceRoots } + m.manifestFiles + m.restoreLockFiles)
                 .filter(String::isNotBlank).forEach { add(Path.of(it)) }
         }
-    }, content = true, excludeBuild = true)
+    }, content = true, excludeBuild = true, configurationOnly = sdk)
 
     private fun outputs() = fingerprint(listOf(deployment), content = false, excludeBuild = false)
     fun reusable(inputs: String): Boolean = supported() && runCatching {
@@ -58,7 +63,7 @@ internal class WinRTPreviewLaunchCache(
     fun invalidate() { Files.deleteIfExists(receipt) }
 
     private fun record(inputs: String): String = linkedMapOf(
-        "format" to "native-desktop-preview-v2",
+        "format" to if (sdk) "sdk-desktop-preview-v1" else "native-desktop-preview-v2",
         "launch" to launch.toString(),
         "model" to modules.toString(),
         "inputs" to inputs,
@@ -73,7 +78,7 @@ internal class WinRTPreviewLaunchCache(
             .associateWith { System.getenv(it).orEmpty() }.toString(),
     ).entries.joinToString("\n") { (name, value) -> "$name=${digest(value.toByteArray())}" }
 
-    private fun fingerprint(roots: List<Path>, content: Boolean, excludeBuild: Boolean): String {
+    private fun fingerprint(roots: List<Path>, content: Boolean, excludeBuild: Boolean, configurationOnly: Boolean = false): String {
         val files = sortedSetOf<Path>()
         val missing = sortedSetOf<String>()
         val excluded = setOf("build", ".gradle", ".git", ".idea", ".kotlin", ".konan", "node_modules")
@@ -84,7 +89,14 @@ internal class WinRTPreviewLaunchCache(
                     if (excludeBuild && dir != root && dir.fileName.toString() in excluded) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
                 override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                     check(!attrs.isSymbolicLink) { "Preview input links require Gradle validation" }
-                    if (attrs.isRegularFile) files.add(file)
+                    // SDK host inputs exclude app XAML/Kotlin edits. Build logic,
+                    // version catalogs, restore locks and model/toolchain identity
+                    // still invalidate it; deployed runtime changes are checked below.
+                    val name = file.fileName.toString()
+                    val configuration = name.endsWith(".gradle.kts") || name.endsWith(".gradle") ||
+                        name.endsWith(".toml") || name.endsWith(".properties") || name.endsWith(".json") ||
+                        file.any { it.toString() in setOf("buildSrc", "build-logic", "gradle") }
+                    if (attrs.isRegularFile && (!configurationOnly || configuration)) files.add(file)
                     check(files.size <= 30_000) { "Preview inputs require Gradle validation" }
                     return FileVisitResult.CONTINUE
                 }

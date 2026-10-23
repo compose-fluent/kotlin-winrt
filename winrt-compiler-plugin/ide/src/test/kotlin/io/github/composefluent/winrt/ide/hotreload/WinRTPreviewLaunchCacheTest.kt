@@ -45,4 +45,27 @@ class WinRTPreviewLaunchCacheTest {
             Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
         }
     }
+
+    @Test fun sdkHostSurvivesProjectSourceEditsButInvalidatesBuildConfiguration() {
+        val root = Files.createTempDirectory("sdk-preview-cache")
+        try {
+            val build = Files.createDirectories(root.resolve("build/host"))
+            val exe = Files.write(build.resolve("preview.exe"), byteArrayOf(1))
+            val refs = Files.writeString(build.resolve("references.json"), "{}")
+            val config = Files.writeString(root.resolve("build.gradle.kts"), "sdkVersion=1")
+            val source = Files.writeString(root.resolve("Page.xaml"), "<Grid/>")
+            val sdk = WinRTStaticPreviewData("runWinRTXamlSdkPreview", exe.toString(), build.toString(), refs.toString())
+            val module = WinRTModuleData(":app", root.toString(), root.resolve("build").toString(), "2.4", "sdk", emptyList(), emptyList(), emptyList(), emptyList(), staticPreview = sdk)
+            val cache = WinRTPreviewLaunchCache(root, listOf(module), module, sdk.launch())
+            cache.remember(cache.inputs())
+            Files.writeString(source, "<Grid><Button/></Grid>")
+            Files.writeString(root.resolve("Component.kt"), "class Component")
+            assertTrue("Basic preview does not wait for changed project code", cache.reusable(cache.inputs()))
+            Files.writeString(config, "sdkVersion=2")
+            assertFalse(cache.reusable(cache.inputs()))
+            cache.remember(cache.inputs())
+            Files.write(exe, byteArrayOf(2, 3))
+            assertFalse(cache.reusable(cache.inputs()))
+        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
+    }
 }

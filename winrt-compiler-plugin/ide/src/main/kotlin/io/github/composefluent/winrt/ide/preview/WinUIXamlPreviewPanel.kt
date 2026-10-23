@@ -248,6 +248,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
     LaunchedEffect(view?.nodes) {
+        if (static && view != null) multiPaths = multiPaths.filter { path -> view.nodes.any { it.path == path } }.toSet()
         if (static && view != null && view.nodes.none { it.path == staticPath }) {
             staticPath = generateSequence(staticPath) { it.dropLast(1).takeIf { parent -> it.isNotEmpty() } }
                 .firstOrNull { path -> view.nodes.any { it.path == path } }.orEmpty()
@@ -332,6 +333,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             EditorFactory.getInstance().eventMulticaster.addCaretListener(object : CaretListener {
                 override fun caretPositionChanged(event: CaretEvent) {
                     val editor = event.editor
+                    if (!editor.contentComponent.isFocusOwner) return
                     val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
                     if (!file.path.equals(source.replace('\\', '/'), true)) return
                     val documents = PsiDocumentManager.getInstance(project)
@@ -414,7 +416,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, fitSelection, panTool,
                     { actualZoom = it }, { zoom = it; fitSelection = false },
                     { fitSelection = false; zoom = null; resetViewport++ }, Modifier.fillMaxSize(), resetViewport, editable != null, ::changeLayout,
-                    selectedPaths, ::togglePath, snapEnabled, armedTool, toolDrop, { toolDrop = null }, ::insertTool, { armedTool = null })
+                    selectedPaths, ::togglePath, snapEnabled, armedTool, toolDrop, { toolDrop = null }, ::insertTool, { armedTool = null }, {
+                        if (static) multiPaths = view.nodes.filter { it.path.size == selectedPath.size && it.path.dropLast(1) == selectedPath.dropLast(1) }
+                            .map { it.path }.toSet() - setOf(staticPath)
+                    })
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())
@@ -517,7 +522,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: editFeedback ?: status,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
-                if (projectPreparing && projectState.busy) Link("Cancel project build", onClick = design::stop)
+                if (projectPreparing && projectState.busy) Link("Cancel project build", onClick = { design.stop(); editFeedback = "Project build cancelled · basic preview remains available" })
                 else if (state.busy) Link("Cancel", onClick = session::stop)
                 else {
                     if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)

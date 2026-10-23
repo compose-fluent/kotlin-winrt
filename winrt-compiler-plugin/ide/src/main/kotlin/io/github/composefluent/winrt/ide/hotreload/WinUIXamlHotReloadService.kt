@@ -162,7 +162,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     Files.createDirectories(directory!!)
                     withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString()) }
                 }
-                val cache = if (preview && launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage")) WinRTPreviewLaunchCache(
+                val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage"))) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
                 val inputs = cache?.let { runCatching { it.inputs() }.getOrNull() }
@@ -192,9 +192,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 }
                 if (!reused) {
                     val buildFinished = CompletableDeferred<Unit>()
+                    // A Gradle Exec task keeps the project execution lock while
+                    // its host lives. Prepare the desktop SDK host, release Gradle,
+                    // then own the process so project compilation can proceed.
+                    val detachedSdk = sdkPreview && launch.taskName == "runWinRTXamlSdkPreview"
                     ApplicationManager.getApplication().invokeLater {
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module,
-                            listOf(launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
+                            listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
                             environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
                                 if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
                             onProcessStarted = { handler ->
@@ -209,7 +213,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         display.value = WinUIXamlHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
                             else "Building and waiting for the application. See Gradle Run output.", busy = true)
                     }) return@launch
-                    awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable,
+                    if (detachedSdk) {
+                        buildFinished.await()
+                        currentCoroutineContext().ensureActive()
+                        val process = ProcessBuilder(launch.executable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
+                            .directory(Path.of(launch.workingDirectory).toFile())
+                            .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
+                            .apply { environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = directory!!.toString()
+                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
+                        if (!withCurrent(request) { directPreview = process }) { process.destroy(); return@launch }
+                        awaitConnection(request, directory!!, launch.executable, process)
+                    } else awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable,
                         building = { !buildFinished.isCompleted && gradleProcess?.isProcessTerminated != true })
                     // Never bless inputs edited while Gradle was compiling an earlier version.
                     if (inputs != null && cache != null && isCurrent(request)) runCatching {

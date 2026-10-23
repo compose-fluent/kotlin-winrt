@@ -31,6 +31,7 @@ internal fun DesignerToolbox(types: List<String>, armed: String?, choose: (Strin
         }
         TextField(search, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search toolbox" })
         Text("Drag onto the canvas, or select a control then click its container. Escape cancels.")
+        if (types.isEmpty()) Text("Loading SDK controls…")
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             types.filter { it.contains(search.text, true) }.forEach { type ->
                 var origin by remember { mutableStateOf(Offset.Zero) }
