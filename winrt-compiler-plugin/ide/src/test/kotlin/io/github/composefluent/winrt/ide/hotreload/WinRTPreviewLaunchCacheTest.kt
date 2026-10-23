@@ -61,9 +61,13 @@ class WinRTPreviewLaunchCacheTest {
             Files.writeString(source, "<Grid><Button/></Grid>")
             Files.writeString(root.resolve("Component.kt"), "class Component")
             assertTrue("Basic preview does not wait for changed project code", cache.reusable(cache.inputs()))
+            val originalInputs = cache.inputs()
             Files.writeString(config, "sdkVersion=2")
             assertFalse(cache.reusable(cache.inputs()))
-            cache.remember(cache.inputs())
+            assertFalse("A late first frame cannot bless configuration edited during compilation",
+                cache.rememberIfUnchanged(originalInputs))
+            assertFalse(cache.reusable(cache.inputs()))
+            assertTrue(cache.rememberIfUnchanged(cache.inputs()))
             Files.write(exe, byteArrayOf(2, 3))
             assertFalse(cache.reusable(cache.inputs()))
         } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }

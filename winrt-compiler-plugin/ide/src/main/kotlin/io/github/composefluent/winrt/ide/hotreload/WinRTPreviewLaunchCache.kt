@@ -60,6 +60,13 @@ internal class WinRTPreviewLaunchCache(
         Files.writeString(receipt, record(inputs))
     }
 
+    /** Do not bless inputs edited while Gradle compiled an earlier version. */
+    fun rememberIfUnchanged(expectedInputs: String): Boolean {
+        if (expectedInputs != inputs()) return false
+        remember(expectedInputs)
+        return true
+    }
+
     fun invalidate() { Files.deleteIfExists(receipt) }
 
     private fun record(inputs: String): String = linkedMapOf(

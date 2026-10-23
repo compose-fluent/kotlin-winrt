@@ -76,6 +76,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var savedLaunch = WinUIXamlHotReloadLaunchState()
     @Volatile private var debuggerPid: Long? = null
     private var directPreview: Process? = null
+    private var pendingPreviewCache: Pair<WinRTPreviewLaunchCache, String>? = null
     private var launchStartedNanos = 0L
     private var firstFrameReported = false
     private val log = com.intellij.openapi.diagnostic.Logger.getInstance(WinRTDevelopmentSession::class.java)
@@ -166,6 +167,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
                 val inputs = cache?.let { runCatching { it.inputs() }.getOrNull() }
+                // The SDK designer stages project assets after the host connects.
+                // Record its deployment only after that document actually renders.
+                if (sdkPreview && cache != null && inputs != null) withCurrent(request) {
+                    pendingPreviewCache = cache to inputs
+                }
                 var reused = false
                 if (cache != null && inputs != null && !restart && cache.reusable(inputs)) {
                     try {
@@ -232,8 +238,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     } else awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable,
                         building = { !buildFinished.isCompleted && gradleProcess?.isProcessTerminated != true })
                     // Never bless inputs edited while Gradle was compiling an earlier version.
-                    if (inputs != null && cache != null && isCurrent(request)) runCatching {
-                        if (display.value.connected && inputs == cache.inputs()) cache.remember(inputs)
+                    if (!sdkPreview && inputs != null && cache != null && isCurrent(request)) runCatching {
+                        if (display.value.connected) cache.rememberIfUnchanged(inputs)
                     }.onFailure { log.debug("Preview launch cache unavailable", it) }
                 }
                 val elapsed = (System.nanoTime() - startedAt) / 1_000_000
@@ -559,6 +565,15 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             }
                             if (reply.inspection != null) inspectionOwner = owner
                         }
+                        if (next.previewMarkup.isNotEmpty() && reply.status == WinUIXamlHotReloadProtocol.APPLIED &&
+                            reply.inspection?.image != null && client === connection) {
+                            val pending = synchronized(lifecycle) {
+                                if (isCurrent(epoch)) pendingPreviewCache.also { pendingPreviewCache = null } else null
+                            }
+                            pending?.let { (cache, inputs) -> runCatching {
+                                if (inputs == cache.inputs()) withCurrent(epoch) { cache.remember(inputs) }
+                            }.onFailure { log.debug("Preview launch cache unavailable", it) } }
+                        }
                     }
                 } catch (error: CancellationException) { throw error }
                 catch (error: Exception) { withCurrent(epoch) { display.value = display.value.copy(message = error.message.orEmpty()) } }
@@ -633,6 +648,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private fun cancelRequests() {
         worker?.cancel(); edits?.cancel(); update?.cancel(); inspection?.cancel()
         pendingInspection = null
+        pendingPreviewCache = null
         inspectionOwner = null
         // Closing the sockets interrupts blocking transport IO immediately.
         // Cancellation alone cannot interrupt Socket.read on Dispatchers.IO.

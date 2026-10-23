@@ -152,6 +152,39 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertNotNull(service.state.value.inspection!!.image)
     }
 
+    fun testSdkReceiptWaitsForSuccessfulDocumentCaptureAfterAssetsAreStaged() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val host = Files.createDirectories(Path.of(fixture.module.buildDirectory, "sdk-host"))
+        val executable = Files.write(host.resolve("preview.exe"), byteArrayOf(1))
+        val references = Files.writeString(host.resolve("references.json"), "{}")
+        val sdk = io.github.composefluent.winrt.ide.gradle.WinRTStaticPreviewData(
+            "runWinRTXamlSdkPreview", executable.toString(), host.toString(), references.toString())
+        val module = fixture.module.copy(staticPreview = sdk)
+        val cache = WinRTPreviewLaunchCache(fixture.root, listOf(module), module, sdk.launch())
+        val inputs = cache.inputs()
+        cache.remember(inputs)
+        // The SDK host connected before the document staged its project assets.
+        val asset = Files.writeString(host.resolve("Logo.png"), "project asset")
+        assertFalse(cache.reusable(inputs))
+        WinRTDevelopmentSession::class.java.getDeclaredField("pendingPreviewCache").apply { isAccessible = true }
+            .set(service, cache to inputs)
+        fun inspect(markup: String) {
+            val count = fixture.inspections.size
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = markup))
+            PlatformTestUtil.waitWithEventsDispatching("SDK document capture completes", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Invalid document"))
+        inspect("<Invalid/>")
+        assertFalse("A failed capture must not bless the deployment", cache.reusable(cache.inputs()))
+        fixture.inspectionReply.set(null)
+        inspect("<Grid/>")
+        assertTrue("Successful capture records the staged deployment", cache.reusable(cache.inputs()))
+        Files.writeString(asset, "a later deployment change")
+        assertFalse("Subsequent deployment changes still require validation", cache.reusable(cache.inputs()))
+    }
+
     fun testWorkspaceRoundTripRestoresAnExistingConnectionAndPropertyUpdates() = session { fixture ->
         val first = fixture.service()
         first.reconnect()
