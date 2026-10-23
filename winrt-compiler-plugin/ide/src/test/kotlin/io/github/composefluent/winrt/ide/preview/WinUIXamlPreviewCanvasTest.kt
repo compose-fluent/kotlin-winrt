@@ -42,6 +42,8 @@ class WinUIXamlPreviewCanvasTest : BasePlatformTestCase() {
     fun testMouseSelectionHandPanAndPointerZoomShareCoordinates() {
         val scene = ImageComposeScene(400, 400)
         var reset by mutableIntStateOf(0)
+        var paneBranch by mutableIntStateOf(0)
+        val pan = mutableStateOf(Offset.Zero)
         var hand by mutableStateOf(false)
         var zoom by mutableStateOf<Float?>(null)
         var selected by mutableStateOf<List<Int>>(emptyList())
@@ -63,7 +65,10 @@ class WinUIXamlPreviewCanvasTest : BasePlatformTestCase() {
             settle()
         }
         try {
-            scene.setContent { PreviewImage(view, selected, { selected = it }, {}, zoom, false, hand, {}, { zoom = it }, { zoom = null; reset++ }, Modifier.fillMaxSize(), reset) }
+            scene.setContent {
+                LaunchedEffect(reset) { pan.value = Offset.Zero }
+                key(paneBranch) { PreviewImage(view, selected, { selected = it }, {}, zoom, false, hand, {}, { zoom = it }, { zoom = null; reset++ }, Modifier.fillMaxSize(), reset, panState = pan) }
+            }
             settle()
             click(Offset(60f,60f)); assertEquals(listOf(0), selected)
             drag(); selected = emptyList(); settle()
@@ -72,6 +77,8 @@ class WinUIXamlPreviewCanvasTest : BasePlatformTestCase() {
             hand = true; settle(); drag()
             hand = false; selected = emptyList(); settle()
             click(Offset(160f,60f)); assertEquals("Hand drag moves the hit-test coordinates with the canvas", listOf(0), selected)
+            paneBranch++; selected = emptyList(); settle()
+            click(Offset(160f,60f)); assertEquals("Opening a tool pane retains the panned work area", listOf(0), selected)
             scene.sendPointerEvent(PointerEventType.Scroll, Offset(160f,60f), scrollDelta = Offset(0f,-1f),
                 keyboardModifiers = PointerKeyboardModifiers(isCtrlPressed = true))
             settle(); assertEquals(3f, zoom)

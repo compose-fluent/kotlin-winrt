@@ -184,6 +184,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var zoom by remember(source) { mutableStateOf<Float?>(null) }
     var fitSelection by remember(source) { mutableStateOf(false) }
     var resetViewport by remember(source) { mutableIntStateOf(0) }
+    // Tool panes move the canvas between composition branches. Keep its pan in
+    // the editor so opening Properties does not lose the current work area.
+    val canvasPan = remember(source) { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(source, resetViewport) { canvasPan.value = Offset.Zero }
     var lastView by remember(source, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
     val scope = rememberCoroutineScope()
     var selectedSourceIdentity by remember(source) { mutableStateOf<Pair<String, String>?>(null) }
@@ -533,7 +537,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             selectedSourceIdentity = null
                             multiPaths = paths - setOf(staticPath)
                         }
-                    }, ::clipboardAction)
+                    }, ::clipboardAction, panState = canvasPan)
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())

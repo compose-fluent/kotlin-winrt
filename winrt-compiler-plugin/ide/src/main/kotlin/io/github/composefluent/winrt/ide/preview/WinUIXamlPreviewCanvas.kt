@@ -36,7 +36,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     selectedPaths: Set<List<Int>> = setOf(selected), toggleSelection: (List<Int>) -> Unit = select,
     snapEnabled: Boolean = true, armedTool: String? = null, toolDrop: DesignerToolDrop? = null,
     finishDrop: () -> Unit = {}, insert: (String, List<Int>, Double, Double) -> Unit = { _, _, _, _ -> },
-    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null, contextActions: List<Pair<String, () -> Unit>> = emptyList(), selectArea: (Set<List<Int>>) -> Unit = {}, clipboardAction: (String) -> Unit = {}) {
+    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null, contextActions: List<Pair<String, () -> Unit>> = emptyList(), selectArea: (Set<List<Int>>) -> Unit = {}, clipboardAction: (String) -> Unit = {}, panState: MutableState<Offset>? = null) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
@@ -54,8 +54,10 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     } }
     val reportedZoom = effectiveZoom
     SideEffect { onZoom(reportedZoom) }
-    var pan by remember { mutableStateOf(Offset.Zero) }
-    LaunchedEffect(resetViewport) { pan = Offset.Zero }
+    val localPan = remember { mutableStateOf(Offset.Zero) }
+    val activePan: MutableState<Offset> = panState ?: localPan
+    var pan by activePan
+    if (panState == null) LaunchedEffect(resetViewport) { pan = Offset.Zero }
     var space by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
