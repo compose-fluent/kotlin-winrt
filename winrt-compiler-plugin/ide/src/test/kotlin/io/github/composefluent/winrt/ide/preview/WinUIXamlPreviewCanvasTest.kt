@@ -14,6 +14,18 @@ import io.github.composefluent.winrt.runtime.*
 
 /** IDE-only navigation contract; WinUI runtime drawing and XAML ownership are unchanged. */
 class WinUIXamlPreviewCanvasTest : BasePlatformTestCase() {
+    fun testMarqueeExcludesTemplateNodesPartialHitsAndNestedDuplicates() {
+        val nodes = listOf(
+            WinUIXamlVisualNode(listOf(0), "Border", "", WinUIXamlVisualBounds(20.0, 20.0, 40.0, 40.0)),
+            WinUIXamlVisualNode(listOf(0, 0), "TextBlock", "", WinUIXamlVisualBounds(25.0, 25.0, 10.0, 10.0)),
+            WinUIXamlVisualNode(listOf(1), "Button", "", WinUIXamlVisualBounds(80.0, 20.0, 40.0, 40.0)),
+            WinUIXamlVisualNode(listOf(2), "TemplateChild", "", WinUIXamlVisualBounds(30.0, 30.0, 10.0, 10.0)))
+        val authored = setOf(listOf(0), listOf(0, 0), listOf(1))
+        assertEquals(setOf(listOf(0)), designerMarquee(nodes, authored, Offset(100f, 70f), Offset(10f, 10f)))
+        assertEquals(setOf(listOf(0), listOf(1)), designerMarquee(nodes, authored, Offset(10f,10f), Offset(70f,70f), setOf(listOf(1))))
+        assertEquals(setOf(listOf(0, 0)), designerMarquee(nodes, authored, Offset(24f,24f), Offset(36f,36f)))
+    }
+
     fun testZoomKeepsDocumentPointUnderPointerWhenLeavingFitSelection() {
         val root = WinUIXamlVisualBounds(0.0, 0.0, 800.0, 600.0)
         val selected = WinUIXamlVisualBounds(100.0, 50.0, 200.0, 100.0)

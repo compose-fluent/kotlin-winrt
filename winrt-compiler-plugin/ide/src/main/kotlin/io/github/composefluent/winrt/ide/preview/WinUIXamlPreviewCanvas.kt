@@ -36,7 +36,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     selectedPaths: Set<List<Int>> = setOf(selected), toggleSelection: (List<Int>) -> Unit = select,
     snapEnabled: Boolean = true, armedTool: String? = null, toolDrop: DesignerToolDrop? = null,
     finishDrop: () -> Unit = {}, insert: (String, List<Int>, Double, Double) -> Unit = { _, _, _, _ -> },
-    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null, contextActions: List<Pair<String, () -> Unit>> = emptyList()) {
+    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null, contextActions: List<Pair<String, () -> Unit>> = emptyList(), selectArea: (Set<List<Int>>) -> Unit = {}) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
@@ -79,6 +79,9 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
             (point.y - origin.y) / currentFactor.toDouble())
         if (hit == null || sourcePaths == null) hit else currentNodes.filter { it.path in sourcePaths && hit.path.take(it.path.size) == it.path }.maxByOrNull { it.path.size }
     })
+    val latestSourcePaths by rememberUpdatedState(sourcePaths)
+    val latestSelectArea by rememberUpdatedState(selectArea)
+    var marquee by remember { mutableStateOf<Pair<Offset, Offset>?>(null) }
     val latestSelect by rememberUpdatedState(select)
     val latestOpen by rememberUpdatedState(openSource)
     val latestSetZoom by rememberUpdatedState(setZoom)
@@ -155,7 +158,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                 Key.DirectionRight -> { pan -= Offset(40f * density, 0f); true }
                 Key.DirectionUp -> { pan += Offset(0f, 40f * density); true }
                 Key.DirectionDown -> { pan -= Offset(0f, 40f * density); true }
-                Key.Escape -> { if (armedTool != null) cancelTool() else if (manipulation != null) { cancelDrag = true; manipulation = null } else select(selected.dropLast(1)); true }
+                Key.Escape -> { if (armedTool != null) cancelTool() else if (manipulation != null || marquee != null) { cancelDrag = true; manipulation = null; marquee = null } else select(selected.dropLast(1)); true }
                 Key.Enter, Key.NumPadEnter -> { openSource(selected); true }
                 else -> false
             }
@@ -168,6 +171,9 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                 var dragged = false
                 var panning = false
                 var layoutDrag = false
+                var areaDrag = false
+                var areaOrigin = Offset.Zero
+                var areaSelection = emptySet<List<Int>>()
                 var multiple = false
                 var handle: Pair<Int, Int>? = null
                 var dragFactor = 1f
@@ -193,7 +199,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                                 focus.requestFocus()
                                 down = change.position; dragged = false
                                 panning = latestPanTool || space || event.buttons.isTertiaryPressed
-                                cancelDrag = false; manipulation = null; guides = null; layoutDrag = false; handle = null
+                                cancelDrag = false; manipulation = null; guides = null; layoutDrag = false; handle = null; areaDrag = false; marquee = null
                                 multiple = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isShiftPressed
                                 if (!panning) {
                                     val active = previewScale(viewport.width, viewport.height, currentTarget.width, currentTarget.height, density, currentZoom)
@@ -208,7 +214,11 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                                         }
                                     }
                                     val hit = latestHit(change.position)
-                                    if (latestTool != null) { /* The release inserts into its target. */ }
+                                    areaDrag = latestSourcePaths != null && handle == null && latestTool == null &&
+                                        (hit == null || (hit.path !in latestSelectedPaths || multiple) && currentNodes.any { it.path in latestSourcePaths.orEmpty() && it.path.size > hit.path.size && it.path.take(hit.path.size) == hit.path })
+                                    areaOrigin = origin
+                                    areaSelection = if (multiple) latestSelectedPaths else emptySet()
+                                    if (latestTool != null || areaDrag) { /* Defer insertion or marquee selection until release. */ }
                                     else if (multiple && hit != null) latestToggle(hit.path)
                                     else if (handle != null || hit?.path in latestSelectedPaths) {
                                         layoutDrag = latestEditable; dragBounds = bounds
@@ -221,6 +231,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                         PointerEventType.Move, PointerEventType.Enter -> if (down != null && change.pressed) {
                             if ((change.position - down!!).getDistance() > viewConfiguration.touchSlop) dragged = true
                             if (panning) { pan += change.position - change.previousPosition; change.consume() }
+                            else if (areaDrag && dragged && !cancelDrag) { marquee = down!! to change.position; change.consume() }
                             else if (layoutDrag && dragged && !cancelDrag) {
                                 val delta = (change.position - down!!) / dragFactor
                                 val bounds = dragBounds!!
@@ -233,8 +244,12 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                             }
                         }
                         PointerEventType.Release -> if (down != null && !change.pressed) {
-                            if (layoutDrag && dragged && !cancelDrag) manipulation?.let(latestLayout)
-                            manipulation = null; guides = null
+                            if (areaDrag && dragged && !cancelDrag) {
+                                val a = (down!! - areaOrigin) / dragFactor
+                                val b = (change.position - areaOrigin) / dragFactor
+                                latestSelectArea(designerMarquee(currentNodes, latestSourcePaths.orEmpty(), a, b, areaSelection))
+                            } else if (layoutDrag && dragged && !cancelDrag) manipulation?.let(latestLayout)
+                            manipulation = null; guides = null; marquee = null
                             if (!panning && !dragged && latestTool != null) latestDrop(latestTool!!, change.position)
                             else if (!panning && !dragged && !multiple) latestHit(change.position)?.let { node ->
                                 if (latestSelectedPaths.size != 1 || node.path !in latestSelectedPaths) latestSelect(node.path)
@@ -271,6 +286,12 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                 }
             }
         } }
+        marquee?.let { (a, b) ->
+            val topLeft = Offset(minOf(a.x, b.x), minOf(a.y, b.y))
+            val extent = Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y))
+            drawRect(Color(0x224BA3FF), topLeft, extent)
+            drawRect(Color(0xFF4BA3FF), topLeft, extent, style = Stroke(1.dp.toPx()))
+        }
         if (focused) drawRect(Color(0x554BA3FF), style = Stroke(1.dp.toPx()))
     }
     }
@@ -292,4 +313,15 @@ internal fun designerTransform(handle: Pair<Int, Int>?, dx: Double, dy: Double, 
     val width = if (handle.first == 0) -x else if (handle.first == 2) dx.coerceAtLeast(1 - bounds.width) else 0.0
     val height = if (handle.second == 0) -y else if (handle.second == 2) dy.coerceAtLeast(1 - bounds.height) else 0.0
     return DesignerTransform(x, y, width, height, true)
+}
+/** Fully enclosed authored elements; never select both an ancestor and its descendants. */
+internal fun designerMarquee(nodes: List<WinUIXamlVisualNode>, authored: Set<List<Int>>, a: Offset, b: Offset,
+    previous: Set<List<Int>> = emptySet()): Set<List<Int>> {
+    val left = minOf(a.x, b.x); val right = maxOf(a.x, b.x)
+    val top = minOf(a.y, b.y); val bottom = maxOf(a.y, b.y)
+    val hits = nodes.filter { node -> node.path in authored && node.bounds.let {
+        it.width > 0 && it.height > 0 && it.x >= left && it.y >= top && it.x + it.width <= right && it.y + it.height <= bottom
+    } }.map { it.path }.toSet()
+    val combined = previous + hits
+    return combined.filter { path -> combined.none { parent -> parent.size < path.size && path.take(parent.size) == parent } }.toSet()
 }

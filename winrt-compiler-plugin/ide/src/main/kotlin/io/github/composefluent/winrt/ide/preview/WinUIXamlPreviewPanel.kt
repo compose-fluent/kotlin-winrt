@@ -175,7 +175,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var resetViewport by remember(source) { mutableIntStateOf(0) }
     var lastView by remember(source, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
     val scope = rememberCoroutineScope()
-    fun selectPath(path: List<Int>) { if (static) { staticPath = path; multiPaths = emptySet() } else selection.path.value = path }
+    var selectedSourceIdentity by remember(source) { mutableStateOf<Pair<String, String>?>(null) }
+    fun selectPath(path: List<Int>) { if (static) {
+        staticPath = path; multiPaths = emptySet()
+        selectedSourceIdentity = state.inspection?.nodes?.firstOrNull { it.path == path && it.name.isNotEmpty() }?.let { it.typeName to it.name }
+    } else selection.path.value = path }
     fun togglePath(path: List<Int>) {
         if (!static) { selectPath(path); return }
         val next = if (path in selectedPaths) selectedPaths - setOf(path) else
@@ -258,6 +262,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (path != null) { selectPath(path); pendingStructureSelection = null }
         }
 
+        if (static && view != null && pendingStructureSelection == null && multiPaths.isEmpty()) {
+            selectedSourceIdentity?.let { identity -> view.nodes.singleOrNull { it.typeName == identity.first && it.name == identity.second }?.let { staticPath = it.path } }
+        }
         if (static && view != null) multiPaths = multiPaths.filter { path -> view.nodes.any { it.path == path } }.toSet()
         if (static && view != null && view.nodes.none { it.path == staticPath }) {
             staticPath = generateSequence(staticPath) { it.dropLast(1).takeIf { parent -> it.isNotEmpty() } }
@@ -477,6 +484,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         add("Fit all" to { fitSelection = false; zoom = null; resetViewport++ })
                         if (editables.singleOrNull()?.structure?.previous == true) add("Move earlier" to { reorderSelection(false) })
                         if (editables.singleOrNull()?.structure?.next == true) add("Move later" to { reorderSelection(true) })
+                    }, { paths ->
+                        if (static) {
+                            staticPath = paths.lastOrNull().orEmpty()
+                            multiPaths = paths - setOf(staticPath)
+                        }
                     })
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -627,7 +639,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
             }
             CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
-            Text("Ctrl/Shift+click selects multiple elements. Align uses the last selection. Alt temporarily disables snapping. Toolbox controls can be dragged into the canvas.")
+            Text("Drag blank canvas to marquee-select. Ctrl/Shift adds to selection; Ctrl/Shift+click toggles elements. Align uses the last selection. Alt temporarily disables snapping. Toolbox controls can be dragged into the canvas.")
             Text("Canvas: drag a selected element or its handles to edit layout. Arrows nudge (Shift: 10 DIP). Ctrl+wheel zooms; wheel, hand mode arrows or Space+drag pan.")
             Text("With canvas focus: +/− zoom, 0 shows 100%, F fits all, Escape selects the parent, Enter opens XAML.")
         }
