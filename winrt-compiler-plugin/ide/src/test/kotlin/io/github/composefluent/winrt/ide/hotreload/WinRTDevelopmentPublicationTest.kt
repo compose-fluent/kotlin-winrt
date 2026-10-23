@@ -25,6 +25,17 @@ class WinRTDevelopmentPublicationTest : TestCase() {
         }
         assertEquals("host after task completion", result)
     }
+    fun testDirectCachedHostHasTheFullPublicationDeadlineDuringSlowIdeStartup() = runBlocking {
+        var time = 0L
+        var polls = 0
+        val result = awaitDevelopmentPublication({ false }, nanoTime = { time }) {
+            time += 6_000_000_000L
+            if (++polls == 4) "cached SDK host" else null
+        }
+        assertEquals("cached SDK host", result)
+        assertTrue("A valid cached JVM/WinUI host can take longer than ten seconds", time > 10_000_000_000L)
+    }
+
     fun testFinishedLaunchWithoutHostStillTimesOut() = runBlocking {
         var time = 0L
         val failure = runCatching {

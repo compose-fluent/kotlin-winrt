@@ -51,7 +51,12 @@ internal class WinRTPreviewLaunchCache(
             com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java)
                 .info("Preview build cache changed: " + current.filter { it !in stored }.map { it.substringBefore('=') })
         }
+        if (stored == current) com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java)
+            .info("Preview build cache matched: ${launch.taskName}")
         stored == current
+    }.onFailure { error ->
+        com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java)
+            .info("Preview build cache unavailable for ${launch.taskName}: ${error.javaClass.simpleName}: ${error.message}")
     }.getOrDefault(false)
 
     fun remember(inputs: String) {

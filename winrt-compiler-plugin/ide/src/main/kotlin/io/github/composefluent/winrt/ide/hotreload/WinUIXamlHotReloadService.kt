@@ -184,16 +184,19 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             directPreview = process
                             display.value = display.value.copy(message = "Starting the built preview host…")
                         }) { process.destroy(); return@launch }
-                        withTimeout(10_000) {
-                            awaitConnection(request, directory!!, launch.previewExecutable, process)
-                        }
+                        // Reusing the build does not make JVM/WinUI startup instantaneous,
+                        // especially while the IDE is initializing. Use the same bounded
+                        // publication and root-initialization waits as a freshly built host.
+                        awaitConnection(request, directory!!, launch.previewExecutable, process)
                         reused = true
                     } catch (error: Exception) {
                         if (error is CancellationException && error !is TimeoutCancellationException) throw error
                         currentCoroutineContext().ensureActive()
                         mutex.withLock { stopOwned(); client?.close(); client = null }
                         cache.invalidate()
-                        log.info("Cached preview launch failed; rebuilding through Gradle", error)
+                        // TimeoutCancellationException is coroutine control flow; IntelliJ
+                        // rejects logging it as a Throwable. Preserve the reason without a stack.
+                        log.info("Cached preview launch failed for ${launch.taskName}: ${error.javaClass.simpleName}: ${error.message}; rebuilding through Gradle")
                     }
                 }
                 if (!reused) {
