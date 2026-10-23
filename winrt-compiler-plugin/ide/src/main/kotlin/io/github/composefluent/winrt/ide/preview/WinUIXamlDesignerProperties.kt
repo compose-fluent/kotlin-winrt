@@ -16,14 +16,15 @@ import org.jetbrains.jewel.ui.component.*
 
 @Composable
 internal fun DesignerProperties(selection: DesignerSelection?, filter: String, apply: (Map<String, String?>, String) -> Unit) {
+    val expansion = remember { mutableStateMapOf<String, Boolean>() }
     if (selection == null) { Text("Select a source element to edit its XAML properties."); return }
     var editing by remember(selection.pointer) { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("XAML properties")
         selection.properties.filter { it.writable && it.name.contains(filter, true) }
             .groupBy(::designerPropertyCategory).toSortedMap().forEach { (category, properties) ->
-            var expanded by remember(selection.pointer, category) { mutableStateOf(category == "Layout" || category == "Common") }
-            Link("${if (expanded || filter.isNotEmpty()) "▾" else "▸"} $category (${properties.size})", onClick = { expanded = !expanded })
+            val expanded = expansion[category] ?: (category == "Layout" || category == "Common")
+            Link("${if (expanded || filter.isNotEmpty()) "▾" else "▸"} $category (${properties.size})", onClick = { expansion[category] = !expanded })
             if (expanded || filter.isNotEmpty()) properties.forEach { property ->
             key(property.name) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

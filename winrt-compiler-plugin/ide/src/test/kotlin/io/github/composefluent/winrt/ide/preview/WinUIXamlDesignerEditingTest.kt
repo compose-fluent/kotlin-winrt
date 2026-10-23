@@ -135,4 +135,33 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
         assertEquals("Left", resized["HorizontalAlignment"])
     }
 
+    fun testGridDefinitionsPreserveConstraintsAndUndoTogether() {
+        val xml = myFixture.configureByText("Grid.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Grid.RowDefinitions><RowDefinition Height="Auto" MinHeight="20"/></Grid.RowDefinitions><Button/></Grid>""") as XmlFile
+        fun grid() = xml.rootTag!!.let { tag -> DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text, emptyList(),
+            WinUIXamlVisualBounds(0.0, 0.0, 800.0, 600.0), "", emptyMap()) }
+        DesignerStructureEditing.definition(project, grid(), "Row", 0, "2*")
+        assertTrue(xml.text.contains("MinHeight=\"20\""))
+        assertTrue(xml.text.contains("Height=\"2*\""))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertTrue(xml.text.contains("Height=\"Auto\""))
+        DesignerStructureEditing.definition(project, grid(), "Column", 0, "*")
+        assertTrue(xml.text.contains("ColumnDefinition"))
+        DesignerStructureEditing.definition(project, grid(), "Column", 0, null)
+        assertFalse(xml.text.contains("ColumnDefinitions"))
+    }
+
+    fun testGridRemovalRejectsOccupiedRowsAndKeepsSourceIntact() {
+        val source = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions><Button Grid.Row="1"/></Grid>"""
+        val xml = myFixture.configureByText("Grid.xaml", source) as XmlFile
+        val tag = xml.rootTag!!
+        val target = DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text, emptyList(),
+            WinUIXamlVisualBounds(0.0, 0.0, 800.0, 600.0), "", emptyMap())
+        assertNotNull(runCatching { DesignerStructureEditing.definition(project, target, "Row", 1, null) }.exceptionOrNull())
+        assertEquals(source, xml.text)
+        assertFalse(DesignerStructureEditing.validLength("-1*"))
+        assertFalse(DesignerStructureEditing.validLength("NaN"))
+        assertTrue(DesignerStructureEditing.validLength("0.5*"))
+    }
+
 }

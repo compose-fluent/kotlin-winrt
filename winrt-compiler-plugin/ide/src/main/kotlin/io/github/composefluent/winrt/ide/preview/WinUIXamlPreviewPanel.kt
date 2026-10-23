@@ -295,6 +295,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 .onFailure { editFeedback = it.message ?: "Could not update XAML" }
         }
     }
+    fun structureEdit(action: (DesignerSelection) -> Unit) {
+        val target = currentEditables.singleOrNull() ?: return
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) runCatching { action(target) }
+                .onSuccess { editFeedback = "Updated layout structure · Ctrl+Z to undo" }
+                .onFailure { editFeedback = it.message ?: "Could not update layout structure" }
+        }
+    }
     fun applyEdit(changes: Map<String, String?>, title: String) = applyBatch(currentEditables.map { it to changes }, title)
     fun changeLayout(change: DesignerTransform) {
         runCatching { currentEditables.map { it to WinUIXamlDesignerEditing.layout(it, change) } }
@@ -405,6 +413,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                         Column(Modifier.fillMaxSize().padding(end = 12.dp).verticalScroll(propertyScroll),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (propertyFilter.text.isEmpty()) DesignerStructurePanel(editables.singleOrNull(),
+                            { axis, index, value -> structureEdit { DesignerStructureEditing.definition(project, it, axis, index, value) } },
+                            { forward -> structureEdit { target ->
+                                val neighbor = DesignerStructureEditing.reorderNeighbor(target.pointer.element ?: error("Select the element again."), forward)
+                                val destination = view?.nodes?.let { WinUIXamlSourceSelection.node(neighbor, it)?.path }
+                                DesignerStructureEditing.reorder(project, target, forward)
+                                destination?.let(::selectPath)
+                            } })
                         DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
                         Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath) Text("Reading selection…")

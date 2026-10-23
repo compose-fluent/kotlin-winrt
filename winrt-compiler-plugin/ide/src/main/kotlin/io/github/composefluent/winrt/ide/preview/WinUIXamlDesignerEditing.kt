@@ -18,7 +18,7 @@ internal data class DesignerProperty(val name: String, val type: String, val val
     val choices: List<String>, val writable: Boolean, val elementValue: Boolean)
 internal data class DesignerSelection(val pointer: SmartPsiElementPointer<XmlTag>, val text: String,
     val properties: List<DesignerProperty>, val bounds: WinUIXamlVisualBounds, val parent: String,
-    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList())
+    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList(), val structure: DesignerStructure? = null)
 internal data class DesignerTransform(val x: Double, val y: Double, val width: Double = 0.0, val height: Double = 0.0,
     val resize: Boolean = false)
 
@@ -47,7 +47,7 @@ internal object WinUIXamlDesignerEditing {
             properties, selected.bounds, tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() },
             io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(xml,
                 project.getService(io.github.composefluent.winrt.ide.resources.WinRTResourceIndex::class.java).forFile(file.path), tag, null)
-                .map { it.value }.distinct().sorted())
+                .map { it.value }.distinct().sorted(), DesignerStructureEditing.inspect(tag, catalog))
     }
 
     fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =
