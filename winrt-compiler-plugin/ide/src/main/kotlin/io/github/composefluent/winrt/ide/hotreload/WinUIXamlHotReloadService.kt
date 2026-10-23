@@ -249,7 +249,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 withCurrent(request) { display.value = display.value.copy(startupMillis = elapsed, reusedBuild = reused) }
                 if (preview) log.info("XAML preview connected: ${elapsed}ms, reusedBuild=$reused")
                 // A first project build also creates metadata manifests outside the VFS cache.
-                if (preview && isCurrent(request)) {
+                if (preview && !reused && isCurrent(request)) {
                     project.service<WinUIXamlCatalogService>().refresh()
                     project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
                 }

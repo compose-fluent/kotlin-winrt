@@ -226,9 +226,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (revision > 0) delay(150)
             try {
                 prepared = withContext(Dispatchers.IO) {
-                    val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
-                        ?: return@withContext null
                     val documents = WinUIXamlPreviewSources(project, module, files, source)
+                    val cache = if (projectCode) WinUIXamlDesignDocumentCache(
+                        Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-design-documents"), source) else null
+                    val cacheKey = if (projectCode) documents.projectDocumentKey() else null
+                    val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
+                    if (catalog == null) return@withContext cacheKey?.let { cache?.read(it) }
+
                     val application = documents.application()
                     if (!projectCode) documents.stageAssets()
                     WinUIXamlDesignDocument.prepare(documents.read(source), application?.let(documents::read),
@@ -238,6 +242,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         sdkType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type) != null },
                         visualType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type)?.let(catalog::isVisual) == true }) { uri, type, attribute ->
                         catalog.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == attribute && member.isEvent } } == true
+                    }.also { document ->
+                        if (cacheKey != null) runCatching { cache?.write(cacheKey, document) }
                     }
                 }
                 prepared?.let { notes = it.notes }

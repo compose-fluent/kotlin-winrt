@@ -9,6 +9,8 @@ import io.github.composefluent.windows.toolkit.gradle.toSafeRelativePath
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.resources.WinRTResourceEntry
 import io.github.composefluent.winrt.ide.resources.WinRTResourceIndex
+import kotlinx.serialization.json.*
+import io.github.composefluent.winrt.metadata.WinRTMetadataModelCodec
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
@@ -58,6 +60,30 @@ internal class WinUIXamlPreviewSources(private val project: Project, private val
         runCatching { io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadMarkup.parse(read(path)).isApplication }
             .getOrDefault(false)
     }
+
+    /** Include every design-data/dictionary document and actual WinMD bytes, including
+     * unsaved editor text. Resource-index readiness prevents caching a partial lookup.
+     */
+    fun projectDocumentKey(): String? = runCatching {
+        val index = lookup ?: return null
+        val references = module.xamlCompilations.map { it.inputFile }.distinct().sorted()
+        if (references.isEmpty()) return null
+        val manifests = references.map { Files.readString(Path.of(it)) }
+        val metadata = manifests.flatMap { text ->
+            Json.parseToJsonElement(text).jsonObject["ReferenceAssemblies"]?.jsonArray.orEmpty().mapNotNull {
+                val item = it.jsonObject
+                (item["FullPath"] ?: item["ItemSpec"])?.jsonPrimitive?.content?.let(Path::of)
+            }
+        }.filter { it.toString().endsWith(".winmd", true) }.distinct()
+        if (metadata.isEmpty()) return null
+        WinUIXamlDesignDocumentCache.key(buildList {
+            add(module.toString())
+            addAll(manifests)
+            add(WinRTMetadataModelCodec.cacheKey(metadata))
+            documents.values.sortedBy { it.target }.forEach { add(it.target); add(it.source); add(read(it.source)) }
+            add(index.entries.toString())
+        })
+    }.getOrNull()
 
     /** Native image/font loading retains package URIs; only passive assets are copied. */
     fun stageAssets() {
