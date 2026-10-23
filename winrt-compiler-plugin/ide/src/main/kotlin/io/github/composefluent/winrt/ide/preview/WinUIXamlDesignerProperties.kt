@@ -34,7 +34,19 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
                     if (editing == property.name) {
                         val input = remember(selection.text, property.name) { TextFieldState(property.value.orEmpty()) }
                         val error = WinUIXamlDesignerEditing.validate(property, input.text.toString())
-                        fun commit() { if (error == null) apply(mapOf(property.name to input.text.toString()), "Set ${property.name}") }
+                        val latestApply by rememberUpdatedState(apply)
+                        val commit = {
+                            val value = input.text.toString()
+                            if (WinUIXamlDesignerEditing.validate(property, value) == null)
+                                latestApply(mapOf(property.name to value), "Set ${property.name}")
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            PreviewAction("Apply ${property.name}", "apply", enabled = error == null) { commit() }
+                            PreviewAction("Reset ${property.name}", "reset", enabled = property.value != null) {
+                                latestApply(mapOf(property.name to null), "Reset ${property.name}"); editing = null
+                            }
+                            PreviewAction("Cancel ${property.name}", "close") { editing = null }
+                        }
                         if (property.choices.isNotEmpty()) Dropdown(menuContent = {
                             property.choices.forEach { value -> selectableItem(selected = input.text.toString() == value,
                                 onClick = { input.setTextAndPlaceCursorAtEnd(value) }) { Text(value) } }
@@ -48,11 +60,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
                                 else false
                             })
                         if (error != null) Text(error)
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            DefaultButton(enabled = error == null, onClick = ::commit) { Text("Apply") }
-                            OutlinedButton(enabled = property.value != null, onClick = { apply(mapOf(property.name to null), "Reset ${property.name}"); editing = null }) { Text("Reset") }
-                            Link("Cancel", onClick = { editing = null })
-                        }
+
                     }
                 }
             }

@@ -254,6 +254,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 .firstOrNull { path -> view.nodes.any { it.path == path } }.orEmpty()
         }
     }
+    // Design-surface picking selects authored controls, not their template internals.
+    val authoredPaths by produceState<Set<List<Int>>?>(null, static, source, view?.nodes, revision) {
+        if (!static) { value = null; return@produceState }
+        val nodes = view?.nodes ?: return@produceState
+        value = withContext(Dispatchers.IO) { ReadAction.compute<Set<List<Int>>, RuntimeException> {
+            val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(source.replace('\\', '/'))
+            val xml = file?.let { com.intellij.psi.PsiManager.getInstance(project).findFile(it) } as? com.intellij.psi.xml.XmlFile
+            xml?.let { com.intellij.psi.util.PsiTreeUtil.findChildrenOfType(it, com.intellij.psi.xml.XmlTag::class.java)
+                .mapNotNull { tag -> WinUIXamlSourceSelection.node(tag, nodes)?.path }.toSet() }.orEmpty()
+        } }
+    }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
     val editables by produceState<List<DesignerSelection>>(emptyList(), selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError) {
         value = emptyList()
@@ -419,7 +430,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     selectedPaths, ::togglePath, snapEnabled, armedTool, toolDrop, { toolDrop = null }, ::insertTool, { armedTool = null }, {
                         if (static) multiPaths = view.nodes.filter { it.path.size == selectedPath.size && it.path.dropLast(1) == selectedPath.dropLast(1) }
                             .map { it.path }.toSet() - setOf(staticPath)
-                    })
+                    }, authoredPaths)
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())
@@ -597,7 +608,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
 }
 
 @Composable
-private fun PreviewAction(label: String, icon: String, enabled: Boolean = true, selected: Boolean? = null, action: () -> Unit) {
+internal fun PreviewAction(label: String, icon: String, enabled: Boolean = true, selected: Boolean? = null, action: () -> Unit) {
     Tooltip(tooltip = { Text(label) }) {
         val modifier = Modifier.size(28.dp).semantics { contentDescription = label }
         val key = PathIconKey("icons/preview/$icon.svg", WinUIXamlPreviewEditorProvider::class.java)
@@ -636,7 +647,9 @@ private fun VisualTree(nodes: List<WinUIXamlVisualNode>, selected: List<Int>, se
         state.openNodes(listOf(emptyList<Int>()) + (1 until selected.size).map { selected.take(it) })
     }
     LazyTree(tree, modifier = modifier, treeState = state, onSelectionChange = { elements ->
-        elements.lastOrNull()?.data?.path?.let(select)
+        // Opening the inspector synchronizes its tree selection. This is not
+        // a user selection and must not clear a canvas multi-selection.
+        elements.lastOrNull()?.data?.path?.takeIf { it != selected }?.let(select)
     }) { element ->
         val node = element.data
         Text(node.typeName.substringAfterLast('.') + node.name.takeIf(String::isNotEmpty)?.let { " · $it" }.orEmpty())

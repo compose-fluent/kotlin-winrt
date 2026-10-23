@@ -34,7 +34,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     selectedPaths: Set<List<Int>> = setOf(selected), toggleSelection: (List<Int>) -> Unit = select,
     snapEnabled: Boolean = true, armedTool: String? = null, toolDrop: DesignerToolDrop? = null,
     finishDrop: () -> Unit = {}, insert: (String, List<Int>, Double, Double) -> Unit = { _, _, _, _ -> },
-    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}) {
+    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
@@ -73,8 +73,9 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
         val currentFactor = previewScale(viewport.width, viewport.height, currentTarget.width, currentTarget.height,
             density, currentZoom).let { if (currentFitSelection) it.coerceAtMost(8f) else it } * density
         val origin = previewOrigin(viewport.width.toFloat(), viewport.height.toFloat(), currentTarget, currentFactor) + pan
-        WinUIXamlVisualInspectionSelection.hit(currentNodes, (point.x - origin.x) / currentFactor.toDouble(),
+        val hit = WinUIXamlVisualInspectionSelection.hit(currentNodes, (point.x - origin.x) / currentFactor.toDouble(),
             (point.y - origin.y) / currentFactor.toDouble())
+        if (hit == null || sourcePaths == null) hit else currentNodes.filter { it.path in sourcePaths && hit.path.take(it.path.size) == it.path }.maxByOrNull { it.path.size }
     })
     val latestSelect by rememberUpdatedState(select)
     val latestOpen by rememberUpdatedState(openSource)
