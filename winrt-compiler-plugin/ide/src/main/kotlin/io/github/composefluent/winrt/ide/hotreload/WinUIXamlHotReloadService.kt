@@ -191,6 +191,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }
                 }
                 if (!reused) {
+                    val buildFinished = CompletableDeferred<Unit>()
                     ApplicationManager.getApplication().invokeLater {
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module,
                             listOf(launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
@@ -199,6 +200,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             onProcessStarted = { handler ->
                                 if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
                             },
+                            onSuccess = { buildFinished.complete(Unit) },
                             onFailure = { withCurrent(request) { if (client == null) {
                                 worker?.cancel(); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
                             } } })
@@ -207,7 +209,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         display.value = WinUIXamlHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
                             else "Building and waiting for the application. See Gradle Run output.", busy = true)
                     }) return@launch
-                    awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable)
+                    awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable,
+                        building = { !buildFinished.isCompleted && gradleProcess?.isProcessTerminated != true })
                     // Never bless inputs edited while Gradle was compiling an earlier version.
                     if (inputs != null && cache != null && isCurrent(request)) runCatching {
                         if (display.value.connected && inputs == cache.inputs()) cache.remember(inputs)
@@ -216,7 +219,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 val elapsed = (System.nanoTime() - startedAt) / 1_000_000
                 withCurrent(request) { display.value = display.value.copy(startupMillis = elapsed, reusedBuild = reused) }
                 if (preview) log.info("XAML preview connected: ${elapsed}ms, reusedBuild=$reused")
-                if (sdkPreview && isCurrent(request)) {
+                // A first project build also creates metadata manifests outside the VFS cache.
+                if (preview && isCurrent(request)) {
                     project.service<WinUIXamlCatalogService>().refresh()
                     project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
                 }
@@ -231,7 +235,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     /** Observe an application already being launched by the IDE's native
      * runner. This must not schedule another Gradle execution or stop an
      * application from an earlier Run window. */
-    fun attach(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, sessionDirectory: Path) {
+    fun attach(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, sessionDirectory: Path, building: () -> Boolean = { false }) {
         if (disposed || project.isDisposed) return
         require(launch in module.hotReloadLaunches) { "Synchronize Gradle before selecting this application." }
         val folder = sessionDirectory.toAbsolutePath().normalize()
@@ -252,7 +256,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     Files.createDirectories(folder)
                     withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, folder.toString()) }
                 }
-                awaitConnection(request, folder, launch.executable)
+                awaitConnection(request, folder, launch.executable, building = building)
                 watch(request)
             } catch (error: TimeoutCancellationException) {
                 withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output.") }
@@ -268,29 +272,30 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         Unit
     }
 
-    private suspend fun awaitConnection(request: Long, folder: Path, executable: String, process: Process? = null) = withTimeout(10 * 60_000L) {
-        while (isActive && isCurrent(request)) {
+    private suspend fun awaitConnection(request: Long, folder: Path, executable: String, process: Process? = null,
+        building: () -> Boolean = { false }) {
+        val candidate = awaitDevelopmentPublication(building) {
+            currentCoroutineContext().ensureActive()
+            check(isCurrent(request)) { "The development launch was superseded." }
             check(process == null || process.isAlive) { "The cached preview host exited before connecting." }
             val found = WinUIXamlHotReloadClient.discover(folder, executable)
             require(found.size <= 1) { "Multiple development processes use this session directory. Stop them before reconnecting." }
-            val candidate = found.singleOrNull()
-            if (candidate != null) {
-                mutex.withLock {
-                    if (!withCurrent(request) { client = candidate; owned = candidate }) {
-                        candidate.close(); return@withTimeout
-                    }
-                    refresh(candidate, request)
+            found.singleOrNull()
+        }
+        // Compilation is cancellable without a wall-clock limit. A published
+        // host must still complete its handshake and root initialization promptly.
+        withTimeout(30_000) {
+            mutex.withLock {
+                if (!withCurrent(request) { client = candidate; owned = candidate }) {
+                    candidate.close(); return@withTimeout
                 }
-                // A session file can precede creation of the preview root. Do not
-                // make the first document wait for the two-second health poll.
-                while (isolatedPreview && isCurrent(request) && display.value.inspectionRoots.none {
-                        it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }) {
-                    delay(50)
-                    mutex.withLock { if (isCurrent(request)) refresh(candidate, request) }
-                }
-                return@withTimeout
+                refresh(candidate, request)
             }
-            delay(100)
+            while (isolatedPreview && isCurrent(request) && display.value.inspectionRoots.none {
+                    it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }) {
+                delay(50)
+                mutex.withLock { if (isCurrent(request)) refresh(candidate, request) }
+            }
         }
     }
 

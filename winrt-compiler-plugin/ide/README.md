@@ -529,6 +529,13 @@ the IDE log. This cache does not replace Gradle dependency resolution; explicitl
 rebuild after changing an external unpublished dependency without changing its
 version or project configuration, or changing environment-dependent build inputs.
 
+Cold project builds remain cancellable and do not consume the connection timeout.
+The designer polls for the host while Gradle runs, then allows 30 seconds for session
+publication after the launch task ends. Published hosts have a separate bounded
+handshake/root-initialization wait; failed builds end the pending connection.
+After connection, project previews also reload newly generated metadata catalogs
+and resources so the first build renders without a manual refresh.
+
 The canvas has separate selection and hand tools. Select an exactly mapped source
 element, then drag to edit its layout or use its eight handles to resize it. Space+drag and middle-button drag temporarily
 pan; the wheel pans and Ctrl+wheel zooms around the pointer. With canvas focus,

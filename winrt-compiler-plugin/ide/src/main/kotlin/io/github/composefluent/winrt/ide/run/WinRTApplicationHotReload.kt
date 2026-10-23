@@ -30,7 +30,7 @@ class WinRTApplicationExecutionListener : ExecutionListener {
         if (project.isDisposed) return
         project.service<WinRTProjectService>().selectedModuleDirectory.value = launch.module.projectDirectory
         project.service<WinUIXamlVisualInspectionSelection>().reset()
-        project.service<WinUIXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory)
+        project.service<WinUIXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory, building = { !handler.isProcessTerminated })
     }
 
     override fun processTerminated(executorId: String, environment: ExecutionEnvironment, handler: ProcessHandler, exitCode: Int) {
