@@ -102,7 +102,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
         fixture.await("First inspection reached peer", entered)
         service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", width = 640, renderScale = 2.5))
-        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0)))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0), capture = false))
         fixture.beforeInspection.set(null); release.countDown()
         PlatformTestUtil.waitWithEventsDispatching("Latest design inspection completes", {
             fixture.inspections.size == 2 && !service.state.value.inspecting
@@ -110,6 +110,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         val next = fixture.inspections.last()
         assertEquals("<Grid/>", next.previewMarkup); assertEquals(640, next.width); assertEquals(2.5, next.renderScale)
         assertEquals(listOf(0), next.selectedPath)
+        assertTrue("Selection must not discard the pending high-density capture", next.capture)
         assertEquals("Greeting", service.state.value.inspection!!.properties.single().value)
         assertEquals(0, fixture.patches.get())
     }

@@ -517,6 +517,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             val previous = pendingInspection
             pendingInspection = if (request.previewMarkup.isEmpty() && previous?.previewMarkup?.isNotEmpty() == true &&
                 previous.className == request.className && previous.resourcePath == request.resourcePath) request.copy(
+                    capture = request.capture || previous.capture,
                     previewMarkup = previous.previewMarkup, width = previous.width, height = previous.height, theme = previous.theme, renderScale = previous.renderScale)
                 else request
             if (display.value.inspecting) return
