@@ -131,14 +131,22 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val resourceRevision by project.service<WinRTResourceIndex>().changes.collectAsState()
     LaunchedEffect(static, module, launch, wantsProjectCode) {
         if (static && module != null) {
-            val sdkLaunch = module.staticPreview?.launch()
-            if (sdkLaunch != null && (!wantsProjectCode || !projectState.connected)) {
-                sdk.ensurePreview(module, sdkLaunch)
-                if (wantsProjectCode) withTimeoutOrNull(60_000) {
-                    sdk.state.first { it.inspection?.image != null || !it.busy && !it.connected }
-                }
-            }
-            if (wantsProjectCode && launch != null) design.ensurePreview(module, launch)
+            startPreferredXamlPreview(
+                wantsProjectCode = wantsProjectCode && launch != null,
+                projectConnected = projectState.connected,
+                reusableProject = { design.hasReusableNativePreview(module, launch!!) },
+                startProject = { design.ensurePreview(module, launch!!) },
+                awaitProject = { withTimeoutOrNull(3_000) {
+                    design.state.first { it.connected || !it.busy }.connected
+                } == true },
+                startBasic = {
+                    module.staticPreview?.launch()?.let { sdkLaunch ->
+                        sdk.ensurePreview(module, sdkLaunch)
+                        if (wantsProjectCode) withTimeoutOrNull(60_000) {
+                            sdk.state.first { it.inspection?.image != null || !it.busy && !it.connected }
+                        }
+                    }
+                })
         }
     }
     var automatic by remember { mutableStateOf(true) }

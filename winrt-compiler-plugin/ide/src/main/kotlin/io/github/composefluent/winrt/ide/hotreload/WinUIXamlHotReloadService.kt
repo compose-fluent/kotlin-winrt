@@ -328,6 +328,22 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         }
     }
 
+    /** Read the same validated receipt used by start(), off the UI thread. */
+    suspend fun hasReusableNativePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData): Boolean {
+        if (!launch.isDirectPreview) return false
+        // start() saves documents before validating the receipt. Do not choose a
+        // cached route from disk while an editor still contains newer inputs.
+        if (withContext(Dispatchers.EDT) { FileDocumentManager.getInstance().unsavedDocuments.isNotEmpty() }) return false
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val models = project.service<WinRTProjectService>()
+                val cache = WinRTPreviewLaunchCache(Path.of(models.buildRootFor(module) ?: module.projectDirectory),
+                    models.modules.value, module, launch)
+                cache.reusable(cache.inputs())
+            }.getOrDefault(false)
+        }
+    }
+
     /** Opening/switching a preview reuses its host; a failed launch needs an explicit retry. */
     fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
         if (display.value.busy || (selectedModule == module && selectedLaunch == launch)) return
