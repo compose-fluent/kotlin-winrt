@@ -317,7 +317,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
                 if (debugOutput.get()) add("--debug-output")
             }
             if (noLaunch.get() || nativeDebug != null) add("--no-launch")
-            if (applicationArguments.isNotEmpty()) {
+            if (!noLaunch.get() && nativeDebug == null && applicationArguments.isNotEmpty()) {
                 add(winAppRunArgumentsOption(applicationArguments))
             }
         }

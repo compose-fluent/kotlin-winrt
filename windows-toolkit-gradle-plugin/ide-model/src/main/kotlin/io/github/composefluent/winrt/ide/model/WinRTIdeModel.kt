@@ -41,6 +41,8 @@ interface WinRTIdeModel : Serializable {
         val previewExecutable: String
         /** Empty for JVM launches; Native uses the exact compiler's debugger formatters. */
         val nativeCompilerHome: String
+        /** Desktop Native preview can be started by the IDE after package registration. */
+        val isDirectPreview: Boolean
     }
 
     /** Actual staging/restore outputs, which need not exist during synchronization. */
@@ -84,6 +86,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 8
+        const val SCHEMA_VERSION: Int = 9
     }
 }

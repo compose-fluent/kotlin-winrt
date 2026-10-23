@@ -86,7 +86,8 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                         if (it.supportsXamlPreview.get()) it.hostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty())
                 } + packageRuns.filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath,
-                        if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty())
+                        if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty(),
+                        it.applicationModel.get() == WindowsApplicationModel.Desktop && it.nativeCompilerHome.orNull?.isNotBlank() == true)
                 }).sortedBy { it.taskName },
             staticPreview = if (windows?.xaml?.framework?.get() == io.github.composefluent.winrt.runtime.XamlFramework.UWP)
                 packageRuns.firstOrNull { it.sdkPreview.get() }?.let { task ->
@@ -147,6 +148,7 @@ private data class IdeHotReloadLaunch(
     override val workingDirectory: String,
     override val previewExecutable: String = executable,
     override val nativeCompilerHome: String = "",
+    override val isDirectPreview: Boolean = false,
 ) : WinRTIdeModel.HotReloadLaunch
 
 private data class IdePackageLayout(

@@ -31,6 +31,7 @@ class WinRTIdeModelBuilderTest {
         assertTrue(preview.executable.replace('\\', '/').endsWith("xaml-sdk-preview/AppX/KotlinWinUIXamlPreview.exe"))
         assertFalse(model.hotReloadLaunches.any { it.taskName == preview.taskName })
         assertFalse(model.runTasks.contains(preview.taskName))
+        assertFalse(model.hotReloadLaunches.any { it.isDirectPreview })
         val sdk = project.tasks.named("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java).get()
         assertEquals(io.github.composefluent.winrt.runtime.XamlFramework.UWP, sdk.xamlFramework.get())
         assertTrue(sdk.includeNamespaces.get().contains("Windows.UI.Xaml"))
@@ -79,6 +80,8 @@ class WinRTIdeModelBuilderTest {
         })
         val launch = launches.single { it.taskName == run.name }
         assertEquals("JVM launches must not offer Native debugging", "", launch.nativeCompilerHome)
+        assertFalse(launch.isDirectPreview)
+        assertTrue(launches.filter { it.taskName.startsWith("runWinAppPackageMingwX64") }.all { it.isDirectPreview })
         assertTrue(launches.filter { it.taskName.startsWith("runWinAppPackageMingwX64") }.all { it.nativeCompilerHome.isNotBlank() })
         val runTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
         assertTrue(runTasks.toString(), runTasks.contains("runWinAppPackageDesktopMain"))

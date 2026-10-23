@@ -196,11 +196,15 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     // its host lives. Prepare the desktop SDK host, release Gradle,
                     // then own the process so project compilation can proceed.
                     val detachedSdk = sdkPreview && launch.taskName == "runWinRTXamlSdkPreview"
+                    // Register the desktop Native package without launching a child
+                    // that would inherit Gradle pipes. UWP still uses package activation.
+                    val detachedNative = preview && launch.isDirectPreview
                     ApplicationManager.getApplication().invokeLater {
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module,
                             listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
                             environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
                                 if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap(),
+                            arguments = if (detachedNative) "--no-launch" else "",
                             onProcessStarted = { handler ->
                                 if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
                             },
@@ -213,16 +217,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         display.value = WinUIXamlHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
                             else "Building and waiting for the application. See Gradle Run output.", busy = true)
                     }) return@launch
-                    if (detachedSdk) {
+                    if (detachedSdk || detachedNative) {
                         buildFinished.await()
                         currentCoroutineContext().ensureActive()
-                        val process = ProcessBuilder(launch.executable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
-                            .directory(Path.of(launch.workingDirectory).toFile())
+                        val executable = if (detachedNative) launch.previewExecutable else launch.executable
+                        val process = ProcessBuilder(executable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
+                            .directory((if (detachedNative) Path.of(executable).parent else Path.of(launch.workingDirectory)).toFile())
                             .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
                             .apply { environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = directory!!.toString()
                                 environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
                         if (!withCurrent(request) { directPreview = process }) { process.destroy(); return@launch }
-                        awaitConnection(request, directory!!, launch.executable, process)
+                        awaitConnection(request, directory!!, executable, process)
                     } else awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable,
                         building = { !buildFinished.isCompleted && gradleProcess?.isProcessTerminated != true })
                     // Never bless inputs edited while Gradle was compiling an earlier version.
