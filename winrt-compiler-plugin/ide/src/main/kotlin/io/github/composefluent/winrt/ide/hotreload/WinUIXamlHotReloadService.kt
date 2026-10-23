@@ -638,3 +638,8 @@ class WinUIXamlHotReloadService(project: Project, scope: CoroutineScope) : WinRT
 @Service(Service.Level.PROJECT)
 @State(name = "KotlinWinRTXamlStaticPreview", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
 class WinRTStaticPreviewService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope, isolatedPreview = true)
+
+/** Independent SDK host keeps a usable artboard while project code compiles. */
+@Service(Service.Level.PROJECT)
+@State(name = "KotlinWinRTXamlSdkPreview", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
+class WinRTSdkPreviewService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope, isolatedPreview = true)

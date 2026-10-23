@@ -69,6 +69,7 @@ import io.github.composefluent.winrt.ide.ui.*
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalogService
 import io.github.composefluent.winrt.runtime.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.lazy.tree.*
 import org.jetbrains.jewel.ui.component.*
@@ -86,8 +87,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var showInspector by remember { mutableStateOf(staticFile == null) }
     var panTool by remember { mutableStateOf(false) }
     val propertyFilter = remember { TextFieldState() }
-    val session: WinRTDevelopmentSession = if (static) design else live
-    val state by session.state.collectAsState()
+    val sdk = project.service<WinRTSdkPreviewService>()
+    val projectState by design.state.collectAsState()
     val selection = project.service<WinUIXamlVisualInspectionSelection>()
     val rootKey by selection.root.collectAsState()
     val instance by selection.instance.collectAsState()
@@ -100,6 +101,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(candidate.projectDirectory).toAbsolutePath().normalize())
     }.getOrDefault(false) }.maxByOrNull { it.projectDirectory.length } } ?: selectedModule
     val declarations by project.service<WinUIXamlSnapshotService>().state.collectAsState()
+    var launchName by remember(module?.projectDirectory) { mutableStateOf<String?>(null) }
+    val launches = module?.hotReloadLaunches.orEmpty().filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
+    val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
+    val preferences = remember(project) { PropertiesComponent.getInstance(project) }
+    val projectCodeKey = "winrt.preview.projectCode.${module?.projectDirectory.orEmpty()}"
+    var preferProjectCode by remember(projectCodeKey) { mutableStateOf(preferences.getBoolean(projectCodeKey, true)) }
+    val wantsProjectCode = preferProjectCode && launches.isNotEmpty()
+    val projectCode = wantsProjectCode && (projectState.connected || module?.staticPreview == null)
+    val session: WinRTDevelopmentSession = if (!static) live else if (projectCode) design else sdk
+    val state by session.state.collectAsState()
+    val designLaunch = if (projectCode) launch else module?.staticPreview?.launch()
     val roots = state.inspectionRoots
     val root = if (static) roots.firstOrNull { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS } else
         remember(roots, rootKey) { selection.resolve(roots) }
@@ -107,19 +119,21 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (!static && root != null && rootKey != WinUIXamlVisualInspectionSelection.key(root))
             selection.selectRoot(WinUIXamlVisualInspectionSelection.key(root))
     }
-    var launchName by remember(module?.projectDirectory) { mutableStateOf<String?>(null) }
-    val launches = module?.hotReloadLaunches.orEmpty().filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
-    val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
-    val preferences = remember(project) { PropertiesComponent.getInstance(project) }
-    val projectCodeKey = "winrt.preview.projectCode.${module?.projectDirectory.orEmpty()}"
-    var preferProjectCode by remember(projectCodeKey) { mutableStateOf(preferences.getBoolean(projectCodeKey, true)) }
-    val projectCode = preferProjectCode && launches.isNotEmpty()
-    val designLaunch = if (projectCode) launch else module?.staticPreview?.launch()
+
     val catalogService = project.service<WinUIXamlCatalogService>()
     val catalogRevision by catalogService.changes.collectAsState()
     val resourceRevision by project.service<WinRTResourceIndex>().changes.collectAsState()
-    LaunchedEffect(static, module, designLaunch, state.busy) {
-        if (static && module != null && designLaunch != null) design.ensurePreview(module, designLaunch)
+    LaunchedEffect(static, module, launch, wantsProjectCode) {
+        if (static && module != null) {
+            val sdkLaunch = module.staticPreview?.launch()
+            if (sdkLaunch != null && (!wantsProjectCode || !projectState.connected)) {
+                sdk.ensurePreview(module, sdkLaunch)
+                if (wantsProjectCode) withTimeoutOrNull(60_000) {
+                    sdk.state.first { it.inspection?.image != null || !it.busy && !it.connected }
+                }
+            }
+            if (wantsProjectCode && launch != null) design.ensurePreview(module, launch)
+        }
     }
     var automatic by remember { mutableStateOf(true) }
     var revision by remember { mutableLongStateOf(0) }
@@ -153,7 +167,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var zoom by remember(source) { mutableStateOf<Float?>(null) }
     var fitSelection by remember(source) { mutableStateOf(false) }
     var resetViewport by remember(source) { mutableIntStateOf(0) }
-    var lastView by remember(source, projectCode, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
+    var lastView by remember(source, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
     val scope = rememberCoroutineScope()
     fun selectPath(path: List<Int>) { if (static) staticPath = path else selection.path.value = path }
     DisposableEffect(project, source) {
@@ -232,7 +246,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         value = null
         val snapshot = view ?: return@produceState
         val node = snapshot.nodes.firstOrNull { it.path == selectedPath } ?: return@produceState
-        if (!static || !state.connected || failure != null || state.inspectionError != null) return@produceState
+        if (!static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) return@produceState
         val owner = snapshot.nodes.filter { it.path.size <= selectedPath.size && selectedPath.take(it.path.size) == it.path }
             .sortedByDescending { it.path.size }.firstNotNullOfOrNull { session.sourcePath(it.typeName) }
         value = withContext(Dispatchers.IO) { ReadAction.compute<DesignerSelection?, RuntimeException> {
@@ -287,7 +301,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
         onDispose { Disposer.dispose(disposable) }
     }
-    val status = if (view != null && static) when {
+    val projectPreparing = static && wantsProjectCode && !projectCode
+    val status = if (projectPreparing && view != null) {
+        if (projectState.busy) "Basic preview · building project controls in the background"
+        else if (projectState.pid == null && projectState.message.contains("failed", true)) "Basic preview · project build failed; see Gradle Run output"
+        else "Basic preview · preparing project controls"
+    } else if (view != null && static) when {
         !state.connected && !state.busy -> "Disconnected · last successful render"
         failure != null || state.inspectionError != null -> "Out of date · last successful render"
         !state.connected || prepared == null || state.inspecting -> "Updating preview…"
@@ -437,7 +456,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: editFeedback ?: status,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
-                if (state.busy) Link("Cancel", onClick = session::stop)
+                if (projectPreparing && projectState.busy) Link("Cancel project build", onClick = design::stop)
+                else if (state.busy) Link("Cancel", onClick = session::stop)
                 else {
                     if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)
                     else if (error != null && state.connected) Link("Retry", enabled = !state.inspecting, onClick = { manualRefresh++ })
@@ -489,13 +509,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (showSession) PreviewPopup("Preview session", popupWidth, popupHeight, { showSession = false }) {
             WinRTModulePicker(project)
             if (!static || projectCode) WinRTChoice("Application", launches.map { it.taskName to it.taskName }, launch?.taskName) { launchName = it }
-            if (static) CheckboxRow("Render project controls (requires compilation)", projectCode, {
+            if (static) CheckboxRow("Render project controls (build in background)", wantsProjectCode, {
                 preferProjectCode = it; preferences.setValue(projectCodeKey, it, true)
             }, enabled = launches.isNotEmpty())
             if (!state.connected) Link(if (static) "Retry preview" else "Start application", enabled = canStart, onClick = { showSession = false; startPreview() })
             Link("Refresh", enabled = state.connected && !state.inspecting, onClick = { manualRefresh++; showSession = false })
-            if (static && projectCode) Link("Rebuild project code", enabled = state.connected && !state.busy, onClick = {
-                showSession = false; session.start(module!!, launch!!, restart = true, preview = true)
+            if (static && wantsProjectCode) Link("Rebuild project code", enabled = !projectState.busy, onClick = {
+                showSession = false; design.start(module!!, launch!!, restart = true, preview = true)
             })
             Link("Reconnect", enabled = !state.busy, onClick = { showSession = false; session.reconnect() })
             Link(if (state.busy) "Cancel build" else "Stop preview", enabled = state.pid != null || state.busy,
