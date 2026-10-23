@@ -31,6 +31,15 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertNull(WinUIXamlSourceSelection.node(ambiguous.rootTag!!.subTags[0], nodes))
     }
 
+    fun testButtonTemplateTextNavigatesToButtonInsteadOfUnrelatedPageText() {
+        val file = xml("<TextBlock Text=\"Title\"/><Button Content=\"Action\"/>")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "TextBlock"),
+            node(listOf(1), "Button"), node(listOf(1, 0), "ContentPresenter"),
+            node(listOf(1, 0, 0), "TextBlock"))
+        assertSame(file.rootTag!!.subTags[1],
+            WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
+    }
+
     fun testTemplateNamesDoNotHijackPageSelection() {
         val file = xml("""<Grid.Resources><ControlTemplate x:Key="Template"><Button x:Name="Inside"/></ControlTemplate></Grid.Resources><Button x:Name="Actual"/>""")
         val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "Inside"), node(listOf(1), "Button", "Actual"))

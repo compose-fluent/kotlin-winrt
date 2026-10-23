@@ -35,7 +35,7 @@ internal object WinUIXamlSourceSelection {
         return ancestors.firstNotNullOfOrNull { item ->
             if (item.name.isNotBlank()) tags.singleOrNull { it.xamlName() == item.name } else null
         } ?: ancestors.firstNotNullOfOrNull { item ->
-            if (item.name.isNotEmpty()) null else tags.filter { it.localName == item.typeName.substringAfterLast('.') }.singleOrNull()
+            if (item.name.isNotEmpty()) null else tags.filter { node(it, nodes) == item }.singleOrNull()
         }
     }
 }
