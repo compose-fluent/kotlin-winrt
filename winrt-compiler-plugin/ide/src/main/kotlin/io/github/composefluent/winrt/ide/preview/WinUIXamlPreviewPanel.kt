@@ -156,6 +156,15 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (source.isEmpty()) source = value.firstOrNull { it.endsWith("MainWindow.xaml", true) } ?: value.firstOrNull().orEmpty()
     }
     val width = remember { TextFieldState("800") }; val height = remember { TextFieldState("600") }
+    val validWidth = width.text.toString().toIntOrNull()?.takeIf { it in 64..4096 }
+    val validHeight = height.text.toString().toIntOrNull()?.takeIf { it in 64..4096 }
+    var viewport by remember { mutableStateOf(800 to 600) }
+    LaunchedEffect(validWidth, validHeight) {
+        if (validWidth != null && validHeight != null) {
+            delay(250)
+            viewport = validWidth to validHeight
+        }
+    }
     var theme by remember { mutableStateOf("Default") }
     var notes by remember { mutableStateOf<List<String>>(emptyList()) }
     var failure by remember { mutableStateOf<String?>(null) }
@@ -196,7 +205,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }, disposable)
         onDispose { Disposer.dispose(disposable) }
     }
-    LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, if (automatic) revision else 0L, manualRefresh, width.text, height.text, theme) {
+    LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, if (automatic) revision else 0L, manualRefresh) {
         prepared = null; failure = null
         if (static && source.isNotEmpty() && module != null) {
             // Debounce typing, not opening an already prepared document.
@@ -222,11 +231,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(root, state.connected, state.pid, static, prepared, width.text, height.text, theme, manualRefresh, resourceRevision) {
+    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, manualRefresh, resourceRevision) {
         if (static && root != null && state.connected && prepared != null) {
-            val w = width.text.toString().toIntOrNull(); val h = height.text.toString().toIntOrNull()
-            if (w == null || h == null || w !in 64..4096 || h !in 64..4096) failure = "Enter a width and height between 64 and 4096 DIP."
-            else {
+            run {
+                val (w, h) = viewport
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
                     prepared!!.markup, w, h, theme)
                 val key = Triple(request, state.pid, manualRefresh to resourceRevision)
@@ -284,10 +292,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
     LaunchedEffect(revision) { editFeedback = null }
-    val editables by produceState<List<DesignerSelection>>(emptyList(), selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError) {
-        value = emptyList()
-        val snapshot = view ?: return@produceState
-        if (!static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) return@produceState
+    val editableResult by produceState<List<DesignerSelection>?>(null, selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError) {
+        value = null
+        val snapshot = view
+        if (snapshot == null || !static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) { value = emptyList(); return@produceState }
         value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerSelection>, RuntimeException> {
             selectedPaths.mapNotNull { path ->
                 val node = snapshot.nodes.firstOrNull { it.path == path } ?: return@mapNotNull null
@@ -297,6 +305,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }.takeIf { it.size == selectedPaths.size }.orEmpty()
         } }
     }
+    val editables = editableResult.orEmpty()
     val editable = editables.lastOrNull()?.let { primary ->
         primary.copy(properties = primary.properties.filter { property -> editables.all { target ->
             target.properties.any { it.name == property.name && it.writable && !it.elementValue }
@@ -466,7 +475,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                                 val moved = DesignerStructureEditing.reparent(project, target, container)
                                 pendingStructureSelection = com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(moved)
                             } })
-                        DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
+                        if (editableResult == null) Text("Loading editable properties…")
+                        else DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
                         Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath) Text("Reading selection…")
                         else androidx.compose.foundation.text.selection.SelectionContainer {
@@ -655,8 +665,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     width.setTextAndPlaceCursorAtEnd(dimensions[0]); height.setTextAndPlaceCursorAtEnd(dimensions[1])
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }) }
-                    Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }) }
+                    Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }); if (validWidth == null) Text("Enter 64–4096 DIP.") }
+                    Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }); if (validHeight == null) Text("Enter 64–4096 DIP.") }
                 }
                 Link("Swap width and height", onClick = {
                     val previousWidth = width.text.toString()
