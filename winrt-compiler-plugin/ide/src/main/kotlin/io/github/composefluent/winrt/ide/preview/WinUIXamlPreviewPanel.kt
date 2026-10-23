@@ -35,6 +35,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -81,6 +84,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val design = project.service<WinRTStaticPreviewService>()
     var static by remember { mutableStateOf(staticFile != null) }
     var showInspector by remember { mutableStateOf(staticFile == null) }
+    var panTool by remember { mutableStateOf(false) }
+    val propertyFilter = remember { TextFieldState() }
     val session: WinRTDevelopmentSession = if (static) design else live
     val state by session.state.collectAsState()
     val selection = project.service<WinUIXamlVisualInspectionSelection>()
@@ -169,7 +174,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             try {
                 prepared = withContext(Dispatchers.IO) {
                     val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
-                        ?: error("Waiting for the designer's SDK metadata…")
+                        ?: return@withContext null
                     val documents = WinUIXamlPreviewSources(project, module, files, source)
                     val application = documents.application()
                     if (!projectCode) documents.stageAssets()
@@ -182,7 +187,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         catalog.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == attribute && member.isEvent } } == true
                     }
                 }
-                notes = prepared!!.notes; staticPath = emptyList()
+                prepared?.let { notes = it.notes }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { failure = error.message }
         }
@@ -201,8 +206,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }
         }
     }
-    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance) {
-        if (root != null && state.connected && (!static || prepared != null && selectedPath.isNotEmpty())) {
+    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes) {
+        if (root != null && state.connected && (!static || prepared != null && state.inspection != null && state.inspectionPath != selectedPath)) {
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
                 if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static))
         }
@@ -216,6 +221,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val currentView = state.inspection.takeIf { failure == null && (!static || prepared != null) }
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
+    LaunchedEffect(view?.nodes) {
+        if (static && view != null && view.nodes.none { it.path == staticPath }) {
+            staticPath = generateSequence(staticPath) { it.dropLast(1).takeIf { parent -> it.isNotEmpty() } }
+                .firstOrNull { path -> view.nodes.any { it.path == path } }.orEmpty()
+        }
+    }
     fun openSource(path: List<Int>) {
         val snapshot = view ?: return
         val node = snapshot.nodes.firstOrNull { it.path == path } ?: return
@@ -266,7 +277,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }
             val node = view?.nodes?.firstOrNull { it.path == selectedPath }
             Text(node?.let { it.name.ifEmpty { it.typeName.substringAfterLast('.') } } ?: "Select an element")
-            Link("Go to XAML", enabled = node != null, onClick = { openSource(selectedPath) })
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Link("Go to XAML", enabled = node != null, onClick = { openSource(selectedPath) })
+                Link("Parent", enabled = selectedPath.isNotEmpty(), onClick = { selectPath(selectedPath.dropLast(1)) })
+            }
             VerticalSplitLayout(
                 first = {
                     if (view != null) key(root?.className, root?.resourcePath, instance, static) {
@@ -276,8 +290,21 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 second = {
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Effective properties")
-                        view?.properties?.forEach { Text("${it.name}: ${it.value}") }
+                        Text("Effective properties · read only")
+                        Text("Filter properties")
+                        TextField(propertyFilter, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Filter properties" })
+                        if (state.inspecting || state.inspectionPath != selectedPath) Text("Reading selection…")
+                        else androidx.compose.foundation.text.selection.SelectionContainer {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                view?.properties?.filter { it.name.contains(propertyFilter.text, ignoreCase = true) }
+                                    ?.forEach { property ->
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(property.name, Modifier.weight(1f))
+                                            Text(property.value, Modifier.weight(1.4f))
+                                        }
+                                    }
+                            }
+                        }
                     }
                 },
                 state = rememberSplitLayoutState(.55f),
@@ -287,8 +314,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     @Composable fun canvas() {
         Box(Modifier.fillMaxSize().padding(16.dp).semantics { contentDescription = "Preview workspace" }, contentAlignment = Alignment.Center) {
-            if (view != null && !treeOnly) key(source, resetViewport) {
-                PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, fitSelection, { actualZoom = it }, Modifier.fillMaxSize())
+            if (view != null && !treeOnly) key(source) {
+                PreviewImage(view, selectedPath, ::selectPath, ::openSource, zoom, fitSelection, panTool,
+                    { actualZoom = it }, { zoom = it; fitSelection = false },
+                    { fitSelection = false; zoom = null; resetViewport++ }, Modifier.fillMaxSize(), resetViewport)
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())
@@ -328,6 +357,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             Row(Modifier.fillMaxWidth().height(36.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 if (!treeOnly) {
+                    PreviewAction("Select elements", "select", view != null, selected = !panTool) { panTool = false }
+                    PreviewAction("Pan canvas", "hand", view != null, selected = panTool) { panTool = true }
                     PreviewAction("Zoom out", "zoomOut", view != null && actualZoom > .125f) {
                         zoom = previewZoomStep(actualZoom, false); fitSelection = false
                     }
@@ -372,16 +403,27 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     Spacer(Modifier.width(6.dp))
                 }
                 Tooltip(tooltip = { Text(error ?: status) }, modifier = Modifier.weight(1f)) {
-                    Text(error?.let { "Preview error · $it" } ?: status,
+                    Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: status,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
                 if (state.busy) Link("Cancel", onClick = session::stop)
-                else if (error != null) Link("Details", onClick = { showDiagnostics = true })
+                else {
+                    if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)
+                    else if (error != null && state.connected) Link("Retry", enabled = !state.inspecting, onClick = { manualRefresh++ })
+                    if (error != null) { Spacer(Modifier.width(8.dp)); Link("Details", onClick = { showDiagnostics = true }) }
+                }
             }
         }
         if (showZoom) PreviewPopup("Custom zoom", popupWidth, popupHeight, { showZoom = false }) {
             Text("Zoom percentage (12.5–800%)")
-            TextField(customZoom, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Zoom percentage" })
+            val zoomFocus = remember { FocusRequester() }
+            LaunchedEffect(Unit) { zoomFocus.requestFocus() }
+            TextField(customZoom, modifier = Modifier.fillMaxWidth().focusRequester(zoomFocus).onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
+                    parsePreviewZoom(customZoom.text.toString())?.let { zoom = it; fitSelection = false; showZoom = false }
+                    true
+                } else false
+            }.semantics { contentDescription = "Zoom percentage" })
             val value = parsePreviewZoom(customZoom.text.toString())
             if (value == null) Text("Enter a percentage between 12.5 and 800.")
             DefaultButton(enabled = value != null, onClick = { zoom = value; fitSelection = false; showZoom = false }) { Text("Apply zoom") }
@@ -410,6 +452,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
             }
             CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
+            Text("Canvas: Ctrl+wheel zooms at the pointer. Wheel or arrow keys pan; Space+drag temporarily uses the hand tool.")
+            Text("With canvas focus: +/− zoom, 0 shows 100%, F fits all, Escape selects the parent, Enter opens XAML.")
         }
         if (showSession) PreviewPopup("Preview session", popupWidth, popupHeight, { showSession = false }) {
             WinRTModulePicker(project)
@@ -491,44 +535,6 @@ internal fun visualInspectionTree(nodes: List<WinUIXamlVisualNode>): Tree<WinUIX
         }
     }
     return TreeBuilder<WinUIXamlVisualNode>().apply { append(null) }.build()
-}
-
-@Composable
-private fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, select: (List<Int>) -> Unit, openSource: (List<Int>) -> Unit, zoom: Float?, fitSelection: Boolean, onZoom: (Float) -> Unit, modifier: Modifier) {
-    val image = view.image ?: return
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
-        value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
-    }
-    val root = view.nodes.firstOrNull()?.bounds ?: return
-    if (root.width <= 0 || root.height <= 0) return
-    val target = if (fitSelection) view.nodes.firstOrNull { it.path == selected }?.bounds
-        ?.takeIf { it.width > 0 && it.height > 0 } ?: root else root
-    val density = LocalDensity.current.density
-    var viewport by remember { mutableStateOf(IntSize.Zero) }
-    val effectiveZoom = previewScale(viewport.width, viewport.height, target.width, target.height, density, zoom).let { if (fitSelection) it.coerceAtMost(8f) else it }
-    SideEffect { onZoom(effectiveZoom) }
-    var pan by remember(zoom, fitSelection, if (fitSelection) selected else null) { mutableStateOf(Offset.Zero) }
-    Canvas(modifier.onSizeChanged { viewport = it }.clipToBounds().semantics { contentDescription = "WinUI XAML preview. Double-click to open XAML. Drag to pan; use Fit to reset." }
-        .pointerInput(zoom) { detectDragGestures { change, delta -> change.consume(); pan += delta } }
-        .pointerInput(view.nodes, target, effectiveZoom, pan) {
-          fun hit(point: Offset): WinUIXamlVisualNode? {
-            val factor = effectiveZoom * density
-            val origin = previewOrigin(size.width.toFloat(), size.height.toFloat(), target, factor) + pan
-            return WinUIXamlVisualInspectionSelection.hit(view.nodes, (point.x - origin.x) / factor.toDouble(), (point.y - origin.y) / factor.toDouble())
-          }
-          detectTapGestures(onTap = { point -> hit(point)?.let { select(it.path) } },
-              onDoubleTap = { point -> hit(point)?.let { select(it.path); openSource(it.path) } })
-        }) {
-        val factor = effectiveZoom * density
-        val origin = previewOrigin(size.width.toFloat(), size.height.toFloat(), target, factor) + pan
-        translate(origin.x, origin.y) { scale(factor, factor, Offset.Zero) {
-            bitmap?.let { drawImage(it, dstSize = androidx.compose.ui.unit.IntSize(root.width.toInt(), root.height.toInt())) }
-            view.nodes.firstOrNull { it.path == selected }?.bounds?.let { r ->
-                drawRect(Color(0xFF4BA3FF), Offset(r.x.toFloat(), r.y.toFloat()),
-                    Size(r.width.toFloat(), r.height.toFloat()), style = Stroke(2.dp.toPx() / factor))
-            }
-        } }
-    }
 }
 
 /** Zoom is measured in DIP; fit and explicit zoom share draw/hit-test coordinates. */

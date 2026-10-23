@@ -529,6 +529,17 @@ the IDE log. This cache does not replace Gradle dependency resolution; explicitl
 rebuild after changing an external unpublished dependency without changing its
 version or project configuration, or changing environment-dependent build inputs.
 
+The canvas has separate selection and hand tools. Ordinary selection drags do not
+move the canvas or edit XAML geometry. Space+drag and middle-button drag temporarily
+pan; the wheel pans and Ctrl+wheel zooms around the pointer. With canvas focus,
+arrow keys pan, +/− zoom, 0 selects 100%, F/Home fits all, Escape selects the parent,
+and Enter opens the selected element's source. Fit keeps keyboard focus.
+Custom zoom focuses its input and accepts Enter. The inspector offers a parent
+selection action and a filterable, selectable read-only property list; property
+results are associated with the selected visual path. Rendering preserves selection
+when its path still exists. Failed renders retain the last frame with an Out of date
+status and a direct Retry action; disconnected previews expose Retry preview.
+
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
 `x:Name`, then a unique control type within a named parent; repeated unnamed

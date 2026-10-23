@@ -36,6 +36,8 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "TextBlock"),
             node(listOf(1), "Button"), node(listOf(1, 0), "ContentPresenter"),
             node(listOf(1, 0, 0), "TextBlock"))
+        assertEquals(nodes[1], WinUIXamlSourceSelection.node(file.rootTag!!.subTags[0], nodes))
+        assertSame(file.rootTag!!.subTags[0], WinUIXamlSourceSelection.tag(file, nodes[1], nodes, emptyList()))
         assertSame(file.rootTag!!.subTags[1],
             WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
     }

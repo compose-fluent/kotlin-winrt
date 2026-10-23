@@ -21,6 +21,16 @@ internal object WinUIXamlSourceSelection {
         if (name != null) return nodes.singleOrNull { it.name == name }
         val type = tag.localName
         if ('.' in type) return null
+        // A direct authored child is distinct from same-type template descendants.
+        // Only narrow this way when the source parent has one child of this type.
+        val sourceParent = tag.parentTag
+        if (sourceParent != null && sourceParent.subTags.count { it.localName == type } == 1) {
+            node(sourceParent, nodes)?.let { visualParent ->
+                nodes.singleOrNull { it.typeName.substringAfterLast('.') == type &&
+                    it.path.dropLast(1) == visualParent.path && it.path.size == visualParent.path.size + 1 }
+                    ?.let { return it }
+            }
+        }
         val parentName = generateSequence(tag.parentTag) { it.parentTag }.firstNotNullOfOrNull { it.xamlName() }
         val parent = parentName?.let { value -> nodes.singleOrNull { it.name == value } } ?: if (parentName != null) return null else null
         return nodes.filter { it.typeName.substringAfterLast('.') == type &&
