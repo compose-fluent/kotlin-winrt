@@ -247,7 +247,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val currentView = state.inspection.takeIf { failure == null && (!static || prepared != null) }
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
+    var pendingStructureSelection by remember(source) { mutableStateOf<com.intellij.psi.SmartPsiElementPointer<com.intellij.psi.xml.XmlTag>?>(null) }
+    var structureNodesBefore by remember(source) { mutableStateOf(view?.nodes) }
     LaunchedEffect(view?.nodes) {
+        if (static && view != null && view.nodes != structureNodesBefore && pendingStructureSelection != null) {
+            val pointer = pendingStructureSelection
+            val path = withContext(Dispatchers.IO) { ReadAction.compute<List<Int>?, RuntimeException> {
+                pointer?.element?.let { WinUIXamlSourceSelection.node(it, view.nodes)?.path }
+            } }
+            if (path != null) { selectPath(path); pendingStructureSelection = null }
+        }
+
         if (static && view != null) multiPaths = multiPaths.filter { path -> view.nodes.any { it.path == path } }.toSet()
         if (static && view != null && view.nodes.none { it.path == staticPath }) {
             staticPath = generateSequence(staticPath) { it.dropLast(1).takeIf { parent -> it.isNotEmpty() } }
@@ -302,6 +312,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 .onSuccess { editFeedback = "Updated layout structure · Ctrl+Z to undo" }
                 .onFailure { editFeedback = it.message ?: "Could not update layout structure" }
         }
+    }
+    fun reorderSelection(forward: Boolean) = structureEdit { target ->
+        structureNodesBefore = view?.nodes
+        val moved = DesignerStructureEditing.reorder(project, target, forward)
+        pendingStructureSelection = com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(moved)
     }
     fun applyEdit(changes: Map<String, String?>, title: String) = applyBatch(currentEditables.map { it to changes }, title)
     fun changeLayout(change: DesignerTransform) {
@@ -415,11 +430,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (propertyFilter.text.isEmpty()) DesignerStructurePanel(editables.singleOrNull(),
                             { axis, index, value -> structureEdit { DesignerStructureEditing.definition(project, it, axis, index, value) } },
-                            { forward -> structureEdit { target ->
-                                val neighbor = DesignerStructureEditing.reorderNeighbor(target.pointer.element ?: error("Select the element again."), forward)
-                                val destination = view?.nodes?.let { WinUIXamlSourceSelection.node(neighbor, it)?.path }
-                                DesignerStructureEditing.reorder(project, target, forward)
-                                destination?.let(::selectPath)
+                            ::reorderSelection, { container -> structureEdit { target ->
+                                structureNodesBefore = view?.nodes
+                                val moved = DesignerStructureEditing.reparent(project, target, container)
+                                pendingStructureSelection = com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(moved)
                             } })
                         DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
                         Text("Effective values · read only")
@@ -456,7 +470,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     selectedPaths, ::togglePath, snapEnabled, armedTool, toolDrop, { toolDrop = null }, ::insertTool, { armedTool = null }, {
                         if (static) multiPaths = view.nodes.filter { it.path.size == selectedPath.size && it.path.dropLast(1) == selectedPath.dropLast(1) }
                             .map { it.path }.toSet() - setOf(staticPath)
-                    }, authoredPaths)
+                    }, authoredPaths, buildList {
+                        add("Go to XAML" to { openSource(selectedPath) })
+                        add("Properties" to { showInspector = true })
+                        add("Fit selection" to { fitSelection = true; zoom = null; resetViewport++ })
+                        add("Fit all" to { fitSelection = false; zoom = null; resetViewport++ })
+                        if (editables.singleOrNull()?.structure?.previous == true) add("Move earlier" to { reorderSelection(false) })
+                        if (editables.singleOrNull()?.structure?.next == true) add("Move later" to { reorderSelection(true) })
+                    })
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())

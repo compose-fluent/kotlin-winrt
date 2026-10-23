@@ -47,7 +47,8 @@ internal object WinUIXamlDesignerEditing {
             properties, selected.bounds, tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() },
             io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(xml,
                 project.getService(io.github.composefluent.winrt.ide.resources.WinRTResourceIndex::class.java).forFile(file.path), tag, null)
-                .map { it.value }.distinct().sorted(), DesignerStructureEditing.inspect(tag, catalog))
+                .map { it.value }.distinct().sorted(), DesignerStructureEditing.inspect(tag, catalog,
+                PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter { WinUIXamlSourceSelection.node(it, nodes) != null }))
     }
 
     fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =

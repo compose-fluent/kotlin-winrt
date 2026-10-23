@@ -11,13 +11,16 @@ import org.jetbrains.jewel.ui.component.*
 
 @Composable
 internal fun DesignerStructurePanel(selection: DesignerSelection?, definition: (String, Int, String?) -> Unit,
-    reorder: (Boolean) -> Unit) {
+    reorder: (Boolean) -> Unit, reparent: (DesignerContainer) -> Unit) {
     val expansion = remember { mutableStateMapOf<String, Boolean>() }
     val structure = selection?.structure ?: return
     if (structure.previous || structure.next) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Link("Move earlier", modifier = Modifier.heightIn(min = 28.dp), enabled = structure.previous, onClick = { reorder(false) })
         Link("Move later", modifier = Modifier.heightIn(min = 28.dp), enabled = structure.next, onClick = { reorder(true) })
     }
+    if (structure.containers.isNotEmpty()) Dropdown(menuContent = {
+        structure.containers.forEach { container -> selectableItem(selected = false, onClick = { reparent(container) }) { Text(container.label) } }
+    }) { Text("Move into container…") }
     listOf("Row" to structure.rows, "Column" to structure.columns).forEach { (axis, sizes) ->
         if (sizes != null) {
             val expanded = expansion[axis] == true

@@ -164,4 +164,17 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
         assertTrue(DesignerStructureEditing.validLength("0.5*"))
     }
 
+    fun testReparentRejectsCyclesAndChangedDestinationsBeforeWriting() {
+        val target = selection()
+        val tag = target.pointer.element!!
+        val self = DesignerContainer(target.pointer, tag.text, "Self")
+        val original = myFixture.editor.document.text
+        assertNotNull(runCatching { DesignerStructureEditing.reparent(project, target, self) }.exceptionOrNull())
+        assertEquals(original, myFixture.editor.document.text)
+        val parent = tag.parentTag!!
+        val stale = DesignerContainer(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(parent), "stale", "Parent")
+        assertNotNull(runCatching { DesignerStructureEditing.reparent(project, target, stale) }.exceptionOrNull())
+        assertEquals(original, myFixture.editor.document.text)
+    }
+
 }

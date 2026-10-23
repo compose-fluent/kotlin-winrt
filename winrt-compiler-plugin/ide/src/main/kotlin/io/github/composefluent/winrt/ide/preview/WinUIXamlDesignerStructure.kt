@@ -3,17 +3,22 @@ package io.github.composefluent.winrt.ide.preview
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.SmartPointerManager
+import com.intellij.psi.SmartPsiElementPointer
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.XmlTag
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlSymbols
 
+internal data class DesignerContainer(val pointer: SmartPsiElementPointer<XmlTag>, val text: String, val label: String)
+
 internal data class DesignerStructure(val rows: List<String>? = null, val columns: List<String>? = null,
-    val previous: Boolean = false, val next: Boolean = false)
+    val previous: Boolean = false, val next: Boolean = false, val containers: List<DesignerContainer> = emptyList())
 
 /** IDE authoring commands. WinMD owns container content; PSI owns source and undo.
  * Grid definition editing preserves all unrelated attributes and resource expressions. */
 internal object DesignerStructureEditing {
-    fun inspect(tag: XmlTag, catalog: WinUIXamlCatalog): DesignerStructure {
+    fun inspect(tag: XmlTag, catalog: WinUIXamlCatalog, candidates: List<XmlTag> = emptyList()): DesignerStructure {
         val grid = tag.localName == "Grid" && tag.namespace == WinUIXamlCatalog.PRESENTATION
         val parent = tag.parentTag
         val owner = if (parent?.localName?.contains('.') == true) parent.parentTag else parent
@@ -24,8 +29,52 @@ internal object DesignerStructureEditing {
         fun sizes(axis: String) = tag.subTags.firstOrNull { it.localName == "Grid.${axis}Definitions" }?.subTags
             ?.map { it.getAttributeValue(if (axis == "Row") "Height" else "Width") ?: "*" }.orEmpty()
         return DesignerStructure(if (grid) sizes("Row") else null, if (grid) sizes("Column") else null,
-            index > 0, index >= 0 && index < siblings.lastIndex)
+            index > 0, index >= 0 && index < siblings.lastIndex,
+            candidates.filter { it != owner && !PsiTreeUtil.isAncestor(tag, it, false) && availableContent(it, catalog, catalog.resolve(tag.namespace, tag.localName)) != null }.map { target ->
+                val name = target.attributes.firstOrNull { it.localName == "Name" }?.value
+                DesignerContainer(SmartPointerManager.getInstance(tag.project).createSmartPsiElementPointer(target), target.text,
+                    if (name != null) "${target.localName} · $name" else "${target.localName} · line ${target.containingFile.text.take(target.textOffset).count { it == '\n' } + 1}")
+            })
     }
+
+
+    /** Resolve writable content through the existing metadata contract. */
+    fun availableContent(tag: XmlTag, catalog: WinUIXamlCatalog, child: io.github.composefluent.winrt.metadata.WinRTTypeDefinition? = null): XmlTag? {
+        val type = catalog.resolve(tag.namespace, tag.localName) ?: return null
+        if (!catalog.isVisual(type) || child == null || !catalog.acceptsContent(type, child)) return null
+        val member = catalog.contentMember(type) ?: return null
+        if (tag.getAttributeValue(member.name) != null) return null
+        val content = tag.subTags.firstOrNull { it.localName == "${tag.localName}.${member.name}" } ?: tag
+        if (!member.collection && (content.subTags.any { '.' !in it.localName } || content.value.trimmedText.isNotEmpty())) return null
+        return content
+    }
+
+    fun reparent(project: Project, selection: DesignerSelection, destination: DesignerContainer): XmlTag =
+        edit(project, selection, "Move XAML element into ${destination.label}") { tag ->
+            val target = destination.pointer.element ?: error("The destination no longer exists.")
+            require(target.containingFile == tag.containingFile && target.text == destination.text) { "Destination changed. Select it again." }
+            require(!PsiTreeUtil.isAncestor(tag, target, false)) { "An element cannot contain itself." }
+            val catalog = WinUIXamlSymbols.catalog(tag.containingFile) ?: error("XAML metadata is loading.")
+            val content = availableContent(target, catalog, catalog.resolve(tag.namespace, tag.localName)) ?: error("The destination content is occupied or unavailable.")
+            require(content != tag.parentTag) { "The element is already in this container." }
+            val copy = tag.copy() as XmlTag
+            // Keep inherited namespace meanings when the destination shadows a prefix.
+            val namespaces = linkedMapOf<String, String>()
+            generateSequence(tag) { it.parentTag }.forEach { ancestor -> ancestor.attributes.filter { it.name == "xmlns" || it.name.startsWith("xmlns:") }
+                .forEach { attribute -> attribute.value?.let { namespaces.putIfAbsent(attribute.name, it) } } }
+            namespaces.forEach { (name, uri) ->
+                val prefix = if (name == "xmlns") "" else name.substringAfter(':')
+                if (target.getNamespaceByPrefix(prefix) != uri) copy.setAttribute(name, uri)
+            }
+            val oldParent = tag.parentTag?.let { if ('.' in it.localName) it.parentTag else it }
+            oldParent?.let { catalog.resolve(it.namespace, it.localName) }?.let { owner ->
+                val attached = catalog.attachedMembers(owner).map { "${oldParent.localName}.${it.name}" }.toSet()
+                copy.attributes.filter { it.localName in attached }.forEach { it.delete() }
+            }
+            val moved = content.addSubTag(copy, false)
+            tag.delete()
+            moved
+        }
 
     fun validLength(value: String): Boolean {
         if (value == "Auto") return true

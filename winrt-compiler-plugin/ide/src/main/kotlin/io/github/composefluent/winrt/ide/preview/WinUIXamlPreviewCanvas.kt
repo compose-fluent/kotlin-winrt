@@ -2,6 +2,8 @@
 package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ContextMenuArea
+import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.foundation.focusable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -34,7 +36,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     selectedPaths: Set<List<Int>> = setOf(selected), toggleSelection: (List<Int>) -> Unit = select,
     snapEnabled: Boolean = true, armedTool: String? = null, toolDrop: DesignerToolDrop? = null,
     finishDrop: () -> Unit = {}, insert: (String, List<Int>, Double, Double) -> Unit = { _, _, _, _ -> },
-    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null) {
+    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null, contextActions: List<Pair<String, () -> Unit>> = emptyList()) {
     val image = view.image ?: return
     val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
         value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
@@ -131,6 +133,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
         }))
         else -> PointerIcon.Default
     }
+    ContextMenuArea(items = { contextActions.map { (label, action) -> ContextMenuItem(label, action) } }) {
     Canvas(modifier.onGloballyPositioned { canvasOrigin = it.positionInRoot() }.onSizeChanged { viewport = it }.clipToBounds()
         .focusRequester(focus).onFocusChanged { focused = it.isFocused; if (!focused) space = false }
         .onKeyEvent { event ->
@@ -183,6 +186,9 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                             change.consume()
                         }
                         PointerEventType.Press -> {
+                            if (event.buttons.isSecondaryPressed) latestHit(change.position)?.let { hit ->
+                                if (hit.path !in latestSelectedPaths) latestSelect(hit.path)
+                            }
                             if (event.buttons.isPrimaryPressed || event.buttons.isTertiaryPressed) {
                                 focus.requestFocus()
                                 down = change.position; dragged = false
@@ -266,6 +272,7 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
             }
         } }
         if (focused) drawRect(Color(0x554BA3FF), style = Stroke(1.dp.toPx()))
+    }
     }
 }
 

@@ -60,6 +60,30 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
         return WinUIXamlContentMember(name, collection)
     }
 
+    /** Uses the same normalized vector element contract as CsWinRT collection emission. */
+    fun acceptsContent(owner: WinRTTypeDefinition, child: WinRTTypeDefinition): Boolean {
+        val content = contentMember(owner) ?: return false
+        val member = members(owner).firstOrNull { it.name == content.name && !it.isEvent } ?: return false
+        val reference = WinRTTypeRef.fromDisplayName(member.typeName)
+        fun element(ref: WinRTTypeRef): String? = when (val shape = specialTypes.resolveType(ref, owner.namespace)) {
+            is WinRTCollectionTypeDescriptor -> if (shape.kind == WinRTCollectionInterfaceKind.Vector) shape.elementType?.type?.qualifiedName else null
+            is WinRTBindableCollectionTypeDescriptor -> if (shape.kind == WinRTBindableCollectionKind.Vector) "Object" else null
+            else -> null
+        }
+        val expected = if (content.collection) element(reference) ?: types[reference.qualifiedName]?.let {
+            closure.resolveRuntimeClass(it).instanceInterfaceClosure.firstNotNullOfOrNull { contract -> element(contract.interfaceType) }
+        } ?: return false else if (member.isWritable) reference.qualifiedName else return false
+        if (expected in setOf("Object", "System.Object")) return true
+        val seen = hashSetOf<String>()
+        var current: WinRTTypeDefinition? = child
+        while (current != null && seen.add(current.qualifiedName)) {
+            if (current.qualifiedName == expected) return true
+            if (current.kind == WinRTTypeKind.RuntimeClass && closure.resolveRuntimeClass(current).instanceInterfaceClosure.any { it.interfaceType.qualifiedName == expected }) return true
+            current = current.baseTypeName?.let(types::get)
+        }
+        return false
+    }
+
     fun members(type: WinRTTypeDefinition): List<WinUIXamlMember> = buildList {
         val seen = hashSetOf<String>()
         var current: WinRTTypeDefinition? = type

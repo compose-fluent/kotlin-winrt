@@ -47,6 +47,37 @@ class WinUIXamlHotReloadTest {
         }
     }
 
+    @Test fun designer_content_checks_vector_element_type_and_scalar_writability() {
+        val folder = Files.createTempDirectory("winrt-content-types-")
+        val metadata = folder.resolve("Controls.winmd")
+        try {
+            // CsWinRT code_writers.h collection writers retain their generic element type;
+            // the designer must retain that same constraint when inserting source children.
+            val ns = "Microsoft.UI.Xaml"
+            fun type(name: String, base: String? = null) = WinUIXamlApplicationTypeDescriptor("$ns.$name", base?.let { "$ns.$it" })
+            fun member(name: String, type: String, readOnly: Boolean = false) = io.github.composefluent.winrt.metadata.WinUIXamlApplicationTypeMembers(
+                properties = listOf(io.github.composefluent.winrt.metadata.WinUIXamlApplicationProperty(name,
+                    io.github.composefluent.winrt.metadata.WinRTTypeRef.fromDisplayName(type), isReadOnly = readOnly)), contentProperty = name)
+            WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Controls", listOf(
+                type("UIElement"), type("Button", "UIElement"), type("Panel", "UIElement"), type("StackPanel", "Panel"),
+                type("Inline"), type("TextBlock", "UIElement"), type("Border", "UIElement"), type("ReadOnlyHost", "UIElement")
+            ), mapOf(
+                "$ns.Panel" to member("Children", "Windows.Foundation.Collections.IVector<$ns.UIElement>", true),
+                "$ns.TextBlock" to member("Inlines", "Windows.Foundation.Collections.IVector<$ns.Inline>", true),
+                "$ns.Border" to member("Child", "$ns.UIElement"),
+                "$ns.ReadOnlyHost" to member("Child", "$ns.UIElement", true)
+            ), metadata, mapOf("Microsoft.UI.Xaml.Markup.ContentPropertyAttribute" to "Microsoft.UI.Xaml",
+                "Windows.Foundation.Collections.IVector`1" to "Windows.Foundation.FoundationContract",
+                "Windows.Foundation.Collections.IVector" to "Windows.Foundation.FoundationContract"))
+            val catalog = WinUIXamlCatalog(WinRTMetadataLoader.load(listOf(metadata)))
+            val button = catalog.types.getValue("$ns.Button")
+            assertTrue(catalog.acceptsContent(catalog.types.getValue("$ns.StackPanel"), button))
+            assertTrue(catalog.acceptsContent(catalog.types.getValue("$ns.Border"), button))
+            assertFalse(catalog.acceptsContent(catalog.types.getValue("$ns.TextBlock"), button))
+            assertFalse(catalog.acceptsContent(catalog.types.getValue("$ns.ReadOnlyHost"), button))
+        } finally { Files.deleteIfExists(metadata); Files.delete(folder) }
+    }
+
     @Test fun literal_changes_decode_xml_and_keep_compiler_fingerprint_and_version() {
         val before = WinUIXamlHotReloadMarkup.parse(source)
         val after = WinUIXamlHotReloadMarkup.parse(source.replace("Hello", "A &amp; B").replace("100", "140"))

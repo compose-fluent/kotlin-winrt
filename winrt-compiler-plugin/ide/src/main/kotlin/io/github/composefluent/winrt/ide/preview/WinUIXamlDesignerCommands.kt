@@ -81,13 +81,7 @@ internal object DesignerInsertion {
             require(catalog.isVisual(type) && typeName in designerToolbox) { "Choose a visual control from the toolbox." }
             // Walk up from a leaf. Never replace existing content or a binding.
             val target = generateSequence(selected) { it.parentTag }.firstNotNullOfOrNull { tag ->
-                val owner = catalog.resolve(tag.namespace, tag.localName) ?: return@firstNotNullOfOrNull null
-                val member = catalog.contentMember(owner) ?: return@firstNotNullOfOrNull null
-                if (tag.getAttributeValue(member.name) != null) return@firstNotNullOfOrNull null
-                val propertyTag = tag.subTags.firstOrNull { it.localName == "${tag.localName}.${member.name}" }
-                val content = propertyTag ?: tag
-                val children = content.subTags.filter { '.' !in it.localName }
-                if (!member.collection && (children.isNotEmpty() || content.value.trimmedText.isNotEmpty())) null else tag to content
+                DesignerStructureEditing.availableContent(tag, catalog, type)?.let { tag to it }
             } ?: error("Select a container with available content. Existing content is never replaced.")
             val (parent, content) = target
             val prefix = parent.getPrefixByNamespace(WinUIXamlCatalog.PRESENTATION).orEmpty()
