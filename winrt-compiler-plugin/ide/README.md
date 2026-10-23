@@ -531,7 +531,9 @@ version or project configuration, or changing environment-dependent build inputs
 
 Cold project builds remain cancellable and do not consume the connection timeout.
 The designer polls for the host while Gradle runs, then allows 30 seconds for session
-publication after the launch task ends. Published hosts have a separate bounded
+publication after the launch task ends. Packaged desktop Native previews prepare and
+register with `--no-launch`; after Gradle succeeds, the IDE owns the separate preview
+process, so a long-lived host does not keep the build task running. Published hosts have a separate bounded
 handshake/root-initialization wait; failed builds end the pending connection.
 After connection, project previews also reload newly generated metadata catalogs
 and resources so the first build renders without a manual refresh.
@@ -548,12 +550,15 @@ when its path still exists. Failed renders retain the last frame with an Out of 
 status and a direct Retry action; disconnected previews expose Retry preview.
 
 Designer edits are source commands with Ctrl+Z/Ctrl+Shift+Z undo/redo. Writable properties
-come from WinMD setter metadata; enum and Boolean choices, numeric validation and XAML
-expressions are supported. Canvas moves use attached offsets; other panels use margins
+come from WinMD setter metadata, grouped into searchable categories. Enum/Boolean
+choices, numeric validation, resource selection, color and basic Binding editors are supported. Canvas moves use attached offsets; other panels use margins
 and alignment. Resizing writes Width/Height and preserves the leading edge. Layout
 gestures do not replace bindings/resources or property elements. Ambiguous/template-only
 nodes remain inspection-only, and stale source edits are rejected instead of overwriting
-concurrent changes. This does not implement cross-container reparenting or template authoring.
+concurrent changes. Structure commands edit Grid definitions, reorder siblings and move
+source elements into compatible containers. Marquee selection and XAML copy/cut/paste
+use the same source mapping and undo history. Full ControlTemplate, Style and VisualState
+authoring is not implemented; resource and property editors are a narrower surface.
 
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
@@ -641,7 +646,7 @@ hosts use a separate `.preview` identity and deployment folder and can run besid
 the application's `.dev` package. The SDK designer is independent of the
 application's packaging mode. Static and live sessions have independent
 connections and process ownership; closing the project stops its design host.
-Synchronize Gradle after updating the toolkit to import version 8 of the IDE model.
+Synchronize Gradle after updating the toolkit to import version 9 of the IDE model.
 
 Static rendering preserves StaticResource, ThemeResource, local dictionaries,
 application resources and their original package-relative Source paths. In the
@@ -660,13 +665,17 @@ and compiler-only directives are removed from the design copy with a visible
 notice. Regular Binding still needs an available design DataContext. With project
 code disabled, custom controls retain layout as visible placeholders and custom
 resource objects are excluded. Enabling project code permits their normal
-constructors. There is no simulation of Kotlin code or binding execution, and
-this feature does not provide UWP's drag-and-drop designer.
+constructors. There is no simulation of Kotlin code or binding execution. The shared
+canvas provides the source layout and property edits described above for both frameworks.
 
-WinUI owns layout/rendering. Captures are premultiplied BGRA8, scaled to at most
-768 pixels per side, and bounded to 2048 visual nodes. RenderTargetBitmap's own
-limitations apply, including content outside the captured visual such as popups.
-The protocol is version 4: rebuild applications using an older development host
+WinUI owns layout/rendering. Premultiplied BGRA8 captures follow zoom and display
+density, bounded to 4096 pixels per side and 2048 visual nodes. WinUI captures temporarily
+raise the root UIElement.RasterizationScale to rasterize its subtree at the requested
+density, then restore the original value without changing DIP layout. Windows.UI.Xaml
+has no matching public setter, so UWP uses RenderAsync output scaling only. Large
+artboards can reach the capture cap before the maximum zoom. RenderTargetBitmap's
+limitations still apply, including content outside the captured visual such as popups.
+The protocol is version 5: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
 adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches
