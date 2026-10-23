@@ -4,7 +4,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Bounded framing shared verbatim with the IDE; the authentication token is never a display DTO. */
 internal object WinUIXamlHotReloadCodec {
-    const val MAX_FRAME = 8 * 1024 * 1024
+    const val MAX_FRAME = 80 * 1024 * 1024
     private const val MAX_STRING = 128 * 1024
     private fun Writer.string(value: String) {
         val bytes = value.encodeToByteArray()
@@ -82,7 +82,8 @@ internal object WinUIXamlHotReloadCodec {
         string(token); writeByte(2); string(request.className); string(request.resourcePath); writeInt(request.instance)
         require(request.selectedPath.size <= 64 && request.selectedPath.all { it in 0..2048 })
         writeInt(request.selectedPath.size); request.selectedPath.forEach { writeInt(it) }; writeBoolean(request.capture)
-        string(request.previewMarkup); writeInt(request.width); writeInt(request.height); string(request.theme)
+        require(request.renderScale.isFinite() && request.renderScale in 0.125..32.0)
+        string(request.previewMarkup); writeInt(request.width); writeInt(request.height); string(request.theme); writeDouble(request.renderScale)
     }
     fun readRequest(frame: ByteArray): Pair<String, WinUIXamlHotReloadPatch?> = readCommand(frame).let {
         require(it.inspection == null) { "Use the visual inspection command reader." }; it.token to it.patch
@@ -93,8 +94,9 @@ internal object WinUIXamlHotReloadCodec {
         if (operation == 2) {
             val name = string(); val resource = string(); val instance = count(1024)
             val path = List(count(64)) { count(2048) }; val capture = readBoolean()
-            val markup = string(); val width = count(4096); val height = count(4096); val theme = string()
-            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme))
+            val markup = string(); val width = count(4096); val height = count(4096); val theme = string(); val scale = readDouble()
+            require(scale.isFinite() && scale in 0.125..32.0)
+            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale))
         }
         require(operation == 0 || operation == 1) { "Invalid development command." }
         val patch = if (operation == 0) null else {
@@ -139,7 +141,7 @@ internal object WinUIXamlHotReloadCodec {
             writeInt(view.properties.size); view.properties.forEach { string(it.name); string(it.value) }
             writeBoolean(view.image != null)
             view.image?.let { image ->
-                require(image.width in 1..768 && image.height in 1..768 && image.pixels.size == 4 * image.width * image.height)
+                require(image.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.pixels.size == 4 * image.width * image.height)
                 writeInt(image.width); writeInt(image.height); write(image.pixels)
             }
         }
@@ -158,7 +160,7 @@ internal object WinUIXamlHotReloadCodec {
             }
             val properties = List(count(64)) { WinUIXamlVisualProperty(string(), string()) }
             val image = if (!readBoolean()) null else {
-                val width = count(768); val height = count(768); require(width > 0 && height > 0)
+                val width = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); val height = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); require(width > 0 && height > 0)
                 WinUIXamlVisualImage(width, height, ByteArray(4 * width * height).also(::readFully))
             }
             WinUIXamlVisualSnapshot(nodes, properties, image)

@@ -179,6 +179,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var showSession by remember { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
     var actualZoom by remember(source) { mutableFloatStateOf(1f) }
+    val displayDensity = androidx.compose.ui.platform.LocalDensity.current.density
+    val captureScale = (kotlin.math.ceil(actualZoom * displayDensity * 4.0) / 4.0).coerceIn(0.125, 32.0)
     var zoom by remember(source) { mutableStateOf<Float?>(null) }
     var fitSelection by remember(source) { mutableStateOf(false) }
     var resetViewport by remember(source) { mutableIntStateOf(0) }
@@ -231,12 +233,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, manualRefresh, resourceRevision) {
+    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision) {
         if (static && root != null && state.connected && prepared != null) {
             run {
                 val (w, h) = viewport
+                if (state.inspection != null) delay(150)
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
-                    prepared!!.markup, w, h, theme)
+                    prepared!!.markup, w, h, theme, captureScale)
                 val key = Triple(request, state.pid, manualRefresh to resourceRevision)
                 // Metadata notifications can prepare the same document again. Keep
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
@@ -774,13 +777,10 @@ internal fun previewScale(width: Int, height: Int, rootWidth: Double, rootHeight
     else minOf(width / rootWidth, height / rootHeight).toFloat() / density
 
 internal fun bgraImage(image: WinUIXamlVisualImage): BufferedImage {
-    require(image.width in 1..768 && image.height in 1..768 && image.pixels.size == image.width * image.height * 4)
+    require(image.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.pixels.size == image.width * image.height * 4)
     val bitmap = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_ARGB_PRE)
     val pixels = (bitmap.raster.dataBuffer as DataBufferInt).data
-    pixels.indices.forEach { index -> val offset = index * 4; val bytes = image.pixels
-        pixels[index] = ((bytes[offset + 3].toInt() and 255) shl 24) or ((bytes[offset + 2].toInt() and 255) shl 16) or
-            ((bytes[offset + 1].toInt() and 255) shl 8) or (bytes[offset].toInt() and 255)
-    }
+    java.nio.ByteBuffer.wrap(image.pixels).order(java.nio.ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(pixels)
     return bitmap
 }
 

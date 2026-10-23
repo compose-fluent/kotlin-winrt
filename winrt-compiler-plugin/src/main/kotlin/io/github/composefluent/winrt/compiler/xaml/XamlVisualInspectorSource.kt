@@ -172,7 +172,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               WinUIXamlVisualProperty("XamlRoot.IsHostVisible", it.xamlRoot?.isHostVisible?.toString().orEmpty())) }.orEmpty()
             (basic + winUIXamlInspectionProperties(value)).distinctBy { it.name }
           },
-          capture = { value, complete ->
+          capture = { value, renderScale, complete ->
             val element = value.asWinRT<FrameworkElement>()
             val queue = requireNotNull(${dispatching}.DispatcherQueue.getForCurrentThread())
             val dispatcher = object : CoroutineDispatcher() {
@@ -196,13 +196,11 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                   ?: element.width.takeIf { it.isFinite() && it > 0 } ?: 1.0
                 val logicalHeight = element.actualHeight.takeIf { it.isFinite() && it > 0 }
                   ?: element.height.takeIf { it.isFinite() && it > 0 } ?: 1.0
-                val scale = minOf(1.0, 768.0 / (maxOf(logicalWidth, logicalHeight, 1.0) * dpi))
-                val width = (logicalWidth * scale).toInt().coerceIn(1, 768)
-                val height = (logicalHeight * scale).toInt().coerceIn(1, 768)
+                val (width, height) = winUIXamlCaptureSize(logicalWidth, logicalHeight, dpi, renderScale)
                 requireNotNull(bitmap.renderAsync(element, width, height)).await()
                 stage = "read the rendered pixels"
                 val buffer = requireNotNull(requireNotNull(bitmap.getPixelsAsync()).await())
-                require(bitmap.pixelWidth in 1..768 && bitmap.pixelHeight in 1..768 && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
+                require(bitmap.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && bitmap.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
                   "WinUI returned an unsupported bitmap size or pixel buffer."
                 }
                 val bytes = readWinUIXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())

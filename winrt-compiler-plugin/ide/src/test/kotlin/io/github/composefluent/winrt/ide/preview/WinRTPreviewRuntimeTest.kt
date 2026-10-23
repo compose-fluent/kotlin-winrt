@@ -181,7 +181,7 @@ class WinRTPreviewRuntimeTest {
     private fun assertBoundedPixels(image: WinUIXamlVisualImage) {
         // Windows can apply 200% DPI: the design viewport is DIP, while
         // RenderTargetBitmap returns physical pixels bounded by the protocol.
-        assertTrue(image.width in 1..768 && image.height in 1..768)
+        assertTrue(image.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION)
         assertEquals(4.0 / 3.0, image.width.toDouble() / image.height, 0.01)
     }
     private fun connect(folder: String): WinUIXamlHotReloadClient {

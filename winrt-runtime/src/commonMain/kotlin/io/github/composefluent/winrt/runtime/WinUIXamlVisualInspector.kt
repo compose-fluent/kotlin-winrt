@@ -8,11 +8,12 @@ class WinUIXamlVisualInspector(
     private val children: (Any) -> List<Any>,
     private val describe: (Any, Any) -> WinUIXamlVisualNode,
     private val properties: (Any) -> List<WinUIXamlVisualProperty>,
-    private val capture: (Any, (Result<WinUIXamlVisualImage>) -> Unit) -> Unit,
+    private val capture: (Any, Double, (Result<WinUIXamlVisualImage>) -> Unit) -> Unit,
     private val preview: (Any, WinUIXamlInspectionRequest) -> Unit,
 ) {
     fun inspect(owner: Any, request: WinUIXamlInspectionRequest, complete: (Result<WinUIXamlVisualSnapshot>) -> Unit) {
         val prepared = runCatching {
+            require(request.renderScale.isFinite() && request.renderScale in 0.125..32.0) { "Invalid capture scale." }
             if (request.previewMarkup.isNotEmpty()) {
                 require(request.previewMarkup.length <= 128 * 1024 && request.width in 64..4096 && request.height in 64..4096 &&
                     request.theme in listOf("Default", "Light", "Dark")) { "Invalid XAML preview parameters." }
@@ -40,7 +41,7 @@ class WinUIXamlVisualInspector(
             // RenderTargetBitmap completes on the owner's UI dispatcher after layout.
             // Read bounds and template children only then, especially for a new preview.
             if (!request.capture) complete(snapshot(root)) else try {
-                capture(root) { image -> complete(image.fold({ snapshot(root, it) }, { Result.failure(it) })) }
+                capture(root, request.renderScale) { image -> complete(image.fold({ snapshot(root, it) }, { Result.failure(it) })) }
             } catch (error: Exception) { complete(Result.failure(error)) }
         }, { complete(Result.failure(it)) })
     }
@@ -58,7 +59,7 @@ fun winUIXamlInspectionProperties(value: Any): List<WinUIXamlVisualProperty> =
  * IUnknown + Buffer(byte**) ABI. Keep the QI owner alive while copying pixels;
  * both JVM and mingwX64 use the existing scoped platform/vtable contracts. */
 fun readWinUIXamlVisualPixels(buffer: ComObjectReference, count: Int): ByteArray {
-    require(count in 0..768 * 768 * 4)
+    require(count in 0..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION * WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION * 4)
     if (count == 0) return byteArrayOf()
     return buffer.queryInterface(IID.IBufferByteAccess).getOrThrow().use { access ->
         PlatformAbi.confinedScope().use { scope ->
@@ -69,4 +70,16 @@ fun readWinUIXamlVisualPixels(buffer: ComObjectReference, count: Int): ByteArray
             PlatformAbi.readBytes(bytes, count)
         }
     }
+}
+
+/** RenderTargetBitmap takes view pixels and returns physical pixels. Keep the
+ * artboard layout in DIP; increasing capture density must not reflow controls.
+ * Bounds apply before allocating the bitmap and again at the protocol boundary.
+ */
+fun winUIXamlCaptureSize(width: Double, height: Double, dpi: Double, renderScale: Double): Pair<Int, Int> {
+    require(width.isFinite() && height.isFinite() && width > 0 && height > 0)
+    require(dpi.isFinite() && dpi > 0 && renderScale.isFinite() && renderScale in 0.125..32.0)
+    val limit = WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION
+    val scale = minOf(renderScale / dpi, limit / (maxOf(width, height) * dpi))
+    return (width * scale).toInt().coerceIn(1, limit) to (height * scale).toInt().coerceIn(1, limit)
 }

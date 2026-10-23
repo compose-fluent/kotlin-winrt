@@ -101,14 +101,14 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
         service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
         fixture.await("First inspection reached peer", entered)
-        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", width = 640))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", width = 640, renderScale = 2.5))
         service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0)))
         fixture.beforeInspection.set(null); release.countDown()
         PlatformTestUtil.waitWithEventsDispatching("Latest design inspection completes", {
             fixture.inspections.size == 2 && !service.state.value.inspecting
         }, 10)
         val next = fixture.inspections.last()
-        assertEquals("<Grid/>", next.previewMarkup); assertEquals(640, next.width)
+        assertEquals("<Grid/>", next.previewMarkup); assertEquals(640, next.width); assertEquals(2.5, next.renderScale)
         assertEquals(listOf(0), next.selectedPath)
         assertEquals("Greeting", service.state.value.inspection!!.properties.single().value)
         assertEquals(0, fixture.patches.get())

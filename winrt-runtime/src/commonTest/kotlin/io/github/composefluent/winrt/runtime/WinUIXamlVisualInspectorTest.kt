@@ -3,6 +3,21 @@ package io.github.composefluent.winrt.runtime
 import kotlin.test.*
 
 class WinUIXamlVisualInspectorTest {
+    @Test fun capture_density_preserves_layout_and_bounds_physical_memory() {
+        assertEquals(800 to 600, winUIXamlCaptureSize(800.0, 600.0, 1.0, 1.0))
+        assertEquals(1600 to 1200, winUIXamlCaptureSize(800.0, 600.0, 1.0, 2.0))
+        assertEquals(800 to 600, winUIXamlCaptureSize(800.0, 600.0, 2.0, 2.0))
+        assertEquals(2048 to 1536, winUIXamlCaptureSize(800.0, 600.0, 2.0, 32.0))
+        assertFailsWith<IllegalArgumentException> { winUIXamlCaptureSize(800.0, 600.0, 1.0, Double.NaN) }
+        val request = WinUIXamlInspectionRequest("probe.Page", "", renderScale = 2.5)
+        assertEquals(request, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", request)).inspection)
+        assertFailsWith<IllegalArgumentException> { WinUIXamlHotReloadCodec.writeInspectionRequest("token", request.copy(renderScale = Double.POSITIVE_INFINITY)) }
+        val pixels = ByteArray(1600 * 1200 * 4) { (it % 251).toByte() }
+        val reply = WinUIXamlHotReloadReply(0, "", inspection = WinUIXamlVisualSnapshot(emptyList(), emptyList(), WinUIXamlVisualImage(1600, 1200, pixels)))
+        val decoded = WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(reply)).inspection!!.image!!
+        assertEquals(1600, decoded.width)
+        assertContentEquals(pixels, decoded.pixels)
+    }
     private class Visual(val name: String, val children: List<Visual> = emptyList())
     private open class PropertyBase
     private class PropertyControl : PropertyBase()
@@ -29,7 +44,7 @@ class WinUIXamlVisualInspectorTest {
         val queue = mutableListOf<() -> Unit>()
         val inspector = WinUIXamlVisualInspector({ it }, { (it as Visual).children }, { value, _ ->
             WinUIXamlVisualNode(emptyList(), "probe.Visual", (value as Visual).name, WinUIXamlVisualBounds(0.0, 0.0, 100.0, 80.0))
-        }, { listOf(WinUIXamlVisualProperty("Name", (it as Visual).name)) }, { _, complete ->
+        }, { listOf(WinUIXamlVisualProperty("Name", (it as Visual).name)) }, { _, _, complete ->
             complete(Result.success(WinUIXamlVisualImage(1, 1, byteArrayOf(0, 0, -1, -1))))
         }, { _, _ -> error("Live inspection never invokes static preview") })
         val registry = WinUIXamlHotReloadRegistry({ { action -> queue += action; true } }, { _, value -> value }, inspector = inspector)
@@ -52,7 +67,7 @@ class WinUIXamlVisualInspectorTest {
         val root = Visual("Root")
         val inspector = WinUIXamlVisualInspector({ it }, { emptyList() }, { _, _ ->
             WinUIXamlVisualNode(emptyList(), "probe.Visual", "", WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0))
-        }, { emptyList() }, { _, _ -> error("No capture requested") }, { _, _ -> })
+        }, { emptyList() }, { _, _, _ -> error("No capture requested") }, { _, _ -> })
         var result: Result<WinUIXamlVisualSnapshot>? = null
         inspector.inspect(root, WinUIXamlInspectionRequest("probe.Page", "", selectedPath = listOf(0), capture = false)) { result = it }
         assertTrue(result!!.isFailure)
