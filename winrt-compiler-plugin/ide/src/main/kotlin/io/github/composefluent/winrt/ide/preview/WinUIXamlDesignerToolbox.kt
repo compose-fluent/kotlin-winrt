@@ -43,7 +43,9 @@ internal fun DesignerToolbox(types: List<String>, armed: String?, choose: (Strin
                     .clickable { choose(if (armed == type) null else type) }
                     .pointerInput(type) { detectDragGestures(
                         onDragStart = { point = origin + it; latestChoose(type) },
-                        onDrag = { change, amount -> point += amount; change.consume() },
+                        // onDragStart already includes the slop-triggering movement. Absolute
+                        // pointer coordinates avoid counting that first movement twice.
+                        onDrag = { change, _ -> point = origin + change.position; change.consume() },
                         onDragEnd = { latestDrop(DesignerToolDrop(type, point)); latestChoose(null) },
                         onDragCancel = { latestChoose(null) }) }
                     .semantics { contentDescription = "Insert $type; drag to canvas" }.padding(8.dp)) { Text(type) }
