@@ -53,7 +53,8 @@ fun winUIXamlInspectionProperties(value: Any): List<WinUIXamlVisualProperty> =
             .getOrElse { "Unavailable: ${it.message}" })
     }
 
-/** IBufferByteAccess uses CsWinRT's Interop/IID.g.cs identity and the robuffer.h
+/** Mirrors CsWinRT WinRT.Runtime2/Windows.Storage.Streams/Extensions/WindowsRuntimeBufferExtensions.cs
+ * CopyTo: copy a contiguous span with its IBufferByteAccess owner leased. Uses the robuffer.h
  * IUnknown + Buffer(byte**) ABI. Keep the QI owner alive while copying pixels;
  * both JVM and mingwX64 use the existing scoped platform/vtable contracts. */
 fun readWinUIXamlVisualPixels(buffer: ComObjectReference, count: Int): ByteArray {
@@ -65,7 +66,7 @@ fun readWinUIXamlVisualPixels(buffer: ComObjectReference, count: Int): ByteArray
             ExceptionHelpers.throwExceptionForHR(access.comPtr.withCallPointer { leasedPointer -> ComVtableInvoker.invokeArgs(leasedPointer, 3, slot) }, "IBufferByteAccess.Buffer")
             val bytes = PlatformAbi.readPointer(slot)
             check(!PlatformAbi.isNull(bytes)) { "The rendered pixel buffer is unavailable." }
-            ByteArray(count) { PlatformAbi.readInt8(PlatformAbi.slice(bytes, it.toLong(), 1)) }
+            PlatformAbi.readBytes(bytes, count)
         }
     }
 }
