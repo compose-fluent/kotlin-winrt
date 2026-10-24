@@ -48,6 +48,9 @@ internal class WinRTPreviewLaunchCache(
     }, content = true, excludeBuild = true, configurationOnly = sdk)
 
     private fun outputs() = fingerprint(listOf(deployment), content = false, excludeBuild = false)
+    /** Routing hint only. start() must still validate all contents before reuse. */
+    fun hasCandidate(): Boolean = supported() && Files.isRegularFile(receipt)
+
     fun reusable(inputs: String): Boolean = supported() && runCatching {
         val stored = Files.readAllLines(receipt)
         val current = record(inputs).lines()

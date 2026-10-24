@@ -138,7 +138,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             startPreferredXamlPreview(
                 wantsProjectCode = wantsProjectCode && launch != null,
                 projectConnected = projectState.connected,
-                reusableProject = { design.hasReusableNativePreview(launchModule!!, launch!!) },
+                projectCandidate = { design.hasNativePreviewCandidate(launchModule!!, launch!!) },
                 startProject = { design.ensurePreview(launchModule!!, launch!!) },
                 awaitProject = { withTimeoutOrNull(3_000) {
                     design.state.first { it.connected || !it.busy }.connected
