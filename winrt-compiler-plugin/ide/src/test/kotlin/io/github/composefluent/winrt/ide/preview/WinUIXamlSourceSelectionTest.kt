@@ -277,4 +277,25 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertNull(WinUIXamlSourceSelection.node(parts[1], nodes.map { if (it.path == listOf(0, 0)) it.copy(typeName = "Windows.UI.Xaml.Controls.ContentPresenter") else it }))
     }
 
+    fun testNestedExternalDataTemplatesSelectExactRealizationAndRejectCycles() {
+        val dictionary = myFixture.addFileToProject("Nested.xaml", """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+            <DataTemplate x:Key="Inner"><TextBlock x:Name="Caption"/></DataTemplate>
+            <DataTemplate x:Key="Outer"><ContentControl x:Name="Nested" ContentTemplate="{StaticResource Inner}"/></DataTemplate>
+            <DataTemplate x:Key="Cycle"><ContentControl ContentTemplate="{StaticResource Cycle}"/></DataTemplate>
+            </ResourceDictionary>""") as XmlFile
+        val file = myFixture.addFileToProject("Consumer.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Nested.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Grid.Resources><ListView x:Name="Rows" ItemTemplate="{StaticResource Outer}"/><ContentControl x:Name="Cyclic" ContentTemplate="{StaticResource Cycle}"/></Grid>""") as XmlFile
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "ListView", "Rows"),
+            node(listOf(0, 0), "ContentControl", "Nested").copy(templateOwner = listOf(0), templateProperty = "ItemTemplate"),
+            node(listOf(0, 0, 0), "TextBlock", "Caption").copy(templateOwner = listOf(0, 0), templateProperty = "ContentTemplate"),
+            node(listOf(0, 1), "ContentControl", "Nested").copy(templateOwner = listOf(0), templateProperty = "ItemTemplate"),
+            node(listOf(0, 1, 0), "TextBlock", "Caption").copy(templateOwner = listOf(0, 1), templateProperty = "ContentTemplate"))
+        val caption = PsiTreeUtil.findChildrenOfType(dictionary, XmlTag::class.java).single { it.localName == "TextBlock" }
+        val context = WinUIXamlSourceSelection.Context()
+        assertTrue(WinUIXamlSourceSelection.sourceTags(file, context).contains(caption))
+        assertNull(WinUIXamlSourceSelection.node(caption, nodes, consumerFile = file, context = context))
+        assertSame(caption, WinUIXamlSourceSelection.tag(file, nodes[3], nodes, emptyList(), context))
+        assertSame(caption, WinUIXamlSourceSelection.tag(file, nodes[5], nodes, emptyList(), context))
+        val cyclic = PsiTreeUtil.findChildrenOfType(dictionary, XmlTag::class.java).single { it.localName == "ContentControl" && it.getAttributeValue("Name", "http://schemas.microsoft.com/winfx/2006/xaml") == null }
+        assertNull(WinUIXamlSourceSelection.node(cyclic, nodes, nodes[5].path, file, context))
+    }
 }

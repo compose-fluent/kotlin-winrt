@@ -11,10 +11,21 @@ internal object WinUIXamlSourceSelection {
     data class Context(val catalog: io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog? = null,
         val theme: String? = null, val application: XmlFile? = null) {
         private val templates = mutableMapOf<Pair<XmlTag, String>, XmlTag?>()
+        private val sourceFiles = mutableMapOf<XmlFile, List<XmlTag>>()
+        internal fun sources(file: XmlFile, resolve: () -> List<XmlTag>): List<XmlTag> {
+            val current = com.intellij.psi.util.PsiModificationTracker.getInstance(file.project).modificationCount
+            if (modification != current) { templates.clear(); sourceFiles.clear(); modification = current }
+            return sourceFiles.getOrPut(file, resolve)
+        }
+        private val resolving = hashSetOf<XmlTag>()
+        internal fun resolveNode(tag: XmlTag, resolve: () -> WinUIXamlVisualNode?): WinUIXamlVisualNode? {
+            if (resolving.size >= 64 || !resolving.add(tag)) return null
+            return try { resolve() } finally { resolving.remove(tag) }
+        }
         private var modification = -1L
         internal fun template(tag: XmlTag, property: String, resolve: () -> XmlTag?): XmlTag? {
             val current = com.intellij.psi.util.PsiModificationTracker.getInstance(tag.project).modificationCount
-            if (modification != current) { templates.clear(); modification = current }
+            if (modification != current) { templates.clear(); sourceFiles.clear(); modification = current }
             val key = tag to property
             if (!templates.containsKey(key)) templates[key] = resolve()
             return templates[key]
@@ -86,8 +97,7 @@ internal object WinUIXamlSourceSelection {
 
     private fun dataTemplateNode(tag: XmlTag, template: XmlTag, nodes: List<WinUIXamlVisualNode>,
         instance: List<Int>?, consumerFile: XmlFile?, context: Context): WinUIXamlVisualNode? {
-        val consumers = consumerFile?.let { PsiTreeUtil.findChildrenOfType(it, XmlTag::class.java) }.orEmpty()
-            .filterNot { it.inTemplate() }
+        val consumers = consumerFile?.let { sourceTags(it, context) }.orEmpty()
         val realization = nodes.filter { visual ->
             val ownerPath = visual.templateOwner ?: return@filter false
             (instance == null || instance.size >= visual.path.size && instance.take(visual.path.size) == visual.path) &&
@@ -107,15 +117,29 @@ internal object WinUIXamlSourceSelection {
         return orderedChild(tag, parent, visualParent, scope)
     }
 
-    fun sourceTags(file: XmlFile, context: Context = Context()): List<XmlTag> {
-        val local = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).toList()
-        return (local + local.filterNot { it.inTemplate() }.flatMap { listOfNotNull(referencedTemplate(it, context), dataTemplate(it, "ContentTemplate", context), dataTemplate(it, "ItemTemplate", context)) }.flatMap {
-            listOf(it) + PsiTreeUtil.findChildrenOfType(it, XmlTag::class.java)
-        }).distinct()
+    fun sourceTags(file: XmlFile, context: Context = Context()): List<XmlTag> = context.sources(file) {
+        val tags = linkedSetOf<XmlTag>()
+        val pending = ArrayDeque<XmlTag>()
+        pending.addAll(PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java))
+        while (pending.isNotEmpty() && tags.size < 8192) {
+            val tag = pending.removeFirst()
+            if (!tags.add(tag)) continue
+            if ('.' in tag.localName || tag.localName in setOf("ControlTemplate", "DataTemplate", "ItemsPanelTemplate", "Style", "Setter", "ResourceDictionary")) continue
+            listOfNotNull(referencedTemplate(tag, context), dataTemplate(tag, "ContentTemplate", context), dataTemplate(tag, "ItemTemplate", context)).forEach {
+                if (it !in tags) {
+                    pending.add(it)
+                    pending.addAll(PsiTreeUtil.findChildrenOfType(it, XmlTag::class.java))
+                }
+            }
+        }
+        tags.toList()
     }
-
     fun node(tag: XmlTag, nodes: List<WinUIXamlVisualNode>, instance: List<Int>? = null,
-        consumerFile: XmlFile? = tag.containingFile as? XmlFile, context: Context = Context()): WinUIXamlVisualNode? {
+        consumerFile: XmlFile? = tag.containingFile as? XmlFile, context: Context = Context()): WinUIXamlVisualNode? =
+        context.resolveNode(tag) { resolveNode(tag, nodes, instance, consumerFile, context) }
+
+    private fun resolveNode(tag: XmlTag, nodes: List<WinUIXamlVisualNode>, instance: List<Int>?,
+        consumerFile: XmlFile?, context: Context): WinUIXamlVisualNode? {
         if (tag.inTemplate()) {
             // Resolve the exact consuming control, then scope template names to its
             // realized subtree. A shared template needs the clicked instance path;
@@ -127,8 +151,8 @@ internal object WinUIXamlSourceSelection {
             if (template.localName != "ControlTemplate") return null
             val property = template.parentTag ?: return null
             val owners = if (property.localName.endsWith(".Template")) listOfNotNull(property.parentTag)
-                else consumerFile?.let { PsiTreeUtil.findChildrenOfType(it, XmlTag::class.java) }
-                    .orEmpty().filter { !it.inTemplate() && referencedTemplate(it, context) == template }
+                else consumerFile?.let { sourceTags(it, context) }
+                    .orEmpty().filter { referencedTemplate(it, context) == template }
             val owner = owners.mapNotNull { node(it, nodes, instance, consumerFile, context) }.filter {
                 instance == null || instance.size > it.path.size && instance.take(it.path.size) == it.path
             }.singleOrNull() ?: return null

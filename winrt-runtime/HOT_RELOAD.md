@@ -259,10 +259,12 @@ visual names alone never establish a realization. The IDE resolves explicit
 inline or StaticResource ContentTemplate/ItemTemplate source, including
 explicit and theme-selected implicit styles with BasedOn inheritance. Selection
 is scoped to the clicked realization. Editing changes the shared template source with one
-undo command, and the property panel identifies that shared scope.
+undo command, and the property panel identifies that shared scope. Nested template consumers
+are resolved through a bounded source closure, including external dictionaries;
+cyclic references are rejected instead of guessing an owner.
 
 Source-only navigation does not choose between repeated realizations. Template
-selectors, nested data-template consumers and ContentPresenter-only containers
+selectors and ContentPresenter-only containers
 are not inferred; they remain source-only
 until an exact SDK-to-source ownership mapping is available. This selection
 contract does not add live application template replacement or Kotlin reload.
