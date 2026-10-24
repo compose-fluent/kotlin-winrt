@@ -454,10 +454,15 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         onDispose { Disposer.dispose(disposable) }
     }
     val projectPreparing = static && wantsProjectCode && !projectCode
-    val status = if (projectPreparing && view != null) {
-        if (projectState.busy) "Basic preview · building project controls in the background"
-        else if (projectState.pid == null && projectState.message.contains("failed", true)) "Basic preview · project build failed; see Gradle Run output"
-        else "Basic preview · preparing project controls"
+    val status = if (static && startupCancelled) {
+        if (view != null) "Preview stopped · last successful render" else "Preview stopped"
+    } else if (projectPreparing && view != null) {
+        val renderedHost = if (state.connected) "Basic preview" else "Last successful render"
+        when {
+            projectState.busy -> "$renderedHost · building project controls"
+            projectState.message.contains("failed", true) -> "$renderedHost · project preview failed; see Gradle Run output"
+            else -> "$renderedHost · project preview is not running"
+        }
     } else if (view != null && static) when {
         !state.connected && !state.busy -> "Disconnected · last successful render"
         failure != null || state.inspectionError != null -> "Out of date · last successful render"

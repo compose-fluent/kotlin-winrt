@@ -680,7 +680,7 @@ density, then restore the original value without changing DIP layout. Windows.UI
 has no matching public setter, so UWP uses RenderAsync output scaling only. Large
 artboards can reach the capture cap before the maximum zoom. RenderTargetBitmap's
 limitations still apply, including content outside the captured visual such as popups.
-The protocol is version 5: rebuild applications using an older development host
+The protocol is version 6: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
 adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches
@@ -797,7 +797,7 @@ removed key; dictionary keys and values roll back together after a failed update
 ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
 dictionaries, captures in other dictionaries/templates, connected-element removal,
 type/name/parent changes, new names or authored controls,
-compiled events/bindings, attached-property removal or expressions and Kotlin changes require rebuilding
+compiled events/bindings, property expressions and Kotlin changes require rebuilding
 and restarting. There is no page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 
