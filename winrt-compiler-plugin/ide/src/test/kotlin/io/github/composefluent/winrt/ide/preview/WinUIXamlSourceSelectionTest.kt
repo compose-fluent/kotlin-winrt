@@ -83,4 +83,21 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertNull(WinUIXamlSourceSelection.node(file.rootTag!!.subTags[0], listOf(nodes[0], second)))
     }
 
+    fun testInlineControlTemplateNamesAreScopedToTheirControlInstance() {
+        val file = xml("""<Button x:Name="First"><Button.Template><ControlTemplate TargetType="Button">
+            <TextBlock x:Name="Caption"/>
+        </ControlTemplate></Button.Template></Button>
+        <Button x:Name="Second"><Button.Template><ControlTemplate TargetType="Button">
+            <TextBlock x:Name="Caption"/>
+        </ControlTemplate></Button.Template></Button>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "First"),
+            node(listOf(0, 0), "TextBlock", "Caption"), node(listOf(1), "Button", "Second"),
+            node(listOf(1, 0), "TextBlock", "Caption"))
+        val captions = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filter { it.localName == "TextBlock" }
+        assertEquals(nodes[2], WinUIXamlSourceSelection.node(captions[0], nodes))
+        assertEquals(nodes[4], WinUIXamlSourceSelection.node(captions[1], nodes))
+        assertSame(captions[1], WinUIXamlSourceSelection.tag(file, nodes[4], nodes, emptyList()))
+        assertNull(WinUIXamlSourceSelection.node(captions[1], nodes + nodes[4].copy(path = listOf(1, 1))))
+    }
+
 }

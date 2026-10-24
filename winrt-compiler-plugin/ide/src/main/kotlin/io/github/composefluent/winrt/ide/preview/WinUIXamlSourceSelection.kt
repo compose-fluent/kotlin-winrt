@@ -24,7 +24,21 @@ internal object WinUIXamlSourceSelection {
     }
 
     fun node(tag: XmlTag, nodes: List<WinUIXamlVisualNode>): WinUIXamlVisualNode? {
-        if (tag.inTemplate()) return null
+        if (tag.inTemplate()) {
+            // An inline Control.Template has one known visual owner. Scope names
+            // to that owner's subtree; shared resources and repeated item templates
+            // need an instance-aware contract and must not guess by global name.
+            val template = generateSequence(tag) { it.parentTag }.firstOrNull {
+                it.localName in setOf("ControlTemplate", "DataTemplate", "ItemsPanelTemplate", "Style")
+            } ?: return null
+            if (template.localName != "ControlTemplate") return null
+            val property = template.parentTag ?: return null
+            if (!property.localName.endsWith(".Template")) return null
+            val owner = property.parentTag?.let { node(it, nodes) } ?: return null
+            val name = tag.xamlName() ?: return null
+            return nodes.singleOrNull { it.name == name && matchesType(tag, it) &&
+                it.path.size > owner.path.size && it.path.take(owner.path.size) == owner.path }
+        }
         val className = tag.getAttributeValue("Class", "http://schemas.microsoft.com/winfx/2006/xaml")
         if (tag.parentTag == null && !className.isNullOrBlank()) {
             nodes.singleOrNull { it.typeName == className }?.let { return it }
@@ -65,12 +79,12 @@ internal object WinUIXamlSourceSelection {
     fun tag(file: XmlFile, selected: WinUIXamlVisualNode, allNodes: List<WinUIXamlVisualNode>, component: List<Int>): XmlTag? {
         if (selected.path.take(component.size) != component) return null
         val nodes = allNodes.filter { it.path.size >= component.size && it.path.take(component.size) == component }
-        val tags = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filterNot { it.inTemplate() }
+        val tags = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java)
         tags.filter { node(it, nodes) == selected }.singleOrNull()?.let { return it }
         val ancestors = nodes.filter { it.path.size in component.size..selected.path.size &&
             selected.path.take(it.path.size) == it.path && it.path.take(component.size) == component }.sortedByDescending { it.path.size }
         return ancestors.firstNotNullOfOrNull { item ->
-            if (item.name.isNotBlank()) tags.singleOrNull { it.xamlName() == item.name } else null
+            if (item.name.isNotBlank()) tags.singleOrNull { it.xamlName() == item.name && node(it, nodes) == item } else null
         } ?: ancestors.firstNotNullOfOrNull { item ->
             if (item.name.isNotEmpty()) null else tags.filter { node(it, nodes) == item }.singleOrNull()
         }
