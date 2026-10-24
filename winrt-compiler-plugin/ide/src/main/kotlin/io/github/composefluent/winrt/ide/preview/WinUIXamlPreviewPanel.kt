@@ -231,7 +231,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-design-documents"), source) else null
                     val cacheKey = if (projectCode) documents.projectDocumentKey() else null
                     val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
-                    if (catalog == null) return@withContext cacheKey?.let { cache?.read(it) }
+                    val events = if (projectCode && catalog == null) catalogService.eventsForFile(source) else null
+                    if (catalog == null && events == null) return@withContext cacheKey?.let { cache?.read(it) }
 
                     val application = documents.application()
                     if (!projectCode) documents.stageAssets()
@@ -239,9 +240,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         documents.target(source), application?.let(documents::target).orEmpty(),
                         resource = if (projectCode) null else documents::resolve,
                         designData = documents::resolve,
-                        sdkType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type) != null },
-                        visualType = if (projectCode) null else { uri, type -> catalog.resolve(uri, type)?.let(catalog::isVisual) == true }) { uri, type, attribute ->
-                        catalog.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == attribute && member.isEvent } } == true
+                        sdkType = if (projectCode) null else { uri, type -> catalog?.resolve(uri, type) != null },
+                        visualType = if (projectCode) null else { uri, type -> catalog?.let { schema -> schema.resolve(uri, type)?.let(schema::isVisual) == true } == true }) { uri, type, attribute ->
+                        if (catalog != null) catalog.resolve(uri, type)?.let {
+                            catalog.members(it).any { member -> member.name == attribute && member.isEvent }
+                        } == true else events!!.isEvent(uri, type, attribute)
                     }.also { document ->
                         if (cacheKey != null) runCatching { cache?.write(cacheKey, document) }
                     }

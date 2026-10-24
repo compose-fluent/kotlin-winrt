@@ -517,6 +517,11 @@ in that host without a Gradle launch; initial document preparation has no typing
 debounce, and selecting an element reads its properties without recapturing pixels.
 SDK catalogs share identical WinMD inputs across targets and reuse the metadata
 module's content-keyed normalized model cache across IDE restarts.
+Native markup preparation can also use a smaller persistent event-name view derived
+from that same catalog and keyed by WinMD contents. It strips compiled handlers on
+new or edited documents before the full property/completion catalog is ready;
+unchanged documents retain their transformed-source cache. Corrupt or unmatched
+metadata views fall back to full catalog preparation, never to guessed event names.
 For a previously successful WinUI Native desktop packaged preview, the IDE can
 start the deployed preview executable directly. It validates project/dependency
 source contents, build configuration, the imported model, deployed files and the

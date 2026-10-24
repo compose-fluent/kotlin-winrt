@@ -31,6 +31,7 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
     val modificationTracker = SimpleModificationTracker()
     internal val changes = MutableStateFlow(0L)
     @Volatile private var catalogs: Map<String, WinUIXamlCatalog> = emptyMap()
+    @Volatile private var previewEvents: Map<String, WinUIXamlPreviewEvents> = emptyMap()
     private val revision = AtomicLong()
     private var loading: Job? = null
     private val loadMutex = Mutex()
@@ -58,6 +59,12 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
         Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(module.projectDirectory).toAbsolutePath().normalize())
     }.getOrDefault(false) }.maxByOrNull { it.projectDirectory.length }?.staticPreview?.let { catalogs[it.metadataReferencesFile] }
 
+    internal fun eventsForFile(path: String): WinUIXamlPreviewEvents? = compilations().firstNotNullOfOrNull { compilation ->
+        if (compilation.sourceRoots.any { root -> runCatching {
+            Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(root).toAbsolutePath().normalize())
+        }.getOrDefault(false) }) previewEvents[compilation.inputFile] else null
+    }
+
     fun refresh() { loading?.cancel(); loading = scope.launch(Dispatchers.IO) { load() } }
     internal fun forDesigner(module: WinRTModuleData): WinUIXamlCatalog? = module.staticPreview?.let { catalogs[it.metadataReferencesFile] }
     private fun compilations() = project.service<WinRTProjectService>().modules.value.flatMap { it.xamlCompilations }
@@ -71,8 +78,12 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
         // invalidation. Avoid restarting its highlighting during initial load.
         if (current.isEmpty() && catalogs.isEmpty()) return@withLock
         val next = linkedMapOf<String, WinUIXamlCatalog>()
+        val eventsDirectory = Path.of(com.intellij.openapi.application.PathManager.getSystemPath())
+            .resolve("kotlin-winrt/xaml-preview-events")
+        previewEvents = emptyMap()
         current.forEach { referenceFile ->
             coroutineContext.ensureActive()
+            var contentKey: String? = null
             val catalog = runCatching {
                 val input = Json.parseToJsonElement(Files.readString(Path.of(referenceFile))).jsonObject
                 val paths = input["ReferenceAssemblies"]?.jsonArray.orEmpty().mapNotNull { item ->
@@ -82,6 +93,11 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
                 // The metadata owner supplies the content-keyed normalized model cache.
                 // Multiple targets/reference manifests often describe the same SDK.
                 val key = WinRTMetadataModelCodec.cacheKey(paths)
+                contentKey = key
+                WinUIXamlPreviewEvents.read(eventsDirectory, key)?.let {
+                    previewEvents = previewEvents + (referenceFile to it)
+                    changes.value += 1
+                }
                 sharedCatalogs.getOrPut(key) {
                     val started = System.nanoTime()
                     val directory = Path.of(com.intellij.openapi.application.PathManager.getSystemPath())
@@ -97,6 +113,14 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
             coroutineContext.ensureActive()
             // A project preview must not wait for unrelated SDK/target catalogs.
             if (revision.get() == request) publish(next)
+            // Publish the full catalog before materializing its smaller startup view.
+            // First-time extraction must never delay this document's first render.
+            if (previewEvents[referenceFile] == null) runCatching {
+                val events = WinUIXamlPreviewEvents.from(catalog)
+                coroutineContext.ensureActive()
+                events.save(eventsDirectory, requireNotNull(contentKey))
+                previewEvents = previewEvents + (referenceFile to events)
+            }.onFailure { if (it is CancellationException) throw it }
         }
         coroutineContext.ensureActive()
         if (revision.get() == request) {
