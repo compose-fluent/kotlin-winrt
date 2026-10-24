@@ -187,6 +187,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var failure by remember { mutableStateOf<String?>(null) }
     var manualRefresh by remember { mutableIntStateOf(0) }
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
+    var recordState by remember(source) { mutableStateOf(false) }
     var selectedStates by remember(source) { mutableStateOf<Map<String, String>>(emptyMap()) }
     val stateGroups = remember(prepared?.markup) {
         prepared?.markup?.let { runCatching { WinUIXamlDesignStates.groups(it) }.getOrDefault(emptyList()) }.orEmpty()
@@ -339,7 +340,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
     LaunchedEffect(revision) { editFeedback = null }
-    val editableResult by produceState<List<DesignerSelection>?>(null, selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError) {
+    val editableResult by produceState<List<DesignerSelection>?>(null, selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, recordState, selectedStates) {
         value = null
         val snapshot = view
         if (snapshot == null || !static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) { value = emptyList(); return@produceState }
@@ -348,7 +349,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 val node = snapshot.nodes.firstOrNull { it.path == path } ?: return@mapNotNull null
                 val owner = snapshot.nodes.filter { it.path.size <= path.size && path.take(it.path.size) == it.path }
                     .sortedByDescending { it.path.size }.firstNotNullOfOrNull { session.sourcePath(it.typeName) }
-                WinUIXamlDesignerEditing.selection(project, owner ?: source, node, snapshot.nodes)
+                val base = WinUIXamlDesignerEditing.selection(project, owner ?: source, node, snapshot.nodes)
+                if (!recordState) base else {
+                    val chosen = selectedStates.entries.singleOrNull()
+                    val group = stateGroups.singleOrNull { it.key == chosen?.key }
+                    if (base == null || group == null || chosen == null) null
+                    else DesignerStateEditing.selection(base, group, chosen.value)
+                }
             }.takeIf { it.size == selectedPaths.size }.orEmpty()
         } }
     }
@@ -520,7 +527,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 second = {
                     Column(Modifier.fillMaxSize().padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Properties")
+                        Text(if (recordState) "Properties · recording ${selectedStates.values.singleOrNull() ?: "select one state"}" else "Properties")
                         Text("Filter properties")
                         TextField(propertyFilter, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Filter properties" })
                         val propertyScroll = rememberScrollState()
@@ -738,7 +745,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         selectedStates = if (value.isEmpty()) selectedStates - group.key else selectedStates + (group.key to value)
                     }
                 }
-                if (stateGroups.isNotEmpty()) Text("State selection affects this preview only. Automatic restores the document's triggers.")
+                if (stateGroups.isNotEmpty()) {
+                    Text("State selection affects this preview only. Automatic restores the document's triggers.")
+                    CheckboxRow("Record properties in selected state", recordState, { recordState = it })
+                    if (recordState) Text("Choose exactly one named state and a named element in its source namescope. Property edits and layout gestures create state setters; Reset removes an override.")
+                }
             } else {
                 if (roots.size > 1) WinRTChoice("Window", roots.map { WinUIXamlVisualInspectionSelection.key(it) to it.className.substringAfterLast('.') }, root?.let(WinUIXamlVisualInspectionSelection::key)) { selection.selectRoot(it) }
                 if ((root?.instances ?: 0) > 1) WinRTChoice("Instance", (0 until root!!.instances).map { it.toString() to "Instance ${it + 1}" }, instance.toString()) {

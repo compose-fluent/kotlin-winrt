@@ -105,6 +105,10 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
         }
     }.distinctBy { it.name }
 
+    fun isDependencyProperty(member: WinUIXamlMember): Boolean = types[member.owner]?.let {
+        closure.xamlDependencyPropertyOwner(it, member.name.substringAfterLast('.')) != null
+    } == true
+
     fun attachedMembers(type: WinRTTypeDefinition): List<WinUIXamlMember> {
         val staticInterfaces = if (type.kind == WinRTTypeKind.RuntimeClass)
             closure.resolveRuntimeClass(type).activation.staticInterfaces.mapNotNull { it.definitionType } else emptyList()

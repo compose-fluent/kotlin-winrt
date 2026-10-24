@@ -576,7 +576,13 @@ this design document also expose state choices. A choice overrides only the grou
 design-time triggers; the real SDK applies its setters and storyboards. Automatic
 restores the source triggers, including adaptive viewport states. Selection never
 writes source or modifies the base document cache. States supplied only by an
-external compiled control/template are not listed by this source-based selector. The session menu (**…**) owns
+external compiled control/template are not listed by this source-based selector.
+With **Record properties in selected state** enabled, choose one named state and
+an `x:Name` element in the same source namescope. The property panel and layout
+gestures write dependency-property `Setter` overrides; Reset removes the override,
+and undo restores the whole edit. Base attributes remain intact. Duplicate/complex
+setters, ambiguous names and stale source snapshots are rejected. This does not
+provide state/group creation or storyboard timeline authoring. The session menu (**…**) owns
 launch selection, project-code mode, refresh, rebuild, stop and reconnect. During preparation,
 Cancel stops the native IDE Gradle execution associated with that preview session,
 using a background progress context so Gradle JVM resolution does not block EDT.

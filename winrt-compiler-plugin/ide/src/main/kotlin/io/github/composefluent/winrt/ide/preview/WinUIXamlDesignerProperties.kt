@@ -18,9 +18,9 @@ import org.jetbrains.jewel.ui.component.*
 internal fun DesignerProperties(selection: DesignerSelection?, filter: String, apply: (Map<String, String?>, String) -> Unit) {
     val expansion = remember { mutableStateMapOf<String, Boolean>() }
     if (selection == null) { Text("Select a source element to edit its XAML properties."); return }
-    var editing by remember(selection.pointer) { mutableStateOf<String?>(null) }
+    var editing by remember(selection.pointer, selection.state?.pointer) { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("XAML properties")
+        Text(if (selection.state == null) "XAML properties" else "Visual state setters")
         selection.properties.filter { it.writable && it.name.contains(filter, true) }
             .groupBy(::designerPropertyCategory).toSortedMap().forEach { (category, properties) ->
             val expanded = expansion[category] ?: (category == "Layout" || category == "Common")
@@ -37,7 +37,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
                     }
                     if (property.elementValue) Text("Property element · edit in XAML")
                     if (editing == property.name) {
-                        val input = remember(selection.text, property.name) { TextFieldState(property.value.orEmpty()) }
+                        val input = remember(selection.text, selection.state?.sourceText, property.name) { TextFieldState(property.value.orEmpty()) }
                         val error = WinUIXamlDesignerEditing.validate(property, input.text.toString())
                         val latestApply by rememberUpdatedState(apply)
                         val commit = {

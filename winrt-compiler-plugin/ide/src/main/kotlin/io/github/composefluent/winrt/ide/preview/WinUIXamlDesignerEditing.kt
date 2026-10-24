@@ -15,10 +15,10 @@ import kotlin.math.round
  * Setter availability comes from the existing normalized WinMD catalog (CsWinRT
  * class-member/interface ownership). Visual snapshots never become editable state. */
 internal data class DesignerProperty(val name: String, val type: String, val value: String?,
-    val choices: List<String>, val writable: Boolean, val elementValue: Boolean)
+    val choices: List<String>, val writable: Boolean, val elementValue: Boolean, val dependencyProperty: Boolean = false)
 internal data class DesignerSelection(val pointer: SmartPsiElementPointer<XmlTag>, val text: String,
     val properties: List<DesignerProperty>, val bounds: WinUIXamlVisualBounds, val parent: String,
-    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList(), val structure: DesignerStructure? = null)
+    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList(), val structure: DesignerStructure? = null, val state: DesignerStateEdit? = null)
 internal data class DesignerTransform(val x: Double, val y: Double, val width: Double = 0.0, val height: Double = 0.0,
     val resize: Boolean = false)
 
@@ -41,7 +41,7 @@ internal object WinUIXamlDesignerEditing {
             val choices = if (member.typeName in setOf("Boolean", "System.Boolean", "boolean")) listOf("True", "False")
                 else catalog.types[member.typeName]?.enumMembers?.map { it.name }.orEmpty()
             DesignerProperty(member.name, member.typeName, tag.getAttributeValue(member.name), choices,
-                member.isWritable, tag.subTags.any { it.localName.substringAfter('.', "") == member.name.substringAfter('.') })
+                member.isWritable, tag.subTags.any { it.localName.substringAfter('.', "") == member.name.substringAfter('.') }, catalog.isDependencyProperty(member))
         }.sortedWith(compareBy({ it.name !in layoutProperties }, { it.name }))
         return DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text,
             properties, selected.bounds, tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() },
@@ -70,9 +70,14 @@ internal object WinUIXamlDesignerEditing {
                     check(!property.elementValue) { "$name uses a property element. Edit it in XAML." }
                     value?.let { validate(property, it)?.let { message -> error(message) } }
                 }
+                selection.state?.let { DesignerStateEditing.validate(selection, changes) }
                 tag to changes
             }
-            validated.forEach { (tag, changes) -> changes.forEach { (name, value) -> tag.setAttribute(name, value) } }
+            validated.zip(edits).forEach { (validatedEdit, edit) ->
+                val (tag, changes) = validatedEdit
+                if (edit.first.state != null) DesignerStateEditing.write(edit.first, changes)
+                else changes.forEach { (name, value) -> tag.setAttribute(name, value) }
+            }
             validated.map { it.first.containingFile }.distinct().forEach { file ->
                 documents.getDocument(file)?.let(documents::doPostponedOperationsAndUnblockDocument)
             }
