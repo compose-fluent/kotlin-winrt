@@ -558,7 +558,7 @@ Designer edits are source commands with Ctrl+Z/Ctrl+Shift+Z undo/redo. Writable 
 come from WinMD setter metadata, grouped into searchable categories. Enum/Boolean
 choices, numeric validation, resource selection, color and basic Binding editors are supported. Canvas moves use attached offsets; other panels use margins
 and alignment. Resizing writes Width/Height and preserves the leading edge. Layout
-gestures do not replace bindings/resources or property elements. Ambiguous/template-only
+gestures do not replace bindings/resources or property elements. Named parts of an inline ControlTemplate are scoped to their owning control. Unnamed parts are editable when the complete direct visual child sequence matches the source; generated wrappers, shared/repeated templates and ambiguous
 nodes remain inspection-only, and stale source edits are rejected instead of overwriting
 concurrent changes. Structure commands edit Grid definitions, reorder siblings and move
 source elements into compatible containers. Marquee selection and XAML copy/cut/paste
@@ -570,7 +570,7 @@ resource scope. Complex/duplicate setters and stale documents are protected.
 and applies it in one undoable command. Optional extraction moves local literal
 DP values into setters while preserving names, bindings and resource expressions.
 Existing styles and dictionary Source declarations are not overwritten.
-Implicit style lookup, ControlTemplate editing and storyboard timeline authoring
+Global/theme-dependent implicit style lookup, shared ControlTemplate authoring and storyboard timeline authoring
 remain separate from this setter editing surface.
 
 Double-click a rendered element to open its XAML source. Moving the source caret

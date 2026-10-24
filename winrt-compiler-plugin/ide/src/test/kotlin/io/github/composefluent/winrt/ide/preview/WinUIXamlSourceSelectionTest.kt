@@ -100,4 +100,16 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertNull(WinUIXamlSourceSelection.node(captions[1], nodes + nodes[4].copy(path = listOf(1, 1))))
     }
 
+    fun testUnnamedInlineTemplatePartsRequireExactRealizedSiblingSequence() {
+        val file = xml("""<Button x:Name="First"><Button.Template><ControlTemplate TargetType="Button"><StackPanel><TextBlock Text="One"/><TextBlock Text="Two"/></StackPanel></ControlTemplate></Button.Template></Button>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "First"),
+            node(listOf(0, 0), "StackPanel"), node(listOf(0, 0, 0), "TextBlock"), node(listOf(0, 0, 1), "TextBlock"))
+        val parts = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filter { it.localName == "TextBlock" }
+        assertEquals(nodes[3], WinUIXamlSourceSelection.node(parts[0], nodes))
+        assertEquals(nodes[4], WinUIXamlSourceSelection.node(parts[1], nodes))
+        assertSame(parts[1], WinUIXamlSourceSelection.tag(file, nodes[4], nodes, emptyList()))
+        assertNull(WinUIXamlSourceSelection.node(parts[1], nodes + node(listOf(0, 0, 2), "TextBlock")))
+        assertNull(WinUIXamlSourceSelection.node(parts[1], nodes.map { if (it.path == listOf(0, 0)) it.copy(typeName = "Windows.UI.Xaml.Controls.ContentPresenter") else it }))
+    }
+
 }

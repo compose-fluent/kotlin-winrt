@@ -35,9 +35,16 @@ internal object WinUIXamlSourceSelection {
             val property = template.parentTag ?: return null
             if (!property.localName.endsWith(".Template")) return null
             val owner = property.parentTag?.let { node(it, nodes) } ?: return null
-            val name = tag.xamlName() ?: return null
-            return nodes.singleOrNull { it.name == name && matchesType(tag, it) &&
+            val name = tag.xamlName()
+            if (name != null) return nodes.singleOrNull { it.name == name && matchesType(tag, it) &&
                 it.path.size > owner.path.size && it.path.take(owner.path.size) == owner.path }
+            // An inline template is a single known realization. Unnamed parts
+            // are editable only when their complete direct sibling sequence
+            // matches; a generated presenter/wrapper makes the mapping fail.
+            if (tag == template || '.' in tag.localName) return null
+            val parent = tag.parentTag?.let { if (it.localName.endsWith(".Children")) it.parentTag else it } ?: return null
+            val visualParent = if (parent == template) owner else node(parent, nodes) ?: return null
+            return orderedChild(tag, parent, visualParent, nodes)
         }
         val className = tag.getAttributeValue("Class", "http://schemas.microsoft.com/winfx/2006/xaml")
         if (tag.parentTag == null && !className.isNullOrBlank()) {
@@ -61,19 +68,23 @@ internal object WinUIXamlSourceSelection {
         // agrees. Never guess through control-template or item-container children.
         val visualParentTag = sourceParent?.let { if ('.' in it.localName) it.parentTag else it }
         if (visualParentTag != null) node(visualParentTag, nodes)?.let { visualParent ->
-            val sourceChildren = visualParentTag.subTags.flatMap { child ->
-                if (child.localName.endsWith(".Children")) child.subTags.toList() else listOf(child)
-            }.filter { '.' !in it.localName && !it.inTemplate() }
-            val visualChildren = nodes.filter { it.path.dropLast(1) == visualParent.path && it.path.size == visualParent.path.size + 1 }
-                .sortedBy { it.path.last() }
-            if (sourceChildren.size == visualChildren.size && sourceChildren.zip(visualChildren).all { (source, visual) -> matchesType(source, visual) }) {
-                sourceChildren.indexOf(tag).takeIf { it >= 0 }?.let { return visualChildren[it] }
-            }
+            orderedChild(tag, visualParentTag, visualParent, nodes)?.let { return it }
         }
         val parentName = generateSequence(tag.parentTag) { it.parentTag }.firstNotNullOfOrNull { it.xamlName() }
         val parent = parentName?.let { value -> nodes.singleOrNull { it.name == value } } ?: if (parentName != null) return null else null
         return nodes.filter { matchesType(tag, it) &&
             (parent == null || it.path.size > parent.path.size && it.path.take(parent.path.size) == parent.path) }.singleOrNull()
+    }
+
+    private fun orderedChild(tag: XmlTag, parent: XmlTag, visualParent: WinUIXamlVisualNode,
+        nodes: List<WinUIXamlVisualNode>): WinUIXamlVisualNode? {
+        val sourceChildren = parent.subTags.flatMap { child ->
+            if (child.localName.endsWith(".Children")) child.subTags.toList() else listOf(child)
+        }.filter { '.' !in it.localName && it.localName !in setOf("ControlTemplate", "DataTemplate", "ItemsPanelTemplate", "Style") }
+        val visualChildren = nodes.filter { it.path.dropLast(1) == visualParent.path && it.path.size == visualParent.path.size + 1 }
+            .sortedBy { it.path.last() }
+        if (sourceChildren.size != visualChildren.size || !sourceChildren.zip(visualChildren).all { (source, visual) -> matchesType(source, visual) }) return null
+        return sourceChildren.indexOf(tag).takeIf { it >= 0 }?.let { visualChildren[it] }
     }
 
     fun tag(file: XmlFile, selected: WinUIXamlVisualNode, allNodes: List<WinUIXamlVisualNode>, component: List<Int>): XmlTag? {
