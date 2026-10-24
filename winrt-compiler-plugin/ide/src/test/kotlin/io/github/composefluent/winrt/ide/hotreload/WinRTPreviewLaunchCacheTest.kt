@@ -6,6 +6,12 @@ import org.junit.Assert.*
 import java.nio.file.Files
 
 class WinRTPreviewLaunchCacheTest {
+    private fun checked(cache: WinRTPreviewLaunchCache): Boolean = kotlinx.coroutines.runBlocking {
+        val result = cache.checkedInputs()
+        assertEquals(cache.inputs(), result.first)
+        assertEquals("Concurrent validation must retain receipt compatibility", cache.reusable(result.first), result.second)
+        result.second
+    }
     @Test fun dependencyEditsConfigurationChangesAndDeploymentChangesRequireRebuild() {
         val root = Files.createTempDirectory("preview-launch-cache")
         val external = Files.createTempFile("preview-external", ".klib")
@@ -30,32 +36,32 @@ class WinRTPreviewLaunchCacheTest {
             assertFalse(cache.reusable(initial))
             cache.remember(initial)
             assertTrue(cache.hasCandidate())
-            assertTrue(cache.reusable(cache.inputs()))
+            assertTrue(checked(cache))
             val externalTime = Files.getLastModifiedTime(external)
             Files.writeString(external, "library-two")
             Files.setLastModifiedTime(external, externalTime)
             assertEquals("External artifact is not part of the project source scan", initial, cache.inputs())
             assertTrue("Routing hint must never authorize reuse", cache.hasCandidate())
-            assertFalse("Changed resolved artifact invalidates even with preserved size/time", cache.reusable(cache.inputs()))
+            assertFalse("Changed resolved artifact invalidates even with preserved size/time", checked(cache))
             Files.writeString(external, "library-one")
-            assertTrue(cache.reusable(cache.inputs()))
+            assertTrue(checked(cache))
             val timestamp = Files.getLastModifiedTime(source)
             Files.writeString(source, "class Changed!")
             Files.setLastModifiedTime(source, timestamp)
-            assertFalse("Dependency source edits with preserved timestamps invalidate", cache.reusable(cache.inputs()))
+            assertFalse("Dependency source edits with preserved timestamps invalidate", checked(cache))
             Files.writeString(source, "class Greeting")
-            assertTrue(cache.reusable(cache.inputs()))
+            assertTrue(checked(cache))
             Files.writeString(dep.resolve("Added.kt"), "class Added")
-            assertFalse("New dependency files invalidate", cache.reusable(cache.inputs()))
+            assertFalse("New dependency files invalidate", checked(cache))
             Files.delete(dep.resolve("Added.kt"))
             Files.writeString(config, "include(\":app\")")
-            assertFalse("Build configuration invalidates", cache.reusable(cache.inputs()))
+            assertFalse("Build configuration invalidates", checked(cache))
             cache.remember(cache.inputs())
             Files.write(exe, byteArrayOf(1, 2))
-            assertFalse("Changed deployment requires Gradle validation", cache.reusable(cache.inputs()))
+            assertFalse("Changed deployment requires Gradle validation", checked(cache))
             cache.remember(cache.inputs())
             Files.writeString(deployed.resolve("AppxManifest.xml"), "<Application EntryPoint=\"App\"/>")
-            assertFalse("UWP must use activation, never CreateProcess", cache.reusable(cache.inputs()))
+            assertFalse("UWP must use activation, never CreateProcess", checked(cache))
         } finally {
             Files.deleteIfExists(external)
             Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
@@ -99,16 +105,16 @@ class WinRTPreviewLaunchCacheTest {
             cache.remember(cache.inputs())
             Files.writeString(source, "<Grid><Button/></Grid>")
             Files.writeString(root.resolve("Component.kt"), "class Component")
-            assertTrue("Basic preview does not wait for changed project code", cache.reusable(cache.inputs()))
+            assertTrue("Basic preview does not wait for changed project code", checked(cache))
             val originalInputs = cache.inputs()
             Files.writeString(config, "sdkVersion=2")
-            assertFalse(cache.reusable(cache.inputs()))
+            assertFalse(checked(cache))
             assertFalse("A late first frame cannot bless configuration edited during compilation",
                 cache.rememberIfUnchanged(originalInputs))
-            assertFalse(cache.reusable(cache.inputs()))
+            assertFalse(checked(cache))
             assertTrue(cache.rememberIfUnchanged(cache.inputs()))
             Files.write(exe, byteArrayOf(2, 3))
-            assertFalse(cache.reusable(cache.inputs()))
+            assertFalse(checked(cache))
         } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
     }
 }

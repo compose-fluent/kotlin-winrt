@@ -2,6 +2,9 @@ package io.github.composefluent.winrt.ide.hotreload
 
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.gradle.WinUIXamlHotReloadLaunchData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
@@ -51,9 +54,21 @@ internal class WinRTPreviewLaunchCache(
     /** Routing hint only. start() must still validate all contents before reuse. */
     fun hasCandidate(): Boolean = supported() && Files.isRegularFile(receipt)
 
-    fun reusable(inputs: String): Boolean = supported() && runCatching {
+    /** Independent file sets are read concurrently, but neither authorizes launch
+     * until the full receipt matches. Content hashes and receipt format are unchanged. */
+    suspend fun checkedInputs(): Pair<String, Boolean> = coroutineScope {
+        if (!hasCandidate()) return@coroutineScope inputs() to false
+        val environment = async(Dispatchers.IO) { runCatching { environment() } }
+        val inputs = inputs()
+        val prepared = environment.await()
+        inputs to reusable(inputs) { prepared.getOrThrow() }
+    }
+
+    fun reusable(inputs: String): Boolean = reusable(inputs, ::environment)
+
+    private fun reusable(inputs: String, environment: () -> Map<String, String>): Boolean = supported() && runCatching {
         val stored = Files.readAllLines(receipt)
-        val current = record(inputs).lines()
+        val current = record(inputs, environment()).lines()
         if (stored != current) {
             com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java)
                 .info("Preview build cache changed: " + current.filter { it !in stored }.map { it.substringBefore('=') })
@@ -81,11 +96,11 @@ internal class WinRTPreviewLaunchCache(
 
     fun invalidate() { Files.deleteIfExists(receipt) }
 
-    private fun record(inputs: String): String = linkedMapOf(
+    private fun environment(): Map<String, String> = linkedMapOf(
         "format" to if (sdk) "sdk-desktop-preview-v1" else "native-desktop-preview-v3",
         "launch" to launch.toString(),
         "model" to modules.toString(),
-        "inputs" to inputs,
+        "inputs" to "",
         "outputs" to outputs(),
         "dependencies" to if (sdk) "" else fingerprint(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.read(
             deployment.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME)), content = true, excludeBuild = false),
@@ -97,7 +112,10 @@ internal class WinRTPreviewLaunchCache(
         // application environment is inherited afresh by the launched process.
         "toolchain" to listOf("JAVA_HOME", "GRADLE_USER_HOME", "KONAN_DATA_DIR", "WindowsSdkDir", "WindowsSDKVersion", "VCToolsInstallDir", "VCToolsVersion", "INCLUDE", "LIB", "LIBPATH", "CL", "_CL_", "LINK", "_LINK_")
             .associateWith { System.getenv(it).orEmpty() }.toString(),
-    ).entries.joinToString("\n") { (name, value) -> "$name=${digest(value.toByteArray())}" }
+    )
+
+    private fun record(inputs: String, environment: Map<String, String> = environment()): String =
+        environment.entries.joinToString("\n") { (name, value) -> "$name=${digest((if (name == "inputs") inputs else value).toByteArray())}" }
 
     private fun fingerprint(roots: List<Path>, content: Boolean, excludeBuild: Boolean, configurationOnly: Boolean = false): String {
         val started = System.nanoTime()

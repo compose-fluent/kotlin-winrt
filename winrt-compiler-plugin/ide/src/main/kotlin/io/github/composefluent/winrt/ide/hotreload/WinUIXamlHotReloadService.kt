@@ -176,14 +176,16 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage"))) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
-                val inputs = cache?.let { runCatching { it.inputs() }.getOrNull() }
-                if (preview) log.info("XAML preview inputs checked: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
+                val validation = cache?.let { runCatching {
+                    if (rebuild) it.inputs() to false else it.checkedInputs()
+                }.getOrNull() }
+                val inputs = validation?.first
                 // The SDK designer stages project assets after the host connects.
                 // Record its deployment only after that document actually renders.
                 if (sdkPreview && cache != null && inputs != null) withCurrent(request) {
                     pendingPreviewCache = cache to inputs
                 }
-                val reusable = cache != null && inputs != null && !rebuild && cache.reusable(inputs)
+                val reusable = validation?.second == true
                 if (preview && reusable) log.info("XAML preview cache validated: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                 val preparedSources = sourcePreparation.await()
                 mutex.withLock {
