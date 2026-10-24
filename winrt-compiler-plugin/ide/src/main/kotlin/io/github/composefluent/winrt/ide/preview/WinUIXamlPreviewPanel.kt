@@ -134,26 +134,29 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             selection.selectRoot(WinUIXamlVisualInspectionSelection.key(root))
     }
 
+    val themeKey = "winrt.preview.theme.${module?.projectDirectory.orEmpty()}"
+    var theme by remember(themeKey) { mutableStateOf(preferences.getValue(themeKey, "Default")
+        .takeIf { it in setOf("Default", "Light", "Dark") } ?: "Default") }
     var startupCancelled by remember { mutableStateOf(false) }
     var startupRevision by remember { mutableIntStateOf(0) }
     var handledStartupRevision by remember { mutableIntStateOf(0) }
     val catalogService = project.service<WinUIXamlCatalogService>()
     val catalogRevision by catalogService.changes.collectAsState()
     val resourceRevision by project.service<WinRTResourceIndex>().changes.collectAsState()
-    LaunchedEffect(static, module, launchModule, launch, wantsProjectCode, startupCancelled, startupRevision) {
+    LaunchedEffect(static, module, launchModule, launch, wantsProjectCode, startupCancelled, startupRevision, theme) {
         if (static && module != null && !startupCancelled) {
             val retry = startupRevision != handledStartupRevision
             handledStartupRevision = startupRevision
             startPreferredXamlPreview(
                 wantsProjectCode = wantsProjectCode && launch != null,
-                projectConnected = matchingProjectHost && projectState.connected,
+                projectConnected = matchingProjectHost && projectState.connected && design.usesPreviewTheme(theme),
                 continueStartup = { !startupCancelled },
-                startProject = { design.ensurePreviewReady(launchModule!!, launch!!, retry = retry) },
+                startProject = { design.ensurePreviewReady(launchModule!!, launch!!, retry = retry, theme = theme) },
                 awaitProject = { design.state.first { it.connected || !it.busy }.connected },
                 startBasic = {
                     basicFallback = true
                     module.staticPreview?.launch()?.let { sdkLaunch ->
-                        sdk.ensurePreviewReady(module, sdkLaunch, retry = retry)
+                        sdk.ensurePreviewReady(module, sdkLaunch, retry = retry, theme = theme)
                     }
                 })
         }
@@ -182,7 +185,6 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             viewport = validWidth to validHeight
         }
     }
-    var theme by remember { mutableStateOf("Default") }
     var notes by remember { mutableStateOf<List<String>>(emptyList()) }
     var failure by remember { mutableStateOf<String?>(null) }
     var manualRefresh by remember { mutableIntStateOf(0) }
@@ -278,7 +280,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
     }
     LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision, selectedStates) {
-        if (static && root != null && state.connected && prepared != null) {
+        if (static && root != null && state.connected && session.usesPreviewTheme(theme) && prepared != null) {
             run {
                 val (w, h) = viewport
                 if (state.inspection != null) delay(150)
@@ -371,11 +373,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var createStyle by remember(source, selectedPaths, recordState) { mutableStateOf(false) }
     val styleKey = remember(source, selectedPaths) { TextFieldState("") }
     var extractStyle by remember(source, selectedPaths) { mutableStateOf(true) }
-    val styleSelection by produceState<DesignerSelection?>(null, editables, revision) {
+    val styleSelection by produceState<DesignerSelection?>(null, editables, revision, theme) {
         value = null
         val selected = editables.singleOrNull() ?: return@produceState
         value = withContext(Dispatchers.IO) { ReadAction.compute<DesignerSelection?, RuntimeException> {
-            DesignerStyleEditing.selection(selected)
+            DesignerStyleEditing.selection(selected, previewTheme = theme)
         } }
     }
     val editable = editables.lastOrNull()?.let { primary ->
@@ -831,7 +833,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     val previousWidth = width.text.toString()
                     width.setTextAndPlaceCursorAtEnd(height.text.toString()); height.setTextAndPlaceCursorAtEnd(previousWidth)
                 })
-                WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it }
+                WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it; preferences.setValue(themeKey, it, "Default") }
                 Link(if (showStateAuthoring) "Hide state creation" else "Create visual states…", onClick = { showStateAuthoring = !showStateAuthoring })
                 if (showStateAuthoring) {
                     Text("State name")

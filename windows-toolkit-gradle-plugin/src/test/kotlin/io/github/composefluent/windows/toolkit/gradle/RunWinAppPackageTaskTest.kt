@@ -241,9 +241,9 @@ class RunWinAppPackageTaskTest {
 
         fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null, preview: Boolean = false, registerOnly: Boolean = false) =
             GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
-                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW", "KOTLIN_WINRT_REGISTER_ONLY") } +
+                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW", "KOTLIN_WINRT_XAML_PREVIEW_THEME", "KOTLIN_WINRT_REGISTER_ONLY") } +
                     (session?.let { mapOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" to it) } ?: emptyMap()) +
-                    (if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1") else emptyMap()) +
+                    (if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1", "KOTLIN_WINRT_XAML_PREVIEW_THEME" to "Dark") else emptyMap()) +
                     if (registerOnly) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap())
                 .withArguments(listOf("runFixture", "--configuration-cache", "--offline", "--stacktrace") + options)
         val first = runner().build()
@@ -288,6 +288,7 @@ class RunWinAppPackageTaskTest {
         runner(session = nextSession, preview = true).build()
         val previewInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
         assertTrue(previewInvocation, previewInvocation.contains("--kotlin-winrt-xaml-preview"))
+        assertTrue(previewInvocation, previewInvocation.contains("--kotlin-winrt-xaml-preview-theme=Dark"))
         assertTrue(previewInvocation, previewInvocation.contains(nextSession))
         assertFalse(previewInvocation, previewInvocation.contains("hello world"))
         runner(listOf("--no-launch"), session = nextSession, preview = true).build()

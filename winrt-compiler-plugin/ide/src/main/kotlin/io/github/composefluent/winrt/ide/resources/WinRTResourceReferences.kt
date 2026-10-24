@@ -182,10 +182,17 @@ internal object WinRTResourceReferences {
      * theme/template/foreign-control scopes cannot be inferred from PSI: fail
      * closed instead of editing a possibly different runtime style.
      * Reference: microsoft-ui-xaml/docs/design-notes/resources.md. */
-    internal fun implicitStyle(tag: XmlTag, catalog: WinUIXamlCatalog): XmlTag? {
+    internal fun implicitStyle(tag: XmlTag, catalog: WinUIXamlCatalog, previewTheme: String? = null): XmlTag? {
         val type = catalog.resolve(tag.namespace, tag.localName) ?: return null
         val file = tag.containingFile as? XmlFile ?: return null
         val lookup = file.originalFile.virtualFile?.path?.let { file.project.service<WinRTResourceIndex>().forFile(it) }
+        val owners = generateSequence(tag) { it.parentTag }.toList()
+        // ResolveImplicitStyleKeyImpl uses the host application's theme. A
+        // local RequestedTheme can affect resource expressions independently;
+        // do not offer a write when that mixed context is ambiguous.
+        val theme = previewTheme?.takeIf { it == "Light" || it == "Dark" }
+        if (owners.any { it.getAttributeValue("RequestedTheme")?.let { value ->
+                value != "Default" && value != theme } == true }) return null
         val visited = hashSetOf<XmlTag>()
         fun dictionary(owner: XmlTag): List<XmlTag>? {
             if (!visited.add(owner) || visited.size > 128) return null
@@ -210,11 +217,24 @@ internal object WinRTResourceReferences {
                 val found = dictionary(merged) ?: return null
                 if (found.isNotEmpty()) return found
             }
-            if (owner.subTags.any { it.localName.endsWith(".ThemeDictionaries") }) return null
+            val themes = owner.subTags.filter { it.localName.endsWith(".ThemeDictionaries") }
+            if (themes.isNotEmpty()) {
+                if (theme == null || themes.size != 1) return null
+                val dictionaries = themes.single().subTags
+                // RequestedTheme does not override high contrast. Until the
+                // host publishes that state, do not guess its dictionary.
+                if (dictionaries.any { it.getAttributeValue("Key", WinUIXamlCatalog.XAML)?.startsWith("HighContrast") == true }) return null
+                val selected = dictionaries.filter { it.getAttributeValue("Key", WinUIXamlCatalog.XAML) == theme }
+                    .ifEmpty { dictionaries.filter { it.getAttributeValue("Key", WinUIXamlCatalog.XAML) == "Default" } }
+                if (selected.size > 1) return null
+                selected.singleOrNull()?.let {
+                    val found = dictionary(it) ?: return null
+                    if (found.isNotEmpty()) return found
+                }
+            }
             return emptyList()
         }
         // Source parents are not logical parents across template instantiation.
-        val owners = generateSequence(tag) { it.parentTag }.toList()
         if (owners.any { it.namespace == WinUIXamlCatalog.PRESENTATION && it.localName in setOf("ControlTemplate", "DataTemplate", "Style") }) return null
         for (owner in owners) {
             for (resources in owner.subTags.filter { it.localName.endsWith(".Resources") }) {

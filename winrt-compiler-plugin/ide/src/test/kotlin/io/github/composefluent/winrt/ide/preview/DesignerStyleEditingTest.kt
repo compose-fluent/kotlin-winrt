@@ -139,6 +139,38 @@ class DesignerStyleEditingTest : BasePlatformTestCase() {
         assertNull(DesignerStyleEditing.selection(original.copy(text = original.pointer.element!!.text), catalog))
     }
 
+    fun testThemeImplicitStyleEditsOnlySelectedDictionaryAndSupportsUndo() {
+        // WinUI resources.md: current, reverse merged, selected theme; Default
+        // is a fallback dictionary, not the name of an inferred OS theme.
+        val original = base("")
+        WriteCommandAction.runWriteCommandAction(project) {
+            original.pointer.element!!.setAttribute("Style", null)
+            val resources = (myFixture.file as XmlFile).rootTag!!.subTags.first()
+            resources.subTags.single().delete()
+            resources.addSubTag(resources.createChildTag("ResourceDictionary", WinUIXamlCatalog.PRESENTATION,
+                """<ResourceDictionary.ThemeDictionaries><ResourceDictionary x:Key="Light"><Style TargetType="Button"><Setter Property="Width" Value="210"/></Style></ResourceDictionary><ResourceDictionary x:Key="Default"><Style TargetType="Button"><Setter Property="Width" Value="310"/></Style></ResourceDictionary></ResourceDictionary.ThemeDictionaries>""", false), false)
+        }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val selected = original.copy(text = original.pointer.element!!.text)
+        assertNull(DesignerStyleEditing.selection(selected, catalog))
+        assertEquals("310", DesignerStyleEditing.selection(selected, catalog, "Dark")!!.properties.single().value)
+        val light = DesignerStyleEditing.selection(selected, catalog, "Light")!!
+        assertEquals("210", light.properties.single().value)
+        val before = myFixture.editor.document.text
+        WinUIXamlDesignerEditing.apply(project, light, mapOf("Width" to "240"), "Edit light style")
+        assertEquals("310", DesignerStyleEditing.selection(selected, catalog, "Dark")!!.properties.single().value)
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(before, myFixture.editor.document.text)
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        WriteCommandAction.runWriteCommandAction(project) { original.pointer.element!!.setAttribute("RequestedTheme", "Dark") }
+        assertNull(DesignerStyleEditing.selection(selected, catalog, "Light"))
+        WriteCommandAction.runWriteCommandAction(project) {
+            val theme = (myFixture.file as XmlFile).rootTag!!.subTags.first().subTags.single().subTags.single()
+            theme.subTags.first().setAttribute("x:Key", "HighContrast")
+        }
+        assertNull(DesignerStyleEditing.selection(selected, catalog, "Light"))
+    }
+
     fun testComplexDuplicateAndStaleStyleEditsAreRejected() {
         listOf("""<Setter Property="Width"><Setter.Value><x:Double>200</x:Double></Setter.Value></Setter>""",
             """<Setter Property="Width" Value="200"/><Setter Property="Width" Value="300"/>""").forEach { setters ->

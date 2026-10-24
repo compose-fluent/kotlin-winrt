@@ -45,7 +45,7 @@ data class WinUIXamlHotReloadState(val message: String = "Start a JVM applicatio
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
-    var processId: Long = 0, var startedUtc: String = "")
+    var processId: Long = 0, var startedUtc: String = "", var previewTheme: String = "Default")
 
 open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
     private val isolatedPreview: Boolean = false) : Disposable, PersistentStateComponent<WinUIXamlHotReloadLaunchState> {
@@ -61,6 +61,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     @Volatile private var disposed = false
     private var directory: Path? = null
     private var selectedModule: WinRTModuleData? = null
+    @Volatile private var previewTheme = "Default"
+    fun usesPreviewTheme(theme: String): Boolean = previewTheme == theme
     private var selectedLaunch: WinUIXamlHotReloadLaunchData? = null
     private var sources = emptyList<Source>()
     private val baselines = mutableMapOf<Pair<String, String>, Source>()
@@ -77,6 +79,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var savedLaunch = WinUIXamlHotReloadLaunchState()
     @Volatile private var debuggerPid: Long? = null
     private var directPreview: Process? = null
+    @Volatile private var connectedPreviewDeployment: String? = null
+    @Volatile private var connectedDeploymentReady: CompletableDeferred<Unit>? = null
     private var pendingPreviewCache: Pair<WinRTPreviewLaunchCache, String>? = null
     private var launchStartedNanos = 0L
     private var firstFrameReported = false
@@ -142,13 +146,20 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
-    fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart) {
+    fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default") {
         if (disposed || project.isDisposed) return
+        require(theme in setOf("Default", "Light", "Dark"))
         val sdkPreview = preview && launch == module.staticPreview?.launch()
         val startedAt = System.nanoTime()
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
+        val themeOnly = preview && !rebuild && display.value.connected && usesLaunch(module, launch) && !usesPreviewTheme(theme)
+        val priorDeployment = connectedPreviewDeployment.takeIf { themeOnly }
+        connectedPreviewDeployment = null
+        val deploymentReady = CompletableDeferred<Unit>()
+        connectedDeploymentReady = deploymentReady
         val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true))
+        previewTheme = theme
         launchStartedNanos = startedAt; firstFrameReported = false
         val firstFrame = CompletableDeferred<Unit>()
         gradleProcess = null
@@ -176,7 +187,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     selectedModule = module; selectedLaunch = launch
                     directory = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}").toAbsolutePath().normalize()
                     Files.createDirectories(directory!!)
-                    withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString()) }
+                    withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString(), previewTheme = theme) }
                 }
                 // Source parsing and cache content validation have no data dependency.
                 // Both must finish before a host can connect or inspect source mappings.
@@ -192,7 +203,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     cachedFirstFrame = firstFrame
                 }
                 val validation = cache?.let { runCatching {
-                    if (rebuild) it.inputs() to false else it.checkedInputs()
+                    if (priorDeployment != null && it.connectedDeploymentIdentity() == priorDeployment) null to true
+                    else if (rebuild) it.inputs() to false else it.checkedInputs()
                 }.getOrNull() }
                 val inputs = validation?.first
                 // The SDK designer stages project assets after the host connects.
@@ -215,6 +227,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             .directory(cache.deployment.toFile())
                             .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
                             .apply { environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = directory!!.toString()
+                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT] = theme
                                 environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
                         if (!withCurrent(request) {
                             directPreview = process
@@ -249,7 +262,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module,
                             listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
                             environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
-                                (if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1") else emptyMap()) +
+                                (if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1",
+                                    WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT to theme) else emptyMap()) +
                                 if (detachedNative) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap(),
                             arguments = if (detachedNative) "--no-launch" else "",
                             onProcessStarted = { handler ->
@@ -272,6 +286,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             .directory((if (detachedNative) Path.of(executable).parent else Path.of(launch.workingDirectory)).toFile())
                             .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
                             .apply { environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = directory!!.toString()
+                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT] = theme
                                 environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
                         if (!withCurrent(request) { directPreview = process }) { process.destroy(); return@launch }
                         awaitConnection(request, directory!!, executable, process)
@@ -282,6 +297,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (display.value.connected) cache.rememberIfUnchanged(inputs)
                     }.onFailure { log.debug("Preview launch cache unavailable", it) }
                 }
+                if (preview && cache != null) {
+                    val identity = cache.connectedDeploymentIdentity()
+                    withCurrent(request) { connectedPreviewDeployment = identity }
+                }
+                deploymentReady.complete(Unit)
                 val elapsed = (System.nanoTime() - startedAt) / 1_000_000
                 withCurrent(request) { display.value = display.value.copy(startupMillis = elapsed, reusedBuild = reused) }
                 if (preview) log.info("XAML preview connected: ${elapsed}ms, reusedBuild=$reused")
@@ -295,7 +315,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output.") }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { withCurrent(request) { display.value = WinUIXamlHotReloadState(error.message.orEmpty(), pid = owned?.process?.takeIf { it.isAlive }?.pid()) } }
-            finally { if (!display.value.connected || !isCurrent(request)) firstFrame.complete(Unit) }
+            finally { deploymentReady.complete(Unit); if (!display.value.connected || !isCurrent(request)) firstFrame.complete(Unit) }
         }
     }
 
@@ -391,16 +411,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     /** Switching applications must not render against another application's host.
      * The editor coroutine owns this wait, so leaving the tab cancels the request. */
-    suspend fun ensurePreviewReady(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, retry: Boolean = false) {
-        if (display.value.busy && !usesLaunch(module, launch)) state.first { !it.busy }
+    suspend fun ensurePreviewReady(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, retry: Boolean = false, theme: String = "Default") {
+        if (display.value.busy && (!usesLaunch(module, launch) || !usesPreviewTheme(theme))) state.first { !it.busy }
+        if (display.value.connected && !usesPreviewTheme(theme)) connectedDeploymentReady?.await()
         currentCoroutineContext().ensureActive()
-        ensurePreview(module, launch, retry)
+        ensurePreview(module, launch, retry, theme)
     }
 
     /** Opening/switching a preview reuses its host; a failed launch needs an explicit retry. */
-    fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, retry: Boolean = false) {
-        if (display.value.busy || (usesLaunch(module, launch) && (display.value.connected || !retry))) return
-        start(module, launch, restart = display.value.pid != null, preview = true, rebuild = false)
+    fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, retry: Boolean = false, theme: String = "Default") {
+        if (display.value.busy || (usesLaunch(module, launch) && usesPreviewTheme(theme) && (display.value.connected || !retry))) return
+        start(module, launch, restart = display.value.pid != null, preview = true, rebuild = false, theme = theme)
     }
 
     fun reconnect() {
@@ -442,7 +463,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (recoveredSources != null) {
                             sources = recoveredSources; baselines.clear(); attempted.clear(); uncertain = false
                         }
-                        directory = folder; selectedModule = module; selectedLaunch = launch
+                        directory = folder; selectedModule = module; selectedLaunch = launch; previewTheme = saved.previewTheme
                         client = candidate; owned = candidate
                     }) {
                         candidate.close(); return@launch

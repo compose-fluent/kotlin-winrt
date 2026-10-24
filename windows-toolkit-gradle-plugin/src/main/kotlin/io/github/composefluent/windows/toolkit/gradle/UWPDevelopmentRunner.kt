@@ -242,7 +242,7 @@ if (${'$'}debugging) {
     }
     ${'$'}environment = @()
     if (${'$'}development) { ${'$'}environment = @(('KOTLIN_WINRT_HOT_RELOAD_DIRECTORY=' + ${'$'}sessionDirectory), 'KOTLIN_WINRT_DEVELOPMENT_TRANSPORT=pipe') }
-    if (${'$'}configurationData.designPreview) { ${'$'}environment += 'KOTLIN_WINRT_XAML_PREVIEW=1' }
+    if (${'$'}configurationData.designPreview) { ${'$'}environment += 'KOTLIN_WINRT_XAML_PREVIEW=1'; ${'$'}environment += ('KOTLIN_WINRT_XAML_PREVIEW_THEME=' + [string]${'$'}configurationData.designPreviewTheme) }
 }
 try {
 if (${'$'}debugging) {

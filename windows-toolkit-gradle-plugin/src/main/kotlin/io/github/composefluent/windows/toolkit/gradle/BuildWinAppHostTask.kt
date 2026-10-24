@@ -866,6 +866,8 @@ internal fun applicationHostSource(
     static int kotlin_winrt_development_arguments(int *argc, wchar_t **wargv) {
         const wchar_t *prefix = L"$WINAPP_HOT_RELOAD_ARGUMENT";
         const size_t prefix_length = wcslen(prefix);
+        const wchar_t *theme_prefix = L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_THEME_ARGUMENT}";
+        const size_t theme_prefix_length = wcslen(theme_prefix);
         int next = 1;
         int enabled = 0;
         for (int i = 1; i < *argc; ++i) {
@@ -878,6 +880,10 @@ internal fun applicationHostSource(
                 enabled = 1;
             } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
                 kotlin_winrt_preview_requested = 1;
+            } else if (wcsncmp(wargv[i], theme_prefix, theme_prefix_length) == 0) {
+                const wchar_t *theme = wargv[i] + theme_prefix_length;
+                if ((wcscmp(theme, L"Default") && wcscmp(theme, L"Light") && wcscmp(theme, L"Dark")) ||
+                    !SetEnvironmentVariableW(L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT}", theme)) return 1;
             } else {
                 wargv[next++] = wargv[i];
             }

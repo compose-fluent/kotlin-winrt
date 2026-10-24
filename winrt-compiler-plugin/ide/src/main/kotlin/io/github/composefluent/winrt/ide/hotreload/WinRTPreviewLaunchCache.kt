@@ -61,8 +61,15 @@ internal class WinRTPreviewLaunchCache(
         val environment = async(Dispatchers.IO) { runCatching { environment() } }
         val inputs = inputs()
         val prepared = environment.await()
-        inputs to reusable(inputs) { prepared.getOrThrow() }
+        inputs to reusable(inputs, { prepared.getOrThrow() })
     }
+
+    /** Identity of the currently connected compiled baseline. It is independent
+     * of the cold-launch receipt: generated sources may change during a build,
+     * preventing that receipt from being committed. Only its owning live session
+     * may retain this identity for a theme-only replacement. */
+    fun connectedDeploymentIdentity(): String? = if (!supported()) null
+        else runCatching { record("", environment()) }.getOrNull()
 
     fun reusable(inputs: String): Boolean = reusable(inputs, ::environment)
 

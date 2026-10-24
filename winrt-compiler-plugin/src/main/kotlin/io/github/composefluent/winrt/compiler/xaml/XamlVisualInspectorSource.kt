@@ -97,6 +97,12 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel, framework:
         ${if (framework == XamlFramework.UWP) "import windows.applicationmodel.activation.LaunchActivatedEventArgs" else ""}
         import io.github.composefluent.winrt.runtime.*
         internal class KotlinWinUIXamlPreviewApplication : Application() {
+          init {
+            when (winUIXamlPreviewStartupTheme()) {
+              "Light" -> requestedTheme = ApplicationTheme.Light
+              "Dark" -> requestedTheme = ApplicationTheme.Dark
+            }
+          }
           override fun onLaunched(args: LaunchActivatedEventArgs?) {
             try { KotlinWinUIXamlPreviewHost.showWindow() }
             catch (error: Throwable) { error.printStackTrace(); throw error }
@@ -254,6 +260,12 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             // The authoring scanner emits ApplicationOverrides for internal classes.
             // A private subclass would never receive WinUI's OnLaunched callback.
             internal class KotlinWinUIXamlPreviewApplication : Application() {
+          init {
+            when (winUIXamlPreviewStartupTheme()) {
+              "Light" -> requestedTheme = ApplicationTheme.Light
+              "Dark" -> requestedTheme = ApplicationTheme.Dark
+            }
+          }
               override fun onLaunched(args: LaunchActivatedEventArgs?) { KotlinWinUIXamlPreviewHost.showWindow() }
             }
             /** Isolated design host: the user's application main/constructor is not invoked. */

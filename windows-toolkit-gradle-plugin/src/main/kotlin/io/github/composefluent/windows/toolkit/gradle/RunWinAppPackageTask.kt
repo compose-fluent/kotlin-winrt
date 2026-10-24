@@ -129,6 +129,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal
     abstract val designPreview: Property<Boolean>
 
+    @get:Internal abstract val designPreviewTheme: Property<String>
+
     /** Actual deployed executable, rather than the pre-registration input layout. */
     @get:Internal
     abstract val hostExecutable: org.gradle.api.file.RegularFileProperty
@@ -161,6 +163,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
             type == WindowsPackageType.Packaged.name && !bundled
         })
         designPreview.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
+        designPreviewTheme.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT)
+            .map { theme -> require(theme in setOf("Default", "Light", "Dark")); theme }.orElse("Default"))
         previewHostExecutable.convention(hostExecutable)
         outputs.upToDateWhen { false }
     }
@@ -267,6 +271,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
             Files.writeString(configuration, buildJsonObject {
                 put("applicationArguments", args.get())
                 put("designPreview", designPreview.get())
+                put("designPreviewTheme", designPreviewTheme.get())
                 put("nativeDebugDirectory", nativeDebugDirectory.orNull.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true }.orEmpty())
                 put("debugOutput", debugOutput.get())
                 put("debugOutputFile", if (debugOutput.get()) temporaryDir.resolve("native-debug-output.log").absolutePath else "")
@@ -304,7 +309,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
         ).resolve()
         val applicationArguments = winAppDevelopmentArguments(if (designPreview.get()) {
             check(supportsXamlPreview.get()) { "The XAML preview host requires a supported WinUI development launch." }
-            WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT
+            WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT + " " + WinUIXamlHotReloadProtocol.PREVIEW_THEME_ARGUMENT + designPreviewTheme.get()
         } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
         val nativeDebug = nativeDebugDirectory.orNull?.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true && !noLaunch.get() }

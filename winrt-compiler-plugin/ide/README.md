@@ -563,14 +563,14 @@ nodes remain inspection-only, and stale source edits are rejected instead of ove
 concurrent changes. Structure commands edit Grid definitions, reorder siblings and move
 source elements into compatible containers. Marquee selection and XAML copy/cut/paste
 use the same source mapping and undo history. The inspector's **Edit applied style…** edits literal dependency-property setters in
-an inline Style, a uniquely resolved explicit style resource, or a source-scoped implicit style, including Style.Setters. Implicit style editing follows local resource and reverse merged-dictionary precedence; template scopes and theme-dependent or global runtime ownership remain unavailable rather than selecting an uncertain source.
+an inline Style, a uniquely resolved explicit style resource, or a source-scoped implicit style, including Style.Setters. Implicit style editing follows local resource and reverse merged-dictionary precedence; Light/Dark theme dictionaries follow the selected preview host theme with Default fallback. Ambiguous high-contrast, mixed RequestedTheme, template and global runtime scopes remain unavailable rather than selecting an uncertain source.
 Edits preserve consumer-local values, support Reset and undo, and use the style's
 resource scope. Complex/duplicate setters and stale documents are protected.
 **Create style…** creates a keyed style in the nearest source ancestor with Resources
 and applies it in one undoable command. Optional extraction moves local literal
 DP values into setters while preserving names, bindings and resource expressions.
 Existing styles and dictionary Source declarations are not overwritten.
-Global/theme-dependent implicit style lookup, shared ControlTemplate authoring and storyboard timeline authoring
+Global implicit style lookup, shared ControlTemplate authoring and storyboard timeline authoring
 remain separate from this setter editing surface.
 
 Double-click a rendered element to open its XAML source. Moving the source caret
@@ -862,6 +862,6 @@ The implementation queue remains in the local, uncommitted
 `IDE_SUPPORT_LOCAL_PLAN.md`; this README records module boundaries and supported
 behavior rather than revising root `PLAN.md`.
 
-Project previews open an independent SDK artboard first and compile project controls in the background. The existing artboard remains visible until the project host connects and renders; project build cancellation does not stop the basic designer.
+Project previews prefer a validated cached Native deployment. When no reusable project deployment exists, the independent SDK artboard can render while project controls compile. Changing Light/Dark restarts the preview host with Application.RequestedTheme set before initialization, so implicit theme styles match the rendered application. A connected deployment can be reused for this theme-only restart after XAML edits; changes to its binaries, dependencies or toolchain still require build validation.
 
 The Toolbox supports search, drag-to-insert and select-then-place. Insertion uses the metadata content contract and never replaces existing content or bindings. Ctrl/Shift+click selects multiple source elements; dragging, nudging and shared properties apply in one undoable command. Align/match-size commands use the last selected sibling in Grid or Canvas. Edge/center snap guides can be toggled; hold Alt to bypass them. Template-generated visuals remain navigation-only when no exact source mapping exists.

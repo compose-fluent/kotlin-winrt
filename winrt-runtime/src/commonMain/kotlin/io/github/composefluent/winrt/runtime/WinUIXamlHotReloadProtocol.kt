@@ -8,6 +8,8 @@ object WinUIXamlHotReloadProtocol {
     const val SESSION_DIRECTORY = "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"
     const val PREVIEW_ARGUMENT = "--kotlin-winrt-xaml-preview"
     const val PREVIEW_ENVIRONMENT = "KOTLIN_WINRT_XAML_PREVIEW"
+    const val PREVIEW_THEME_ENVIRONMENT = "KOTLIN_WINRT_XAML_PREVIEW_THEME"
+    const val PREVIEW_THEME_ARGUMENT = "--kotlin-winrt-xaml-preview-theme="
     const val PREVIEW_CLASS = "KotlinWinRT.XamlPreview"
     const val APPLIED = 0
     const val REJECTED = 1
@@ -61,3 +63,9 @@ data class WinUIXamlVisualProperty(val name: String, val value: String)
 data class WinUIXamlVisualImage(val width: Int, val height: Int, val pixels: ByteArray)
 data class WinUIXamlVisualSnapshot(val nodes: List<WinUIXamlVisualNode>, val properties: List<WinUIXamlVisualProperty>,
     val image: WinUIXamlVisualImage? = null)
+
+/** Application.RequestedTheme must be chosen during construction, before OnLaunched.
+ * The generated SDK adaptation maps this option to its framework's enum. */
+fun winUIXamlPreviewStartupTheme(): String =
+    platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT)
+        ?.takeIf { it == "Light" || it == "Dark" } ?: "Default"

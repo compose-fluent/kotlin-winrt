@@ -138,6 +138,11 @@ private fun initializeNativeXamlDevelopmentArguments() = memScoped {
                     require(directory.isNotBlank()) { "Empty development session directory." }
                     check(platform.windows.SetEnvironmentVariableW(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY, directory) != 0)
                 }
+                argument.startsWith(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ARGUMENT) -> {
+                    val theme = argument.removePrefix(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ARGUMENT)
+                    require(theme in setOf("Default", "Light", "Dark")) { "Invalid preview theme." }
+                    check(platform.windows.SetEnvironmentVariableW(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT, theme) != 0)
+                }
                 argument == WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT ->
                     check(platform.windows.SetEnvironmentVariableW(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT, "1") != 0)
             }
