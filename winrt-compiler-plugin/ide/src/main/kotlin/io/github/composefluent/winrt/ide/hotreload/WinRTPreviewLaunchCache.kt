@@ -103,7 +103,14 @@ internal class WinRTPreviewLaunchCache(
         val files = sortedSetOf<Path>()
         val missing = sortedSetOf<String>()
         val excluded = setOf("build", ".gradle", ".git", ".idea", ".kotlin", ".konan", "node_modules")
-        roots.map { it.toAbsolutePath().normalize() }.distinct().forEach { root ->
+        // Project/module/source roots overlap heavily. Scan each reachable subtree
+        // once, but retain explicit roots below an excluded build directory.
+        val scanRoots = mutableListOf<Path>()
+        roots.map { it.toAbsolutePath().normalize() }.distinct().sortedBy { it.nameCount }.forEach { root ->
+            if (!Files.exists(root) || scanRoots.none { parent -> root.startsWith(parent) &&
+                    (!excludeBuild || parent.relativize(root).none { it.toString() in excluded }) }) scanRoots.add(root)
+        }
+        scanRoots.forEach { root ->
             if (!Files.exists(root)) { missing += root.toString(); return@forEach }
             Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
                 override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
@@ -126,11 +133,11 @@ internal class WinRTPreviewLaunchCache(
         val hash = MessageDigest.getInstance("SHA-256")
         fun add(text: String) { hash.update(text.toByteArray()); hash.update(0.toByte()) }
         missing.forEach { add("missing:$it") }
+        val buffer = if (content) ByteArray(65536) else null
         files.forEach { file ->
             add(file.toString())
             if (content) Files.newInputStream(file).use { stream ->
-                val buffer = ByteArray(65536)
-                while (true) { val count = stream.read(buffer); if (count < 0) break; hash.update(buffer, 0, count) }
+                while (true) { val count = stream.read(buffer!!); if (count < 0) break; hash.update(buffer, 0, count) }
             } else { add(Files.size(file).toString()); add(Files.getLastModifiedTime(file).toString()) }
             hash.update(0.toByte())
         }

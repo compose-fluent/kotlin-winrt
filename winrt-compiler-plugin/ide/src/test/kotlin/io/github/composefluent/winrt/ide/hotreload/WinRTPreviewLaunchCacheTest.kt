@@ -62,6 +62,29 @@ class WinRTPreviewLaunchCacheTest {
         }
     }
 
+    @Test fun overlappingRootsKeepExplicitGeneratedSourcesAndMissingInputs() {
+        val root = Files.createTempDirectory("preview-overlap")
+        try {
+            val source = Files.createDirectories(root.resolve("src"))
+            Files.writeString(source.resolve("Page.xaml"), "<Grid/>")
+            val generated = Files.createDirectories(root.resolve("build/generated"))
+            val generatedFile = Files.writeString(generated.resolve("Control.kt"), "class Original")
+            val missing = root.resolve("missing.xaml")
+            val module = WinRTModuleData(":app", root.toString(), root.resolve("build").toString(), "2.4", "sdk",
+                listOf(WinRTSourceSetData("main", listOf(source.toString(), generated.toString()), emptyList(), emptyList())),
+                emptyList(), emptyList(), listOf(missing.toString()))
+            val launch = WinUIXamlHotReloadLaunchData("run", root.resolve("build/app.exe").toString(), root.toString())
+            val cache = WinRTPreviewLaunchCache(root, listOf(module), module, launch)
+            val before = cache.inputs()
+            Files.writeString(generatedFile, "class Changed")
+            assertNotEquals("Explicit source root under build must still be hashed", before, cache.inputs())
+            Files.writeString(generatedFile, "class Original")
+            assertEquals(before, cache.inputs())
+            Files.writeString(missing, "<Page/>")
+            assertNotEquals("An explicit missing input becoming present invalidates", before, cache.inputs())
+        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
+    }
+
     @Test fun sdkHostSurvivesProjectSourceEditsButInvalidatesBuildConfiguration() {
         val root = Files.createTempDirectory("sdk-preview-cache")
         try {
