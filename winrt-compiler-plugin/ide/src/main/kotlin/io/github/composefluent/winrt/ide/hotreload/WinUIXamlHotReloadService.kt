@@ -250,6 +250,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }
                 }
                 if (!reused) {
+                    val buildInputs = if (!sdkPreview) cache?.buildInputs() else null
                     val buildFinished = CompletableDeferred<Unit>()
                     // A Gradle Exec task keeps the project execution lock while
                     // its host lives. Prepare the desktop SDK host, release Gradle,
@@ -294,7 +295,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         building = { !buildFinished.isCompleted && gradleProcess?.isProcessTerminated != true })
                     // Never bless inputs edited while Gradle was compiling an earlier version.
                     if (!sdkPreview && inputs != null && cache != null && isCurrent(request)) runCatching {
-                        if (display.value.connected) cache.rememberIfUnchanged(inputs)
+                        if (display.value.connected && buildInputs != null) cache.rememberAfterBuild(buildInputs)
                     }.onFailure { log.debug("Preview launch cache unavailable", it) }
                 }
                 if (preview && cache != null) {

@@ -526,7 +526,11 @@ For a previously successful WinUI Native desktop packaged preview, the IDE can
 start the deployed preview executable directly. It validates project/dependency
 source contents, build configuration, the imported model, deployed files and the
 toolchain locations before reusing the build. Changed inputs or a failed direct launch
-fall back to Gradle. **Rebuild project code** always bypasses this cache. First builds,
+fall back to Gradle. A successful first build records the resulting generated sources
+when user inputs remain unchanged; the Gradle model identifies the owning generation
+tasks. Later edits to those generated files still invalidate reuse. Older workspace
+models use conservative full-source validation until synchronization.
+**Rebuild project code** always bypasses this cache. First builds,
 UWP activation and JVM launch configuration still use Gradle. Startup and render
 durations are recorded as `XAML preview connected`, `XAML preview rendered` and
 `XAML preview first frame` in

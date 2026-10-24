@@ -25,10 +25,23 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             is KotlinSingleTargetExtension<*> -> listOf(kotlin.target)
             else -> emptyList()
         }
+        val generatedRoots = if (windows == null) emptyList() else buildList {
+            project.tasks.withType(GenerateWinRTProjectionsTask::class.java).forEach {
+                add(it.outputDirectory); add(it.authoringTypeDetailsOutputDirectory)
+            }
+            project.tasks.withType(MergeWinRTCompilerSupportTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateWinAppMingwEntryTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateAppxResourcesTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateWinUIXamlApplicationHeaderTask::class.java).forEach { add(it.sourceOutputDirectory) }
+            project.tasks.withType(GenerateWinUIXamlLibraryRegistrarTask::class.java).forEach { add(it.outputDirectory) }
+        }.mapNotNull { it.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() }.distinct()
         val sourceSets = if (windows == null) emptyList() else kotlin?.sourceSets.orEmpty().map { sourceSet ->
             IdeSourceSet(
                 sourceSet.name,
                 sourceSet.kotlin.srcDirs.map { it.absoluteFile.normalize().path }.sorted(),
+                sourceSet.kotlin.srcDirs.map { it.toPath().toAbsolutePath().normalize() }
+                    .filter { source -> generatedRoots.any { source.startsWith(it) } }.map { it.toString() }.sorted(),
                 sourceSet.dependsOn.map { it.name }.sorted(),
                 appxResourceRoots(project, listOf(sourceSet.name)).map { it.toAbsolutePath().normalize().toString() },
             )
@@ -172,6 +185,7 @@ private data class IdeXamlCompilation(
 private data class IdeSourceSet(
     override val name: String,
     override val kotlinRoots: List<String>,
+    override val generatedKotlinRoots: List<String>,
     override val dependsOn: List<String>,
     override val appxResourceRoots: List<String>,
 ) : WinRTIdeModel.SourceSet

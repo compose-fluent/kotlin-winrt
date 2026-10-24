@@ -87,6 +87,9 @@ class WinRTPreviewLaunchCacheTest {
                 emptyList(), emptyList(), listOf(missing.toString()))
             val launch = WinUIXamlHotReloadLaunchData("run", root.resolve("build/app.exe").toString(), root.toString())
             val cache = WinRTPreviewLaunchCache(root, listOf(module), module, launch)
+            val legacy = module.copy(sourceSets = module.sourceSets.map { it.copy(generatedKotlinRoots = null) })
+            val legacyCache = WinRTPreviewLaunchCache(root, listOf(legacy), legacy, launch)
+            assertEquals("Legacy workspace graphs retain conservative source validation", legacyCache.inputs(), legacyCache.buildInputs())
             val before = cache.inputs()
             Files.writeString(generatedFile, "class Changed")
             assertNotEquals("Explicit source root under build must still be hashed", before, cache.inputs())
@@ -94,6 +97,40 @@ class WinRTPreviewLaunchCacheTest {
             assertEquals(before, cache.inputs())
             Files.writeString(missing, "<Page/>")
             assertNotEquals("An explicit missing input becoming present invalidates", before, cache.inputs())
+        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
+    }
+
+    @Test fun firstBuildRecordsGeneratedChangesButNeverUserEdits() {
+        val root = Files.createTempDirectory("preview-first-build")
+        try {
+            val build = Files.createDirectories(root.resolve("build"))
+            val deployed = Files.createDirectories(build.resolve("deployed"))
+            val exe = Files.write(deployed.resolve("preview.exe"), byteArrayOf(1))
+            Files.writeString(deployed.resolve("AppxManifest.xml"), "<Application EntryPoint=\"Windows.FullTrustApplication\"/>")
+            val dependency = Files.writeString(build.resolve("dependency.klib"), "library")
+            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.write(
+                deployed.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME), listOf(dependency))
+            val generated = build.resolve("generated")
+            val custom = Files.createDirectories(build.resolve("custom-source"))
+            val source = Files.writeString(root.resolve("User.kt"), "class User")
+            val customSource = Files.writeString(custom.resolve("Custom.kt"), "class Custom")
+            val module = WinRTModuleData(":app", root.toString(), build.toString(), "2.4", "sdk",
+                listOf(WinRTSourceSetData("main", listOf(generated.toString(), custom.toString()), emptyList(), emptyList(), listOf(generated.toString()))),
+                emptyList(), emptyList(), emptyList())
+            val launch = WinUIXamlHotReloadLaunchData("runWinAppPackageNative", exe.toString(), deployed.toString(), exe.toString(), "native")
+            val cache = WinRTPreviewLaunchCache(root, listOf(module), module, launch)
+            val before = cache.buildInputs()
+            Files.createDirectories(generated)
+            val output = Files.writeString(generated.resolve("Generated.kt"), "class Generated")
+            assertTrue("First generation must not discard a completed build receipt", cache.rememberAfterBuild(before))
+            assertTrue(checked(cache))
+            Files.writeString(output, "class Tampered")
+            assertFalse("Later edits to generated outputs still invalidate", checked(cache))
+            Files.writeString(source, "class Edited")
+            assertFalse("User edits during compilation cannot be blessed", cache.rememberAfterBuild(before))
+            Files.writeString(source, "class User")
+            Files.writeString(customSource, "class EditedCustom")
+            assertFalse("Unowned sources under build are ordinary inputs", cache.rememberAfterBuild(before))
         } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
     }
 

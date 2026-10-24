@@ -37,7 +37,7 @@ data class WinRTModuleData(
             return WinRTModuleData(
                 model.projectPath, model.projectDirectory, model.buildDirectory,
                 model.kotlinVersion, model.windowsSdkVersion,
-                model.sourceSets.map { WinRTSourceSetData(it.name, it.kotlinRoots.toList(), it.dependsOn.toList(), it.appxResourceRoots.toList()) },
+                model.sourceSets.map { WinRTSourceSetData(it.name, it.kotlinRoots.toList(), it.dependsOn.toList(), it.appxResourceRoots.toList(), it.generatedKotlinRoots.toList()) },
                 model.targets.map { WinRTTargetData(it.name, it.platform, it.sourceSets.toList()) },
                 model.nuGetPackages.map { WinRTNuGetData(it.id, it.version, it.isGenerateProjection) },
                 model.manifestFiles.toList(),
@@ -67,6 +67,8 @@ data class WinRTSourceSetData(
     val kotlinRoots: List<String>,
     val dependsOn: List<String>,
     val appxResourceRoots: List<String>,
+    // Older persisted workspace graphs have no generated-root field.
+    val generatedKotlinRoots: List<String>? = emptyList(),
 ) : Serializable
 
 data class WinRTTargetData(val name: String, val platform: String, val sourceSets: List<String>) : Serializable

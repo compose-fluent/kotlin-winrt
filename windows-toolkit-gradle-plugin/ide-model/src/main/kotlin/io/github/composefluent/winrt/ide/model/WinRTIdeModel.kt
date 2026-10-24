@@ -68,6 +68,8 @@ interface WinRTIdeModel : Serializable {
     interface SourceSet : Serializable {
         val name: String
         val kotlinRoots: List<String>
+        /** Source outputs owned by toolkit generation tasks; never inferred from directory names. */
+        val generatedKotlinRoots: List<String>
         val dependsOn: List<String>
         /** Least to most specific, exactly as used by AppX resource staging. */
         val appxResourceRoots: List<String>
@@ -86,6 +88,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 9
+        const val SCHEMA_VERSION: Int = 10
     }
 }

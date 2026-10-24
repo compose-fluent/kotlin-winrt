@@ -37,7 +37,14 @@ internal class WinRTPreviewLaunchCache(
     /** Content hashes catch edits with preserved timestamps and additions/deletions in dependencies.
      * Build outputs are excluded here and separately checked in the deployment fingerprint.
      */
-    fun inputs(): String = fingerprint(buildList {
+    fun inputs(): String = inputs(emptyList())
+
+    private val generatedRoots get() = modules.flatMap { it.sourceSets }.flatMap { it.generatedKotlinRoots.orEmpty() }
+        .map { Path.of(it).toAbsolutePath().normalize() }
+
+    fun buildInputs(): String = inputs(generatedRoots)
+
+    private fun inputs(ignored: List<Path>): String = fingerprint(buildList {
         add(buildRoot)
         val gradleHome = System.getenv("GRADLE_USER_HOME")?.takeIf(String::isNotBlank)?.let(Path::of)
             ?: Path.of(System.getProperty("user.home"), ".gradle")
@@ -48,7 +55,7 @@ internal class WinRTPreviewLaunchCache(
                 m.xamlCompilations.flatMap { it.sourceRoots } + m.manifestFiles + m.restoreLockFiles + listOf(m.nuGetConfigFile))
                 .filter(String::isNotBlank).forEach { add(Path.of(it)) }
         }
-    }, content = true, excludeBuild = true, configurationOnly = sdk)
+    }, content = true, excludeBuild = true, configurationOnly = sdk, ignored = ignored)
 
     private fun outputs() = fingerprint(listOf(deployment), content = false, excludeBuild = false)
     /** Routing hint only. start() must still validate all contents before reuse. */
@@ -101,6 +108,16 @@ internal class WinRTPreviewLaunchCache(
         return true
     }
 
+    /** Generation can legitimately change while building. User inputs must remain stable;
+     * the resulting receipt still fingerprints generated contents for every later launch. */
+    fun rememberAfterBuild(expectedBuildInputs: String): Boolean {
+        if (!supported() || expectedBuildInputs != buildInputs()) return false
+        val completedInputs = inputs()
+        if (expectedBuildInputs != buildInputs()) return false
+        remember(completedInputs)
+        return true
+    }
+
     fun invalidate() { Files.deleteIfExists(receipt) }
 
     private fun environment(): Map<String, String> = linkedMapOf(
@@ -124,7 +141,7 @@ internal class WinRTPreviewLaunchCache(
     private fun record(inputs: String, environment: Map<String, String> = environment()): String =
         environment.entries.joinToString("\n") { (name, value) -> "$name=${digest((if (name == "inputs") inputs else value).toByteArray())}" }
 
-    private fun fingerprint(roots: List<Path>, content: Boolean, excludeBuild: Boolean, configurationOnly: Boolean = false): String {
+    private fun fingerprint(roots: List<Path>, content: Boolean, excludeBuild: Boolean, configurationOnly: Boolean = false, ignored: List<Path> = emptyList()): String {
         val started = System.nanoTime()
         val files = sortedSetOf<Path>()
         val missing = sortedSetOf<String>()
@@ -136,12 +153,13 @@ internal class WinRTPreviewLaunchCache(
             if (!Files.exists(root) || scanRoots.none { parent -> root.startsWith(parent) &&
                     (!excludeBuild || parent.relativize(root).none { it.toString() in excluded }) }) scanRoots.add(root)
         }
-        scanRoots.forEach { root ->
+        scanRoots.filterNot { root -> ignored.any { root.startsWith(it) } }.forEach { root ->
             if (!Files.exists(root)) { missing += root.toString(); return@forEach }
             Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
                 override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-                    if (excludeBuild && dir != root && dir.fileName.toString() in excluded) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+                    if (ignored.any { dir.startsWith(it) } || excludeBuild && dir != root && dir.fileName.toString() in excluded) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
                 override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (ignored.any { file.startsWith(it) }) return FileVisitResult.CONTINUE
                     check(!attrs.isSymbolicLink) { "Preview input links require Gradle validation" }
                     // SDK host inputs exclude app XAML/Kotlin edits. Build logic,
                     // version catalogs, restore locks and model/toolchain identity

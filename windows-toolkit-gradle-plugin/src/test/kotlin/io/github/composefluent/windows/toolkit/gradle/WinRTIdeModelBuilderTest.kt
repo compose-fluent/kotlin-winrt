@@ -13,6 +13,29 @@ import java.io.ObjectOutputStream
 
 /** Validates the IDE boundary, not WinMD/projection policy owned by .cswinrt/src/cswinrt. */
 class WinRTIdeModelBuilderTest {
+    @Test fun generated_roots_come_from_task_outputs_and_preserve_custom_sources() {
+        val project = ProjectBuilder.builder().withName("generated-roots").build()
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+        val kotlin = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+        kotlin.mingwX64 { binaries { executable() } }
+        (project as ProjectInternal).evaluate()
+        val generator = project.tasks.register("customPreviewEntry", GenerateWinAppMingwEntryTask::class.java).get()
+        generator.outputDirectory.set(project.layout.buildDirectory.dir("relocated-owned-output"))
+        val sourceSet = kotlin.sourceSets.getByName("winuiMain")
+        sourceSet.kotlin.srcDir(generator.outputDirectory)
+        val userRoot = project.layout.buildDirectory.dir("generated/user-maintained").get().asFile
+        sourceSet.kotlin.srcDir(userRoot)
+        project.configurations.configureEach { configuration ->
+            configuration.incoming.beforeResolve { error("IDE import resolved ${configuration.name}") }
+        }
+        val model = WinRTIdeModelBuilder().buildAll(WinRTIdeModel::class.java.name, project)
+        val imported = model.sourceSets.single { it.name == "winuiMain" }
+        assertTrue(imported.generatedKotlinRoots.contains(generator.outputDirectory.get().asFile.absolutePath))
+        assertTrue(imported.kotlinRoots.contains(userRoot.absolutePath))
+        assertFalse(imported.generatedKotlinRoots.contains(userRoot.absolutePath))
+    }
+
     @Test fun uwp_sdk_designer_is_independent_of_native_application_compilation() {
         val project = ProjectBuilder.builder().withName("uwp-sdk-designer").build()
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
