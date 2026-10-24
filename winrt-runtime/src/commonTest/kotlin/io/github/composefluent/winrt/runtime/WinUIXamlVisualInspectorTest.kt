@@ -102,6 +102,32 @@ class WinUIXamlVisualInspectorTest {
         assertTrue(queue.isEmpty())
         registry.close()
     }
+    @Test fun repeated_template_realizations_keep_exact_sdk_owner_and_root_paths() {
+        // CsWinRT object references own COM identity; the SDK adapter supplies
+        // ContentTemplateRoot, common traversal only resolves bounded visual paths.
+        val first = Visual("SameName"); val second = Visual("SameName")
+        val container1 = Visual("", listOf(first)); val container2 = Visual("", listOf(second))
+        val root = Visual("Items", listOf(container1, container2))
+        val inspector = WinUIXamlVisualInspector({ it }, { (it as Visual).children }, { value, _ ->
+            WinUIXamlVisualNode(emptyList(), "probe.Visual", (value as Visual).name, WinUIXamlVisualBounds(0.0, 0.0, 10.0, 10.0))
+        }, { emptyList() }, { _, _, _ -> error("No capture") }, { _, _ -> }, template = { value ->
+            when (value) {
+                container1 -> WinUIXamlTemplateReference(first, root, "ItemTemplate")
+                container2 -> WinUIXamlTemplateReference(second, root, "ItemTemplate")
+                else -> null
+            }
+        })
+        var snapshot: WinUIXamlVisualSnapshot? = null
+        inspector.inspect(root, WinUIXamlInspectionRequest("probe.Page", "", capture = false)) { snapshot = it.getOrThrow() }
+        val realized = snapshot!!.nodes.filter { it.templateOwner != null }
+        assertEquals(listOf(listOf(0, 0), listOf(1, 0)), realized.map { it.path })
+        assertTrue(realized.all { it.templateOwner == emptyList<Int>() && it.templateProperty == "ItemTemplate" })
+        val reply = WinUIXamlHotReloadReply(0, "", inspection = snapshot)
+        assertEquals(snapshot, WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(reply)).inspection)
+        assertFailsWith<IllegalArgumentException> {
+            WinUIXamlHotReloadCodec.writeReply(reply.copy(inspection = snapshot!!.copy(nodes = listOf(realized.first().copy(templateOwner = listOf(1))))))
+        }
+    }
     @Test fun removed_visuals_fail_locally() {
         val root = Visual("Root")
         val inspector = WinUIXamlVisualInspector({ it }, { emptyList() }, { _, _ ->

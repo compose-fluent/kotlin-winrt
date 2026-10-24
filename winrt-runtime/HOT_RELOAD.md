@@ -248,3 +248,21 @@ created storyboard after preparation, and records the change as one undo command
 Selecting a millisecond keyframe seeks the preview to that frame. Existing frames
 use a separate editable time field; moving the playhead alone never moves a frame.
 Sub-millisecond or symbolic KeyTime values are not silently rounded by the editor.
+
+## DataTemplate realization selection
+
+Protocol v8 reports the SDK ContentControl.ContentTemplateRoot together with the
+visual path of its consuming ContentControl, or its ancestor ItemsControl when
+the actual DataTemplate COM identity matches ItemTemplate. Object comparison
+reuses ComObjectReference.sameIdentity (CsWinRT IUnknown identity ownership);
+visual names alone never establish a realization. The IDE resolves explicit
+inline or StaticResource ContentTemplate/ItemTemplate source, including
+explicit and theme-selected implicit styles with BasedOn inheritance. Selection
+is scoped to the clicked realization. Editing changes the shared template source with one
+undo command, and the property panel identifies that shared scope.
+
+Source-only navigation does not choose between repeated realizations. Template
+selectors, nested data-template consumers and ContentPresenter-only containers
+are not inferred; they remain source-only
+until an exact SDK-to-source ownership mapping is available. This selection
+contract does not add live application template replacement or Kotlin reload.

@@ -1,5 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
+/** SDK-reported realized content root, its consuming object and template property. */
+data class WinUIXamlTemplateReference(val root: Any, val owner: Any, val property: String)
+
 /** SDK calls live in the compiler-generated typed adapter. Runtime ownership,
  * bounded traversal and UI dispatch mirror CsWinRT's generated accessor/runtime split.
  * The same contract is used by JVM and mingwX64 development transports. */
@@ -10,6 +13,8 @@ class WinUIXamlVisualInspector(
     private val properties: (Any) -> List<WinUIXamlVisualProperty>,
     private val capture: (Any, Double, (Result<WinUIXamlVisualImage>) -> Unit) -> Unit,
     private val preview: (Any, WinUIXamlInspectionRequest) -> Unit,
+    private val template: (Any) -> WinUIXamlTemplateReference? = { null },
+    private val sameObject: (Any, Any) -> Boolean = { first, second -> first === second },
     private val clock: () -> WinUIXamlPreviewClock? = { null },
     private val animate: (Any, WinUIXamlPreviewAnimation) -> Unit = { _, _ -> error("Rebuild the preview host to inspect storyboards.") },
 ) {
@@ -32,15 +37,25 @@ class WinUIXamlVisualInspector(
         fun snapshot(root: Any, image: WinUIXamlVisualImage? = null): Result<WinUIXamlVisualSnapshot> = runCatching {
             val nodes = mutableListOf<WinUIXamlVisualNode>()
             var selected: Any? = null
-            fun visit(value: Any, path: List<Int>) {
+            val ancestors = mutableListOf<Pair<Any, List<Int>>>()
+            fun visit(value: Any, path: List<Int>, inherited: List<Pair<WinUIXamlTemplateReference, List<Int>>>) {
                 require(nodes.size < 2048 && path.size <= 64) { "The visual tree exceeds the inspection limit; select a smaller component." }
-                nodes += describe(value, root).copy(path = path)
+                val realization = inherited.filter { sameObject(it.first.root, value) }
+                    .map { it.second to it.first.property }.distinct().singleOrNull()
+                nodes += describe(value, root).copy(path = path, templateOwner = realization?.first,
+                    templateProperty = realization?.second.orEmpty())
+                ancestors += value to path
+                val reference = template(value)
+                val ownerPath = reference?.let { item -> ancestors.lastOrNull { sameObject(it.first, item.owner) }?.second }
+                val active = if (reference != null && ownerPath != null && reference.property in listOf("ContentTemplate", "ItemTemplate"))
+                    inherited + (reference to ownerPath) else inherited
                 if (path == request.selectedPath) selected = value
                 val items = children(value)
                 require(items.size <= 2048) { "The visual child collection exceeds the inspection limit." }
-                items.forEachIndexed { index, child -> visit(child, path + index) }
+                items.forEachIndexed { index, child -> visit(child, path + index, active) }
+                ancestors.removeAt(ancestors.lastIndex)
             }
-            visit(root, emptyList())
+            visit(root, emptyList(), emptyList())
             val values = requireNotNull(selected) { "The selected visual no longer exists. Refresh the tree." }
             WinUIXamlVisualSnapshot(nodes, properties(values).take(64).map { it.copy(value = it.value.take(4096)) }, image, clock())
         }

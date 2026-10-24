@@ -174,6 +174,38 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val type = winUIXamlInspectionTypeName(value) ?: (value as IWinRTObject).nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
             WinUIXamlVisualNode(emptyList(), type, element?.name.orEmpty(), bounds)
           },
+          // SDK ContentTemplateRoot is the realization boundary. Match the actual
+          // DataTemplate COM identity before attributing an item container to a list.
+          template = template@ { value ->
+            // Projection wrappers may defer QI until the first member call.
+            // Probe the generated default IID before constructing an optional view.
+            val reference = (value as? IWinRTObject)?.nativeObject ?: return@template null
+            if (reference.tryQueryInterface(${framework.xamlKotlinNamespace}.controls.ContentControl.DEFAULT_INTERFACE_IID)?.use { true } != true) return@template null
+            val control = ${framework.xamlKotlinNamespace}.controls.ContentControl.wrap(reference.asInspectable())
+            val realized = control.contentTemplateRoot ?: return@template null
+            val dataTemplate = control.contentTemplate ?: return@template null
+            var parent = VisualTreeHelper.getParent(control)
+            var depth = 0
+            while (parent != null && depth++ < 64) {
+              val ancestor = parent!!
+              val items = (ancestor as? IWinRTObject)?.nativeObject
+                ?.tryQueryInterface(${framework.xamlKotlinNamespace}.controls.ItemsControl.DEFAULT_INTERFACE_IID)
+                ?.use { ${framework.xamlKotlinNamespace}.controls.ItemsControl.wrap((ancestor as IWinRTObject).nativeObject.asInspectable()) }
+              if (items != null) {
+                if (items.itemTemplate?.nativeObject?.sameIdentity(dataTemplate.nativeObject) == true) {
+                  return@template WinUIXamlTemplateReference(realized, items, "ItemTemplate")
+                }
+                break
+              }
+              parent = VisualTreeHelper.getParent(parent!!)
+            }
+            WinUIXamlTemplateReference(realized, control, "ContentTemplate")
+          },
+          sameObject = { first, second ->
+            first === second || (first as? IWinRTObject)?.nativeObject?.let { reference ->
+              (second as? IWinRTObject)?.nativeObject?.let(reference::sameIdentity)
+            } == true
+          },
           properties = { value ->
             val element = runCatching { value.asWinRT<FrameworkElement>() }.getOrNull()
             val basic = element?.let { listOf(WinUIXamlVisualProperty("Name", it.name),

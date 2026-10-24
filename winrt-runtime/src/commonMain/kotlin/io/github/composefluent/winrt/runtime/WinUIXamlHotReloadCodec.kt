@@ -140,6 +140,11 @@ internal object WinUIXamlHotReloadCodec {
                 require(node.path.size <= 64); writeInt(node.path.size); node.path.forEach { writeInt(it) }
                 string(node.typeName); string(node.name)
                 with(node.bounds) { writeDouble(x); writeDouble(y); writeDouble(width); writeDouble(height) }
+                writeBoolean(node.templateOwner != null)
+                node.templateOwner?.let { owner ->
+                    require(owner.size < node.path.size && node.path.take(owner.size) == owner && node.templateProperty in listOf("ContentTemplate", "ItemTemplate"))
+                    writeInt(owner.size); owner.forEach { writeInt(it) }; string(node.templateProperty)
+                }
             }
             writeInt(view.properties.size); view.properties.forEach { string(it.name); string(it.value) }
             writeBoolean(view.image != null)
@@ -161,7 +166,11 @@ internal object WinUIXamlHotReloadCodec {
             val nodes = List(count(2048)) {
                 val path = List(count(64)) { count(2048) }
                 val type = string(); val name = string()
-                WinUIXamlVisualNode(path, type, name, WinUIXamlVisualBounds(readDouble(), readDouble(), readDouble(), readDouble()))
+                val bounds = WinUIXamlVisualBounds(readDouble(), readDouble(), readDouble(), readDouble())
+                val owner = if (readBoolean()) List(count(64)) { count(2048) } else null
+                val property = if (owner != null) string() else ""
+                require(owner == null || owner.size < path.size && path.take(owner.size) == owner && property in listOf("ContentTemplate", "ItemTemplate"))
+                WinUIXamlVisualNode(path, type, name, bounds, owner, property)
             }
             val properties = List(count(64)) { WinUIXamlVisualProperty(string(), string()) }
             val image = if (!readBoolean()) null else {

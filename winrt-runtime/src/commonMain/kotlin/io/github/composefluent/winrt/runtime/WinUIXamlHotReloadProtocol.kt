@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 7
+    const val VERSION = 8
     const val MAX_IMAGE_DIMENSION = 4096
     const val MAGIC = 0x4B585248
     const val SESSION_DIRECTORY = "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"
@@ -64,7 +64,8 @@ data class WinUIXamlPreviewAnimation(val owner: String, val key: String, val pos
     }
 }
 data class WinUIXamlVisualBounds(val x: Double, val y: Double, val width: Double, val height: Double)
-data class WinUIXamlVisualNode(val path: List<Int>, val typeName: String, val name: String, val bounds: WinUIXamlVisualBounds)
+data class WinUIXamlVisualNode(val path: List<Int>, val typeName: String, val name: String, val bounds: WinUIXamlVisualBounds,
+    val templateOwner: List<Int>? = null, val templateProperty: String = "")
 data class WinUIXamlVisualProperty(val name: String, val value: String)
 /** BGRA8 premultiplied pixels, as returned by WinUI RenderTargetBitmap.GetPixelsAsync. */
 data class WinUIXamlVisualImage(val width: Int, val height: Int, val pixels: ByteArray)

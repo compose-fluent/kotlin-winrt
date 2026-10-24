@@ -14,6 +14,53 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
     private fun xml(body: String) = myFixture.configureByText("Selection.xaml",
         """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">$body</Grid>""") as XmlFile
 
+    fun testRepeatedDataTemplateUsesSdkRealizationInsteadOfRepeatedNames() {
+        val file = xml("""<ListView x:Name="Items"><ListView.ItemTemplate><DataTemplate><Border><TextBlock x:Name="Label"/></Border></DataTemplate></ListView.ItemTemplate></ListView>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "ListView", "Items"),
+            node(listOf(0, 0), "ListViewItem"), node(listOf(0, 0, 0), "Border").copy(templateOwner = listOf(0), templateProperty = "ItemTemplate"), node(listOf(0, 0, 0, 0), "TextBlock", "Label"),
+            node(listOf(0, 1), "ListViewItem"), node(listOf(0, 1, 0), "Border").copy(templateOwner = listOf(0), templateProperty = "ItemTemplate"), node(listOf(0, 1, 0, 0), "TextBlock", "Label"))
+        val tags = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java)
+        val label = tags.single { it.localName == "TextBlock" }
+        val border = tags.single { it.localName == "Border" }
+        assertNull(WinUIXamlSourceSelection.node(label, nodes))
+        assertEquals(nodes.last(), WinUIXamlSourceSelection.node(label, nodes, nodes.last().path))
+        assertSame(label, WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
+        assertEquals(nodes[6], WinUIXamlSourceSelection.node(border, nodes, nodes.last().path))
+        val unproven = nodes.map { it.copy(templateOwner = null, templateProperty = "") }
+        assertNull(WinUIXamlSourceSelection.node(label, unproven, nodes.last().path))
+    }
+
+    fun testDataTemplateStyleInheritanceAndLocalPrecedenceKeepPropertyCachesSeparate() {
+        val file = xml("""<Grid.Resources>
+            <DataTemplate x:Key="Rows"><TextBlock x:Name="Styled"/></DataTemplate>
+            <Style x:Key="Base" TargetType="ListView"><Setter Property="ItemTemplate" Value="{StaticResource Rows}"/></Style>
+            <Style x:Key="Derived" TargetType="ListView" BasedOn="{StaticResource Base}"/>
+            </Grid.Resources>
+            <ListView x:Name="One" Style="{StaticResource Derived}"/>
+            <ListView x:Name="Two" Style="{StaticResource Derived}"><ListView.ItemTemplate><DataTemplate><TextBlock x:Name="Local"/></DataTemplate></ListView.ItemTemplate></ListView>
+            <ListView x:Name="Three" Style="{StaticResource Derived}" ItemTemplate="{Binding Template}"/>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "ListView", "One"),
+            node(listOf(0, 0), "TextBlock", "Styled").copy(templateOwner = listOf(0), templateProperty = "ItemTemplate"),
+            node(listOf(1), "ListView", "Two"), node(listOf(1, 0), "TextBlock", "Local").copy(templateOwner = listOf(1), templateProperty = "ItemTemplate"),
+            node(listOf(2), "ListView", "Three"), node(listOf(2, 0), "TextBlock", "Styled").copy(templateOwner = listOf(2), templateProperty = "ItemTemplate"))
+        val context = WinUIXamlSourceSelection.Context()
+        val tags = WinUIXamlSourceSelection.sourceTags(file, context)
+        val styled = tags.single { it.getAttributeValue("x:Name") == "Styled" }
+        val local = tags.single { it.getAttributeValue("x:Name") == "Local" }
+        assertSame(styled, WinUIXamlSourceSelection.tag(file, nodes[2], nodes, emptyList(), context))
+        assertSame(local, WinUIXamlSourceSelection.tag(file, nodes[4], nodes, emptyList(), context))
+        assertNull(WinUIXamlSourceSelection.node(styled, nodes, nodes.last().path, file, context))
+    }
+
+    fun testContentTemplateRootMapsThroughSdkPresenters() {
+        val file = xml("""<ContentControl x:Name="Content"><ContentControl.ContentTemplate><DataTemplate><TextBlock/></DataTemplate></ContentControl.ContentTemplate></ContentControl>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "ContentControl", "Content"),
+            node(listOf(0, 0), "ContentPresenter"), node(listOf(0, 0, 0), "TextBlock").copy(templateOwner = listOf(0), templateProperty = "ContentTemplate"))
+        val tag = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).single { it.localName == "TextBlock" }
+        assertEquals(nodes.last(), WinUIXamlSourceSelection.node(tag, nodes, nodes.last().path))
+        assertSame(tag, WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
+    }
+
     fun testNamedControlsResolveBothDirectionsAmongRepeatedTypes() {
         val file = xml("""<Button x:Name="First"/><Button x:Name="Second"/>""")
         val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "First"), node(listOf(1), "Button", "Second"))
@@ -123,6 +170,25 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertSame(part, WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
         val target = DesignerSelection(com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(part), part.text,
             listOf(DesignerProperty("Width", "Double", "100", emptyList(), true, false)), nodes.last().bounds, "ControlTemplate", mapOf("Width" to "100"))
+        myFixture.openFileInEditor(dictionary.virtualFile)
+        val before = dictionary.text
+        val consumerBefore = file.text
+        assertTrue(runCatching { WinUIXamlDesignerEditing.applyBatch(project, listOf(target to mapOf("Width" to "120"), target to mapOf("Width" to "140")), "Edit shared instances") }.isFailure)
+        assertEquals(before, com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(dictionary)!!.text)
+        WinUIXamlDesignerEditing.apply(project, target, mapOf("Width" to "160"), "Edit shared template")
+        assertEquals("160", part.getAttributeValue("Width"))
+        assertEquals(consumerBefore, file.text)
+        myFixture.performEditorAction(com.intellij.openapi.actionSystem.IdeActions.ACTION_UNDO)
+        assertEquals(before, com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(dictionary)!!.text)
+    }
+    fun testExternalDataTemplateEditWritesSharedSourceAndUndoRestoresIt() {
+        val dictionary = myFixture.addFileToProject("Shared.xaml", """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><DataTemplate x:Key="Shared"><TextBlock x:Name="Caption" Width="100"/></DataTemplate></ResourceDictionary>""") as XmlFile
+        val file = myFixture.addFileToProject("Consumer.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Shared.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Grid.Resources><ContentControl x:Name="First" ContentTemplate="{StaticResource Shared}"/><ContentControl x:Name="Second" ContentTemplate="{StaticResource Shared}"/></Grid>""") as XmlFile
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "ContentControl", "First"), node(listOf(0, 0), "TextBlock", "Caption").copy(templateOwner = listOf(0), templateProperty = "ContentTemplate"), node(listOf(1), "ContentControl", "Second"), node(listOf(1, 0), "TextBlock", "Caption").copy(templateOwner = listOf(1), templateProperty = "ContentTemplate"))
+        val part = PsiTreeUtil.findChildrenOfType(dictionary, XmlTag::class.java).single { it.localName == "TextBlock" }
+        assertSame(part, WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
+        val target = DesignerSelection(com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(part), part.text,
+            listOf(DesignerProperty("Width", "Double", "100", emptyList(), true, false)), nodes.last().bounds, "DataTemplate", mapOf("Width" to "100"))
         myFixture.openFileInEditor(dictionary.virtualFile)
         val before = dictionary.text
         val consumerBefore = file.text

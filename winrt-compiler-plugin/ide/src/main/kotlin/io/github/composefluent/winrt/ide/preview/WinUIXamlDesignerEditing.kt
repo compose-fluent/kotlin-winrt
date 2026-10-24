@@ -49,7 +49,13 @@ internal object WinUIXamlDesignerEditing {
             io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(tag.containingFile as XmlFile,
                 project.getService(io.github.composefluent.winrt.ide.resources.WinRTResourceIndex::class.java).forFile(tag.containingFile.originalFile.virtualFile?.path ?: file.path), tag, null)
                 .map { it.value }.distinct().sorted(), DesignerStructureEditing.inspect(tag, catalog,
-                WinUIXamlSourceSelection.sourceTags(xml, context).filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml, context) != null }), sharedTemplate = generateSequence(tag.parentTag) { it.parentTag }.firstOrNull { it.localName == "ControlTemplate" }?.let { template -> generateSequence(template) { it.parentTag }.firstNotNullOfOrNull { it.getAttributeValue("Key", WinUIXamlCatalog.XAML) ?: if (it.localName == "Style") it.getAttributeValue("TargetType")?.let { name -> "Implicit $name style" } else null } })
+                WinUIXamlSourceSelection.sourceTags(xml, context).filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml, context) != null }), sharedTemplate = generateSequence(tag.parentTag) { it.parentTag }
+                .firstOrNull { it.localName in setOf("ControlTemplate", "DataTemplate") }?.let { template ->
+                    generateSequence(template) { it.parentTag }.firstNotNullOfOrNull {
+                        it.getAttributeValue("Key", WinUIXamlCatalog.XAML) ?: if (it.localName == "Style")
+                            it.getAttributeValue("TargetType")?.let { name -> "Implicit $name style" } else null
+                    } ?: "Inline ${template.localName}"
+                })
     }
 
     fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =
