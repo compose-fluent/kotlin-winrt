@@ -227,6 +227,7 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.uiScreenshotDirectory").orNull?.let { systemProperty("winrt.ide.uiScreenshotDirectory", it) }
     providers.gradleProperty("winrt.ide.hotReloadResourcesSession").orNull?.let { systemProperty("winrt.ide.hotReloadResourcesSession", it) }
     providers.gradleProperty("winrt.ide.hotReloadResourcesSource").orNull?.let { systemProperty("winrt.ide.hotReloadResourcesSource", it) }
+    providers.gradleProperty("winrt.ide.hotReloadAttachedSession").orNull?.let { systemProperty("winrt.ide.hotReloadAttachedSession", it) }
     providers.gradleProperty("winrt.ide.hotReloadGraphSession").orNull?.let { systemProperty("winrt.ide.hotReloadGraphSession", it) }
     providers.gradleProperty("winrt.ide.hotReloadGraphSource").orNull?.let { systemProperty("winrt.ide.hotReloadGraphSource", it) }
     providers.gradleProperty("winrt.ide.importProject").orNull?.let { systemProperty("winrt.ide.importProject", it) }

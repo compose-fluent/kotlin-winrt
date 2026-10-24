@@ -489,6 +489,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             catalog?.resolve(uri, type)?.let {
                                 if (property == null) catalog.contentMember(it) else catalog.propertyContent(it, property)
                             }
+                        }, attachedProperty = { uri, owner, property ->
+                            catalog?.resolve(uri, owner)?.let { type ->
+                                catalog.attachedMembers(type).firstOrNull { it.name == property && it.isWritable }
+                                    ?.let { "${it.owner}.${it.name}" }
+                            }
                         })
                         val count = patch.changes.size + patch.resources.size + patch.children.size
                         if (!withCurrent(request) {

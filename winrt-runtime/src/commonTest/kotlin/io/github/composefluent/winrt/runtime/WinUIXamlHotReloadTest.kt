@@ -33,6 +33,35 @@ class WinUIXamlHotReloadTest {
     }
     private fun patch(vararg changes: WinUIXamlHotReloadChange) = WinUIXamlHotReloadPatch("probe.Page", "Page.xaml", hash, next, 1, changes.toList())
 
+    @Test fun attached_accessors_keep_target_identity_rollback_and_replay() {
+        // CSharpTypeInfoPass2 attached member delegates invoke the declaring Get/Set pair.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Any::class,
+            "probe.Layout", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("Row", "Int32", Int::class, { (it as Element).size },
+                    { target, value -> require(value != 13); (target as Element).size = value as Int },
+                    isAttachable = true, targetType = Element::class, targetTypeName = "probe.Element"))))
+        val owner = Any(); val element = Element()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Greeting", element)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        var result: WinUIXamlHotReloadReply? = null
+        registry.submit(patch(WinUIXamlHotReloadChange("Greeting", "Text", "rollback"),
+            WinUIXamlHotReloadChange("Greeting", "probe.Layout.Row", "13"))) { result = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, result?.status)
+        assertEquals("original", element.text); assertEquals(1, element.size)
+        registry.submit(patch(WinUIXamlHotReloadChange("Greeting", "probe.Layout.Row", "2"))) { result = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, result?.status)
+        assertEquals(2, element.size)
+        assertEquals("probe.Layout.Row", result?.values?.single()?.property)
+        val laterOwner = Any(); val later = Element()
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, "Greeting", later)
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, null, null)
+        assertEquals(2, later.size)
+        assertNull(WinUIAuthoredTypeMetadata.customProperty(element, "probe.Unknown.Row"))
+    }
+
     @Test fun updates_wait_for_the_ui_dispatcher_and_keep_identity_and_version() {
         val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
         val owner = Any(); val element = Element()

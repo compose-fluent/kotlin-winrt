@@ -19,6 +19,19 @@ classes as authored XAML types or replace the SDK's native type provider. SDK me
 discovery and inherited-member ownership remain in the metadata owner. Applications
 without the development environment variable do not register these accessors.
 
+Attached literal properties use the same transaction and conversion path. The IDE
+resolves the XAML namespace and declaring owner through WinMD and sends a qualified
+member name, such as `Microsoft.UI.Xaml.Controls.Canvas.Left`. Generated development
+member tables reuse CSharpTypeInfoPass2's typed static Get/Set delegates; the runtime
+looks up the declaring owner's table without advertising SDK types as authored types.
+Qualified attached entries remain distinct from same-named instance properties.
+Targets are checked by those typed delegates before mutation. Setter rollback and
+future-instance replay are identical to ordinary properties. Existing resource
+consumer replacement and unnamed SDK fragments use the same attached-member lookup.
+Old binaries without these generated accessors need rebuilding once. Removing an
+attached attribute or changing an expression still requires its own reset/expression
+contract; this support does not replace bindings with local literals.
+
 Generated application metadata supplies a factory that captures the current
 `DispatcherQueue` on the component's UI thread. Updates use `TryEnqueue`, following
 `.cswinrt/src/Projections/WinAppSDK/Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext.cs`.

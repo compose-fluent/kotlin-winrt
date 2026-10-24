@@ -42,6 +42,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
     names: Set<String>, assemblyName: String?, framework: XamlFramework = XamlFramework.WinUI): String? {
     if (names.isEmpty()) return null
     val semantics = model.semanticHelpers()
+    val closure = model.closureResolver()
     val specialTypes = model.specialTypeResolver()
     val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
     val sdkNamespaces = WinUIXamlNamespaces.namespaces(WinUIXamlNamespaces.PRESENTATION, framework).toSet()
@@ -55,7 +56,8 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
         type.qualifiedName in requested && type.kind == WinRTTypeKind.RuntimeClass &&
             // The projection emits the parameterless ActivationFactory constructor
             // from WinMD activation metadata, rather than a physical .ctor method.
-            !type.isStaticType && type.genericParameterCount == 0 && (sdk(type) ||
+            type.genericParameterCount == 0 && (sdk(type) ||
+                !type.isStaticType &&
                 type.activation.isActivatable && type.customAttributes.none { it.typeName.substringAfterLast('.') == "BindableAttribute" })
     }.sortedBy { it.qualifiedName }
     if (types.isEmpty()) return null
@@ -99,6 +101,25 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                 val kotlinType = xamlProjectedPropertySourceType(ref, specialTypes, semantics).let { if (nullable && !it.endsWith('?')) "$it?" else it }
                 appendLine(xamlPropertyRegistrationSource(owner, property, kotlinType, convert,
                     accessorName = member.propertyName.replaceFirstChar(Char::lowercase)).prependIndent("      ") + ",")
+            }
+            if (development) {
+                val staticTypes = closure.resolveRuntimeClass(type).activation.staticInterfaces.mapNotNull { it.definitionType }
+                val methods = (type.methods.filter { it.isStatic } + staticTypes.flatMap { it.methods })
+                    .distinctBy { it.name to it.parameters.map { p -> p.typeName } }
+                val accessors = methods.map { method ->
+                    val signature = WinUIXamlApplicationMethod(method.name, WinRTTypeRef.fromDisplayName(method.returnTypeName),
+                        method.parameters.map { WinRTTypeRef.fromDisplayName(it.typeName) }, isStatic = true)
+                    XamlStaticAccessor(signature, xamlProjectedPropertySourceType(signature.returnType, specialTypes, semantics),
+                        signature.parameterTypes.map { xamlProjectedPropertySourceType(it, specialTypes, semantics) })
+                }
+                val properties = (type.properties.filter { it.isStatic } + staticTypes.flatMap { it.properties }).distinctBy { it.name }
+                val schema = WinUIXamlApplicationTypeMembers(properties = properties.map {
+                    WinUIXamlApplicationProperty(it.name, WinRTTypeRef.fromDisplayName(it.typeName), isStatic = true)
+                })
+                xamlAttachedRegistrationSources(owner, schema, accessors, convert,
+                    accessorName = { it.replaceFirstChar(Char::lowercase) }, memberName = { "$name.$it" }).forEach {
+                    appendLine(it.prependIndent("      ") + ",")
+                }
             }
             appendLine("    )," )
             appendLine("  ))")

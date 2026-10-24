@@ -22,6 +22,23 @@ class WinUIXamlHotReloadTest {
     private val source = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><StackPanel><TextBlock x:Name="Greeting" Text="Hello" Width="100"/></StackPanel></Window>"""
     private fun root(text: String = source) = WinUIXamlHotReloadRoot("probe.Window", "Window.xaml", WinUIXamlHotReloadMarkup.parse(text).hash, 0, listOf("Greeting"))
 
+    @Test fun attached_literals_use_resolved_owner_and_preserve_expression_guards() {
+        val before = source.replace("Width=\"100\"", "Grid.Row=\"0\"")
+        val after = before.replace("Grid.Row=\"0\"", "Grid.Row=\"2\"")
+        val patch = WinUIXamlHotReloadMarkup.parse(after).patch(WinUIXamlHotReloadMarkup.parse(before), root(before),
+            attachedProperty = { uri, owner, property ->
+                assertEquals(WinUIXamlCatalog.PRESENTATION, uri)
+                assertEquals("Grid", owner); assertEquals("Row", property)
+                "Microsoft.UI.Xaml.Controls.Grid.Row"
+            })
+        assertEquals("Microsoft.UI.Xaml.Controls.Grid.Row", patch.changes.single().property)
+        assertEquals("2", patch.changes.single().literal)
+        assertThrows(IllegalArgumentException::class.java) {
+            WinUIXamlHotReloadMarkup.parse(after.replace("Grid.Row=\"2\"", "Grid.Row=\"{Binding Row}\""))
+                .patch(WinUIXamlHotReloadMarkup.parse(before), root(before), attachedProperty = { _, _, _ -> "Grid.Row" })
+        }
+    }
+
     @Test fun visual_tree_window_roots_follow_the_metadata_hierarchy_for_custom_window_types() {
         val folder = Files.createTempDirectory("winrt-window-hierarchy-")
         val metadata = folder.resolve("Windows.winmd")
@@ -324,6 +341,32 @@ class WinUIXamlHotReloadTest {
             val selected = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, selectedPath = node.path, capture = false))
             assertEquals("Reloaded inside AppContainer", selected.inspection!!.properties.single { it.name == "Text" }.value)
             assertEquals(current.sourceHash, selected.roots.single { it.className == root.className }.sourceHash)
+        }
+    }
+
+    @Test fun real_native_host_updates_attached_layout_without_replacing_the_control() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue(directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "First" in it.elements }
+            val property = "Microsoft.UI.Xaml.Controls.Canvas.Left"
+            val patch = WinUIXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash,
+                "d".repeat(64), root.version + 1, listOf(WinUIXamlHotReloadChange("First", property, "220")),
+                reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("First"), "Content")))
+            val reply = client.request(patch)
+            assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+            assertEquals(220.0, reply.values.single { it.property == property }.value.toDouble(), 0.0)
+            assertEquals("First", reply.values.single { it.property == "Content" }.value)
+            val rejected = client.request(patch.copy(expectedHash = patch.sourceHash, sourceHash = "e".repeat(64),
+                version = patch.version + 1, changes = listOf(
+                    WinUIXamlHotReloadChange("First", property, "300"),
+                    WinUIXamlHotReloadChange("First", "Width", "-1"))))
+            assertEquals(rejected.message, WinUIXamlHotReloadProtocol.REJECTED, rejected.status)
+            val readback = client.request(patch.copy(expectedHash = patch.sourceHash, sourceHash = "f".repeat(64),
+                version = patch.version + 1, changes = emptyList(),
+                reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("First"), property))))
+            assertEquals(readback.message, WinUIXamlHotReloadProtocol.APPLIED, readback.status)
+            assertEquals(220.0, readback.values.single().value.toDouble(), 0.0)
         }
     }
 

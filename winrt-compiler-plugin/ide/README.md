@@ -765,7 +765,10 @@ and successful overrides apply to subsequently created instances.
 The transport uses an authenticated, bounded loopback protocol and an owner-restricted
 session file. It starts only when the development environment variable is present.
 There is no Kotlin reflection. Root and connected named elements support ordinary
-writable literal properties. Mutable keyed resources update through the existing
+writable literal properties. Attached literal properties resolve their declaring owner
+through WinMD and use compiler-generated static getters/setters, including layout
+properties such as Grid.Row and Canvas.Left. They retain the same rollback and
+future-instance replay guarantees; older binaries require rebuilding once. Mutable keyed resources update through the existing
 projected dictionaries, preserving shared brush identity and resource expressions.
 For a sealed Style, the SDK loads a self-contained replacement dictionary; the
 transaction keeps the live dictionary and controls and refreshes this page's explicit
@@ -789,7 +792,7 @@ removed key; dictionary keys and values roll back together after a failed update
 ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
 dictionaries, captures in other dictionaries/templates, connected-element removal,
 type/name/parent changes, new names or authored controls,
-compiled events/bindings, attached properties and Kotlin changes require rebuilding
+compiled events/bindings, attached-property removal or expressions and Kotlin changes require rebuilding
 and restarting. There is no page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 

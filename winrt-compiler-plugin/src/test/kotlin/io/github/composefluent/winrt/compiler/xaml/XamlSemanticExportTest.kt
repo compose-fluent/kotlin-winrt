@@ -141,6 +141,28 @@ class XamlSemanticExportTest {
     }
 
     @Test
+    fun projected_attached_accessors_use_typed_static_calls_and_distinct_member_identity() {
+        // CSharpTypeInfoPass2 attached getters/setters remain compiler-generated;
+        // runtime lookup must not confuse ScrollViewer's same-named instance member.
+        val ns = "Microsoft.UI.Xaml.Controls"
+        val target = WinRTParameterDefinition("target", "Microsoft.UI.Xaml.DependencyObject")
+        val type = WinRTTypeDefinition(ns, "Layout", WinRTTypeKind.RuntimeClass, baseTypeName = "System.Object",
+            methods = listOf(
+                WinRTMethodDefinition("GetRow", "Int32", listOf(target), isStatic = true),
+                WinRTMethodDefinition("SetRow", "Void", listOf(target, WinRTParameterDefinition("value", "Int32")), isStatic = true)))
+        val model = WinRTMetadataModel(listOf(WinRTNamespace(ns, listOf(type))))
+        val root = Files.createTempDirectory("xaml-attached-accessors").toFile()
+        try {
+            assertNotNull(writeXamlProjectedTypeRegistrationSource(root.toPath(), model, setOf(type.qualifiedName), "Attached"))
+            val source = root.walkTopDown().single { it.extension == "kt" }.readText()
+            assertTrue(source, source.contains("name = \"Microsoft.UI.Xaml.Controls.Layout.Row\""))
+            assertTrue(source, source.contains("`getRow`"))
+            assertTrue(source, source.contains("`setRow`"))
+            assertTrue(source, source.contains("isAttachable = true"))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
     fun xaml_sdk_rcw_metadata_is_available_without_hot_reload() {
         // Runtime2 WindowsRuntimeComWrappers.CreateObject uses the external type map
         // even for objects created by XAML rather than projected Kotlin constructors.

@@ -15,6 +15,7 @@ internal object WinUIAuthoredTypeMetadata {
     private val types = ConcurrentCacheMap<String, Type>()
     private val definitions = ConcurrentCacheMap<String, WinUIXamlTypeDefinition>()
     private val definitionsByType = ConcurrentCacheMap<KClass<*>, WinUIXamlTypeDefinition>()
+    private val accessorDefinitions = ConcurrentCacheMap<String, WinUIXamlTypeDefinition>()
     private val projectedDefinitions = ConcurrentCacheMap<String, Unit>()
     private val valueTypeDefinitions = ConcurrentCacheMap<String, WinUIXamlValueTypeDefinition>()
     private data class EnumType(val type: KClass<*>, val parse: (String) -> Any)
@@ -55,6 +56,7 @@ internal object WinUIAuthoredTypeMetadata {
 
     /** Development accessors do not advertise SDK classes as authored XAML types. */
     fun registerPropertyAccessors(definition: WinUIXamlTypeDefinition) {
+        accessorDefinitions.putIfAbsent(definition.name, definition)
         definitionsByType.putIfAbsent(definition.type, definition)
     }
 
@@ -73,12 +75,25 @@ internal object WinUIAuthoredTypeMetadata {
 
     fun clearForTests() {
         types.clear(); definitions.clear(); definitionsByType.clear(); valueTypeDefinitions.clear(); enumTypes.clear()
-        projectedDefinitions.clear()
+        projectedDefinitions.clear(); accessorDefinitions.clear()
     }
 
     /** Reuses generated accessors for CsWinRT's source-generated ICustomProperty path.
      * No reflection or platform-specific property discovery is required. */
     fun customProperty(source: Any, name: String): microsoft.ui.xaml.data.ICustomProperty? {
+        // Attached members belong to their declaring type, not the target's class.
+        // Reuse CSharpTypeInfoPass2's typed Get/Set delegates on both targets.
+        if ('.' in name) {
+            val owner = name.substringBeforeLast('.')
+            val members = (accessorDefinitions[owner] ?: definitions[owner])?.members ?: return null
+            val member = (members[name] ?: members[name.substringAfterLast('.')])
+                ?.takeIf { it.isAttachable } ?: return null
+            return WinRTBindableCustomProperty(
+                canRead = true, canWrite = member.set != null, name = name, type = member.type,
+                getValueCallback = { member.get(requireNotNull(it)) },
+                setValueCallback = member.set?.let { setter -> { target, value -> setter(requireNotNull(target), value) } },
+            )
+        }
         var definition = definitionsByType[source::class]
         while (definition != null) {
             val member = definition.members[name]

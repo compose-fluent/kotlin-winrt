@@ -49,7 +49,8 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
 
     fun patch(previous: WinUIXamlHotReloadMarkup, loaded: WinUIXamlHotReloadRoot,
         propertyProblem: (uri: String, type: String, property: String) -> String? = { _, _, _ -> null },
-        contentMember: (uri: String, type: String, property: String?) -> WinUIXamlContentMember? = { _, _, _ -> null }): WinUIXamlHotReloadPatch {
+        contentMember: (uri: String, type: String, property: String?) -> WinUIXamlContentMember? = { _, _, _ -> null },
+        attachedProperty: (uri: String, owner: String, property: String) -> String? = { _, _, _ -> null }): WinUIXamlHotReloadPatch {
         require(className == loaded.className && previous.className == className) { "Changing x:Class requires rebuilding and restarting." }
         require(previous.hash == loaded.sourceHash) { "The loaded component does not match the previous source. Reconnect or rebuild." }
         val changes = mutableListOf<WinUIXamlHotReloadChange>()
@@ -64,6 +65,16 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
         fun literal(value: String): String {
             require(!value.startsWith('{') || value.startsWith("{}")) { "Binding and resource expressions require rebuilding and restarting." }
             return if (value.startsWith("{}")) value.drop(2) else value
+        }
+        fun resolvedProperty(element: XamlElement, name: Name): String {
+            if ('.' in name.local) {
+                val uri = name.uri.ifEmpty { element.node.lookupNamespaceURI(null) ?: element.type.uri }
+                return attachedProperty(uri, name.local.substringBeforeLast('.'), name.local.substringAfterLast('.'))
+                    ?: error("No compiled writable attached accessor for '${name.local}'; rebuild.")
+            }
+            require(name.uri.isEmpty()) { "Compiled directives require rebuilding and restarting." }
+            propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
+            return name.local
         }
         fun resourceEntries(container: XamlElement): List<XamlElement> {
             require(container.content.all { it is XamlElement }) { "Resource text changes require rebuilding." }
@@ -177,11 +188,10 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                     if (reference.key !in visible) return@forEach
                     require(!reference.theme) { "Replacing a resource used by ThemeResource requires rebuilding to preserve its theme expression." }
                     require(!inDictionary && !inTemplate && !element.template) { "A resource captured by another dictionary or template requires rebuilding." }
-                    require(name.uri.isEmpty() && '.' !in name.local) { "Attached resource consumers require rebuilding." }
-                    propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
+                    val property = resolvedProperty(element, name)
                     val address = if (ownerElement) target else element.address(null)
                     require(address != null) { "Add x:Name and rebuild before refreshing this resource consumer." }
-                    result += WinUIXamlHotReloadResourceReference(address, name.local, reference.key)
+                    result += WinUIXamlHotReloadResourceReference(address, property, reference.key)
                 }
                 element.content.filterIsInstance<XamlElement>().forEach { child ->
                     visit(child, false, visible, inDictionary || child.type.local.endsWith(".Resources"), inTemplate || element.template)
@@ -201,10 +211,10 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 if (name.uri.isEmpty()) {
                     // A missing catalog must not let an ordinary event attribute
                     // pass as a literal when removing a connected subtree.
-                    require(contentMember(element.type.uri, element.type.local, name.local) != null) {
+                    require('.' in name.local || contentMember(element.type.uri, element.type.local, name.local) != null) {
                         "Resolve SDK property '${name.local}' before changing this subtree; event connections require rebuilding."
                     }
-                    propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
+                    resolvedProperty(element, name)
                 }
                 literal(value)
             }
@@ -258,12 +268,11 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 val before = old.attributes[name]
                 if (before == value) return@forEach
                 require(!template) { "Template changes require rebuilding and restarting." }
-                require(name.uri.isEmpty() && '.' !in name.local) { "Directives, namespaces and attached properties require rebuilding and restarting." }
+                val property = resolvedProperty(next, name)
                 require(name.local != "Name") { "Changing element names requires rebuilding and restarting." }
                 require(target != null) { "Add x:Name and rebuild before updating this element's properties." }
-                propertyProblem(next.type.uri, next.type.local, name.local)?.let { error(it) }
                 before?.let(::literal)
-                changes += WinUIXamlHotReloadChange(target.element, name.local, literal(value), target.path)
+                changes += WinUIXamlHotReloadChange(target.element, property, literal(value), target.path)
             }
             if (template) require(old.matches(next)) { "Template changes require rebuilding and restarting." }
             val oldProperties = old.content.filterIsInstance<XamlElement>().filter { '.' in it.type.local }
