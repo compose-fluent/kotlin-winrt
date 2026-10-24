@@ -12,7 +12,7 @@ class WinRTPreviewLaunchCacheTest {
         assertEquals("Concurrent validation must retain receipt compatibility", cache.reusable(result.first), result.second)
         result.second
     }
-    @Test fun boundedReadAheadPreservesExistingReceiptDigest() {
+    @Test fun parallelFileHashesPreserveOrderingBoundariesAndLargeFiles() {
         val root = Files.createTempDirectory("preview-hash-compatibility")
         try {
             val files = (0..9).map { index -> Files.write(root.resolve("file$index.bin"),
@@ -23,12 +23,13 @@ class WinRTPreviewLaunchCacheTest {
             val legacy = java.security.MessageDigest.getInstance("SHA-256")
             fun add(value: String) { legacy.update(value.toByteArray()); legacy.update(0.toByte()) }
             add("missing:$missing")
-            files.sorted().forEach { add(it.toString()); legacy.update(Files.readAllBytes(it)); legacy.update(0.toByte()) }
+            add("content-fingerprint-v2")
+            files.sorted().forEach { add(it.toString()); legacy.update(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(it))); legacy.update(0.toByte()) }
             val expected = legacy.digest().joinToString("") { "%02x".format(it) }
             val fingerprint = WinRTPreviewLaunchCache::class.java.getDeclaredMethod("fingerprint", List::class.java,
                 Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, List::class.java)
             fingerprint.isAccessible = true
-            assertEquals("Read-ahead must not force rebuilding an otherwise valid cached Native binary", expected,
+            assertEquals("Parallel file hashing must match ordered independent file digests", expected,
                 fingerprint.invoke(cache, listOf(root, missing), true, false, false, emptyList<java.nio.file.Path>()))
         } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
     }

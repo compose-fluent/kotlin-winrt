@@ -62,7 +62,7 @@ internal class WinRTPreviewLaunchCache(
     fun hasCandidate(): Boolean = supported() && Files.isRegularFile(receipt)
 
     /** Independent file sets are read concurrently, but neither authorizes launch
-     * until the full receipt matches. Content hashes and receipt format are unchanged. */
+     * until the full receipt matches. Every file is still content-hashed before reuse. */
     suspend fun checkedInputs(): Pair<String, Boolean> = coroutineScope {
         if (!hasCandidate()) return@coroutineScope inputs() to false
         val environment = async(Dispatchers.IO) { runCatching { environment() } }
@@ -126,7 +126,7 @@ internal class WinRTPreviewLaunchCache(
     fun invalidate() { Files.deleteIfExists(receipt) }
 
     private fun environment(): Map<String, String> = linkedMapOf(
-        "format" to if (sdk) "sdk-desktop-preview-v1" else "native-desktop-preview-v3",
+        "format" to if (sdk) "sdk-desktop-preview-v2" else "native-desktop-preview-v4",
         "launch" to launch.toString(),
         "model" to modules.toString(),
         "inputs" to "",
@@ -184,32 +184,45 @@ internal class WinRTPreviewLaunchCache(
         val hash = MessageDigest.getInstance("SHA-256")
         fun add(text: String) { hash.update(text.toByteArray()); hash.update(0.toByte()) }
         missing.forEach { add("missing:$it") }
-        val buffer = if (content) ByteArray(65536) else null
-        fun consume(file: Path, prefetched: ByteArray?) {
-            add(file.toString())
-            if (prefetched != null) { hash.update(prefetched); readBytes += prefetched.size }
-            else if (content) Files.newInputStream(file).use { stream ->
-                while (true) { val count = stream.read(buffer!!); if (count < 0) break; hash.update(buffer, 0, count); readBytes += count }
-            } else { add(Files.size(file).toString()); add(Files.getLastModifiedTime(file).toString()) }
-            hash.update(0.toByte())
-        }
-        if (!content) files.forEach { consume(it, null) }
-        else files.chunked(4).forEach { batch ->
-            // File opens dominate inventories with many small projection sources.
-            // Bound read-ahead to four 4 MiB buffers, preserving the original
-            // byte order and receipt hash. Large files still stream with 64 KiB.
-            val pending = batch.map { file -> java.util.concurrent.CompletableFuture.supplyAsync({
-                val limit = 4 * 1024 * 1024
-                if (Files.size(file) > limit) null else Files.newInputStream(file).use { stream ->
-                    stream.readNBytes(limit + 1).takeIf { it.size <= limit }
+        add("content-fingerprint-v2")
+        if (!content) files.forEach { file ->
+            add(file.toString()); add(Files.size(file).toString()); add(Files.getLastModifiedTime(file).toString())
+        } else {
+            // Hash each file on its reader thread. Combining fixed-size digests in
+            // sorted path order is deterministic without serializing all source bytes.
+            // Each worker streams 64 KiB, so large generated projections stay bounded.
+            val remaining = files.iterator()
+            val pending = java.util.ArrayDeque<Pair<Path, java.util.concurrent.CompletableFuture<Pair<ByteArray, Long>>>>()
+            fun enqueue() {
+                if (!remaining.hasNext()) return
+                val file = remaining.next()
+                pending.addLast(file to java.util.concurrent.CompletableFuture.supplyAsync({
+                    val fileHash = MessageDigest.getInstance("SHA-256")
+                    val buffer = ByteArray(65536)
+                    var countBytes = 0L
+                    Files.newInputStream(file).use { stream ->
+                        while (true) {
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            fileHash.update(buffer, 0, count); countBytes += count
+                        }
+                    }
+                    fileHash.digest() to countBytes
+                }, com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService()))
+            }
+            try {
+                repeat(4) { enqueue() }
+                while (pending.isNotEmpty()) {
+                    val (file, future) = pending.removeFirst()
+                    val (bytes, size) = future.join()
+                    enqueue()
+                    add(file.toString()); hash.update(bytes); hash.update(0.toByte()); readBytes += size
                 }
-            }, com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService()) }
-            try { batch.zip(pending).forEach { (file, future) -> consume(file, future.join()) } }
-            finally { pending.forEach { it.cancel(true) } }
+            } finally { pending.forEach { it.second.cancel(true) } }
         }
         com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java).info(
             "Preview fingerprint: content=$content, excludeBuild=$excludeBuild, files=${files.size}, bytes=$readBytes, scan=${(scanned - started) / 1_000_000}ms, hash=${(System.nanoTime() - scanned) / 1_000_000}ms")
-        return hash.digest().joinToString("") { "%02x".format(it) }
+        return java.util.HexFormat.of().formatHex(hash.digest())
     }
 
     companion object {
@@ -226,12 +239,12 @@ internal class WinRTPreviewLaunchCache(
                     if (count < 0) break
                     hash.update(buffer, 0, count)
                 }
-                hash.digest().joinToString("") { "%02x".format(it) }.also {
+                java.util.HexFormat.of().formatHex(hash.digest()).also {
                     com.intellij.openapi.diagnostic.Logger.getInstance(type).info("Preview toolchain identity: ${(System.nanoTime() - started) / 1_000_000}ms")
                 }
             } ?: type.protectionDomain.codeSource?.location?.toString().orEmpty()
         }
     }
 
-    private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    private fun digest(bytes: ByteArray) = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
 }
