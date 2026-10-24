@@ -189,6 +189,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
     var recordState by remember(source) { mutableStateOf(false) }
     var selectedStates by remember(source) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var showStateAuthoring by remember(source) { mutableStateOf(false) }
+    var authoringGroup by remember(source) { mutableStateOf("") }
+    val newGroupName = remember(source) { TextFieldState("") }
+    val newStateName = remember(source) { TextFieldState("") }
     val stateGroups = remember(prepared?.markup) {
         prepared?.markup?.let { runCatching { WinUIXamlDesignStates.groups(it) }.getOrDefault(emptyList()) }.orEmpty()
     }
@@ -339,7 +343,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         } }
     }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
-    LaunchedEffect(revision) { editFeedback = null }
+    // A successful write also changes revision; do not erase its feedback on
+    // the next composition before the user has a chance to read it.
+    LaunchedEffect(editFeedback) { if (editFeedback != null) { delay(6_000); editFeedback = null } }
     val editableResult by produceState<List<DesignerSelection>?>(null, selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, recordState, selectedStates) {
         value = null
         val snapshot = view
@@ -373,6 +379,23 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (!project.isDisposed) runCatching { WinUIXamlDesignerEditing.applyBatch(project, edits, title) }
                 .onSuccess { editFeedback = "$title · Ctrl+Z to undo" }
                 .onFailure { editFeedback = it.message ?: "Could not update XAML" }
+        }
+    }
+    fun authorState(createGroup: Boolean) {
+        val target = currentEditables.singleOrNull()
+        val group = stateGroups.singleOrNull { it.locationKey == authoringGroup }
+        val name = newStateName.text.toString().trim()
+        val groupName = newGroupName.text.toString().trim()
+        val path = source
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) runCatching {
+                if (createGroup) DesignerStateAuthoring.addGroup(project, requireNotNull(target) { "Select a source element." }, groupName, name)
+                else DesignerStateAuthoring.addState(project, path, requireNotNull(group) { "Select a state group." }, name)
+            }.onSuccess { editFeedback = "Created visual state · Ctrl+Z to undo"; newStateName.setTextAndPlaceCursorAtEnd("") }
+                .onFailure {
+                    com.intellij.openapi.diagnostic.Logger.getInstance(DesignerStateAuthoring::class.java).warn("Could not create visual state", it)
+                    editFeedback = it.message ?: "Could not create visual state"
+                }
         }
     }
     fun structureEdit(action: (DesignerSelection) -> Unit) {
@@ -739,6 +762,20 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     width.setTextAndPlaceCursorAtEnd(height.text.toString()); height.setTextAndPlaceCursorAtEnd(previousWidth)
                 })
                 WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it }
+                Link(if (showStateAuthoring) "Hide state creation" else "Create visual states…", onClick = { showStateAuthoring = !showStateAuthoring })
+                if (showStateAuthoring) {
+                    Text("State name")
+                    TextField(newStateName, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "New visual state name" })
+                    WinRTChoice("Add to group", listOf("" to "New group on selected element") + stateGroups.map { it.locationKey to it.label }, authoringGroup) { authoringGroup = it }
+                    if (authoringGroup.isEmpty()) {
+                        Text("Group name")
+                        TextField(newGroupName, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "New visual state group name" })
+                        Text("Select the source element that will own the group. Turn off state recording while creating a group.")
+                    }
+                    DefaultButton(enabled = newStateName.text.isNotBlank() && (if (authoringGroup.isEmpty()) currentEditables.size == 1 && !recordState && newGroupName.text.isNotBlank() else stateGroups.any { it.locationKey == authoringGroup }),
+                        onClick = { authorState(authoringGroup.isEmpty()) }) { Text(if (authoringGroup.isEmpty()) "Create group and state" else "Create state") }
+                    editFeedback?.let { Text(it) }
+                }
                 stateGroups.forEach { group ->
                     WinRTChoice("Visual state · ${group.label}", listOf("" to "Automatic") + group.states.map { it to it },
                         selectedStates[group.key].orEmpty()) { value ->

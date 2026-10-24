@@ -56,4 +56,37 @@ class DesignerStateEditingTest : BasePlatformTestCase() {
         assertTrue(runCatching { WinUIXamlDesignerEditing.apply(project, selection, mapOf("Width" to "400"), "Stale override") }.isFailure)
         assertEquals(before, myFixture.editor.document.text)
     }
+    fun testCreateGroupIsAtomicAndUndoable() {
+        // SDK VisualStateManager collection ownership; no runtime projection change.
+        val selected = base()
+        val before = myFixture.editor.document.text
+        DesignerStateAuthoring.addGroup(project, selected, "Interactions", "Pressed")
+        assertTrue(myFixture.editor.document.text.contains("VisualStateManager.VisualStateGroups"))
+        assertTrue(myFixture.editor.document.text.contains("x:Name=\"Interactions\""))
+        assertTrue(myFixture.editor.document.text.contains("x:Name=\"Pressed\""))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(before, myFixture.editor.document.text)
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val refreshed = selected.copy(text = selected.pointer.element!!.text)
+        listOf("Target", "Wide", "invalid name").forEach { invalid ->
+            assertTrue(runCatching { DesignerStateAuthoring.addGroup(project, refreshed, "Interactions", invalid) }.isFailure)
+            assertEquals(before, myFixture.editor.document.text)
+        }
+    }
+    fun testAddStatePreservesExistingSettersAndRejectsStaleGroups() {
+        val xml = myFixture.addFileToProject("States.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+          <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="Sizes"><VisualState x:Name="Wide"><VisualState.Setters><Setter Target="Target.Width" Value="300"/></VisualState.Setters></VisualState><VisualState x:Name="Narrow"/></VisualStateGroup></VisualStateManager.VisualStateGroups><Button x:Name="Target"/>
+        </Grid>""") as XmlFile
+        myFixture.configureFromExistingVirtualFile(xml.virtualFile)
+        val before = xml.text
+        DesignerStateAuthoring.addState(project, xml.virtualFile, group, "Medium")
+        assertTrue(xml.text.contains("x:Name=\"Medium\""))
+        assertTrue(xml.text.contains("Value=\"300\""))
+        val updated = xml.text
+        assertTrue(runCatching { DesignerStateAuthoring.addState(project, xml.virtualFile, group, "Large") }.isFailure)
+        assertEquals(updated, xml.text)
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(before, myFixture.editor.document.text)
+    }
+
 }

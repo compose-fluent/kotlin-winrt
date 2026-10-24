@@ -12,7 +12,11 @@ import javax.xml.transform.TransformerFactory
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 
-internal data class DesignerStateGroup(val key: String, val label: String, val states: List<String>)
+internal data class DesignerStateGroup(val key: String, val label: String, val states: List<String>) {
+    // Creation keeps targeting the same group when its list of states grows.
+    // Rendering still uses the complete signature to reject stale overrides.
+    val locationKey: String get() = key.substringBeforeLast(':')
+}
 
 /** Design-only trigger overrides. The SDK still owns state selection, setters and
  * storyboards, exactly as for normal VisualStateManager.VisualStateGroups XAML.

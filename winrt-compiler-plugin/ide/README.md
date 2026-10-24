@@ -581,8 +581,10 @@ With **Record properties in selected state** enabled, choose one named state and
 an `x:Name` element in the same source namescope. The property panel and layout
 gestures write dependency-property `Setter` overrides; Reset removes the override,
 and undo restores the whole edit. Base attributes remain intact. Duplicate/complex
-setters, ambiguous names and stale source snapshots are rejected. This does not
-provide state/group creation or storyboard timeline authoring. The session menu (**…**) owns
+setters, ambiguous names and stale source snapshots are rejected. **Create visual states…**
+adds a named state to a source group, or creates a group with its first state on the
+selected source element. Names are checked in their XAML namescope and edits support
+undo. State/group rename, removal and storyboard timeline authoring remain unavailable. The session menu (**…**) owns
 launch selection, project-code mode, refresh, rebuild, stop and reconnect. During preparation,
 Cancel stops the native IDE Gradle execution associated with that preview session,
 using a background progress context so Gradle JVM resolution does not block EDT.
