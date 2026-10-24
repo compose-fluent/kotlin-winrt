@@ -107,8 +107,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(candidate.projectDirectory).toAbsolutePath().normalize())
     }.getOrDefault(false) }.maxByOrNull { it.projectDirectory.length } } ?: selectedModule
     val declarations by project.service<WinUIXamlSnapshotService>().state.collectAsState()
-    val inheritedLaunch = remember(staticFile, projectState.pid, projectState.connected) {
-        staticFile?.takeIf { module?.hotReloadLaunches.isNullOrEmpty() }?.let(design::loadedSourceLaunch)
+    val inheritedLaunch = remember(staticFile, modules, projectState.pid, projectState.connected) {
+        staticFile?.takeIf { module?.hotReloadLaunches.isNullOrEmpty() }?.let(design::sourcePreviewLaunch)
     }
     val launchModule = inheritedLaunch?.first ?: module
     var launchName by remember(launchModule?.projectDirectory) { mutableStateOf<String?>(null) }

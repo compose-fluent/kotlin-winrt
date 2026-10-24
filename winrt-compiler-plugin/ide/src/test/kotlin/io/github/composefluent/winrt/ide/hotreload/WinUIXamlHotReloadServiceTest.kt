@@ -66,6 +66,24 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertNull(service.loadedSourceLaunch(fixture.source.toString()))
     }
 
+    fun testProvenSourceHostSurvivesWorkspaceReloadButNotRemovedGradleModels() = session { fixture ->
+        val service = fixture.service()
+        assertNull(service.sourcePreviewLaunch(fixture.source.toString()))
+        service.reconnect(); fixture.connected(service)
+        val expected = fixture.module to fixture.module.hotReloadLaunches.single()
+        assertEquals(expected, service.sourcePreviewLaunch(fixture.source.toString()))
+        val hosts = project.service<WinRTPreviewSourceHosts>()
+        val xml = XmlSerializer.serialize(hosts.getState())
+        val restored = WinRTPreviewSourceHosts()
+        restored.loadState(XmlSerializer.deserialize(xml, WinRTPreviewSourceHosts.State::class.java))
+        service.disconnect()
+        assertEquals(expected, restored.resolve(fixture.source.toString(), listOf(fixture.module)))
+        assertNull(restored.resolve(fixture.source.toString(), emptyList()))
+        assertNull(restored.resolve(fixture.source.toString(), listOf(fixture.module.copy(hotReloadLaunches = emptyList()))))
+        assertNull(restored.resolve(fixture.source.toString(), listOf(fixture.module.copy(xamlCompilations = emptyList()))))
+        assertNull(restored.resolve(fixture.root.resolve("Unknown.xaml").toString(), listOf(fixture.module)))
+    }
+
     fun testFailedIdeLaunchCancelsOnlyItsOwnPendingConnection() = session { fixture ->
         val service = fixture.service(WinUIXamlHotReloadLaunchState())
         val folder = fixture.directory.parent.resolve(UUID.randomUUID().toString())
@@ -440,3 +458,4 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         }
     }
 }
+

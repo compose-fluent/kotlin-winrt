@@ -356,8 +356,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             current.inspection?.nodes?.none { it.typeName == name } != false) return null
         val module = selectedModule ?: return null
         val launch = selectedLaunch ?: return null
+        project.service<WinRTPreviewSourceHosts>().remember(path, module, launch)
         return module to launch
     }
+
+    fun sourcePreviewLaunch(path: String): Pair<WinRTModuleData, WinUIXamlHotReloadLaunchData>? =
+        loadedSourceLaunch(path) ?: project.service<WinRTPreviewSourceHosts>().resolve(path,
+            project.service<WinRTProjectService>().modules.value)
 
     /** Opening/switching a preview reuses its host; a failed launch needs an explicit retry. */
     fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
