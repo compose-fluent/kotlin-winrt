@@ -80,24 +80,31 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
         val next = linkedMapOf<String, WinUIXamlCatalog>()
         val eventsDirectory = Path.of(com.intellij.openapi.application.PathManager.getSystemPath())
             .resolve("kotlin-winrt/xaml-preview-events")
-        previewEvents = emptyMap()
-        current.forEach { referenceFile ->
+        val startedIndexes = System.nanoTime()
+        // Publish every cached startup view before deserializing any full model.
+        // The first manifest is commonly the app's; a dependency editor must not
+        // wait behind that unrelated model before its own event index is visible.
+        val references = current.mapNotNull { referenceFile ->
             coroutineContext.ensureActive()
-            var contentKey: String? = null
-            val catalog = runCatching {
+            runCatching {
                 val input = Json.parseToJsonElement(Files.readString(Path.of(referenceFile))).jsonObject
                 val paths = input["ReferenceAssemblies"]?.jsonArray.orEmpty().mapNotNull { item ->
                     (item.jsonObject["FullPath"] ?: item.jsonObject["ItemSpec"])?.jsonPrimitive?.content?.let(Path::of)
                 }.filter { it.toString().endsWith(".winmd", true) && Files.isRegularFile(it) }.distinct()
                 require(paths.isNotEmpty())
-                // The metadata owner supplies the content-keyed normalized model cache.
-                // Multiple targets/reference manifests often describe the same SDK.
-                val key = WinRTMetadataModelCodec.cacheKey(paths)
-                contentKey = key
-                WinUIXamlPreviewEvents.read(eventsDirectory, key)?.let {
-                    previewEvents = previewEvents + (referenceFile to it)
-                    changes.value += 1
-                }
+                Triple(referenceFile, paths, WinRTMetadataModelCodec.cacheKey(paths))
+            }.getOrNull()
+        }
+        coroutineContext.ensureActive()
+        previewEvents = references.mapNotNull { (referenceFile, _, key) ->
+            WinUIXamlPreviewEvents.read(eventsDirectory, key)?.let { referenceFile to it }
+        }.toMap()
+        changes.value += 1
+        com.intellij.openapi.diagnostic.Logger.getInstance(WinUIXamlCatalogService::class.java)
+            .info("XAML preview event indexes ready: ${previewEvents.size}/${references.size}, ${(System.nanoTime() - startedIndexes) / 1_000_000}ms")
+        references.forEach { (referenceFile, paths, key) ->
+            coroutineContext.ensureActive()
+            val catalog = runCatching {
                 sharedCatalogs.getOrPut(key) {
                     val started = System.nanoTime()
                     val directory = Path.of(com.intellij.openapi.application.PathManager.getSystemPath())
@@ -118,7 +125,7 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
             if (previewEvents[referenceFile] == null) runCatching {
                 val events = WinUIXamlPreviewEvents.from(catalog)
                 coroutineContext.ensureActive()
-                events.save(eventsDirectory, requireNotNull(contentKey))
+                events.save(eventsDirectory, key)
                 previewEvents = previewEvents + (referenceFile to events)
             }.onFailure { if (it is CancellationException) throw it }
         }
