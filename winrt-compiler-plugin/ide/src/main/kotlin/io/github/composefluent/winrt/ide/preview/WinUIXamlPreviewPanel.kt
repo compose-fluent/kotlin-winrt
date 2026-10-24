@@ -130,14 +130,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             selection.selectRoot(WinUIXamlVisualInspectionSelection.key(root))
     }
 
+    var startupCancelled by remember { mutableStateOf(false) }
+    var startupRevision by remember { mutableIntStateOf(0) }
     val catalogService = project.service<WinUIXamlCatalogService>()
     val catalogRevision by catalogService.changes.collectAsState()
     val resourceRevision by project.service<WinRTResourceIndex>().changes.collectAsState()
-    LaunchedEffect(static, module, launchModule, launch, wantsProjectCode) {
-        if (static && module != null) {
+    LaunchedEffect(static, module, launchModule, launch, wantsProjectCode, startupCancelled, startupRevision) {
+        if (static && module != null && !startupCancelled) {
             startPreferredXamlPreview(
                 wantsProjectCode = wantsProjectCode && launch != null,
                 projectConnected = projectState.connected,
+                continueStartup = { !startupCancelled },
                 projectCandidate = { design.hasNativePreviewCandidate(launchModule!!, launch!!) },
                 startProject = { design.ensurePreview(launchModule!!, launch!!) },
                 awaitProject = { withTimeoutOrNull(3_000) {
@@ -465,7 +468,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     } else state.message
     val error = failure ?: state.inspectionError
     val missingModule = staticFile != null && (module == null || designLaunch == null)
-    fun startPreview() = session.start((if (projectCode) launchModule else module)!!, (if (static) designLaunch else launch)!!, preview = static)
+    fun startPreview() {
+        if (static) { startupCancelled = false; startupRevision++ }
+        else live.start(module!!, launch!!, preview = false)
+    }
+    fun stopPreview() {
+        startupCancelled = true
+        if (static) { design.stop(); sdk.stop() } else live.stop()
+    }
     val canStart = module != null && (if (static) designLaunch else launch) != null && !state.busy && state.pid == null
 
     @Composable fun inspector() {
@@ -661,8 +671,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: editFeedback ?: status,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
-                if (projectPreparing && projectState.busy) Link("Cancel project build", onClick = { design.stop(); editFeedback = "Project build cancelled · basic preview remains available" })
-                else if (state.busy) Link("Cancel", onClick = session::stop)
+                if (projectPreparing && projectState.busy) Link("Cancel project build", onClick = { startupCancelled = true; design.stop(); editFeedback = "Project build cancellation requested" })
+                else if (state.busy) Link("Cancel", onClick = ::stopPreview)
                 else {
                     if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)
                     else if (error != null && state.connected) Link("Retry", enabled = !state.inspecting, onClick = { manualRefresh++ })
@@ -725,7 +735,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             })
             Link("Reconnect", enabled = !state.busy, onClick = { showSession = false; session.reconnect() })
             Link(if (state.busy) "Cancel build" else "Stop preview", enabled = state.pid != null || state.busy,
-                onClick = { showSession = false; session.stop() })
+                onClick = { showSession = false; stopPreview() })
             if (notes.isNotEmpty()) Link("Design-time notes", onClick = { showSession = false; showDiagnostics = true })
         }
         if (showDiagnostics) PreviewPopup("Preview details", popupWidth, popupHeight, { showDiagnostics = false }) {

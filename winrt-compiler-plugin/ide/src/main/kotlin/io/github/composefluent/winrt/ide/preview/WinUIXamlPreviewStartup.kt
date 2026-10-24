@@ -11,16 +11,19 @@ internal suspend fun startPreferredXamlPreview(
     startProject: () -> Unit,
     awaitProject: suspend () -> Boolean,
     startBasic: suspend () -> Unit,
+    continueStartup: () -> Boolean = { true },
 ) {
-    if (wantsProjectCode && projectConnected) return
+    if (!continueStartup() || wantsProjectCode && projectConnected) return
     com.intellij.openapi.diagnostic.Logger.getInstance("WinUIXamlPreviewStartup")
         .info("XAML designer startup requested: projectCode=$wantsProjectCode")
     var startedProject = false
     if (wantsProjectCode && projectCandidate()) {
+        if (!continueStartup()) return
         startProject()
         startedProject = true
         if (awaitProject()) return
     }
+    if (!continueStartup()) return
     startBasic()
-    if (wantsProjectCode && !startedProject) startProject()
+    if (continueStartup() && wantsProjectCode && !startedProject) startProject()
 }

@@ -12,6 +12,20 @@ class WinUIXamlPreviewStartupTest {
             { events += "await"; ready }, { events += "sdk" })
         events
     }
+    @Test fun cancellingBasicBuildDoesNotAutomaticallyStartNative() = runBlocking {
+        var active = true
+        val events = mutableListOf<String>()
+        startPreferredXamlPreview(true, false, { false }, { events += "native" },
+            { false }, { events += "sdk"; active = false }, { active })
+        assertEquals(listOf("sdk"), events)
+    }
+    @Test fun cancellationDuringCandidateLookupDoesNotStartEitherHost() = runBlocking {
+        var active = true
+        val events = mutableListOf<String>()
+        startPreferredXamlPreview(true, false, { active = false; true }, { events += "native" },
+            { false }, { events += "sdk" }, { active })
+        assertEquals(emptyList<String>(), events)
+    }
     @Test fun validNativeCacheSkipsSdkStartup() {
         assertEquals(listOf("validate", "native", "await"), route())
     }
