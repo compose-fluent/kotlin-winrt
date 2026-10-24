@@ -41,7 +41,10 @@ class RunWinAppPackageTaskTest {
                 "stageWinAppDevelopmentPackage$suffix", StageWinAppPackageTask::class.java,
             ).get()
             assertEquals(
-                setOf("restoreWinAppDependencies", developmentStage.name),
+                // The resolved Native dependency receipt also consumes the toolchain's
+                // standard libraries, so its producer must precede the run task.
+                setOf("restoreWinAppDependencies", developmentStage.name) +
+                    if (suffix == "DesktopMain") emptySet() else setOf("downloadKotlinNativeDistribution"),
                 run.taskDependencies.getDependencies(run).map { it.name }.toSet(),
             )
             val pack = project.tasks.named("packageWinApp$suffix", PackageWinAppTask::class.java).get()

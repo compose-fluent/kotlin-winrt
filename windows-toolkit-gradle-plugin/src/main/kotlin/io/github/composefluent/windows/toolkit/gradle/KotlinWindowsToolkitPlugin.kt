@@ -1726,6 +1726,14 @@ private fun configureWinAppTasks(
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
             task.nativeCompilerHome.set(nativeCompilerHome)
+            task.previewBuildInputs.from(selectedVariant.map { variant ->
+                if (variant.kind != WinAppVariantKind.MingwX64) emptyList<java.io.File>() else {
+                    val target = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+                        .targets.getByName(variant.targetName) as KotlinNativeTarget
+                    project.files(target.compilations.getByName(variant.compilationName).compileDependencyFiles,
+                        kotlinWinRTCompilerPluginClasspath(project), kotlinWinRTGeneratorWorkerClasspath(project))
+                }
+            })
             task.supportsDevelopmentRun.set(options.packageType.zip(options.windowsAppSdkDeployment) { packageType, deployment ->
                 packageType == WindowsPackageType.Packaged && deployment != WindowsAppSdkDeployment.SelfContained
             })

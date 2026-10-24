@@ -47,6 +47,11 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyLockFiles: ConfigurableFileCollection
 
+    /** Resolved Native libraries and compiler/toolkit artifacts, including external files. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.ABSOLUTE)
+    abstract val previewBuildInputs: ConfigurableFileCollection
+
     @get:Input abstract val dependencyPackageSpecs: ListProperty<String>
     @get:Input abstract val runtimeIdentifier: Property<String>
     @get:InputDirectory
@@ -330,6 +335,11 @@ abstract class RunWinAppPackageTask @Inject constructor(
             spec.commandLine(winAppCliCommandLine(cli.command, arguments))
             spec.workingDir = winAppWorkspace.get().asFile
             spec.environment.remove(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY)
+        }
+        if (nativeCompilerHome.orNull?.isNotBlank() == true && previewBuildInputs.files.isNotEmpty()) {
+            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.write(
+                output.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME),
+                previewBuildInputs.files.map { it.toPath() })
         }
         if (nativeDebug != null) {
             val script = temporaryDir.toPath().resolve("native-debug.ps1")

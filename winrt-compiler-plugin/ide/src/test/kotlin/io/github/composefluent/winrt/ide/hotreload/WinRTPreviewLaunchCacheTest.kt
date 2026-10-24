@@ -8,6 +8,8 @@ import java.nio.file.Files
 class WinRTPreviewLaunchCacheTest {
     @Test fun dependencyEditsConfigurationChangesAndDeploymentChangesRequireRebuild() {
         val root = Files.createTempDirectory("preview-launch-cache")
+        val external = Files.createTempFile("preview-external", ".klib")
+        Files.writeString(external, "library-one")
         try {
             val app = Files.createDirectories(root.resolve("app"))
             val dep = Files.createDirectories(root.resolve("controls/src"))
@@ -20,9 +22,19 @@ class WinRTPreviewLaunchCacheTest {
             val launch = WinUIXamlHotReloadLaunchData("runWinAppPackageMingwX64MainDebugExecutable", exe.toString(), deployed.toString(), exe.toString(), "native")
             val module = WinRTModuleData(":app", app.toString(), build.toString(), "2.4", "sdk", emptyList(), emptyList(), emptyList(), emptyList())
             val cache = WinRTPreviewLaunchCache(root, listOf(module), module, launch)
+            assertFalse("Old deployments without resolved inputs must use Gradle", cache.supported())
+            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.write(
+                deployed.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME), listOf(external))
             val initial = cache.inputs()
             assertFalse(cache.reusable(initial))
             cache.remember(initial)
+            assertTrue(cache.reusable(cache.inputs()))
+            val externalTime = Files.getLastModifiedTime(external)
+            Files.writeString(external, "library-two")
+            Files.setLastModifiedTime(external, externalTime)
+            assertEquals("External artifact is not part of the project source scan", initial, cache.inputs())
+            assertFalse("Changed resolved artifact invalidates even with preserved size/time", cache.reusable(cache.inputs()))
+            Files.writeString(external, "library-one")
             assertTrue(cache.reusable(cache.inputs()))
             val timestamp = Files.getLastModifiedTime(source)
             Files.writeString(source, "class Changed!")
@@ -42,6 +54,7 @@ class WinRTPreviewLaunchCacheTest {
             Files.writeString(deployed.resolve("AppxManifest.xml"), "<Application EntryPoint=\"App\"/>")
             assertFalse("UWP must use activation, never CreateProcess", cache.reusable(cache.inputs()))
         } finally {
+            Files.deleteIfExists(external)
             Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
         }
     }

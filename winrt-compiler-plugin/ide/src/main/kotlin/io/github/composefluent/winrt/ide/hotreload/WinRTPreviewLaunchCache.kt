@@ -26,7 +26,8 @@ internal class WinRTPreviewLaunchCache(
     fun supported(): Boolean {
         if (!executable.startsWith(Path.of(module.buildDirectory).toAbsolutePath().normalize()) || !Files.isRegularFile(executable)) return false
         if (sdk) return module.staticPreview?.metadataReferencesFile?.let { Files.isRegularFile(Path.of(it)) } == true
-        return launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage") &&
+        return runCatching { io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.read(deployment.parent.resolve(
+            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME)) }.isSuccess && launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage") &&
             runCatching { Files.readString(deployment.resolve("AppxManifest.xml")).contains("Windows.FullTrustApplication") }.getOrDefault(false)
     }
 
@@ -35,10 +36,13 @@ internal class WinRTPreviewLaunchCache(
      */
     fun inputs(): String = fingerprint(buildList {
         add(buildRoot)
+        val gradleHome = System.getenv("GRADLE_USER_HOME")?.takeIf(String::isNotBlank)?.let(Path::of)
+            ?: Path.of(System.getProperty("user.home"), ".gradle")
+        listOf("gradle.properties", "init.gradle", "init.gradle.kts", "init.d").forEach { add(gradleHome.resolve(it)) }
         modules.forEach { m ->
             add(Path.of(m.projectDirectory))
             (m.sourceSets.flatMap { it.kotlinRoots + it.appxResourceRoots } +
-                m.xamlCompilations.flatMap { it.sourceRoots } + m.manifestFiles + m.restoreLockFiles)
+                m.xamlCompilations.flatMap { it.sourceRoots } + m.manifestFiles + m.restoreLockFiles + listOf(m.nuGetConfigFile))
                 .filter(String::isNotBlank).forEach { add(Path.of(it)) }
         }
     }, content = true, excludeBuild = true, configurationOnly = sdk)
@@ -75,18 +79,20 @@ internal class WinRTPreviewLaunchCache(
     fun invalidate() { Files.deleteIfExists(receipt) }
 
     private fun record(inputs: String): String = linkedMapOf(
-        "format" to if (sdk) "sdk-desktop-preview-v1" else "native-desktop-preview-v2",
+        "format" to if (sdk) "sdk-desktop-preview-v1" else "native-desktop-preview-v3",
         "launch" to launch.toString(),
         "model" to modules.toString(),
         "inputs" to inputs,
         "outputs" to outputs(),
-        "plugin" to javaClass.protectionDomain.codeSource?.location?.let { url ->
+        "dependencies" to if (sdk) "" else fingerprint(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.read(
+            deployment.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME)), content = true, excludeBuild = false),
+        "plugin" to if (!sdk) "native-protocol-${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.VERSION}:$bundledToolchainIdentity" else javaClass.protectionDomain.codeSource?.location?.let { url ->
             runCatching { Files.getLastModifiedTime(Path.of(url.toURI())).toString() }.getOrDefault(url.toString())
         }.orEmpty(),
-        // Launcher/session variables change every IDE process. Only toolchain
-        // locations affect whether the existing build can be reused; application
-        // environment is inherited afresh when starting the native process.
-        "toolchain" to listOf("JAVA_HOME", "GRADLE_USER_HOME", "KONAN_DATA_DIR", "WindowsSdkDir", "VCToolsInstallDir")
+        // Explicit build-variable allowlist: toolchain locations and compiler/linker
+        // flags affect native output. Per-launch transport variables are excluded;
+        // application environment is inherited afresh by the launched process.
+        "toolchain" to listOf("JAVA_HOME", "GRADLE_USER_HOME", "KONAN_DATA_DIR", "WindowsSdkDir", "WindowsSDKVersion", "VCToolsInstallDir", "VCToolsVersion", "INCLUDE", "LIB", "LIBPATH", "CL", "_CL_", "LINK", "_LINK_")
             .associateWith { System.getenv(it).orEmpty() }.toString(),
     ).entries.joinToString("\n") { (name, value) -> "$name=${digest(value.toByteArray())}" }
 
@@ -126,6 +132,24 @@ internal class WinRTPreviewLaunchCache(
             hash.update(0.toByte())
         }
         return hash.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    companion object {
+        // A new bundle may resolve newer artifacts than the old Gradle receipt.
+        // Hash it once per IDE classloader; UI-only changes need not rebuild Native.
+        private val bundledToolchainIdentity: String by lazy {
+            val type = WinRTPreviewLaunchCache::class.java
+            type.getResourceAsStream("/templates/toolchain.zip")?.use { stream ->
+                val hash = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(65536)
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    hash.update(buffer, 0, count)
+                }
+                hash.digest().joinToString("") { "%02x".format(it) }
+            } ?: type.protectionDomain.codeSource?.location?.toString().orEmpty()
+        }
     }
 
     private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
