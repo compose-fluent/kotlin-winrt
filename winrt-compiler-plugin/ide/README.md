@@ -610,6 +610,9 @@ A dependency control exposed by the visual snapshot only as the platform
 internals currently fall back to the nearest identifiable containing source element.
 This does not claim exact navigation into that dependency's XAML.
 
+Application and ResourceDictionary documents open in the XML editor without starting
+a design host. Their edits update the visual pages that consume them.
+
 When a project-code launch is available, the preview defaults to rendering real
 project controls. The per-module choice is saved across editor and IDE restarts.
 Source-backed merged dictionaries use the current editor documents in project-code previews,

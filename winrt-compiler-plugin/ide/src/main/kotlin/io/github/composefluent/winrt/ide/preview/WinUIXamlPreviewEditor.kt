@@ -21,7 +21,16 @@ class WinUIXamlPreviewEditorProvider : TextEditorWithPreviewProvider(WinUIXamlPr
 }
 
 private class WinUIXamlPreviewPaneProvider : FileEditorProvider {
-    override fun accept(project: Project, file: VirtualFile) = !file.isDirectory && file.extension.equals("xaml", true)
+    override fun accept(project: Project, file: VirtualFile): Boolean {
+        if (file.isDirectory || !file.extension.equals("xaml", true)) return false
+        return com.intellij.openapi.application.ReadAction.compute<Boolean, RuntimeException> {
+            val root = (com.intellij.psi.PsiManager.getInstance(project).findFile(file) as? com.intellij.psi.xml.XmlFile)?.rootTag
+            // Resource containers have no independent visual root. Keep their normal
+            // XML editor; consumers update through the shared resource document listener.
+            root == null || root.namespace != io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.PRESENTATION ||
+                root.localName !in setOf("Application", "ResourceDictionary")
+        }
+    }
     override fun createEditor(project: Project, file: VirtualFile): FileEditor = WinUIXamlPreviewEditor(project, file)
     override fun getEditorTypeId() = "kotlin-winrt-xaml-preview"
     override fun getPolicy() = FileEditorPolicy.PLACE_AFTER_DEFAULT_EDITOR

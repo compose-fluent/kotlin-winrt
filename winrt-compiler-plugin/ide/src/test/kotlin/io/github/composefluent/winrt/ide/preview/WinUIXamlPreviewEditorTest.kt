@@ -25,6 +25,19 @@ import org.jetbrains.jewel.bridge.theme.SwingBridgeTheme
 /** Editor integration follows the platform's TextEditorWithPreview contract;
  * the actual WinUI renderer is exercised separately by WinRTPreviewRuntimeTest. */
 class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
+    fun testNonvisualResourceContainersUseTheXmlEditor() {
+        val provider = WinUIXamlPreviewEditorProvider()
+        listOf("Application", "ResourceDictionary").forEach { root ->
+            val file = myFixture.addFileToProject("$root.xaml", "<$root xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>").virtualFile
+            assertFalse("$root must not start an independent preview host", provider.accept(project, file))
+            assertFalse(FileEditorProviderManager.getInstance().getProviders(project, file).any { it is WinUIXamlPreviewEditorProvider })
+        }
+        val page = myFixture.addFileToProject("Visual.xaml", "<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>").virtualFile
+        assertTrue(provider.accept(project, page))
+        val authored = myFixture.addFileToProject("Custom.xaml", "<local:Application xmlns:local=\"using:sample\"/>").virtualFile
+        assertTrue("Names alone cannot classify project controls", provider.accept(project, authored))
+    }
+
     private var previousLayout: String? = null
     override fun setUp() {
         super.setUp()
