@@ -134,6 +134,33 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         myFixture.performEditorAction(com.intellij.openapi.actionSystem.IdeActions.ACTION_UNDO)
         assertEquals(before, com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(dictionary)!!.text)
     }
+    fun testStyleTemplateUsesDerivedSetterBeforeBasedOnAndLocalTemplateBeforeStyle() {
+        val file = xml("""<Grid.Resources>
+            <ControlTemplate x:Key="BaseTemplate"><TextBlock x:Name="BasePart"/></ControlTemplate>
+            <Style x:Key="Base" TargetType="Button"><Setter Property="Template" Value="{StaticResource BaseTemplate}"/></Style>
+            <Style x:Key="Derived" TargetType="Button" BasedOn="{StaticResource Base}"><Style.Setters><Setter Property="Template"><Setter.Value><ControlTemplate><TextBlock x:Name="DerivedPart"/></ControlTemplate></Setter.Value></Setter></Style.Setters></Style>
+            <Style x:Key="Inherited" TargetType="Button" BasedOn="{StaticResource Base}"/>
+            </Grid.Resources>
+            <Button x:Name="One" Style="{StaticResource Derived}"/>
+            <Button x:Name="Two" Style="{StaticResource Inherited}"/>
+            <Button x:Name="Three" Style="{StaticResource Derived}" Template="{StaticResource BaseTemplate}"/>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "One"), node(listOf(0, 0), "TextBlock", "DerivedPart"),
+            node(listOf(1), "Button", "Two"), node(listOf(1, 0), "TextBlock", "BasePart"), node(listOf(2), "Button", "Three"), node(listOf(2, 0), "TextBlock", "BasePart"))
+        val tags = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filter { it.localName == "TextBlock" }
+        assertSame(tags[1], WinUIXamlSourceSelection.tag(file, nodes[2], nodes, emptyList()))
+        assertSame(tags[0], WinUIXamlSourceSelection.tag(file, nodes[4], nodes, emptyList()))
+        assertSame(tags[0], WinUIXamlSourceSelection.tag(file, nodes[6], nodes, emptyList()))
+    }
+
+    fun testCyclicStyleAndUnresolvedLocalTemplateDoNotGuessStyleTemplate() {
+        val file = xml("""<Grid.Resources><Style x:Key="Cycle" TargetType="Button" BasedOn="{StaticResource Cycle}"/>
+            <Style x:Key="HasTemplate" TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate><TextBlock x:Name="Part"/></ControlTemplate></Setter.Value></Setter></Style></Grid.Resources>
+            <Button x:Name="One" Style="{StaticResource Cycle}"/><Button x:Name="Two" Style="{StaticResource HasTemplate}" Template="{Binding Template}"/>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "One"), node(listOf(0, 0), "TextBlock", "Part"), node(listOf(1), "Button", "Two"), node(listOf(1, 0), "TextBlock", "Part"))
+        val part = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).single { it.localName == "TextBlock" }
+        assertNull(WinUIXamlSourceSelection.node(part, nodes, nodes[2].path, file))
+        assertNull(WinUIXamlSourceSelection.node(part, nodes, nodes[4].path, file))
+    }
     fun testSharedTemplateRespectsResourceShadowing() {
         val file = xml("""<Grid.Resources><ControlTemplate x:Key="Shared" TargetType="Button"><TextBlock x:Name="Outer"/></ControlTemplate></Grid.Resources>
             <StackPanel><StackPanel.Resources><ControlTemplate x:Key="Shared" TargetType="Button"><TextBlock x:Name="Inner"/></ControlTemplate></StackPanel.Resources>

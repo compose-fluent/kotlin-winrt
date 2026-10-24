@@ -21,6 +21,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
     var editing by remember(selection.pointer, selection.state?.pointer, selection.style?.pointer) { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(selection.style?.let { "Style setters · ${it.label}" } ?: if (selection.state == null) "XAML properties" else "Visual state setters")
+        selection.sharedTemplate?.let { Text("Shared template: $it. Changes affect all instances.") }
         selection.properties.filter { it.writable && it.name.contains(filter, true) }
             .groupBy(::designerPropertyCategory).toSortedMap().forEach { (category, properties) ->
             val expanded = expansion[category] ?: (category == "Layout" || category == "Common")

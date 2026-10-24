@@ -18,7 +18,7 @@ internal data class DesignerProperty(val name: String, val type: String, val val
     val choices: List<String>, val writable: Boolean, val elementValue: Boolean, val dependencyProperty: Boolean = false)
 internal data class DesignerSelection(val pointer: SmartPsiElementPointer<XmlTag>, val text: String,
     val properties: List<DesignerProperty>, val bounds: WinUIXamlVisualBounds, val parent: String,
-    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList(), val structure: DesignerStructure? = null, val state: DesignerStateEdit? = null, val style: DesignerStyleEdit? = null)
+    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList(), val structure: DesignerStructure? = null, val state: DesignerStateEdit? = null, val style: DesignerStyleEdit? = null, val sharedTemplate: String? = null)
 internal data class DesignerTransform(val x: Double, val y: Double, val width: Double = 0.0, val height: Double = 0.0,
     val resize: Boolean = false)
 
@@ -48,7 +48,7 @@ internal object WinUIXamlDesignerEditing {
             io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(tag.containingFile as XmlFile,
                 project.getService(io.github.composefluent.winrt.ide.resources.WinRTResourceIndex::class.java).forFile(tag.containingFile.originalFile.virtualFile?.path ?: file.path), tag, null)
                 .map { it.value }.distinct().sorted(), DesignerStructureEditing.inspect(tag, catalog,
-                WinUIXamlSourceSelection.sourceTags(xml).filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml) != null }))
+                WinUIXamlSourceSelection.sourceTags(xml).filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml) != null }), sharedTemplate = generateSequence(tag.parentTag) { it.parentTag }.firstOrNull { it.localName == "ControlTemplate" }?.let { template -> generateSequence(template) { it.parentTag }.firstNotNullOfOrNull { it.getAttributeValue("Key", WinUIXamlCatalog.XAML) } })
     }
 
     fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =

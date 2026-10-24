@@ -23,17 +23,39 @@ internal object WinUIXamlSourceSelection {
         else namespaces.any { node.typeName == "$it.${tag.localName}" }
     }
 
-    private fun referencedTemplate(tag: XmlTag): XmlTag? {
-        val value = tag.getAttribute("Template")?.valueElement ?: return null
-        if (!value.value.trimStart().startsWith("{StaticResource ")) return null
+    private fun resource(value: com.intellij.psi.xml.XmlAttributeValue?): XmlTag? {
+        if (value == null || !value.value.trimStart().startsWith("{StaticResource ")) return null
         return io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.reference(value)
             ?.multiResolve(false).orEmpty().mapNotNull {
                 PsiTreeUtil.getParentOfType(it.element, XmlTag::class.java)
-            }.distinct().singleOrNull()?.takeIf {
-                it.namespace == io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.PRESENTATION && it.localName == "ControlTemplate"
-            }
+            }.distinct().singleOrNull()
     }
 
+    private fun sdk(tag: XmlTag, name: String) = tag.namespace ==
+        io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.PRESENTATION && tag.localName == name
+
+    private fun referencedTemplate(tag: XmlTag): XmlTag? {
+        if (tag.getAttribute("Template") != null)
+            return resource(tag.getAttribute("Template")?.valueElement)?.takeIf { sdk(it, "ControlTemplate") }
+        val localTemplate = tag.subTags.filter { it.localName.endsWith(".Template") }
+        if (localTemplate.isNotEmpty()) return localTemplate.singleOrNull()?.subTags?.singleOrNull()?.takeIf { sdk(it, "ControlTemplate") }
+        val inline = tag.subTags.filter { it.localName.endsWith(".Style") }.flatMap { it.subTags.toList() }
+        val style = (inline + listOfNotNull(resource(tag.getAttribute("Style")?.valueElement))).singleOrNull() ?: return null
+        val visited = hashSetOf<XmlTag>()
+        fun fromStyle(current: XmlTag): XmlTag? {
+            if (!sdk(current, "Style") || !visited.add(current) || visited.size > 64) return null
+            val setters = (current.subTags.toList() + current.subTags.filter { sdk(it, "Style.Setters") }.flatMap { it.subTags.toList() })
+                .filter { sdk(it, "Setter") && it.getAttributeValue("Property") == "Template" }
+            if (setters.isNotEmpty()) {
+                val setter = setters.singleOrNull() ?: return null
+                val value = setter.getAttribute("Value")
+                return (if (value != null) resource(value.valueElement) else setter.subTags.singleOrNull()
+                    ?.takeIf { sdk(it, "Setter.Value") }?.subTags?.singleOrNull())?.takeIf { sdk(it, "ControlTemplate") }
+            }
+            return resource(current.getAttribute("BasedOn")?.valueElement)?.let(::fromStyle)
+        }
+        return fromStyle(style)
+    }
     fun sourceTags(file: XmlFile): List<XmlTag> {
         val local = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).toList()
         return (local + local.filterNot { it.inTemplate() }.mapNotNull(::referencedTemplate).flatMap {
