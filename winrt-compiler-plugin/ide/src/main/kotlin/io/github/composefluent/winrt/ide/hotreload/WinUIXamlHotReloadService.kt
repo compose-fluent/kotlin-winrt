@@ -145,7 +145,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 // Compose effects and clicks run on EDT without the platform's
                 // write-intent lock. Only app-derived launches need saved files;
                 // the SDK designer renders the editor's unsaved XAML directly.
-                if (!sdkPreview) withContext(Dispatchers.EDT) {
+                // FileDocumentManager keeps its unsaved set concurrent. A clean
+                // reopened designer needs no EDT save/format queue before hashing.
+                if (!sdkPreview && (!preview || FileDocumentManager.getInstance().unsavedDocuments.isNotEmpty())) withContext(Dispatchers.EDT) {
                     writeIntentReadAction {
                         if (isCurrent(request)) FileDocumentManager.getInstance().saveAllDocuments()
                     }
@@ -157,14 +159,20 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         check(owned?.process?.isAlive != true) { "Stop or restart the existing development application first." }
                         stopOwned()
                     }
-                    sources = loadSources()
+                    sources = emptyList()
                     baselines.clear(); attempted.clear(); uncertain = false
                     selectedModule = module; selectedLaunch = launch
                     directory = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}").toAbsolutePath().normalize()
                     Files.createDirectories(directory!!)
                     withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString()) }
                 }
-                if (preview) log.info("XAML preview sources ready: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
+                // Source parsing and cache content validation have no data dependency.
+                // Both must finish before a host can connect or inspect source mappings.
+                val sourcePreparation = async(Dispatchers.IO) {
+                    loadSources().also {
+                        if (preview) log.info("XAML preview sources ready: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
+                    }
+                }
                 val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage"))) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
@@ -175,10 +183,16 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 if (sdkPreview && cache != null && inputs != null) withCurrent(request) {
                     pendingPreviewCache = cache to inputs
                 }
+                val reusable = cache != null && inputs != null && !rebuild && cache.reusable(inputs)
+                if (preview && reusable) log.info("XAML preview cache validated: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
+                val preparedSources = sourcePreparation.await()
+                mutex.withLock {
+                    if (!isCurrent(request)) return@launch
+                    sources = preparedSources
+                }
                 var reused = false
-                if (cache != null && inputs != null && !rebuild && cache.reusable(inputs)) {
+                if (reusable && cache != null) {
                     try {
-                        if (preview) log.info("XAML preview cache validated: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                         val process = ProcessBuilder(launch.previewExecutable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
                             .directory(cache.deployment.toFile())
                             .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
