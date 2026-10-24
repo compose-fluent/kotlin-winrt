@@ -100,6 +100,52 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertNull(WinUIXamlSourceSelection.node(captions[1], nodes + nodes[4].copy(path = listOf(1, 1))))
     }
 
+    fun testSharedControlTemplateSelectsTheClickedInstanceWithoutGuessing() {
+        val file = xml("""<Grid.Resources><ControlTemplate x:Key="Shared" TargetType="Button"><StackPanel><TextBlock x:Name="Caption"/><TextBlock Text="Second"/></StackPanel></ControlTemplate></Grid.Resources>
+            <Button x:Name="First" Template="{StaticResource Shared}"/><Button x:Name="Second" Template="{StaticResource Shared}"/>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "First"),
+            node(listOf(0, 0), "StackPanel"), node(listOf(0, 0, 0), "TextBlock", "Caption"), node(listOf(0, 0, 1), "TextBlock"),
+            node(listOf(1), "Button", "Second"), node(listOf(1, 0), "StackPanel"),
+            node(listOf(1, 0, 0), "TextBlock", "Caption"), node(listOf(1, 0, 1), "TextBlock"))
+        val parts = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filter { it.localName == "TextBlock" }
+        assertNull("Caret navigation cannot choose between shared instances", WinUIXamlSourceSelection.node(parts[0], nodes))
+        assertSame(parts[0], WinUIXamlSourceSelection.tag(file, nodes[3], nodes, emptyList()))
+        assertSame(parts[0], WinUIXamlSourceSelection.tag(file, nodes[7], nodes, emptyList()))
+        assertSame(parts[1], WinUIXamlSourceSelection.tag(file, nodes[8], nodes, emptyList()))
+        assertNull(WinUIXamlSourceSelection.node(parts[0], nodes, listOf(2), file))
+    }
+
+    fun testExternalSharedTemplateEditWritesItsDictionaryAndUndoRestoresIt() {
+        val dictionary = myFixture.addFileToProject("Shared.xaml", """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ControlTemplate x:Key="Shared" TargetType="Button"><TextBlock x:Name="Caption" Width="100"/></ControlTemplate></ResourceDictionary>""") as XmlFile
+        val file = myFixture.addFileToProject("Consumer.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Shared.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Grid.Resources><Button x:Name="First" Template="{StaticResource Shared}"/><Button x:Name="Second" Template="{StaticResource Shared}"/></Grid>""") as XmlFile
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "First"), node(listOf(0, 0), "TextBlock", "Caption"), node(listOf(1), "Button", "Second"), node(listOf(1, 0), "TextBlock", "Caption"))
+        val part = PsiTreeUtil.findChildrenOfType(dictionary, XmlTag::class.java).single { it.localName == "TextBlock" }
+        assertSame(part, WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
+        val target = DesignerSelection(com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(part), part.text,
+            listOf(DesignerProperty("Width", "Double", "100", emptyList(), true, false)), nodes.last().bounds, "ControlTemplate", mapOf("Width" to "100"))
+        myFixture.openFileInEditor(dictionary.virtualFile)
+        val before = dictionary.text
+        val consumerBefore = file.text
+        assertTrue(runCatching { WinUIXamlDesignerEditing.applyBatch(project, listOf(target to mapOf("Width" to "120"), target to mapOf("Width" to "140")), "Edit shared instances") }.isFailure)
+        assertEquals(before, com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(dictionary)!!.text)
+        WinUIXamlDesignerEditing.apply(project, target, mapOf("Width" to "160"), "Edit shared template")
+        assertEquals("160", part.getAttributeValue("Width"))
+        assertEquals(consumerBefore, file.text)
+        myFixture.performEditorAction(com.intellij.openapi.actionSystem.IdeActions.ACTION_UNDO)
+        assertEquals(before, com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(dictionary)!!.text)
+    }
+    fun testSharedTemplateRespectsResourceShadowing() {
+        val file = xml("""<Grid.Resources><ControlTemplate x:Key="Shared" TargetType="Button"><TextBlock x:Name="Outer"/></ControlTemplate></Grid.Resources>
+            <StackPanel><StackPanel.Resources><ControlTemplate x:Key="Shared" TargetType="Button"><TextBlock x:Name="Inner"/></ControlTemplate></StackPanel.Resources>
+                <Button x:Name="Consumer" Template="{StaticResource Shared}"/>
+            </StackPanel>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "StackPanel"),
+            node(listOf(0, 0), "Button", "Consumer"), node(listOf(0, 0, 0), "TextBlock", "Inner"))
+        val parts = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filter { it.localName == "TextBlock" }
+        assertNull(WinUIXamlSourceSelection.node(parts[0], nodes, nodes.last().path, file))
+        assertSame(parts[1], WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
+    }
+
     fun testUnnamedInlineTemplatePartsRequireExactRealizedSiblingSequence() {
         val file = xml("""<Button x:Name="First"><Button.Template><ControlTemplate TargetType="Button"><StackPanel><TextBlock Text="One"/><TextBlock Text="Two"/></StackPanel></ControlTemplate></Button.Template></Button>""")
         val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "First"),

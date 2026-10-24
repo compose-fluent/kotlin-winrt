@@ -257,11 +257,15 @@ internal object WinRTResourceReferences {
 
     internal fun resourceKeys(file: XmlFile, lookup: WinRTResourceLookup?, tag: XmlTag?, key: String?): List<Key> {
         val visited = hashSetOf<XmlTag>()
-        val local = generateSequence(tag) { it.parentTag }.flatMap { owner ->
+        val local = mutableListOf<XmlAttributeValue>()
+        for (owner in generateSequence(tag) { it.parentTag }) {
             val dictionaries = owner.subTags.filter { it.localName.endsWith(".Resources") } +
                 if (owner.localName == "ResourceDictionary") listOf(owner) else emptyList()
-            dictionaries.asSequence().flatMap { dictionary(file, lookup, it, key, visited) }
-        }.toList()
+            val found = dictionaries.flatMap { dictionary(file, lookup, it, key, visited) }
+            local += found
+            // Specific keys resolve in the nearest owning scope; completion collects all scopes.
+            if (key != null && found.isNotEmpty()) break
+        }
         fun List<XmlAttributeValue>.candidates() = map { Key(it.value, it) }
         if (key != null && local.isNotEmpty()) return local.candidates()
         val application = lookup?.xamlFiles.orEmpty().mapNotNull { xml(file, it) }.filter { it.rootTag?.localName == "Application" }

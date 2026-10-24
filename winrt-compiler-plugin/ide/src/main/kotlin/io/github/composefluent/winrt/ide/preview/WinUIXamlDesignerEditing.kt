@@ -28,8 +28,8 @@ internal object WinUIXamlDesignerEditing {
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return null
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return null
         // Editing must be exact. Navigation's nearest-source-ancestor fallback is unsafe here.
-        val tag = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java)
-            .filter { WinUIXamlSourceSelection.node(it, nodes) == selected }.singleOrNull() ?: return null
+        val tag = WinUIXamlSourceSelection.sourceTags(xml)
+            .filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml) == selected }.singleOrNull() ?: return null
         val catalog = WinUIXamlSymbols.catalog(xml) ?: return null
         val members = WinUIXamlSymbols.members(tag).filterNot { it.isEvent }.toMutableList()
         tag.parentTag?.let { parent ->
@@ -45,10 +45,10 @@ internal object WinUIXamlDesignerEditing {
         }.sortedWith(compareBy({ it.name !in layoutProperties }, { it.name }))
         return DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text,
             properties, selected.bounds, tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() },
-            io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(xml,
-                project.getService(io.github.composefluent.winrt.ide.resources.WinRTResourceIndex::class.java).forFile(file.path), tag, null)
+            io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(tag.containingFile as XmlFile,
+                project.getService(io.github.composefluent.winrt.ide.resources.WinRTResourceIndex::class.java).forFile(tag.containingFile.originalFile.virtualFile?.path ?: file.path), tag, null)
                 .map { it.value }.distinct().sorted(), DesignerStructureEditing.inspect(tag, catalog,
-                PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter { WinUIXamlSourceSelection.node(it, nodes) != null }))
+                WinUIXamlSourceSelection.sourceTags(xml).filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml) != null }))
     }
 
     fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =
@@ -74,6 +74,7 @@ internal object WinUIXamlDesignerEditing {
                 selection.style?.let { DesignerStyleEditing.validate(selection, changes) }
                 tag to changes
             }
+            check(validated.map { it.first }.distinct().size == validated.size) { "Selected instances share the same XAML source. Edit one instance at a time." }
             validated.zip(edits).forEach { (validatedEdit, edit) ->
                 val (tag, changes) = validatedEdit
                 if (edit.first.style != null) DesignerStyleEditing.write(edit.first, changes)

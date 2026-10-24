@@ -335,15 +335,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 .firstOrNull { path -> view.nodes.any { it.path == path } }.orEmpty()
         }
     }
-    // Design-surface picking selects authored controls, not their template internals.
+    // Picking includes template parts only when they resolve to editable source for this instance.
     val authoredPaths by produceState<Set<List<Int>>?>(null, static, source, view?.nodes, revision) {
         if (!static) { value = null; return@produceState }
         val nodes = view?.nodes ?: return@produceState
         value = withContext(Dispatchers.IO) { ReadAction.compute<Set<List<Int>>, RuntimeException> {
             val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(source.replace('\\', '/'))
             val xml = file?.let { com.intellij.psi.PsiManager.getInstance(project).findFile(it) } as? com.intellij.psi.xml.XmlFile
-            xml?.let { com.intellij.psi.util.PsiTreeUtil.findChildrenOfType(it, com.intellij.psi.xml.XmlTag::class.java)
-                .mapNotNull { tag -> WinUIXamlSourceSelection.node(tag, nodes)?.path }.toSet() }.orEmpty()
+            xml?.let { document -> val tags = WinUIXamlSourceSelection.sourceTags(document); nodes.filter { node -> tags.count { tag -> WinUIXamlSourceSelection.node(tag, nodes, node.path, document) == node } == 1 }.map { it.path }.toSet() }.orEmpty()
         } }
     }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
@@ -1005,7 +1004,7 @@ private fun navigate(project: Project, path: String, node: WinUIXamlVisualNode, 
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return@compute null
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return@compute null
         val tag = WinUIXamlSourceSelection.tag(xml, node, nodes, component)
-        file to (tag ?: xml.rootTag)?.textOffset.orEmptyOffset()
+        (tag?.containingFile?.virtualFile ?: file) to (tag ?: xml.rootTag)?.textOffset.orEmptyOffset()
     }
     ApplicationManager.getApplication().invokeLater { if (!project.isDisposed && location != null)
         FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, location.first, location.second), true) }
