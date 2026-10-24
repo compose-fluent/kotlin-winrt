@@ -230,9 +230,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         animationPlaying = action == "Play"
         animationRevision++
     }
-    LaunchedEffect(storyboards) {
+    LaunchedEffect(storyboards, prepared) {
         if (prepared != null && storyboards.none { it.id == storyboardId }) {
             storyboardId = ""; animationCommand = null; animationPlaying = false
+            animationPosition.setTextAndPlaceCursorAtEnd("0")
         }
     }
     var submitted by remember(source, projectCode, static) {
