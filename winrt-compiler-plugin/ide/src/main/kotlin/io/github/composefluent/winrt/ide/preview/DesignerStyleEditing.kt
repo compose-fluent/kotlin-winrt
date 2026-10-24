@@ -21,7 +21,7 @@ internal object DesignerStyleEditing {
     private fun setters(style: XmlTag) = style.subTags.filter { sdk(it, "Setter") } + collections(style).flatMap { it.subTags.filter { child -> sdk(child, "Setter") } }
     private fun matches(style: XmlTag, property: String) = setters(style).filter { it.getAttributeValue("Property") == property }
 
-    fun selection(base: DesignerSelection, catalog: WinUIXamlCatalog? = base.pointer.element?.let { WinUIXamlSymbols.catalog(it.containingFile) }, previewTheme: String? = null): DesignerSelection? {
+    fun selection(base: DesignerSelection, catalog: WinUIXamlCatalog? = base.pointer.element?.let { WinUIXamlSymbols.catalog(it.containingFile) }, previewTheme: String? = null, applicationSource: String? = null): DesignerSelection? {
         if (base.state != null || catalog == null) return null
         val tag = base.pointer.element ?: return null
         val inline = tag.subTags.filter { it.localName.substringAfter('.', "") == "Style" }
@@ -30,7 +30,10 @@ internal object DesignerStyleEditing {
         val referenced = value?.let { WinRTResourceReferences.reference(it)?.multiResolve(false) }
             .orEmpty().mapNotNull { PsiTreeUtil.getParentOfType(it.element, XmlTag::class.java) }.distinct()
         val implicit = if (tag.getAttribute("Style") == null && tag.subTags.none { it.localName.substringAfter('.', "") == "Style" })
-            WinRTResourceReferences.implicitStyle(tag, catalog, previewTheme) else null
+            WinRTResourceReferences.implicitStyle(tag, catalog, previewTheme, applicationSource?.let {
+                com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(it.replace('\\', '/'))
+                    ?.let { file -> com.intellij.psi.PsiManager.getInstance(tag.project).findFile(file) as? XmlFile }
+            }) else null
         val style = (inline + referenced + listOfNotNull(implicit)).singleOrNull()?.takeIf { sdk(it, "Style") } ?: return null
         if (!style.containingFile.isWritable || collections(style).size > 1) return null
         val targetName = style.getAttributeValue("TargetType") ?: return null

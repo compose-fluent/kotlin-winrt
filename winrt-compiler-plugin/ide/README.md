@@ -563,14 +563,14 @@ nodes remain inspection-only, and stale source edits are rejected instead of ove
 concurrent changes. Structure commands edit Grid definitions, reorder siblings and move
 source elements into compatible containers. Marquee selection and XAML copy/cut/paste
 use the same source mapping and undo history. The inspector's **Edit applied style…** edits literal dependency-property setters in
-an inline Style, a uniquely resolved explicit style resource, or a source-scoped implicit style, including Style.Setters. Implicit style editing follows local resource and reverse merged-dictionary precedence; Light/Dark theme dictionaries follow the selected preview host theme with Default fallback. Ambiguous high-contrast, mixed RequestedTheme, template and global runtime scopes remain unavailable rather than selecting an uncertain source.
+an inline Style, a uniquely resolved explicit style resource, or a source-scoped implicit style, including Style.Setters. Implicit style editing follows local resource and reverse merged-dictionary precedence; Light/Dark theme dictionaries follow the selected preview host theme with Default fallback. The selected static-preview application supplies global styles after local scopes, including when the document belongs to a dependency module. Its unsaved XAML and dictionaries participate in document cache invalidation. Ambiguous high-contrast, mixed RequestedTheme, template and live-application ownership remain unavailable rather than selecting an uncertain source.
 Edits preserve consumer-local values, support Reset and undo, and use the style's
 resource scope. Complex/duplicate setters and stale documents are protected.
 **Create style…** creates a keyed style in the nearest source ancestor with Resources
 and applies it in one undoable command. Optional extraction moves local literal
 DP values into setters while preserving names, bindings and resource expressions.
 Existing styles and dictionary Source declarations are not overwritten.
-Global implicit style lookup, shared ControlTemplate authoring and storyboard timeline authoring
+Shared ControlTemplate authoring and storyboard timeline authoring
 remain separate from this setter editing surface.
 
 Double-click a rendered element to open its XAML source. Moving the source caret

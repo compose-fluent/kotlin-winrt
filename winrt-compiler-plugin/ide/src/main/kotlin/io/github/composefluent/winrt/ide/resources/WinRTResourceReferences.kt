@@ -182,7 +182,7 @@ internal object WinRTResourceReferences {
      * theme/template/foreign-control scopes cannot be inferred from PSI: fail
      * closed instead of editing a possibly different runtime style.
      * Reference: microsoft-ui-xaml/docs/design-notes/resources.md. */
-    internal fun implicitStyle(tag: XmlTag, catalog: WinUIXamlCatalog, previewTheme: String? = null): XmlTag? {
+    internal fun implicitStyle(tag: XmlTag, catalog: WinUIXamlCatalog, previewTheme: String? = null, application: XmlFile? = null): XmlTag? {
         val type = catalog.resolve(tag.namespace, tag.localName) ?: return null
         val file = tag.containingFile as? XmlFile ?: return null
         val lookup = file.originalFile.virtualFile?.path?.let { file.project.service<WinRTResourceIndex>().forFile(it) }
@@ -210,7 +210,8 @@ internal object WinRTResourceReferences {
             }
             val source = owner.getAttributeValue("Source")
             if (source != null) {
-                val target = files(owner.containingFile as XmlFile, lookup, source).filterIsInstance<XmlFile>().singleOrNull()?.rootTag ?: return null
+                val target = files(owner.containingFile as XmlFile, owner.containingFile.originalFile.virtualFile?.path?.let {
+                    file.project.service<WinRTResourceIndex>().forFile(it) } ?: lookup, source).filterIsInstance<XmlFile>().singleOrNull()?.rootTag ?: return null
                 return dictionary(target)
             }
             for (merged in owner.subTags.filter { it.localName.endsWith(".MergedDictionaries") }.flatMap { it.subTags.toList() }.asReversed()) {
@@ -242,8 +243,13 @@ internal object WinRTResourceReferences {
                 if (found.isNotEmpty()) return found.singleOrNull()
             }
         }
-        // Application/theme ownership may depend on the selected launch host.
-        // Never choose a global source candidate without that runtime identity.
+        // Only the explicitly selected designer application can supply global
+        // styles; never search unrelated applications in the imported workspace.
+        val app = application?.rootTag?.takeIf { it.localName == "Application" && it.namespace == WinUIXamlCatalog.PRESENTATION }
+        for (resources in app?.subTags.orEmpty().filter { it.localName == "Application.Resources" }) {
+            val found = dictionary(resources) ?: return null
+            if (found.isNotEmpty()) return found.singleOrNull()
+        }
         return null
     }
 

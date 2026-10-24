@@ -18,21 +18,23 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 /** Source documents (including unsaved edits) are the designer's resource input. */
 internal class WinUIXamlPreviewSources(private val project: Project, private val module: WinRTModuleData,
-    private val files: List<String>, private val source: String) {
+    private val files: List<String>, private val source: String, private val applicationModule: WinRTModuleData = module) {
     private val lookup = project.service<WinRTResourceIndex>().forFile(source)
-    private val roots = (module.xamlCompilations.flatMap { it.sourceRoots } + module.sourceSets.flatMap { it.kotlinRoots })
+    private val applicationLookup = project.service<WinRTResourceIndex>().forFile(applicationModule.projectDirectory)
+        ?.takeIf { it.module.projectDirectory == applicationModule.projectDirectory }
+    private val roots = listOf(module, applicationModule).distinct().flatMap { it.xamlCompilations.flatMap { compilation -> compilation.sourceRoots } + it.sourceSets.flatMap { set -> set.kotlinRoots } }
         .map { Path.of(it).toAbsolutePath().normalize() }.distinct().sortedByDescending { it.nameCount }
     fun read(path: String): String = ReadAction.compute<String?, RuntimeException> {
         LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/'))?.let { FileDocumentManager.getInstance().getCachedDocument(it)?.text }
     } ?: Files.readString(Path.of(path))
 
-    fun target(path: String): String = lookup?.entries?.firstOrNull { it.source.replace('\\', '/').equals(path.replace('\\', '/'), true) }?.target
+    fun target(path: String): String = (applicationLookup?.entries.orEmpty() + lookup?.entries.orEmpty()).firstOrNull { it.source.replace('\\', '/').equals(path.replace('\\', '/'), true) }?.target
         ?: Path.of(path).toAbsolutePath().normalize().let { file ->
             roots.firstOrNull { file.startsWith(it) }?.relativize(file)?.toString()?.replace('\\', '/') ?: file.fileName.toString()
         }
 
     private val documents by lazy {
-        (files.map { WinRTResourceEntry(target(it), it, module.projectPath) } + lookup?.entries.orEmpty())
+        ((files + lookup?.xamlFiles.orEmpty() + applicationLookup?.xamlFiles.orEmpty()).distinct().map { WinRTResourceEntry(target(it), it, module.projectPath) } + lookup?.entries.orEmpty() + applicationLookup?.entries.orEmpty())
             .filter { it.target.endsWith(".xaml", true) }.associateBy { it.target.replace('\\', '/').lowercase() }
     }
     private val dictionariesByClass by lazy {
@@ -54,19 +56,21 @@ internal class WinUIXamlPreviewSources(private val project: Project, private val
         return WinUIXamlDesignResource(read(entry.source), entry.target)
     }
 
-    fun application(): String? = files.firstOrNull { path ->
+    fun application(): String? = (if (applicationModule == module) files + applicationLookup?.xamlFiles.orEmpty()
+        else applicationLookup?.xamlFiles.orEmpty()).distinctBy { Path.of(it).toAbsolutePath().normalize() }.filter { path ->
         // An application resource document is usable before XAMLC has exported
         // page declarations or the user's Application subclass has compiled.
         runCatching { io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadMarkup.parse(read(path)).isApplication }
             .getOrDefault(false)
-    }
+    }.singleOrNull()
 
     /** Include every design-data/dictionary document and actual WinMD bytes, including
      * unsaved editor text. Resource-index readiness prevents caching a partial lookup.
      */
     fun projectDocumentKey(): String? = runCatching {
         val index = lookup ?: return null
-        val references = module.xamlCompilations.map { it.inputFile }.distinct().sorted()
+        val hostIndex = applicationLookup ?: return null
+        val references = (module.xamlCompilations + applicationModule.xamlCompilations).map { it.inputFile }.distinct().sorted()
         if (references.isEmpty()) return null
         val manifests = references.map { Files.readString(Path.of(it)) }
         val metadata = manifests.flatMap { text ->
@@ -77,12 +81,12 @@ internal class WinUIXamlPreviewSources(private val project: Project, private val
         }.filter { it.toString().endsWith(".winmd", true) }.distinct()
         if (metadata.isEmpty()) return null
         WinUIXamlDesignDocumentCache.key(buildList {
-            add(module.toString())
+            add(module.toString()); add(applicationModule.toString()); add(application().orEmpty())
             add(source); add(target(source)); add(read(source))
             addAll(manifests)
             add(WinRTMetadataModelCodec.cacheKey(metadata))
             documents.values.sortedBy { it.target }.forEach { add(it.target); add(it.source); add(read(it.source)) }
-            add(index.entries.toString())
+            add(index.entries.toString()); add(hostIndex.entries.toString())
         })
     }.getOrNull()
 

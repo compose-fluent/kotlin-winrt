@@ -243,14 +243,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }, disposable)
         onDispose { Disposer.dispose(disposable) }
     }
-    LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, if (automatic) revision else 0L, manualRefresh) {
+    LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, launchModule, if (automatic) revision else 0L, manualRefresh) {
         prepared = null; failure = null
         if (static && source.isNotEmpty() && module != null) {
             // Debounce typing, not opening an already prepared document.
             if (revision > 0) delay(150)
             try {
                 prepared = withContext(Dispatchers.IO) {
-                    val documents = WinUIXamlPreviewSources(project, module, files, source)
+                    val documents = WinUIXamlPreviewSources(project, module, files, source, if (projectCode) launchModule ?: module else module)
                     val cache = if (projectCode) WinUIXamlDesignDocumentCache(
                         Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-design-documents"), source) else null
                     val cacheKey = if (projectCode) documents.projectDocumentKey() else null
@@ -373,12 +373,16 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var createStyle by remember(source, selectedPaths, recordState) { mutableStateOf(false) }
     val styleKey = remember(source, selectedPaths) { TextFieldState("") }
     var extractStyle by remember(source, selectedPaths) { mutableStateOf(true) }
-    val styleSelection by produceState<DesignerSelection?>(null, editables, revision, theme) {
+    val styleSelection by produceState<DesignerSelection?>(null, editables, revision, theme, launchModule, projectCode, resourceRevision) {
         value = null
         val selected = editables.singleOrNull() ?: return@produceState
-        value = withContext(Dispatchers.IO) { ReadAction.compute<DesignerSelection?, RuntimeException> {
-            DesignerStyleEditing.selection(selected, previewTheme = theme)
-        } }
+        value = withContext(Dispatchers.IO) {
+            val application = module?.takeIf { static }?.let { WinUIXamlPreviewSources(project, it, files, source,
+                if (projectCode) launchModule ?: it else it).application() }
+            ReadAction.compute<DesignerSelection?, RuntimeException> {
+                DesignerStyleEditing.selection(selected, previewTheme = theme, applicationSource = application)
+            }
+        }
     }
     val editable = editables.lastOrNull()?.let { primary ->
         primary.copy(properties = primary.properties.filter { property -> editables.all { target ->

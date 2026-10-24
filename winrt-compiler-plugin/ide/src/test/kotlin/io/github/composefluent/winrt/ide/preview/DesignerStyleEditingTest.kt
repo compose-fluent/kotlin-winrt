@@ -11,6 +11,7 @@ import io.github.composefluent.winrt.metadata.*
 import io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds
 
 class DesignerStyleEditingTest : BasePlatformTestCase() {
+    override fun createTempDirTestFixture() = com.intellij.testFramework.fixtures.impl.TempDirTestFixtureImpl()
     // XAMLC IsDependencyProperty and CsWinRT class member ownership: only target
     // type DPs belong in shared Style setters; derived-only properties do not.
     private val catalog = WinUIXamlCatalog(WinRTMetadataModel(listOf(WinRTNamespace("Microsoft.UI.Xaml.Controls", listOf(
@@ -46,6 +47,24 @@ class DesignerStyleEditingTest : BasePlatformTestCase() {
         myFixture.performEditorAction(IdeActions.ACTION_UNDO)
         assertEquals(before, myFixture.editor.document.text)
     }
+    fun testGlobalImplicitStyleRequiresSelectedApplicationAndPreservesLocalValues() {
+        val original = base("")
+        WriteCommandAction.runWriteCommandAction(project) { original.pointer.element!!.setAttribute("Style", null) }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val app = myFixture.addFileToProject("App.xaml", """<Application xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Application.Resources><Style TargetType="Button"><Setter Property="Width" Value="400"/></Style></Application.Resources></Application>""")
+        val selected = original.copy(text = original.pointer.element!!.text)
+        assertNull(DesignerStyleEditing.selection(selected, catalog))
+        val style = DesignerStyleEditing.selection(selected, catalog, applicationSource = app.virtualFile.path)!!
+        assertEquals("400", style.properties.single().value)
+        WinUIXamlDesignerEditing.apply(project, style, mapOf("Width" to "450"), "Edit application style")
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertTrue(app.text.contains("Value=\"450\""))
+        assertEquals("100", original.pointer.element!!.getAttributeValue("Width"))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertTrue(app.text.contains("Value=\"400\""))
+    }
+
     fun testInlineExplicitSetterCollectionSupportsResetAndAdd() {
         val original = base("""<Style.Setters><Setter Property="Width" Value="200"/></Style.Setters>""", true)
         WinUIXamlDesignerEditing.apply(project, DesignerStyleEditing.selection(original, catalog)!!, mapOf("Width" to null), "Reset style width")

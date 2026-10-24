@@ -27,6 +27,33 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
 
     fun testUwpDesignerStagesPassiveAssetsInItsIndependentPackage() = verifySources("AppX")
 
+    fun testDependentControlUsesOnlySelectedApplicationsUnsavedResources() {
+        val ns = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
+        val page = myFixture.addFileToProject("controls/src/Control.xaml", """<UserControl $ns><TextBlock/></UserControl>""").virtualFile
+        val app = myFixture.addFileToProject("app/src/UI/App.xaml", """<Application $ns><Application.Resources><ResourceDictionary Source="../Styles.xaml"/></Application.Resources></Application>""").virtualFile
+        val styles = myFixture.addFileToProject("app/src/Styles.xaml", """<ResourceDictionary $ns><Style TargetType="TextBlock"><Setter Property="FontSize" Value="32"/></Style></ResourceDictionary>""").virtualFile
+        myFixture.addFileToProject("other/src/App.xaml", """<Application $ns/>""")
+        val root = myFixture.tempDirFixture.getFile("")!!.path
+        importedRoot = root
+        fun module(name: String) = WinRTModuleData(":$name", "$root/$name", "$root/$name/build", "2.4.0", "",
+            listOf(WinRTSourceSetData("main", listOf("$root/$name/src"), emptyList(), emptyList())), emptyList(), emptyList(), emptyList())
+        val controls = module("controls"); val host = module("app"); val other = module("other")
+        val index = project.service<WinRTResourceIndex>()
+        project.service<WinRTProjectService>().replaceBuildModels(root, listOf(controls, host, other))
+        PlatformTestUtil.waitWithEventsDispatching("Application context indexed", { index.forFile(app.path)?.xamlFiles?.isNotEmpty() == true }, 10)
+        val sources = WinUIXamlPreviewSources(project, controls, listOf(page.path), page.path, host)
+        assertEquals(app.path, sources.application()?.replace('\\', '/'))
+        assertEquals("UI/App.xaml", sources.target(app.path))
+        val document = FileDocumentManager.getInstance().getDocument(styles)!!
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(document.text.replace("32", "48")) }
+        assertTrue(sources.resolve("../Styles.xaml", sources.target(app.path))!!.text.contains("48"))
+        assertNull(WinUIXamlPreviewSources(project, controls, listOf(page.path), page.path).application())
+        val prepared = WinUIXamlDesignDocument.prepare(sources.read(page.path), sources.read(app.path),
+            sources.target(page.path), sources.target(app.path), resource = sources::resolve) { _, _, _ -> false }
+        assertTrue(prepared.markup.contains("48"))
+        assertFalse(prepared.markup.contains("Source="))
+    }
+
     private fun verifySources(directory: String) {
         val ns = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
         val page = myFixture.addFileToProject("src/main/kotlin/UI/Page.xaml", """<Page $ns/>""").virtualFile
