@@ -84,6 +84,10 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
         // Publish every cached startup view before deserializing any full model.
         // The first manifest is commonly the app's; a dependency editor must not
         // wait behind that unrelated model before its own event index is visible.
+        // Compilations and the SDK designer often share the same WinMD set.
+        // Deduplicate only within this load: the next refresh still hashes all
+        // inputs, including edits which preserve size and modification time.
+        val referenceKeys = mutableMapOf<List<Path>, String>()
         val references = current.mapNotNull { referenceFile ->
             coroutineContext.ensureActive()
             runCatching {
@@ -92,12 +96,16 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
                     (item.jsonObject["FullPath"] ?: item.jsonObject["ItemSpec"])?.jsonPrimitive?.content?.let(Path::of)
                 }.filter { it.toString().endsWith(".winmd", true) && Files.isRegularFile(it) }.distinct()
                 require(paths.isNotEmpty())
-                Triple(referenceFile, paths, WinRTMetadataModelCodec.cacheKey(paths))
+                val identity = paths.map { it.toAbsolutePath().normalize() }.sortedBy { it.toString().lowercase() }
+                Triple(referenceFile, paths, referenceKeys.getOrPut(identity) { WinRTMetadataModelCodec.cacheKey(paths) })
             }.getOrNull()
         }
         coroutineContext.ensureActive()
+        val eventIndexes = references.map { it.third }.distinct().associateWith { key ->
+            WinUIXamlPreviewEvents.read(eventsDirectory, key)
+        }
         previewEvents = references.mapNotNull { (referenceFile, _, key) ->
-            WinUIXamlPreviewEvents.read(eventsDirectory, key)?.let { referenceFile to it }
+            eventIndexes[key]?.let { referenceFile to it }
         }.toMap()
         changes.value += 1
         com.intellij.openapi.diagnostic.Logger.getInstance(WinUIXamlCatalogService::class.java)
