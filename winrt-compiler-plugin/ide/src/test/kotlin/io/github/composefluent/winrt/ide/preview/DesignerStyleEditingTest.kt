@@ -16,7 +16,11 @@ class DesignerStyleEditingTest : BasePlatformTestCase() {
     private val catalog = WinUIXamlCatalog(WinRTMetadataModel(listOf(WinRTNamespace("Microsoft.UI.Xaml.Controls", listOf(
         WinRTTypeDefinition("Microsoft.UI.Xaml.Controls", "Button", WinRTTypeKind.RuntimeClass, properties = listOf(
             WinRTPropertyDefinition("Width", "Double", setterMethodName = "put_Width"),
+            WinRTPropertyDefinition("Style", "Microsoft.UI.Xaml.Style", setterMethodName = "put_Style"),
             WinRTPropertyDefinition("WidthProperty", "Microsoft.UI.Xaml.DependencyProperty", isStatic = true),
+        )),
+        WinRTTypeDefinition("Microsoft.UI.Xaml.Controls", "Grid", WinRTTypeKind.RuntimeClass, properties = listOf(
+            WinRTPropertyDefinition("Resources", "Microsoft.UI.Xaml.ResourceDictionary"),
         )),
     )))).normalized())
     private fun base(setters: String, inline: Boolean = false): DesignerSelection {
@@ -51,6 +55,55 @@ class DesignerStyleEditingTest : BasePlatformTestCase() {
         WinUIXamlDesignerEditing.apply(project, DesignerStyleEditing.selection(refreshed, catalog)!!, mapOf("Width" to "240"), "Add style width")
         assertTrue(myFixture.editor.document.text.contains("Value=\"240\""))
         assertEquals("100", original.pointer.element!!.getAttributeValue("Width"))
+    }
+    fun testCreateExtractStylePreservesExpressionsAndIsOneUndo() {
+        val original = base("")
+        WriteCommandAction.runWriteCommandAction(project) {
+            original.pointer.element!!.setAttribute("Style", null)
+            original.pointer.element!!.setAttribute("Height", "{Binding Height}")
+        }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val selected = original.copy(text = original.pointer.element!!.text)
+        val before = myFixture.editor.document.text
+        DesignerStyleAuthoring.create(project, selected, "Extracted", true, catalog)
+        // The atomic owner replacement invalidates old PSI pointers; the
+        // designer resolves the selection again from the refreshed visual path.
+        val tag = (myFixture.file as XmlFile).rootTag!!.subTags.last()
+        assertNull(tag.getAttributeValue("Width"))
+        assertEquals("{Binding Height}", tag.getAttributeValue("Height"))
+        assertEquals("Target", tag.getAttributeValue("Name", WinUIXamlCatalog.XAML))
+        assertEquals("{StaticResource Extracted}", tag.getAttributeValue("Style"))
+        assertEquals("100", DesignerStyleEditing.selection(selected.copy(pointer = SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), text = tag.text), catalog)!!.properties.single().value)
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(before, myFixture.editor.document.text)
+    }
+    fun testCreateStyleAddsMissingResourcesAndKeepsLocalValues() {
+        val original = base("")
+        WriteCommandAction.runWriteCommandAction(project) {
+            original.pointer.element!!.setAttribute("Style", null)
+            (myFixture.file as XmlFile).rootTag!!.subTags.first().delete()
+        }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val tag = (myFixture.file as XmlFile).rootTag!!.subTags.single()
+        val selected = original.copy(pointer = SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), text = tag.text)
+        val before = myFixture.editor.document.text
+        DesignerStyleAuthoring.create(project, selected, "NewStyle", false, catalog)
+        val root = (myFixture.file as XmlFile).rootTag!!
+        assertEquals("Grid.Resources", root.subTags.first().localName)
+        assertEquals("NewStyle", root.subTags.first().subTags.single().getAttributeValue("Key", WinUIXamlCatalog.XAML))
+        assertEquals("100", root.subTags.last().getAttributeValue("Width"))
+        assertEquals("{StaticResource NewStyle}", root.subTags.last().getAttributeValue("Style"))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(before, myFixture.editor.document.text)
+    }
+    fun testCreateStyleRejectsDuplicateKeyWithoutPartialEdits() {
+        val original = base("")
+        WriteCommandAction.runWriteCommandAction(project) { original.pointer.element!!.setAttribute("Style", null) }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val selected = original.copy(text = original.pointer.element!!.text)
+        val before = myFixture.editor.document.text
+        assertTrue(runCatching { DesignerStyleAuthoring.create(project, selected, "Shared", true, catalog) }.isFailure)
+        assertEquals(before, myFixture.editor.document.text)
     }
     fun testComplexDuplicateAndStaleStyleEditsAreRejected() {
         listOf("""<Setter Property="Width"><Setter.Value><x:Double>200</x:Double></Setter.Value></Setter>""",

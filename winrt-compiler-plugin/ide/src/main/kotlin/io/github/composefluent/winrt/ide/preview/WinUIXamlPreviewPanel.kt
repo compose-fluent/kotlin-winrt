@@ -368,6 +368,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     val editables = editableResult.orEmpty()
     var editStyle by remember(source, selectedPaths, recordState) { mutableStateOf(false) }
+    var createStyle by remember(source, selectedPaths, recordState) { mutableStateOf(false) }
+    val styleKey = remember(source, selectedPaths) { TextFieldState("") }
+    var extractStyle by remember(source, selectedPaths) { mutableStateOf(true) }
     val styleSelection by produceState<DesignerSelection?>(null, editables, revision) {
         value = null
         val selected = editables.singleOrNull() ?: return@produceState
@@ -588,6 +591,26 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             Link("Back to element properties", onClick = { editStyle = false })
                             Text("Editing a shared style affects all its consumers. Local values still take precedence.")
                         } else if (styleSelection != null) Link("Edit applied style…", onClick = { editStyle = true })
+                        else if (!recordState && editables.size == 1) {
+                            Link(if (createStyle) "Cancel style creation" else "Create style…", onClick = { createStyle = !createStyle })
+                            if (createStyle) {
+                                Text("Resource key")
+                                TextField(styleKey, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "New style resource key" })
+                                CheckboxRow("Extract local literal properties", extractStyle, { extractStyle = it })
+                                Text("Bindings, resource expressions and names stay on the element. The new style is stored in its nearest source container's Resources.")
+                                DefaultButton(enabled = styleKey.text.isNotBlank(), onClick = {
+                                    val target = currentEditables.singleOrNull()
+                                    val key = styleKey.text.toString().trim()
+                                    val extract = extractStyle
+                                    ApplicationManager.getApplication().invokeLater {
+                                        if (project.isDisposed) return@invokeLater
+                                        runCatching { DesignerStyleAuthoring.create(project, requireNotNull(target) { "Select a source element." }, key, extract) }
+                                            .onSuccess { createStyle = false; editStyle = true; editFeedback = "Created style $key · Ctrl+Z to undo" }
+                                            .onFailure { editFeedback = it.message ?: "Could not create style" }
+                                    }
+                                }) { Text(if (extractStyle) "Extract style" else "Create style") }
+                            }
+                        }
                         Text("Filter properties")
                         TextField(propertyFilter, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Filter properties" })
                         val propertyScroll = rememberScrollState()

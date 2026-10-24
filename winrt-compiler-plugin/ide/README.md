@@ -566,8 +566,12 @@ use the same source mapping and undo history. The inspector's **Edit applied sty
 an inline Style or a uniquely resolved explicit style resource, including Style.Setters.
 Edits preserve consumer-local values, support Reset and undo, and use the style's
 resource scope. Complex/duplicate setters and stale documents are protected.
-Implicit style lookup, style creation/extraction, ControlTemplate editing and
-storyboard timeline authoring remain separate from this setter editing surface.
+**Create style…** creates a keyed style in the nearest source ancestor with Resources
+and applies it in one undoable command. Optional extraction moves local literal
+DP values into setters while preserving names, bindings and resource expressions.
+Existing styles and dictionary Source declarations are not overwritten.
+Implicit style lookup, ControlTemplate editing and storyboard timeline authoring
+remain separate from this setter editing surface.
 
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
