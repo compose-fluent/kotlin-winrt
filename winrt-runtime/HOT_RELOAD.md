@@ -268,3 +268,10 @@ selectors and ContentPresenter-only containers
 are not inferred; they remain source-only
 until an exact SDK-to-source ownership mapping is available. This selection
 contract does not add live application template replacement or Kotlin reload.
+
+The isolated designer restores the previous Window.Content when attaching or
+laying out new markup fails after attachment. Deferred DataTemplate failures
+therefore cannot leave the invalid tree attached for another layout pass. The
+IDE keeps the last successful image with an error status; correcting the markup
+renders in the same host without reconnecting. This does not suppress application
+unhandled exceptions or change live application reload transactions.

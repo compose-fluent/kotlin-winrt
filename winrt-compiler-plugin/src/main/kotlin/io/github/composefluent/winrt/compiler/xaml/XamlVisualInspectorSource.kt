@@ -264,6 +264,8 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           preview = { owner, request ->
             val window = owner.asWinRT<Window>()
             activeStoryboard?.stop(); activeStoryboard = null; playing = false
+            val previousContent = window.content
+            var attached = false
             var stage = "load the XAML"
             try {
               val element = requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(request.previewMarkup)).asWinRT<FrameworkElement>()
@@ -279,13 +281,21 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))"""}
               stage = "attach the visual tree"
               window.content = element
+              attached = true
               stage = "lay out the visual tree"
               // UWP defers the first Window content layout until rendering. Establish
               // the requested artboard before capture chooses its bounded pixel size.
               element.measure(windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))
               element.arrange(windows.foundation.Rect(0f, 0f, request.width.toFloat(), request.height.toFloat()))
               element.updateLayout()
-            } catch (error: Exception) { throw IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error) }
+            } catch (error: Exception) {
+              // Deferred DataTemplate loading can fail during Measure/Arrange after
+              // attachment. Detach that poisoned tree before returning to the SDK
+              // message loop, which would otherwise retry layout and terminate.
+              if (attached) try { window.content = previousContent }
+              catch (rollback: Exception) { error.addSuppressed(rollback) }
+              throw IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error)
+            }
           },
           clock = { activeStoryboard?.let { storyboard ->
             WinUIXamlPreviewClock(storyboard.getCurrentTime().inWholeMilliseconds.coerceIn(0, 86_400_000).toInt(),
