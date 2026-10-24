@@ -164,6 +164,8 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
             assertFalse("Dimensions stay out of the default canvas workspace", nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
             val workspaceBefore = nodes().first { "Preview workspace" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }.boundsInWindow
             val expand = nodes().first { "Preview settings" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() && it.config.getOrNull(SemanticsActions.OnClick) != null }
+            assertTrue("Settings must stay visible without scrolling the canvas tools: ${expand.boundsInWindow}",
+                expand.boundsInWindow.width > 0f && expand.boundsInWindow.left >= 0f && expand.boundsInWindow.right <= 600f)
             scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, expand.boundsInWindow.center, button = androidx.compose.ui.input.pointer.PointerButton.Primary)
             scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, expand.boundsInWindow.center, button = androidx.compose.ui.input.pointer.PointerButton.Primary)
             settleFrames()
@@ -176,7 +178,7 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
             // Accessibility scrolling and focus bring-into-view use frame-clock
             // animations. Advance the offscreen clock as well as the UI queue.
             settleFrames()
-            val lastOption = nodes().first { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text == "Update after XAML edits" } }
+            val lastOption = nodes().first { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text.startsWith("With canvas focus:") } }
             val axis = scroll.config[SemanticsProperties.VerticalScrollAxisRange]
             assertTrue("The final option must be visible after scrolling: bounds=${lastOption.boundsInWindow}, scroll=${axis.value()}/${axis.maxValue()}", lastOption.boundsInWindow.height > 0f && lastOption.boundsInWindow.bottom <= 500f)
             assertTrue(nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })

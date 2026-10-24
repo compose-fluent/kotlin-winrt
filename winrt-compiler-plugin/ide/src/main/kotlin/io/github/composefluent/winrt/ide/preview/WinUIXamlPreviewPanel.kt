@@ -688,8 +688,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }
             Divider(Orientation.Horizontal)
             // One fixed-height command strip; popups never participate in artboard measurement.
-            Row(Modifier.fillMaxWidth().height(36.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+            Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
+                // Session and settings stay reachable when high DPI or a narrow
+                // editor leaves less room for the canvas tools.
+                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically) {
                 if (!treeOnly) {
                     PreviewAction("Select elements", "select", view != null, selected = !panTool) { panTool = false }
                     PreviewAction("Pan canvas", "hand", view != null, selected = panTool) { panTool = true; armedTool = null }
@@ -728,6 +732,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     PreviewAction("Fit all", "fit", view != null, selected = zoom == null && !fitSelection) {
                         fitSelection = false; zoom = null; resetViewport++
                     }
+                }
                 }
                 Spacer(Modifier.width(8.dp))
                 Divider(Orientation.Vertical, Modifier.height(20.dp))
