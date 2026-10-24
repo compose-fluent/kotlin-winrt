@@ -107,8 +107,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(candidate.projectDirectory).toAbsolutePath().normalize())
     }.getOrDefault(false) }.maxByOrNull { it.projectDirectory.length } } ?: selectedModule
     val declarations by project.service<WinUIXamlSnapshotService>().state.collectAsState()
-    var launchName by remember(module?.projectDirectory) { mutableStateOf<String?>(null) }
-    val launches = module?.hotReloadLaunches.orEmpty().filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
+    val inheritedLaunch = remember(staticFile, projectState.pid, projectState.connected) {
+        staticFile?.takeIf { module?.hotReloadLaunches.isNullOrEmpty() }?.let(design::loadedSourceLaunch)
+    }
+    val launchModule = inheritedLaunch?.first ?: module
+    var launchName by remember(launchModule?.projectDirectory) { mutableStateOf<String?>(null) }
+    val launches = (inheritedLaunch?.second?.let(::listOf) ?: module?.hotReloadLaunches.orEmpty()).filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
     val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
     val preferences = remember(project) { PropertiesComponent.getInstance(project) }
     val projectCodeKey = "winrt.preview.projectCode.${module?.projectDirectory.orEmpty()}"
@@ -129,13 +133,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val catalogService = project.service<WinUIXamlCatalogService>()
     val catalogRevision by catalogService.changes.collectAsState()
     val resourceRevision by project.service<WinRTResourceIndex>().changes.collectAsState()
-    LaunchedEffect(static, module, launch, wantsProjectCode) {
+    LaunchedEffect(static, module, launchModule, launch, wantsProjectCode) {
         if (static && module != null) {
             startPreferredXamlPreview(
                 wantsProjectCode = wantsProjectCode && launch != null,
                 projectConnected = projectState.connected,
-                reusableProject = { design.hasReusableNativePreview(module, launch!!) },
-                startProject = { design.ensurePreview(module, launch!!) },
+                reusableProject = { design.hasReusableNativePreview(launchModule!!, launch!!) },
+                startProject = { design.ensurePreview(launchModule!!, launch!!) },
                 awaitProject = { withTimeoutOrNull(3_000) {
                     design.state.first { it.connected || !it.busy }.connected
                 } == true },
@@ -461,7 +465,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     } else state.message
     val error = failure ?: state.inspectionError
     val missingModule = staticFile != null && (module == null || designLaunch == null)
-    fun startPreview() = session.start(module!!, (if (static) designLaunch else launch)!!, preview = static)
+    fun startPreview() = session.start((if (projectCode) launchModule else module)!!, (if (static) designLaunch else launch)!!, preview = static)
     val canStart = module != null && (if (static) designLaunch else launch) != null && !state.busy && state.pid == null
 
     @Composable fun inspector() {
@@ -717,7 +721,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (!state.connected) Link(if (static) "Retry preview" else "Start application", enabled = canStart, onClick = { showSession = false; startPreview() })
             Link("Refresh", enabled = state.connected && !state.inspecting, onClick = { manualRefresh++; showSession = false })
             if (static && wantsProjectCode) Link("Rebuild project code", enabled = !projectState.busy, onClick = {
-                showSession = false; design.start(module!!, launch!!, restart = true, preview = true)
+                showSession = false; design.start(launchModule!!, launch!!, restart = true, preview = true)
             })
             Link("Reconnect", enabled = !state.busy, onClick = { showSession = false; session.reconnect() })
             Link(if (state.busy) "Cancel build" else "Stop preview", enabled = state.pid != null || state.busy,

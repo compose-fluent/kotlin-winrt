@@ -52,6 +52,20 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(1, fixture.patches.get())
     }
 
+    fun testLoadedSourceReusesOnlyTheConnectedHostThatExposesItsType() = session { fixture ->
+        val unknown = fixture.root.resolve("Unknown.xaml")
+        Files.writeString(unknown, markup.replace("probe.Window", "dependency.Unknown"))
+        val service = fixture.service()
+        assertNull(service.loadedSourceLaunch(fixture.source.toString()))
+        service.reconnect(); fixture.connected(service)
+        assertEquals(fixture.module to fixture.module.hotReloadLaunches.single(),
+            service.loadedSourceLaunch(fixture.source.toString()))
+        assertNull("An indexed source does not prove the running host contains its type",
+            service.loadedSourceLaunch(unknown.toString()))
+        service.disconnect()
+        assertNull(service.loadedSourceLaunch(fixture.source.toString()))
+    }
+
     fun testFailedIdeLaunchCancelsOnlyItsOwnPendingConnection() = session { fixture ->
         val service = fixture.service(WinUIXamlHotReloadLaunchState())
         val folder = fixture.directory.parent.resolve(UUID.randomUUID().toString())

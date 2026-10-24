@@ -344,6 +344,21 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         }
     }
 
+    /** Reuse only a host that has actually exposed this component, not an arbitrary
+     * application in the workspace. A library need not have its own executable. */
+    fun loadedSourceLaunch(path: String): Pair<WinRTModuleData, WinUIXamlHotReloadLaunchData>? {
+        val current = display.value
+        if (!current.connected) return null
+        val normalized = Path.of(path).toAbsolutePath().normalize()
+        val source = sources.singleOrNull { Path.of(it.path).toAbsolutePath().normalize() == normalized } ?: return null
+        val name = source.markup.className
+        if (current.inspectionRoots.none { it.className == name } &&
+            current.inspection?.nodes?.none { it.typeName == name } != false) return null
+        val module = selectedModule ?: return null
+        val launch = selectedLaunch ?: return null
+        return module to launch
+    }
+
     /** Opening/switching a preview reuses its host; a failed launch needs an explicit retry. */
     fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
         if (display.value.busy || (selectedModule == module && selectedLaunch == launch)) return
