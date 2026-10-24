@@ -235,4 +235,8 @@ This tooling adaptation has no CsWinRT IDE transport counterpart. SDK projection
 and TimeSpan-to-Kotlin-Duration ownership stay in the existing metadata/generator
 and runtime mapping. Templates, implicit resource keys and VisualState-owned clocks
 are not guessed from a page-wide name; their realization identity needs a separate
-designer contract. This is preview playback, not keyframe source authoring.
+designer contract. The IDE keyframe editor edits uniquely identified local source
+tracks with undo: Double, Color, Point and Object keyframes, bounded KeyTime and
+attribute values. Existing spline/easing metadata is preserved. New frames use
+linear or discrete interpolation (Object uses discrete). Complex object values,
+ambiguous resource identities and template realizations remain source-only.

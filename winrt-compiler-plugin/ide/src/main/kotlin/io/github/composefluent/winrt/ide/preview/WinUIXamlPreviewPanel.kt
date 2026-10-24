@@ -212,8 +212,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     val storyboards = storyboardDocument?.storyboards.orEmpty()
     var showTimeline by remember { mutableStateOf(false) }
+    var editTimeline by remember { mutableStateOf(false) }
     var timelineEnd by remember(source) { mutableIntStateOf(10_000) }
     var storyboardId by remember(source) { mutableStateOf("") }
+    val editorStoryboardKey = remember(source, storyboardId) { storyboards.singleOrNull { it.id == storyboardId }?.key.orEmpty() }
     var animationRevision by remember(source) { mutableIntStateOf(0) }
     var animationCommand by remember(source) { mutableStateOf<WinUIXamlPreviewAnimation?>(null) }
     var animationPlaying by remember(source) { mutableStateOf(false) }
@@ -841,7 +843,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         OutlinedButton(enabled = storyboardId.isNotEmpty(), onClick = { controlAnimation("Stop") }) { Text("Stop") }
                     }
                 }
-                Text("Preview only. Stop restores base values; source XAML stays unchanged.")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Playback leaves source XAML unchanged.")
+                    Link(if (editTimeline) "Hide keyframe editor" else "Edit keyframes…", onClick = { editTimeline = !editTimeline })
+                }
+                if (editTimeline) DesignerStoryboardPanel(project, source,
+                    editorStoryboardKey, revision, animationTime())
                 (state.animationError ?: failure)?.let { Text(it) }
             }
             Divider(Orientation.Horizontal)
