@@ -85,6 +85,29 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
             appendLine("    isBindable = false,")
             appendLine("    members = listOf(")
             val convert: (String, String) -> String = { value, target -> "kotlinWinUIXamlMemberValue<$target>($value)" }
+            fun localValueSource(property: String): String? {
+                if (!development) return null
+                // XAMLC identifies DPs by their static NameProperty metadata. Keep
+                // the owner lookup here; common runtime does not discover SDK APIs.
+                val declaring = generateSequence(type) { definitions[it.baseTypeName] }.firstOrNull { candidate ->
+                    val statics = closure.resolveRuntimeClass(candidate).activation.staticInterfaces.mapNotNull { it.definitionType }
+                    (candidate.properties.filter { it.isStatic } + statics.flatMap { it.properties }).any {
+                        it.name == "${property}Property" && isXamlTypeName(it.typeName, "DependencyProperty")
+                    }
+                } ?: return null
+                val declaringOwner = xamlTypeClassId(declaring.qualifiedName).asSingleFqName().asString()
+                val sdk = framework.xamlKotlinNamespace
+                val accessor = (property + "Property").replaceFirstChar(Char::lowercase)
+                return """{ instance ->
+                    val target = instance as $sdk.DependencyObject
+                    val property = requireNotNull($declaringOwner.`$accessor`)
+                    val previous = target.readLocalValue(property)
+                    val unset = previous == $sdk.DependencyProperty.unsetValue
+                    io.github.composefluent.winrt.runtime.WinUIXamlLocalValue(
+                        clear = { target.clearValue(property) },
+                        restore = { if (unset) target.clearValue(property) else target.setValue(property, previous) })
+                }""".trimIndent()
+            }
             val inherited = definitions[type.baseTypeName]?.let { semantics.classMemberMergeDescriptor(it).mergedProperties }
                 .orEmpty().associateBy { it.propertyName }
             for (member in semantics.classMemberMergeDescriptor(type).mergedProperties.filter { it.isPublic && !it.isPrivate && it.getterTarget != null }) {
@@ -100,7 +123,8 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                     .isNullablePropertyProjection(name, definitions)
                 val kotlinType = xamlProjectedPropertySourceType(ref, specialTypes, semantics).let { if (nullable && !it.endsWith('?')) "$it?" else it }
                 appendLine(xamlPropertyRegistrationSource(owner, property, kotlinType, convert,
-                    accessorName = member.propertyName.replaceFirstChar(Char::lowercase)).prependIndent("      ") + ",")
+                    accessorName = member.propertyName.replaceFirstChar(Char::lowercase),
+                    localValueSource = localValueSource(member.propertyName)).prependIndent("      ") + ",")
             }
             if (development) {
                 val staticTypes = closure.resolveRuntimeClass(type).activation.staticInterfaces.mapNotNull { it.definitionType }
@@ -117,7 +141,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                     WinUIXamlApplicationProperty(it.name, WinRTTypeRef.fromDisplayName(it.typeName), isStatic = true)
                 })
                 xamlAttachedRegistrationSources(owner, schema, accessors, convert,
-                    accessorName = { it.replaceFirstChar(Char::lowercase) }, memberName = { "$name.$it" }).forEach {
+                    accessorName = { it.replaceFirstChar(Char::lowercase) }, memberName = { "$name.$it" }, localValueSource = ::localValueSource).forEach {
                     appendLine(it.prependIndent("      ") + ",")
                 }
             }

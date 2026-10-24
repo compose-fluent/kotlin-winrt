@@ -147,6 +147,7 @@ class XamlSemanticExportTest {
         val ns = "Microsoft.UI.Xaml.Controls"
         val target = WinRTParameterDefinition("target", "Microsoft.UI.Xaml.DependencyObject")
         val type = WinRTTypeDefinition(ns, "Layout", WinRTTypeKind.RuntimeClass, baseTypeName = "System.Object",
+            properties = listOf(WinRTPropertyDefinition("RowProperty", "Microsoft.UI.Xaml.DependencyProperty", isStatic = true)),
             methods = listOf(
                 WinRTMethodDefinition("GetRow", "Int32", listOf(target), isStatic = true),
                 WinRTMethodDefinition("SetRow", "Void", listOf(target, WinRTParameterDefinition("value", "Int32")), isStatic = true)))
@@ -159,6 +160,9 @@ class XamlSemanticExportTest {
             assertTrue(source, source.contains("`getRow`"))
             assertTrue(source, source.contains("`setRow`"))
             assertTrue(source, source.contains("isAttachable = true"))
+            assertTrue(source, source.contains("target.readLocalValue(property)"))
+            assertTrue(source, source.contains("target.clearValue(property)"))
+            assertTrue(source, source.contains("Layout.`rowProperty`"))
         } finally { root.deleteRecursively() }
     }
 

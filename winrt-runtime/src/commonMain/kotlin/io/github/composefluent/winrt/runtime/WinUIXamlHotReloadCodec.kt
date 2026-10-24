@@ -59,7 +59,7 @@ internal object WinUIXamlHotReloadCodec {
     fun writeRequest(token: String, patch: WinUIXamlHotReloadPatch?) = write() {
         string(token); writeBoolean(patch != null)
         patch?.let { string(it.className); string(it.resourcePath); string(it.expectedHash); string(it.sourceHash); writeLong(it.version)
-            writeInt(it.changes.size); it.changes.forEach { change -> string(change.element); string(change.property); string(change.literal); path(change.path) }
+            writeInt(it.changes.size); it.changes.forEach { change -> string(change.element); string(change.property); string(change.literal); path(change.path); writeBoolean(change.reset) }
             writeInt(it.resources.size); it.resources.forEach { resources ->
                 target(resources.target); string(resources.xaml)
                 writeInt(resources.expectedKeys.size); resources.expectedKeys.forEach { key -> string(key) }
@@ -101,7 +101,7 @@ internal object WinUIXamlHotReloadCodec {
         require(operation == 0 || operation == 1) { "Invalid development command." }
         val patch = if (operation == 0) null else {
             val name = string(); val path = string(); val expected = string(); val hash = string(); val version = readLong()
-            val changes = List(count(512)) { WinUIXamlHotReloadChange(string(), string(), string(), path()) }
+            val changes = List(count(512)) { WinUIXamlHotReloadChange(string(), string(), string(), path(), readBoolean()) }
             val resources = List(count(64)) {
                 val target = target(); val xaml = string(); val keys = List(count(4096)) { string() }
                 WinUIXamlHotReloadResources(target, xaml, keys, List(count(512)) {

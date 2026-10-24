@@ -85,27 +85,24 @@ internal object WinUIAuthoredTypeMetadata {
     /** Reuses generated accessors for CsWinRT's source-generated ICustomProperty path.
      * No reflection or platform-specific property discovery is required. */
     fun customProperty(source: Any, name: String): microsoft.ui.xaml.data.ICustomProperty? {
-        // Attached members belong to their declaring type, not the target's class.
-        // Reuse CSharpTypeInfoPass2's typed Get/Set delegates on both targets.
+        val member = memberDefinition(source, name) ?: return null
+        return WinRTBindableCustomProperty(
+            canRead = true, canWrite = member.set != null, name = name, type = member.type,
+            getValueCallback = { member.get(requireNotNull(it)) },
+            setValueCallback = member.set?.let { setter -> { target, value -> setter(requireNotNull(target), value) } },
+        )
+    }
+
+    internal fun memberDefinition(source: Any, name: String): WinUIXamlMemberDefinition? {
         if ('.' in name) {
             val owner = name.substringBeforeLast('.')
             val members = (accessorDefinitions[owner] ?: definitions[owner])?.members ?: return null
-            val member = (members[name] ?: members[name.substringAfterLast('.')])
-                ?.takeIf { it.isAttachable } ?: return null
-            return WinRTBindableCustomProperty(
-                canRead = true, canWrite = member.set != null, name = name, type = member.type,
-                getValueCallback = { member.get(requireNotNull(it)) },
-                setValueCallback = member.set?.let { setter -> { target, value -> setter(requireNotNull(target), value) } },
-            )
+            return (members[name] ?: members[name.substringAfterLast('.')])?.takeIf { it.isAttachable }
         }
         var definition = definitionsByType[source::class]
-        while (definition != null) {
-            val member = definition.members[name]
-            if (member != null && !member.isAttachable) return WinRTBindableCustomProperty(
-                canRead = true, canWrite = member.set != null, name = name, type = member.type,
-                getValueCallback = { member.get(requireNotNull(it)) },
-                setValueCallback = member.set?.let { setter -> { target, value -> setter(requireNotNull(target), value) } },
-            )
+        val seen = mutableSetOf<String>()
+        while (definition != null && seen.add(definition.name)) {
+            definition.members[name]?.takeIf { !it.isAttachable }?.let { return it }
             definition = definition.baseType?.let { definitionsByType[it] } ?: definitions[definition.baseName]
         }
         return null

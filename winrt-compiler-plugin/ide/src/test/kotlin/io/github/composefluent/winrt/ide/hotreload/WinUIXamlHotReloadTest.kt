@@ -22,6 +22,16 @@ class WinUIXamlHotReloadTest {
     private val source = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><StackPanel><TextBlock x:Name="Greeting" Text="Hello" Width="100"/></StackPanel></Window>"""
     private fun root(text: String = source) = WinUIXamlHotReloadRoot("probe.Window", "Window.xaml", WinUIXamlHotReloadMarkup.parse(text).hash, 0, listOf("Greeting"))
 
+    @Test fun removed_literal_properties_emit_resets_but_expressions_remain_guarded() {
+        val after = source.replace(" Width=\"100\"", "")
+        val patch = WinUIXamlHotReloadMarkup.parse(after).patch(WinUIXamlHotReloadMarkup.parse(source), root())
+        assertEquals(WinUIXamlHotReloadChange("Greeting", "Width", "", reset = true), patch.changes.single())
+        val bound = source.replace("100", "{Binding Width}")
+        assertThrows(IllegalArgumentException::class.java) {
+            WinUIXamlHotReloadMarkup.parse(after).patch(WinUIXamlHotReloadMarkup.parse(bound), root(bound))
+        }
+    }
+
     @Test fun attached_literals_use_resolved_owner_and_preserve_expression_guards() {
         val before = source.replace("Width=\"100\"", "Grid.Row=\"0\"")
         val after = before.replace("Grid.Row=\"0\"", "Grid.Row=\"2\"")
@@ -113,7 +123,7 @@ class WinUIXamlHotReloadTest {
         val before = WinUIXamlHotReloadMarkup.parse(source)
         val unsupported = listOf(
             source.replace("TextBlock", "TextBox"), source.replace("Greeting", "Renamed"),
-            source.replace("Hello", "{Binding Title}"), source.replace(" Width=\"100\"", ""),
+            source.replace("Hello", "{Binding Title}"),
             source.replace("x:Class=\"probe.Window\"", "x:Class=\"probe.Other\""),
             source.replace("<StackPanel>", "<StackPanel><TextBlock/>"), source.replace("Text=\"Hello\"", "Grid.Row=\"2\" Text=\"Hello\""),
         )

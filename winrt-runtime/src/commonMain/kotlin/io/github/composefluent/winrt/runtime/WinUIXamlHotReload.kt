@@ -226,7 +226,8 @@ internal class WinUIXamlHotReloadRegistry(
 
     private fun prepareProperty(target: Any, member: ICustomProperty, value: Any?, address: WinUIXamlHotReloadTarget): Prepared {
         val previous = member.getValue(target)
-        return Prepared({ member.setValue(target, value) }, { member.setValue(target, previous) }, {
+        val local = WinUIAuthoredTypeMetadata.memberDefinition(target, member.name)?.localValue?.invoke(target)
+        return Prepared({ member.setValue(target, value) }, { if (local != null) local.restore() else member.setValue(target, previous) }, {
             WinUIXamlHotReloadValue(address.element, member.name, member.getValue(target)?.toString().orEmpty(), address.path)
         })
     }
@@ -309,8 +310,18 @@ internal class WinUIXamlHotReloadRegistry(
                 // rather than mutate the old resource about to be detached.
                 val target = target(root, address, replacements)
                 val member = property(target, change.property)
-                val type = requireNotNull(member.type) { "${change.property} has no compiled value type." }
-                add(prepareProperty(target, member, convertWinUIXamlLiteral(type, change.literal, convert), address))
+                if (change.reset) {
+                    require(change.literal.isEmpty()) { "A property reset cannot carry a literal." }
+                    val local = requireNotNull(WinUIAuthoredTypeMetadata.memberDefinition(target, change.property)?.localValue) {
+                        "${change.property} has no compiled dependency-property reset accessor; rebuild."
+                    }.invoke(target)
+                    add(Prepared(local.clear, local.restore, {
+                        WinUIXamlHotReloadValue(address.element, member.name, member.getValue(target)?.toString().orEmpty(), address.path)
+                    }))
+                } else {
+                    val type = requireNotNull(member.type) { "${change.property} has no compiled value type." }
+                    add(prepareProperty(target, member, convertWinUIXamlLiteral(type, change.literal, convert), address))
+                }
             }
             overlays[root] = replacements
         } }

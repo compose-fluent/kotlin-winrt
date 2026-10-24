@@ -28,9 +28,15 @@ Qualified attached entries remain distinct from same-named instance properties.
 Targets are checked by those typed delegates before mutation. Setter rollback and
 future-instance replay are identical to ordinary properties. Existing resource
 consumer replacement and unnamed SDK fragments use the same attached-member lookup.
-Old binaries without these generated accessors need rebuilding once. Removing an
-attached attribute or changing an expression still requires its own reset/expression
-contract; this support does not replace bindings with local literals.
+Old binaries without these generated accessors need rebuilding once. Protocol v6
+adds removal of literal dependency-property attributes, including attached ones.
+Generated SDK delegates capture ReadLocalValue before mutation, call ClearValue to
+restore styling/default precedence, and restore the original local value on rollback
+(or clear it again if it was UnsetValue). Successful resets replay after future
+instances load their original XBF. Ordinary CLR/Kotlin properties without a DP
+accessor reject reset; removing binding/resource expressions remains unsupported.
+This SDK adaptation extends XAMLC's typed member delegates rather than adding
+reflection or another runtime property classification table.
 
 Generated application metadata supplies a factory that captures the current
 `DispatcherQueue` on the component's UI thread. Updates use `TryEnqueue`, following

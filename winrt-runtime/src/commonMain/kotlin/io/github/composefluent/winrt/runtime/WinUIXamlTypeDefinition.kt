@@ -41,6 +41,7 @@ class WinUIXamlMemberDefinition(
     val targetTypeName: String? = null,
     val targetType: KClass<*>? = null,
     val valueTypes: List<WinUIXamlValueTypeDefinition> = emptyList(),
+    val localValue: ((Any) -> WinUIXamlLocalValue)? = null,
 ) {
     init {
         require(name.isNotBlank() && typeName.isNotBlank())
@@ -123,3 +124,8 @@ fun <T : Enum<T>> registerWinUIXamlEnumType(type: KClass<T>, name: String, entri
         requireNotNull(entries.firstOrNull { it.ordinal == value }) { "Unknown $name value: $input" }
     }
 }
+
+/** SDK delegates capture local-value precedence before a development transaction.
+ * ClearValue restores styling/defaults; restoring an effective getter value would
+ * incorrectly create a local override. Generated code owns DependencyProperty ABI. */
+class WinUIXamlLocalValue(val clear: () -> Unit, val restore: () -> Unit)

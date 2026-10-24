@@ -33,6 +33,43 @@ class WinUIXamlHotReloadTest {
     }
     private fun patch(vararg changes: WinUIXamlHotReloadChange) = WinUIXamlHotReloadPatch("probe.Page", "Page.xaml", hash, next, 1, changes.toList())
 
+    @Test fun dependency_property_reset_preserves_local_precedence_on_failure_and_replays() {
+        // XAMLC supplies typed DP delegates. ClearValue, not assigning a default,
+        // restores SDK styling; the rollback captures ReadLocalValue beforehand.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        WinUIAuthoredTypeMetadata.clearForTests()
+        var local = true
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Element::class,
+            "probe.Element", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("Text", "String", String::class, { (it as Element).text },
+                    { target, value -> (target as Element).text = value as String; local = true },
+                    isDependencyProperty = true, localValue = { target ->
+                        val element = target as Element; val previous = element.text; val wasLocal = local
+                        WinUIXamlLocalValue({ element.text = "styled"; local = false },
+                            { element.text = previous; local = wasLocal })
+                    }),
+                WinUIXamlMemberDefinition("Size", "Int32", Int::class, { (it as Element).size },
+                    { target, value -> require(value != 13); (target as Element).size = value as Int }))))
+        val owner = Any(); val element = Element()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Greeting", element)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        val reset = WinUIXamlHotReloadChange("Greeting", "Text", "", reset = true)
+        val encoded = WinUIXamlHotReloadCodec.writeRequest("token", patch(reset))
+        assertEquals(patch(reset), WinUIXamlHotReloadCodec.readRequest(encoded).second)
+        var reply: WinUIXamlHotReloadReply? = null
+        registry.submit(patch(reset, WinUIXamlHotReloadChange("Greeting", "Size", "13"))) { reply = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, reply?.status)
+        assertEquals("original", element.text); assertTrue(local)
+        registry.submit(patch(reset)) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, reply?.status)
+        assertEquals("styled", element.text); assertFalse(local)
+        val laterOwner = Any(); val later = Element()
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, "Greeting", later)
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, null, null)
+        assertEquals("styled", later.text)
+    }
+
     @Test fun attached_accessors_keep_target_identity_rollback_and_replay() {
         // CSharpTypeInfoPass2 attached member delegates invoke the declaring Get/Set pair.
         val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)

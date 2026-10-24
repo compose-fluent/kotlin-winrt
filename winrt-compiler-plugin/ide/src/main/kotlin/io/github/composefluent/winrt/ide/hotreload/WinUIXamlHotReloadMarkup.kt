@@ -262,8 +262,15 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
         fun compare(old: XamlElement, next: XamlElement, target: WinUIXamlHotReloadTarget?, inTemplate: Boolean, resourceObject: Boolean = false) {
             if (old.matches(next)) return
             require(old.type == next.type && old.elementName == next.elementName) { "Changing element types or names requires rebuilding and restarting." }
-            require(next.attributes.keys.containsAll(old.attributes.keys)) { "Removing a property requires rebuilding to restore its default value." }
             val template = inTemplate || next.template
+            (old.attributes.keys - next.attributes.keys).forEach { name ->
+                require(!template) { "Template changes require rebuilding and restarting." }
+                require(name.local != "Name") { "Changing element names requires rebuilding and restarting." }
+                val property = resolvedProperty(old, name)
+                require(target != null) { "Add x:Name and rebuild before updating this element's properties." }
+                literal(old.attributes.getValue(name)) // Never discard a binding/resource expression.
+                changes += WinUIXamlHotReloadChange(target.element, property, "", target.path, reset = true)
+            }
             next.attributes.forEach { (name, value) ->
                 val before = old.attributes[name]
                 if (before == value) return@forEach

@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 5
+    const val VERSION = 6
     const val MAX_IMAGE_DIMENSION = 4096
     const val MAGIC = 0x4B585248
     const val SESSION_DIRECTORY = "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"
@@ -23,7 +23,7 @@ sealed interface WinUIXamlHotReloadStep {
 }
 data class WinUIXamlHotReloadTarget(val element: String = "", val path: List<WinUIXamlHotReloadStep> = emptyList())
 data class WinUIXamlHotReloadChange(val element: String, val property: String, val literal: String,
-    val path: List<WinUIXamlHotReloadStep> = emptyList())
+    val path: List<WinUIXamlHotReloadStep> = emptyList(), val reset: Boolean = false)
 data class WinUIXamlHotReloadResourceReference(val target: WinUIXamlHotReloadTarget, val property: String, val key: String)
 /** Read the effective value after the transaction, including style-derived values. */
 data class WinUIXamlHotReloadRead(val target: WinUIXamlHotReloadTarget, val property: String)
