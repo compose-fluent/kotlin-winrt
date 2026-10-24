@@ -119,11 +119,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var preferProjectCode by remember(projectCodeKey) { mutableStateOf(preferences.getBoolean(projectCodeKey, true)) }
     val wantsProjectCode = preferProjectCode && launches.isNotEmpty()
     val matchingProjectHost = launchModule != null && launch != null && design.usesLaunch(launchModule, launch)
-    val projectCode = wantsProjectCode && (matchingProjectHost && (projectState.connected || projectState.busy) || module?.staticPreview == null)
+    // Keep document preparation on the requested backend while its process starts.
+    // A disconnected Native session is not evidence that an SDK fallback is wanted.
+    var basicFallback by remember(module, launch, wantsProjectCode) { mutableStateOf(false) }
+    val projectCode = wantsProjectCode && !basicFallback
     val session: WinRTDevelopmentSession = if (!static) live else if (projectCode) design else sdk
     val state by session.state.collectAsState()
     val designLaunch = if (projectCode) launch else module?.staticPreview?.launch()
-    val roots = state.inspectionRoots
+    val roots = if (static && projectCode && !matchingProjectHost) emptyList() else state.inspectionRoots
     val root = if (static) roots.firstOrNull { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS } else
         remember(roots, rootKey) { selection.resolve(roots) }
     LaunchedEffect(root, static) {
@@ -148,6 +151,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 startProject = { design.ensurePreviewReady(launchModule!!, launch!!, retry = retry) },
                 awaitProject = { design.state.first { it.connected || !it.busy }.connected },
                 startBasic = {
+                    basicFallback = true
                     module.staticPreview?.launch()?.let { sdkLaunch ->
                         sdk.ensurePreviewReady(module, sdkLaunch, retry = retry)
                     }
@@ -473,7 +477,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val error = failure ?: state.inspectionError
     val missingModule = staticFile != null && (module == null || designLaunch == null)
     fun startPreview() {
-        if (static) { startupCancelled = false; startupRevision++ }
+        if (static) { basicFallback = false; startupCancelled = false; startupRevision++ }
         else live.start(module!!, launch!!, preview = false)
     }
     fun stopPreview() {
@@ -735,7 +739,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             if (!state.connected) Link(if (static) "Retry preview" else "Start application", enabled = canStart, onClick = { showSession = false; startPreview() })
             Link("Refresh", enabled = state.connected && !state.inspecting, onClick = { manualRefresh++; showSession = false })
             if (static && wantsProjectCode) Link("Rebuild project code", enabled = !projectState.busy, onClick = {
-                showSession = false; design.start(launchModule!!, launch!!, restart = true, preview = true)
+                showSession = false; basicFallback = false; startupCancelled = false
+                design.start(launchModule!!, launch!!, restart = true, preview = true)
             })
             Link("Reconnect", enabled = !state.busy, onClick = { showSession = false; session.reconnect() })
             Link(if (state.busy) "Cancel build" else "Stop preview", enabled = state.pid != null || state.busy,
