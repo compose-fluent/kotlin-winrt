@@ -367,6 +367,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         } }
     }
     val editables = editableResult.orEmpty()
+    var editStyle by remember(source, selectedPaths, recordState) { mutableStateOf(false) }
+    val styleSelection by produceState<DesignerSelection?>(null, editables, revision) {
+        value = null
+        val selected = editables.singleOrNull() ?: return@produceState
+        value = withContext(Dispatchers.IO) { ReadAction.compute<DesignerSelection?, RuntimeException> {
+            DesignerStyleEditing.selection(selected)
+        } }
+    }
     val editable = editables.lastOrNull()?.let { primary ->
         primary.copy(properties = primary.properties.filter { property -> editables.all { target ->
             target.properties.any { it.name == property.name && it.writable && !it.elementValue }
@@ -576,13 +584,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     Column(Modifier.fillMaxSize().padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(if (recordState) "Properties · recording ${selectedStates.values.singleOrNull() ?: "select one state"}" else "Properties")
+                        if (editStyle) {
+                            Link("Back to element properties", onClick = { editStyle = false })
+                            Text("Editing a shared style affects all its consumers. Local values still take precedence.")
+                        } else if (styleSelection != null) Link("Edit applied style…", onClick = { editStyle = true })
                         Text("Filter properties")
                         TextField(propertyFilter, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Filter properties" })
                         val propertyScroll = rememberScrollState()
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                         Column(Modifier.fillMaxSize().padding(end = 12.dp).verticalScroll(propertyScroll),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (propertyFilter.text.isEmpty()) DesignerStructurePanel(editables.singleOrNull(),
+                        if (!editStyle && propertyFilter.text.isEmpty()) DesignerStructurePanel(editables.singleOrNull(),
                             { axis, index, value -> structureEdit { DesignerStructureEditing.definition(project, it, axis, index, value) } },
                             ::reorderSelection, { container -> structureEdit { target ->
                                 structureNodesBefore = view?.nodes
@@ -590,7 +602,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                                 pendingStructureSelection = com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(moved)
                             } })
                         if (editableResult == null) Text("Loading editable properties…")
-                        else DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
+                        else if (editStyle) {
+                            if (styleSelection == null) Text("The applied style is unavailable or changed. Return to element properties and select it again.")
+                            else DesignerProperties(styleSelection, propertyFilter.text.toString()) { changes, title ->
+                                styleSelection?.let { applyBatch(listOf(it to changes), "$title in style") }
+                            }
+                        } else DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
                         Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath) Text("Reading selection…")
                         else androidx.compose.foundation.text.selection.SelectionContainer {

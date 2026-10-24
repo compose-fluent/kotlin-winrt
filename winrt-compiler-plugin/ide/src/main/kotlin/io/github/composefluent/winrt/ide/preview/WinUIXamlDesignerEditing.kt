@@ -18,7 +18,7 @@ internal data class DesignerProperty(val name: String, val type: String, val val
     val choices: List<String>, val writable: Boolean, val elementValue: Boolean, val dependencyProperty: Boolean = false)
 internal data class DesignerSelection(val pointer: SmartPsiElementPointer<XmlTag>, val text: String,
     val properties: List<DesignerProperty>, val bounds: WinUIXamlVisualBounds, val parent: String,
-    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList(), val structure: DesignerStructure? = null, val state: DesignerStateEdit? = null)
+    val attributes: Map<String, String>, val resourceKeys: List<String> = emptyList(), val structure: DesignerStructure? = null, val state: DesignerStateEdit? = null, val style: DesignerStyleEdit? = null)
 internal data class DesignerTransform(val x: Double, val y: Double, val width: Double = 0.0, val height: Double = 0.0,
     val resize: Boolean = false)
 
@@ -71,14 +71,16 @@ internal object WinUIXamlDesignerEditing {
                     value?.let { validate(property, it)?.let { message -> error(message) } }
                 }
                 selection.state?.let { DesignerStateEditing.validate(selection, changes) }
+                selection.style?.let { DesignerStyleEditing.validate(selection, changes) }
                 tag to changes
             }
             validated.zip(edits).forEach { (validatedEdit, edit) ->
                 val (tag, changes) = validatedEdit
-                if (edit.first.state != null) DesignerStateEditing.write(edit.first, changes)
+                if (edit.first.style != null) DesignerStyleEditing.write(edit.first, changes)
+                else if (edit.first.state != null) DesignerStateEditing.write(edit.first, changes)
                 else changes.forEach { (name, value) -> tag.setAttribute(name, value) }
             }
-            validated.map { it.first.containingFile }.distinct().forEach { file ->
+            (validated.map { it.first.containingFile } + edits.mapNotNull { it.first.style?.pointer?.element?.containingFile }).distinct().forEach { file ->
                 documents.getDocument(file)?.let(documents::doPostponedOperationsAndUnblockDocument)
             }
         }

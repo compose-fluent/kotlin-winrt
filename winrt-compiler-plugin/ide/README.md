@@ -562,8 +562,12 @@ gestures do not replace bindings/resources or property elements. Ambiguous/templ
 nodes remain inspection-only, and stale source edits are rejected instead of overwriting
 concurrent changes. Structure commands edit Grid definitions, reorder siblings and move
 source elements into compatible containers. Marquee selection and XAML copy/cut/paste
-use the same source mapping and undo history. Full ControlTemplate, Style and VisualState
-authoring is not implemented; resource and property editors are a narrower surface.
+use the same source mapping and undo history. The inspector's **Edit applied style…** edits literal dependency-property setters in
+an inline Style or a uniquely resolved explicit style resource, including Style.Setters.
+Edits preserve consumer-local values, support Reset and undo, and use the style's
+resource scope. Complex/duplicate setters and stale documents are protected.
+Implicit style lookup, style creation/extraction, ControlTemplate editing and
+storyboard timeline authoring remain separate from this setter editing surface.
 
 Double-click a rendered element to open its XAML source. Moving the source caret
 into a uniquely identifiable element selects its visual bounds. Matching prefers
