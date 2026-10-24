@@ -163,10 +163,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     Files.createDirectories(directory!!)
                     withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString()) }
                 }
+                if (preview) log.info("XAML preview sources ready: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                 val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage"))) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
                 val inputs = cache?.let { runCatching { it.inputs() }.getOrNull() }
+                if (preview) log.info("XAML preview inputs checked: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                 // The SDK designer stages project assets after the host connects.
                 // Record its deployment only after that document actually renders.
                 if (sdkPreview && cache != null && inputs != null) withCurrent(request) {
@@ -175,6 +177,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 var reused = false
                 if (cache != null && inputs != null && !restart && cache.reusable(inputs)) {
                     try {
+                        if (preview) log.info("XAML preview cache validated: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                         val process = ProcessBuilder(launch.previewExecutable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
                             .directory(cache.deployment.toFile())
                             .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
