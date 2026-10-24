@@ -3,6 +3,29 @@ package io.github.composefluent.winrt.runtime
 import kotlin.test.*
 
 class WinUIXamlVisualInspectorTest {
+    @Test fun canvas_capture_does_not_read_properties_until_requested() {
+        // Inspector tooling contract: SDK rendering/visual-tree ownership stays in
+        // the generated adapter; ICustomProperty getters run only on demand.
+        var reads = 0
+        val inspector = WinUIXamlVisualInspector({ it }, { emptyList() }, { _, _ ->
+            WinUIXamlVisualNode(emptyList(), "Grid", "Root", WinUIXamlVisualBounds(0.0, 0.0, 1.0, 1.0))
+        }, { reads++; listOf(WinUIXamlVisualProperty("Text", "current")) }, { _, _, done ->
+            done(Result.success(WinUIXamlVisualImage(1, 1, ByteArray(4))))
+        }, { _, _ -> })
+        val request = WinUIXamlInspectionRequest("probe.Page", "", readProperties = false)
+        assertEquals(request, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", request)).inspection)
+        val owner = Any()
+        var snapshot: WinUIXamlVisualSnapshot? = null
+        inspector.inspect(owner, request) { snapshot = it.getOrThrow() }
+        assertEquals(0, reads)
+        assertNotNull(snapshot!!.image)
+        assertEquals(1, snapshot!!.nodes.size)
+        assertTrue(snapshot!!.properties.isEmpty())
+        inspector.inspect(owner, request.copy(capture = false, readProperties = true)) { snapshot = it.getOrThrow() }
+        assertEquals(1, reads)
+        assertEquals("current", snapshot!!.properties.single().value)
+        assertNull(snapshot!!.image)
+    }
     @Test fun capture_density_preserves_layout_and_bounds_physical_memory() {
         assertEquals(800 to 600, winUIXamlCaptureSize(800.0, 600.0, 1.0, 1.0))
         assertEquals(1600 to 1200, winUIXamlCaptureSize(800.0, 600.0, 1.0, 2.0))

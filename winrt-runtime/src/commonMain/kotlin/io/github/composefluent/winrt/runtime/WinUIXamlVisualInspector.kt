@@ -57,7 +57,7 @@ class WinUIXamlVisualInspector(
             }
             visit(root, emptyList(), emptyList())
             val values = requireNotNull(selected) { "The selected visual no longer exists. Refresh the tree." }
-            WinUIXamlVisualSnapshot(nodes, properties(values).take(64).map { it.copy(value = it.value.take(4096)) }, image, clock())
+            WinUIXamlVisualSnapshot(nodes, if (request.readProperties) properties(values).take(64).map { it.copy(value = it.value.take(4096)) } else emptyList(), image, clock())
         }
         prepared.fold({ root ->
             // RenderTargetBitmap completes on the owner's UI dispatcher after layout.

@@ -41,7 +41,7 @@ data class WinUIXamlHotReloadState(val message: String = "Start a JVM applicatio
     val inspection: WinUIXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
     val inspectionRoots: List<WinUIXamlHotReloadRoot> = emptyList(),
     val startupMillis: Long? = null, val renderMillis: Long? = null, val reusedBuild: Boolean = false,
-    val inspectionPath: List<Int>? = null, val animationError: String? = null)
+    val inspectionPath: List<Int>? = null, val animationError: String? = null, val inspectionPropertiesRead: Boolean = false)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
@@ -659,7 +659,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(image = it.image ?: image) } ?: display.value.inspection,
                                 message = reply.message, roots = reply.roots.ifEmpty { display.value.roots }, inspectionError = null,
                                 animationError = if (next.previewMarkup.isNotEmpty()) null else display.value.animationError,
-                                inspectionPath = next.selectedPath,
+                                inspectionPath = next.selectedPath, inspectionPropertiesRead = next.readProperties,
                                 renderMillis = (System.nanoTime() - renderStarted) / 1_000_000)
                             if (next.previewMarkup.isNotEmpty()) {
                                 log.info("XAML preview rendered: ${display.value.renderMillis}ms")

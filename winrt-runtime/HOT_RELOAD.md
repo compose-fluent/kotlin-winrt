@@ -275,3 +275,11 @@ therefore cannot leave the invalid tree attached for another layout pass. The
 IDE keeps the last successful image with an error status; correcting the markup
 renders in the same host without reconnecting. This does not suppress application
 unhandled exceptions or change live application reload transactions.
+
+Protocol v9 separates visual capture from effective-property reads. The static
+canvas requests its image and SDK visual paths without invoking property getters
+while the inspector is closed. Opening the inspector requests current values for
+the selected realization; ordinary live inspection keeps its existing defaults.
+The shared request flag is encoded on both JVM and Native transports. This is a
+designer scheduling decision, not a change to generated ICustomProperty ownership
+or the live reload transaction.

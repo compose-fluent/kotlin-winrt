@@ -341,24 +341,24 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     storyboards.any { it.owner == command.owner && it.key == command.key }
                 }
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
-                    markup, w, h, theme, captureScale, validAnimation)
+                    markup, w, h, theme, captureScale, validAnimation, readProperties = showInspector || treeOnly)
                 val key = Triple(request, state.pid, Triple(manualRefresh, resourceRevision, animationRevision))
                 // Metadata notifications can prepare the same document again. Keep
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
                 if (submitted != key) {
                     val previous = submitted
                     val clockOnly = previous != null && previous.second == state.pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
-                        previous.first.copy(animation = request.animation) == request
+                        previous.first.copy(animation = request.animation, readProperties = request.readProperties) == request
                     session.inspect(if (clockOnly) request.copy(previewMarkup = "", selectedPath = selectedPath) else request)
                     submitted = key
                 }
             }
         }
     }
-    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes, captureScale) {
-        if (root != null && state.connected && (!static || prepared != null && state.inspection != null && state.inspectionPath != selectedPath)) {
+    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes, captureScale, showInspector, state.inspectionPropertiesRead) {
+        if (root != null && state.connected && (!static || prepared != null && state.inspection != null && (state.inspectionPath != selectedPath || showInspector && !state.inspectionPropertiesRead))) {
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
-                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static, renderScale = captureScale))
+                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static, renderScale = captureScale, readProperties = !static || showInspector || treeOnly))
         }
     }
     LaunchedEffect(root, state.connected, static, automatic, selectedPath, instance, treeOnly, captureScale) {
@@ -367,11 +367,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly, renderScale = captureScale))
         }
     }
-    LaunchedEffect(animationPlaying, root, state.connected, selectedPath, captureScale) {
+    LaunchedEffect(animationPlaying, root, state.connected, selectedPath, captureScale, showInspector) {
         if (static && animationPlaying && state.connected && root != null) while (true) {
             delay(100)
             if (!session.state.value.inspecting) session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
-                selectedPath = selectedPath, renderScale = captureScale))
+                selectedPath = selectedPath, renderScale = captureScale, readProperties = showInspector || treeOnly))
         }
     }
     LaunchedEffect(state.inspection?.clock, state.inspecting) {

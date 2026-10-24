@@ -86,6 +86,7 @@ internal object WinUIXamlHotReloadCodec {
         string(request.previewMarkup); writeInt(request.width); writeInt(request.height); string(request.theme); writeDouble(request.renderScale)
         writeBoolean(request.animation != null)
         request.animation?.let { it.validate(); string(it.owner); string(it.key); writeInt(it.positionMillis); string(it.action) }
+        writeBoolean(request.readProperties)
     }
     fun readRequest(frame: ByteArray): Pair<String, WinUIXamlHotReloadPatch?> = readCommand(frame).let {
         require(it.inspection == null) { "Use the visual inspection command reader." }; it.token to it.patch
@@ -99,7 +100,7 @@ internal object WinUIXamlHotReloadCodec {
             val markup = string(); val width = count(4096); val height = count(4096); val theme = string(); val scale = readDouble()
             require(scale.isFinite() && scale in 0.125..32.0)
             val animation = if (readBoolean()) WinUIXamlPreviewAnimation(string(), string(), count(86_400_000), string()).also { it.validate() } else null
-            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale, animation))
+            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale, animation, readBoolean()))
         }
         require(operation == 0 || operation == 1) { "Invalid development command." }
         val patch = if (operation == 0) null else {

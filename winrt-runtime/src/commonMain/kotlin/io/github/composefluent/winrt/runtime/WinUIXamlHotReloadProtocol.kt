@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 8
+    const val VERSION = 9
     const val MAX_IMAGE_DIMENSION = 4096
     const val MAGIC = 0x4B585248
     const val SESSION_DIRECTORY = "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"
@@ -55,7 +55,7 @@ data class WinUIXamlHotReloadReply(val status: Int, val message: String, val roo
 /** Visual paths use the SDK visual tree, including control-template children. */
 data class WinUIXamlInspectionRequest(val className: String, val resourcePath: String, val instance: Int = 0,
     val selectedPath: List<Int> = emptyList(), val capture: Boolean = true,
-    val previewMarkup: String = "", val width: Int = 800, val height: Int = 600, val theme: String = "Default", val renderScale: Double = 1.0, val animation: WinUIXamlPreviewAnimation? = null)
+    val previewMarkup: String = "", val width: Int = 800, val height: Int = 600, val theme: String = "Default", val renderScale: Double = 1.0, val animation: WinUIXamlPreviewAnimation? = null, val readProperties: Boolean = true)
 /** Preview-only SDK clock command. Resource owner is an exact name in the root namescope. */
 data class WinUIXamlPreviewAnimation(val owner: String, val key: String, val positionMillis: Int = 0, val action: String = "Seek") {
     fun validate() {
