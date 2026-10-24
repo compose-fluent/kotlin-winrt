@@ -73,6 +73,10 @@ internal object WinUIAuthoredTypeMetadata {
         types.putIfAbsent(name, Type(type, name, baseName))
     }
 
+    /** Exact generated XAML identity; development accessors alone do not define a type. */
+    fun registeredTypeName(source: Any): String? = definitionsByType[source::class]
+        ?.takeIf { definitions[it.name]?.type == source::class }?.name
+
     fun clearForTests() {
         types.clear(); definitions.clear(); definitionsByType.clear(); valueTypeDefinitions.clear(); enumTypes.clear()
         projectedDefinitions.clear(); accessorDefinitions.clear()

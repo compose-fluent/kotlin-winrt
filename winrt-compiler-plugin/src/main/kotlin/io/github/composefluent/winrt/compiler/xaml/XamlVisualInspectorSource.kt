@@ -160,7 +160,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 windows.foundation.Rect(0f, 0f, layoutSize.width, layoutSize.height))
               WinUIXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
             }.getOrNull() } ?: WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0)
-            val type = (value as IWinRTObject).nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
+            val type = winUIXamlInspectionTypeName(value) ?: (value as IWinRTObject).nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
             WinUIXamlVisualNode(emptyList(), type, element?.name.orEmpty(), bounds)
           },
           properties = { value ->

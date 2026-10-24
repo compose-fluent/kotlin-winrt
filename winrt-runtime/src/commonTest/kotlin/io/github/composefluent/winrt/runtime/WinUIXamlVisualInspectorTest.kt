@@ -21,6 +21,20 @@ class WinUIXamlVisualInspectorTest {
     private class Visual(val name: String, val children: List<Visual> = emptyList())
     private open class PropertyBase
     private class PropertyControl : PropertyBase()
+    @Test fun inspection_preserves_exact_registered_dependency_type_identity() {
+        // CsWinRT WindowsRuntimeComWrappers uses exact managed type metadata;
+        // generated XamlUserType supplies the qualified name for dependency controls.
+        try {
+            WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+                PropertyBase::class, "Microsoft.UI.Xaml.Controls.UserControl", "System.Object"))
+            WinUIAuthoredTypeMetadata.registerDefinition(WinUIXamlTypeDefinition(
+                PropertyControl::class, "dependency.controls.GreetingControl",
+                "Microsoft.UI.Xaml.Controls.UserControl", baseType = PropertyBase::class))
+            assertEquals("dependency.controls.GreetingControl", winUIXamlInspectionTypeName(PropertyControl()))
+            assertNull(winUIXamlInspectionTypeName(PropertyBase()))
+            assertNull(winUIXamlInspectionTypeName(Any()))
+        } finally { WinUIAuthoredTypeMetadata.clearForTests() }
+    }
     @Test fun control_properties_are_kept_before_the_inherited_inspection_limit() {
         // CsWinRT's source-generated ICustomProperty ownership remains on the
         // declaring type; inspect the derived control before its base UI surface.

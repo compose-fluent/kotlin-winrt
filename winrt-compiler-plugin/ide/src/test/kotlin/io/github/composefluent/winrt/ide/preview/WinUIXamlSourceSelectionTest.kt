@@ -58,4 +58,29 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertEquals(nodes[2], WinUIXamlSourceSelection.node(tags[1], nodes))
         assertNull(WinUIXamlSourceSelection.node(tags[1], nodes + node(listOf(3), "Button")))
     }
+    fun testDependencyInstanceScopesRepeatedNamesAndResolvesAuthoredRoot() {
+        val file = myFixture.configureByText("GreetingControl.xaml", """<UserControl
+            xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="dependency.GreetingControl">
+            <TextBlock x:Name="Caption"/>
+        </UserControl>""") as XmlFile
+        val first = node(listOf(0), "UserControl").copy(typeName = "dependency.GreetingControl")
+        val second = first.copy(path = listOf(1))
+        val nodes = listOf(node(emptyList(), "Grid"), first, node(listOf(0, 0), "TextBlock", "Caption"),
+            second, node(listOf(1, 0), "TextBlock", "Caption"))
+        assertSame(file.rootTag, WinUIXamlSourceSelection.tag(file, second, nodes, listOf(1)))
+        assertSame(file.rootTag!!.subTags.single(), WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, listOf(1)))
+        assertNull(WinUIXamlSourceSelection.tag(file, nodes[2], nodes, listOf(1)))
+    }
+
+    fun testSameShortNameInDifferentDependenciesDoesNotSelectTheWrongControl() {
+        val file = xml("""<a:Card xmlns:a="using:one.controls"/><b:Card xmlns:b="using:two.controls"/>""")
+        val first = node(listOf(0), "Card").copy(typeName = "one.controls.Card")
+        val second = first.copy(path = listOf(1), typeName = "two.controls.Card")
+        val nodes = listOf(node(emptyList(), "Grid"), first, second)
+        assertEquals(first, WinUIXamlSourceSelection.node(file.rootTag!!.subTags[0], nodes))
+        assertEquals(second, WinUIXamlSourceSelection.node(file.rootTag!!.subTags[1], nodes))
+        assertNull(WinUIXamlSourceSelection.node(file.rootTag!!.subTags[0], listOf(nodes[0], second)))
+    }
+
 }

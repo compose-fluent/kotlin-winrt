@@ -344,6 +344,18 @@ class WinUIXamlHotReloadTest {
         }
     }
 
+    @Test fun real_native_host_reports_dependency_control_type_identity() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue(directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "First" in it.elements }
+            val reply = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, capture = false))
+            assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+            assertTrue(reply.inspection!!.nodes.joinToString { it.typeName },
+                reply.inspection!!.nodes.any { it.typeName == "sample.controls.GreetingControl" })
+        }
+    }
+
     @Test fun real_native_host_updates_attached_layout_without_replacing_the_control() {
         val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
         assumeTrue(directory != null)

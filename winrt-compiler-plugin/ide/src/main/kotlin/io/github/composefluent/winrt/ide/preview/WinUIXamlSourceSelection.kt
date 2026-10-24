@@ -15,10 +15,22 @@ internal object WinUIXamlSourceSelection {
         it.localName == "Name" && (it.namespace.isEmpty() || it.namespace == "http://schemas.microsoft.com/winfx/2006/xaml")
     }?.value?.takeIf(String::isNotBlank)
 
+    private fun matchesType(tag: XmlTag, node: WinUIXamlVisualNode): Boolean {
+        val framework = if (node.typeName.startsWith("Windows.UI.Xaml."))
+            io.github.composefluent.winrt.runtime.XamlFramework.UWP else io.github.composefluent.winrt.runtime.XamlFramework.WinUI
+        val namespaces = io.github.composefluent.winrt.metadata.WinUIXamlNamespaces.namespaces(tag.namespace, framework)
+        return if (namespaces.isEmpty()) false
+        else namespaces.any { node.typeName == "$it.${tag.localName}" }
+    }
+
     fun node(tag: XmlTag, nodes: List<WinUIXamlVisualNode>): WinUIXamlVisualNode? {
         if (tag.inTemplate()) return null
+        val className = tag.getAttributeValue("Class", "http://schemas.microsoft.com/winfx/2006/xaml")
+        if (tag.parentTag == null && !className.isNullOrBlank()) {
+            nodes.singleOrNull { it.typeName == className }?.let { return it }
+        }
         val name = tag.xamlName()
-        if (name != null) return nodes.singleOrNull { it.name == name }
+        if (name != null) return nodes.singleOrNull { it.name == name && matchesType(tag, it) }
         val type = tag.localName
         if ('.' in type) return null
         // A direct authored child is distinct from same-type template descendants.
@@ -26,7 +38,7 @@ internal object WinUIXamlSourceSelection {
         val sourceParent = tag.parentTag
         if (sourceParent != null && sourceParent.subTags.count { it.localName == type } == 1) {
             node(sourceParent, nodes)?.let { visualParent ->
-                nodes.singleOrNull { it.typeName.substringAfterLast('.') == type &&
+                nodes.singleOrNull { matchesType(tag, it) &&
                     it.path.dropLast(1) == visualParent.path && it.path.size == visualParent.path.size + 1 }
                     ?.let { return it }
             }
@@ -40,17 +52,19 @@ internal object WinUIXamlSourceSelection {
             }.filter { '.' !in it.localName && !it.inTemplate() }
             val visualChildren = nodes.filter { it.path.dropLast(1) == visualParent.path && it.path.size == visualParent.path.size + 1 }
                 .sortedBy { it.path.last() }
-            if (sourceChildren.map { it.localName } == visualChildren.map { it.typeName.substringAfterLast('.') }) {
+            if (sourceChildren.size == visualChildren.size && sourceChildren.zip(visualChildren).all { (source, visual) -> matchesType(source, visual) }) {
                 sourceChildren.indexOf(tag).takeIf { it >= 0 }?.let { return visualChildren[it] }
             }
         }
         val parentName = generateSequence(tag.parentTag) { it.parentTag }.firstNotNullOfOrNull { it.xamlName() }
         val parent = parentName?.let { value -> nodes.singleOrNull { it.name == value } } ?: if (parentName != null) return null else null
-        return nodes.filter { it.typeName.substringAfterLast('.') == type &&
+        return nodes.filter { matchesType(tag, it) &&
             (parent == null || it.path.size > parent.path.size && it.path.take(parent.path.size) == parent.path) }.singleOrNull()
     }
 
-    fun tag(file: XmlFile, selected: WinUIXamlVisualNode, nodes: List<WinUIXamlVisualNode>, component: List<Int>): XmlTag? {
+    fun tag(file: XmlFile, selected: WinUIXamlVisualNode, allNodes: List<WinUIXamlVisualNode>, component: List<Int>): XmlTag? {
+        if (selected.path.take(component.size) != component) return null
+        val nodes = allNodes.filter { it.path.size >= component.size && it.path.take(component.size) == component }
         val tags = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filterNot { it.inTemplate() }
         tags.filter { node(it, nodes) == selected }.singleOrNull()?.let { return it }
         val ancestors = nodes.filter { it.path.size in component.size..selected.path.size &&

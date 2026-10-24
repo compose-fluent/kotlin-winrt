@@ -47,6 +47,12 @@ class WinUIXamlVisualInspector(
     }
 }
 
+/** Preserve the generated type identity of a composed Kotlin control. Like CsWinRT's
+ * WindowsRuntimeComWrappers, use the managed instance's exact type metadata rather
+ * than treating the native base object's runtime class name as the derived type.
+ * Unknown SDK wrappers retain the native runtime class name fallback in the adapter. */
+fun winUIXamlInspectionTypeName(value: Any): String? = WinUIAuthoredTypeMetadata.registeredTypeName(value)
+
 /** Read generated ICustomProperty accessors; inspect failures stay local to a property. */
 fun winUIXamlInspectionProperties(value: Any): List<WinUIXamlVisualProperty> =
     WinUIAuthoredTypeMetadata.customProperties(value).take(64).map { member ->
