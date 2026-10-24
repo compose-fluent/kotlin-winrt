@@ -84,6 +84,8 @@ internal object WinUIXamlHotReloadCodec {
         writeInt(request.selectedPath.size); request.selectedPath.forEach { writeInt(it) }; writeBoolean(request.capture)
         require(request.renderScale.isFinite() && request.renderScale in 0.125..32.0)
         string(request.previewMarkup); writeInt(request.width); writeInt(request.height); string(request.theme); writeDouble(request.renderScale)
+        writeBoolean(request.animation != null)
+        request.animation?.let { it.validate(); string(it.owner); string(it.key); writeInt(it.positionMillis); string(it.action) }
     }
     fun readRequest(frame: ByteArray): Pair<String, WinUIXamlHotReloadPatch?> = readCommand(frame).let {
         require(it.inspection == null) { "Use the visual inspection command reader." }; it.token to it.patch
@@ -96,7 +98,8 @@ internal object WinUIXamlHotReloadCodec {
             val path = List(count(64)) { count(2048) }; val capture = readBoolean()
             val markup = string(); val width = count(4096); val height = count(4096); val theme = string(); val scale = readDouble()
             require(scale.isFinite() && scale in 0.125..32.0)
-            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale))
+            val animation = if (readBoolean()) WinUIXamlPreviewAnimation(string(), string(), count(86_400_000), string()).also { it.validate() } else null
+            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale, animation))
         }
         require(operation == 0 || operation == 1) { "Invalid development command." }
         val patch = if (operation == 0) null else {
@@ -144,6 +147,8 @@ internal object WinUIXamlHotReloadCodec {
                 require(image.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.pixels.size == 4 * image.width * image.height)
                 writeInt(image.width); writeInt(image.height); write(image.pixels)
             }
+            writeBoolean(view.clock != null)
+            view.clock?.let { require(it.positionMillis in 0..86_400_000); writeInt(it.positionMillis); writeBoolean(it.playing) }
         }
     }
     fun readReply(frame: ByteArray): WinUIXamlHotReloadReply = read(frame) {
@@ -163,7 +168,7 @@ internal object WinUIXamlHotReloadCodec {
                 val width = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); val height = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); require(width > 0 && height > 0)
                 WinUIXamlVisualImage(width, height, ByteArray(4 * width * height).also(::readFully))
             }
-            WinUIXamlVisualSnapshot(nodes, properties, image)
+            WinUIXamlVisualSnapshot(nodes, properties, image, if (readBoolean()) WinUIXamlPreviewClock(count(86_400_000), readBoolean()) else null)
         }
         WinUIXamlHotReloadReply(status, message, roots, values, inspection)
     }

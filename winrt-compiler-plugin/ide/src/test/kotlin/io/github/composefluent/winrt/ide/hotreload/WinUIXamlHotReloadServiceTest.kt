@@ -180,6 +180,32 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(0, fixture.patches.get())
     }
 
+    fun testSelectionCannotDiscardPendingClockCommandAndClockFailureKeepsTheCanvas() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+        fixture.await("Capture reached peer", entered)
+        val clock = WinUIXamlPreviewAnimation("", "Motion", 2000)
+        try {
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", animation = clock))
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0), capture = false))
+        } finally { fixture.beforeInspection.set(null); release.countDown() }
+        PlatformTestUtil.waitWithEventsDispatching("Pending clock completes", { fixture.inspections.size == 2 && !service.state.value.inspecting }, 10)
+        assertEquals(clock, fixture.inspections.last().animation)
+        assertTrue(fixture.inspections.last().capture)
+        val previous = service.state.value.inspection
+        fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Missing storyboard"))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", animation = clock))
+        PlatformTestUtil.waitWithEventsDispatching("Clock failure displayed", { service.state.value.animationError != null && !service.state.value.inspecting }, 10)
+        assertEquals("Missing storyboard", service.state.value.animationError)
+        assertSame(previous, service.state.value.inspection)
+        assertNull(service.state.value.inspectionError)
+        fixture.inspectionReply.set(null)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", animation = clock))
+        PlatformTestUtil.waitWithEventsDispatching("Clock retry recovers", { service.state.value.animationError == null && !service.state.value.inspecting }, 10)
+    }
+
     fun testDisconnectClosesAnInspectionSocketAndDiscardsItsLateResult() = session { fixture ->
         val service = fixture.service(); service.reconnect(); fixture.connected(service)
         val entered = CountDownLatch(1); val closed = CountDownLatch(1)

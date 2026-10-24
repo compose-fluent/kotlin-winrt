@@ -18,6 +18,31 @@ class WinUIXamlVisualInspectorTest {
         assertEquals(1600, decoded.width)
         assertContentEquals(pixels, decoded.pixels)
     }
+    @Test fun storyboard_commands_are_bounded_and_confined_to_preview_before_capture() {
+        // SDK Storyboard.Begin/Pause/SeekAlignedToLastTick stays in generated adaptation;
+        // common runtime only validates and dispatches, on JVM and mingwX64.
+        val animation = WinUIXamlPreviewAnimation("Panel", "Motion", 1500)
+        val request = WinUIXamlInspectionRequest(WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "", animation = animation)
+        assertEquals(request, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", request)).inspection)
+        assertFailsWith<IllegalArgumentException> { animation.copy(positionMillis = -1).validate() }
+        assertFailsWith<IllegalArgumentException> { animation.copy(action = "Execute").validate() }
+        val calls = mutableListOf<String>()
+        val inspector = WinUIXamlVisualInspector({ it }, { emptyList() }, { _, _ ->
+            WinUIXamlVisualNode(emptyList(), "Grid", "", WinUIXamlVisualBounds(0.0, 0.0, 1.0, 1.0))
+        }, { emptyList() }, { _, _, done -> calls += "capture"; done(Result.success(WinUIXamlVisualImage(1, 1, ByteArray(4)))) },
+            { _, _ -> calls += "preview" }, clock = { WinUIXamlPreviewClock(1500, false) }, animate = { _, command -> assertEquals(animation, command); calls += "seek" })
+        var result: Result<WinUIXamlVisualSnapshot>? = null
+        inspector.inspect(Any(), request.copy(previewMarkup = "<Grid/>")) { result = it }
+        assertTrue(result!!.isSuccess)
+        assertEquals(WinUIXamlPreviewClock(1500, false), result!!.getOrThrow().clock)
+        val reply = WinUIXamlHotReloadReply(0, "", inspection = result!!.getOrThrow())
+        assertEquals(reply.inspection!!.clock, WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(reply)).inspection!!.clock)
+        assertEquals(listOf("preview", "seek", "capture"), calls)
+        calls.clear()
+        inspector.inspect(Any(), request.copy(className = "live.Page")) { result = it }
+        assertTrue(result!!.isFailure)
+        assertTrue(calls.isEmpty())
+    }
     private class Visual(val name: String, val children: List<Visual> = emptyList())
     private open class PropertyBase
     private class PropertyControl : PropertyBase()

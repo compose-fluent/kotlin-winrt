@@ -219,3 +219,20 @@ CsWinRT has no IDE socket/session counterpart. The Windows transport is a toolin
 adaptation; projection ownership, custom-property accessors, conversion and UI
 dispatch remain in their existing CsWinRT-aligned owners. This does not provide
 Kotlin code replacement or new bindings/connections.
+
+## Storyboard preview clocks
+
+Protocol v7 adds isolated-designer clock commands for explicitly keyed Storyboard
+resources on the preview root or an unambiguous named FrameworkElement. The
+compiler emits SDK Begin/Pause/SeekAlignedToLastTick/Resume/Stop calls through the
+normal generated projection (both WinUI and UWP). The runtime validates bounded
+commands and rejects them for live application components. It does not implement
+animation interpolation. The SDK retains easing, keyframes and dependent-animation
+rules. Seeking reuses the current visual tree; replacing the design document stops
+its old clock. Capture requests never advance or reset the clock themselves.
+
+This tooling adaptation has no CsWinRT IDE transport counterpart. SDK projection
+and TimeSpan-to-Kotlin-Duration ownership stay in the existing metadata/generator
+and runtime mapping. Templates, implicit resource keys and VisualState-owned clocks
+are not guessed from a page-wide name; their realization identity needs a separate
+designer contract. This is preview playback, not keyframe source authoring.

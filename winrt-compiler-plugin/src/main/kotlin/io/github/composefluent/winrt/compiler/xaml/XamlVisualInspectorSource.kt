@@ -149,7 +149,12 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
         ${if (framework == XamlFramework.UWP) "import windows.applicationmodel.activation.LaunchActivatedEventArgs" else ""}
         import ${framework.xamlKotlinNamespace}.media.VisualTreeHelper
         import ${framework.xamlKotlinNamespace}.media.imaging.RenderTargetBitmap
-        internal fun $name(): WinUIXamlVisualInspector = WinUIXamlVisualInspector(
+        import ${framework.xamlKotlinNamespace}.media.animation.Storyboard
+        import kotlin.time.Duration.Companion.milliseconds
+        internal fun $name(): WinUIXamlVisualInspector {
+          var activeStoryboard: Storyboard? = null
+          var playing = false
+          return WinUIXamlVisualInspector(
           visualRoot = { owner -> if (owner is Window) owner.content else owner },
           children = { value ->
             val element = value.asWinRT<DependencyObject>()
@@ -226,6 +231,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           },
           preview = { owner, request ->
             val window = owner.asWinRT<Window>()
+            activeStoryboard?.stop(); activeStoryboard = null; playing = false
             var stage = "load the XAML"
             try {
               val element = requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(request.previewMarkup)).asWinRT<FrameworkElement>()
@@ -249,7 +255,31 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               element.updateLayout()
             } catch (error: Exception) { throw IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error) }
           },
+          clock = { activeStoryboard?.let { storyboard ->
+            WinUIXamlPreviewClock(storyboard.getCurrentTime().inWholeMilliseconds.coerceIn(0, 86_400_000).toInt(),
+              playing && storyboard.getCurrentState() == ${framework.xamlKotlinNamespace}.media.animation.ClockState.Active)
+          } },
+          animate = { root, command ->
+            // The SDK owns interpolation, easing, dependent animations and clock state.
+            // Resolve before stopping the previous clock, so a stale key is harmless.
+            val element = root.asWinRT<FrameworkElement>()
+            val owner = if (command.owner.isEmpty()) element else
+              requireNotNull(element.findName(command.owner)) { "The storyboard resource owner no longer exists." }.asWinRT<FrameworkElement>()
+            val storyboard = requireNotNull(owner.resources?.get(command.key)) { "The storyboard resource no longer exists." }.asWinRT<Storyboard>()
+            activeStoryboard?.stop(); activeStoryboard = null; playing = false
+            if (command.action != "Stop") {
+              try {
+                storyboard.begin()
+                storyboard.pause()
+                storyboard.seekAlignedToLastTick(command.positionMillis.milliseconds)
+                if (command.action == "Play") storyboard.resume()
+                activeStoryboard = storyboard
+                playing = command.action == "Play"
+              } catch (error: Exception) { storyboard.stop(); throw error }
+            }
+          },
         )
+        }
     """.trimIndent())
     if (application) {
         file.parent.resolve("KotlinWinUIXamlPreviewHost.kt").writeText("""

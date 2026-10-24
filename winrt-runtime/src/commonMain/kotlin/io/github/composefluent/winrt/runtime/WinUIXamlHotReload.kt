@@ -156,7 +156,7 @@ internal class WinUIXamlHotReloadRegistry(
     fun close() = lock.withLock { closed = true; pages.clear() }
 
     fun inspect(request: WinUIXamlInspectionRequest, complete: (WinUIXamlHotReloadReply) -> Unit) {
-        if (request.previewMarkup.isNotEmpty() && request.className != WinUIXamlHotReloadProtocol.PREVIEW_CLASS) {
+        if ((request.previewMarkup.isNotEmpty() || request.animation != null) && request.className != WinUIXamlHotReloadProtocol.PREVIEW_CLASS) {
             complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Static preview must use the isolated design host.")); return
         }
         val selection = lock.withLock {

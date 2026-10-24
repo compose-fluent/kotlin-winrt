@@ -10,9 +10,15 @@ class WinUIXamlVisualInspector(
     private val properties: (Any) -> List<WinUIXamlVisualProperty>,
     private val capture: (Any, Double, (Result<WinUIXamlVisualImage>) -> Unit) -> Unit,
     private val preview: (Any, WinUIXamlInspectionRequest) -> Unit,
+    private val clock: () -> WinUIXamlPreviewClock? = { null },
+    private val animate: (Any, WinUIXamlPreviewAnimation) -> Unit = { _, _ -> error("Rebuild the preview host to inspect storyboards.") },
 ) {
     fun inspect(owner: Any, request: WinUIXamlInspectionRequest, complete: (Result<WinUIXamlVisualSnapshot>) -> Unit) {
         val prepared = runCatching {
+            request.animation?.let {
+                it.validate()
+                require(request.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS) { "Storyboard commands require an isolated preview host." }
+            }
             require(request.renderScale.isFinite() && request.renderScale in 0.125..32.0) { "Invalid capture scale." }
             if (request.previewMarkup.isNotEmpty()) {
                 require(request.previewMarkup.length <= 128 * 1024 && request.width in 64..4096 && request.height in 64..4096 &&
@@ -20,6 +26,7 @@ class WinUIXamlVisualInspector(
                 preview(owner, request)
             }
             val root = requireNotNull(visualRoot(owner)) { "This component has no visual content. Select a Window or page." }
+            request.animation?.let { animate(root, it) }
             root
         }
         fun snapshot(root: Any, image: WinUIXamlVisualImage? = null): Result<WinUIXamlVisualSnapshot> = runCatching {
@@ -35,7 +42,7 @@ class WinUIXamlVisualInspector(
             }
             visit(root, emptyList())
             val values = requireNotNull(selected) { "The selected visual no longer exists. Refresh the tree." }
-            WinUIXamlVisualSnapshot(nodes, properties(values).take(64).map { it.copy(value = it.value.take(4096)) }, image)
+            WinUIXamlVisualSnapshot(nodes, properties(values).take(64).map { it.copy(value = it.value.take(4096)) }, image, clock())
         }
         prepared.fold({ root ->
             // RenderTargetBitmap completes on the owner's UI dispatcher after layout.

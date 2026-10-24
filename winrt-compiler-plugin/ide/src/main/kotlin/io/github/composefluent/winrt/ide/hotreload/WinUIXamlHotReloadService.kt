@@ -41,7 +41,7 @@ data class WinUIXamlHotReloadState(val message: String = "Start a JVM applicatio
     val inspection: WinUIXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
     val inspectionRoots: List<WinUIXamlHotReloadRoot> = emptyList(),
     val startupMillis: Long? = null, val renderMillis: Long? = null, val reusedBuild: Boolean = false,
-    val inspectionPath: List<Int>? = null)
+    val inspectionPath: List<Int>? = null, val animationError: String? = null)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
@@ -620,10 +620,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             if (!isCurrent(epoch)) return
             // Coalesce rapid edits/selections, but keep an unrendered design document.
             val previous = pendingInspection
-            pendingInspection = if (request.previewMarkup.isEmpty() && previous?.previewMarkup?.isNotEmpty() == true &&
+            pendingInspection = if (request.previewMarkup.isEmpty() && previous != null && (previous.previewMarkup.isNotEmpty() || previous.animation != null) &&
                 previous.className == request.className && previous.resourcePath == request.resourcePath) request.copy(
                     capture = request.capture || previous.capture,
-                    previewMarkup = previous.previewMarkup, width = previous.width, height = previous.height, theme = previous.theme, renderScale = previous.renderScale)
+                    previewMarkup = previous.previewMarkup, width = previous.width, height = previous.height, theme = previous.theme, renderScale = previous.renderScale, animation = request.animation ?: previous.animation)
                 else request
             if (display.value.inspecting) return
             display.value = display.value.copy(inspecting = true)
@@ -647,6 +647,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 inspectionOwner = null
                                 return@withCurrent
                             }
+                            if (next.animation != null) {
+                                display.value = display.value.copy(animationError = reply.message.takeIf { reply.status != WinUIXamlHotReloadProtocol.APPLIED })
+                                if (reply.status != WinUIXamlHotReloadProtocol.APPLIED) return@withCurrent
+                            }
                             // Selection/capture of the native host's retained
                             // content must not revive a rejected design document.
                             if (display.value.inspectionError != null && next.previewMarkup.isEmpty()) return@withCurrent
@@ -654,6 +658,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             val image = display.value.inspection?.image.takeIf { inspectionOwner == owner }
                             display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(image = it.image ?: image) } ?: display.value.inspection,
                                 message = reply.message, roots = reply.roots.ifEmpty { display.value.roots }, inspectionError = null,
+                                animationError = if (next.previewMarkup.isNotEmpty()) null else display.value.animationError,
                                 inspectionPath = next.selectedPath,
                                 renderMillis = (System.nanoTime() - renderStarted) / 1_000_000)
                             if (next.previewMarkup.isNotEmpty()) {

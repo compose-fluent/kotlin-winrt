@@ -23,7 +23,7 @@ internal data class DesignerStateGroup(val key: String, val label: String, val s
  * Source text and the cached base document are never changed by state selection.
  */
 internal object WinUIXamlDesignStates {
-    private fun parse(markup: String) = DocumentBuilderFactory.newInstance().apply {
+    internal fun parse(markup: String) = DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = true
         setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
         setFeature("http://xml.org/sax/features/external-general-entities", false)

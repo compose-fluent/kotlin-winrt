@@ -207,8 +207,36 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     LaunchedEffect(stateGroups) {
         if (prepared != null) selectedStates = selectedStates.filter { (key, value) -> stateGroups.any { it.key == key && value in it.states } }
     }
+    val storyboardDocument = remember(prepared?.markup) {
+        prepared?.markup?.let { runCatching { WinUIXamlDesignStoryboards.prepare(it) }.getOrNull() }
+    }
+    val storyboards = storyboardDocument?.storyboards.orEmpty()
+    var showTimeline by remember { mutableStateOf(false) }
+    var timelineEnd by remember(source) { mutableIntStateOf(10_000) }
+    var storyboardId by remember(source) { mutableStateOf("") }
+    var animationRevision by remember(source) { mutableIntStateOf(0) }
+    var animationCommand by remember(source) { mutableStateOf<WinUIXamlPreviewAnimation?>(null) }
+    var animationPlaying by remember(source) { mutableStateOf(false) }
+    val animationPosition = remember(source) { TextFieldState("0") }
+    fun animationTime(): Int = if (animationPlaying) state.inspection?.clock?.positionMillis ?: 0
+        else animationPosition.text.toString().toIntOrNull()?.coerceIn(0, 86_400_000) ?: 0
+    fun controlAnimation(action: String) {
+        val storyboard = storyboards.singleOrNull { it.id == storyboardId } ?: return
+        val completed = action == "Play" && !animationPlaying && animationCommand?.action == "Play" &&
+            state.inspection?.clock?.let { !it.playing && it.positionMillis == animationTime() } == true
+        val position = if (action == "Stop" || completed) 0 else animationTime()
+        animationPosition.setTextAndPlaceCursorAtEnd(position.toString())
+        animationCommand = WinUIXamlPreviewAnimation(storyboard.owner, storyboard.key, position, action)
+        animationPlaying = action == "Play"
+        animationRevision++
+    }
+    LaunchedEffect(storyboards) {
+        if (prepared != null && storyboards.none { it.id == storyboardId }) {
+            storyboardId = ""; animationCommand = null; animationPlaying = false
+        }
+    }
     var submitted by remember(source, projectCode, static) {
-        mutableStateOf<Triple<WinUIXamlInspectionRequest, Long?, Pair<Int, Long>>?>(null)
+        mutableStateOf<Triple<WinUIXamlInspectionRequest, Long?, Triple<Int, Long, Int>>?>(null)
     }
     var showSettings by remember { mutableStateOf(false) }
     var showZoom by remember { mutableStateOf(false) }
@@ -285,23 +313,34 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision, selectedStates) {
+    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision, selectedStates, animationCommand, animationRevision) {
         if (static && root != null && state.connected && session.usesPreviewTheme(theme) && prepared != null) {
             run {
                 val (w, h) = viewport
-                if (state.inspection != null) delay(150)
+                if (state.inspection != null && submitted?.first?.animation == animationCommand) delay(150)
                 val document = prepared ?: return@LaunchedEffect
                 val choices = selectedStates
-                val markup = try { withContext(Dispatchers.IO) { WinUIXamlDesignStates.select(document.markup, choices) } }
+                val markup = try { withContext(Dispatchers.IO) { WinUIXamlDesignStates.select(storyboardDocument?.markup ?: document.markup, choices) } }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Exception) { failure = error.message; return@LaunchedEffect }
                 failure = null
+                // Preparation and selection effects can run in the same composition.
+                // Never replay a command whose resource disappeared in the new document.
+                val validAnimation = animationCommand?.takeIf { command ->
+                    storyboards.any { it.owner == command.owner && it.key == command.key }
+                }
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
-                    markup, w, h, theme, captureScale)
-                val key = Triple(request, state.pid, manualRefresh to resourceRevision)
+                    markup, w, h, theme, captureScale, validAnimation)
+                val key = Triple(request, state.pid, Triple(manualRefresh, resourceRevision, animationRevision))
                 // Metadata notifications can prepare the same document again. Keep
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
-                if (submitted != key) { session.inspect(request); submitted = key }
+                if (submitted != key) {
+                    val previous = submitted
+                    val clockOnly = previous != null && previous.second == state.pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
+                        previous.first.copy(animation = request.animation) == request
+                    session.inspect(if (clockOnly) request.copy(previewMarkup = "", selectedPath = selectedPath) else request)
+                    submitted = key
+                }
             }
         }
     }
@@ -317,7 +356,31 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly, renderScale = captureScale))
         }
     }
-    val currentView = state.inspection.takeIf { failure == null && (!static || prepared != null) }
+    LaunchedEffect(animationPlaying, root, state.connected, selectedPath, captureScale) {
+        if (static && animationPlaying && state.connected && root != null) while (true) {
+            delay(100)
+            if (!session.state.value.inspecting) session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
+                selectedPath = selectedPath, renderScale = captureScale))
+        }
+    }
+    LaunchedEffect(state.inspection?.clock, state.inspecting) {
+        if (!state.inspecting) state.inspection?.clock?.let { clock ->
+            if (animationPlaying) {
+                animationPosition.setTextAndPlaceCursorAtEnd(clock.positionMillis.toString())
+                animationPlaying = clock.playing
+            }
+        }
+    }
+    LaunchedEffect(state.animationError) {
+        if (state.animationError != null) animationPlaying = false
+    }
+    val currentView = state.inspection.takeIf { failure == null && (!static || prepared != null) }?.let { snapshot ->
+        val synthetic = storyboardDocument?.syntheticOwners.orEmpty().takeIf { static }.orEmpty()
+        if (synthetic.isEmpty()) snapshot else snapshot.copy(
+            nodes = snapshot.nodes.map { if (it.name in synthetic) it.copy(name = "") else it },
+            properties = if (snapshot.nodes.any { it.path == state.inspectionPath && it.name in synthetic })
+                snapshot.properties.map { if (it.name == "Name") it.copy(value = "") else it } else snapshot.properties)
+    }
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
     var pendingStructureSelection by remember(source) { mutableStateOf<com.intellij.psi.SmartPsiElementPointer<com.intellij.psi.xml.XmlTag>?>(null) }
@@ -737,6 +800,49 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     firstPaneMinWidth = 160.dp, secondPaneMinWidth = 120.dp, modifier = Modifier.fillMaxSize())
                 else workspace()
             }
+            if (showTimeline && static) Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Storyboard timeline", Modifier.weight(1f))
+                    PreviewAction("Close storyboard timeline", "close") { showTimeline = false }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.weight(1f)) {
+                        WinRTChoice("Storyboard", listOf("" to "Choose a storyboard") + storyboards.map { it.id to it.label }, storyboardId) {
+                            if (animationCommand != null) controlAnimation("Stop")
+                            storyboardId = it
+                            animationPlaying = false
+                            animationPosition.setTextAndPlaceCursorAtEnd("0")
+                        }
+                    }
+                    Box(Modifier.width(160.dp)) {
+                        WinRTChoice("Visible range", listOf(1000, 5000, 10000, 30000, 60000, 300000, 3600000, 86400000).map {
+                            it.toString() to "0–${it / 1000} s"
+                        }, timelineEnd.toString()) { timelineEnd = it.toInt() }
+                    }
+                }
+                org.jetbrains.jewel.ui.component.Slider(
+                    (animationPosition.text.toString().toIntOrNull()?.toFloat() ?: 0f).coerceIn(0f, timelineEnd.toFloat()),
+                    { position ->
+                        animationPlaying = false
+                        animationPosition.setTextAndPlaceCursorAtEnd(position.roundToInt().toString())
+                        controlAnimation("Seek")
+                    }, Modifier.fillMaxWidth().semantics { contentDescription = "Storyboard playhead" },
+                    storyboardId.isNotEmpty(), 0f..timelineEnd.toFloat(), 0, { controlAnimation("Seek") })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("0 s"); Text("${timelineEnd / 1000} s") }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Position (ms)")
+                    TextField(animationPosition, enabled = !animationPlaying, modifier = Modifier.width(104.dp).semantics { contentDescription = "Storyboard position in milliseconds" })
+                    val validTime = animationPosition.text.toString().toIntOrNull()?.let { it in 0..86_400_000 } == true
+                    if (!validTime) Text("Enter 0–86400000 milliseconds.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = storyboardId.isNotEmpty() && validTime && !animationPlaying, onClick = { controlAnimation("Seek") }) { Text("Seek") }
+                        DefaultButton(enabled = storyboardId.isNotEmpty() && validTime, onClick = { controlAnimation(if (animationPlaying) "Seek" else "Play") }) { Text(if (animationPlaying) "Pause" else "Play") }
+                        OutlinedButton(enabled = storyboardId.isNotEmpty(), onClick = { controlAnimation("Stop") }) { Text("Stop") }
+                    }
+                }
+                Text("Preview only. Stop restores base values; source XAML stays unchanged.")
+                (state.animationError ?: failure)?.let { Text(it) }
+            }
             Divider(Orientation.Horizontal)
             // One fixed-height command strip; popups never participate in artboard measurement.
             Row(Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 4.dp),
@@ -749,6 +855,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     PreviewAction("Select elements", "select", view != null, selected = !panTool) { panTool = false }
                     PreviewAction("Pan canvas", "hand", view != null, selected = panTool) { panTool = true; armedTool = null }
                     if (static) {
+                        PreviewAction("Storyboard timeline", "timeline", enabled = storyboards.isNotEmpty(), selected = showTimeline) { showTimeline = !showTimeline }
                         PreviewAction("Toolbox", "toolbox", selected = showToolbox) { showToolbox = !showToolbox }
                         PreviewAction("Snap to edges and centers (Alt to bypass)", "snap", selected = snapEnabled) { snapEnabled = !snapEnabled }
                         Dropdown(enabled = editables.size > 1, menuContent = {
@@ -843,6 +950,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     width.setTextAndPlaceCursorAtEnd(height.text.toString()); height.setTextAndPlaceCursorAtEnd(previousWidth)
                 })
                 WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it; preferences.setValue(themeKey, it, "Default") }
+                if (storyboards.isNotEmpty()) Link("Storyboard timeline…", onClick = { showSettings = false; showTimeline = true })
                 Link(if (showStateAuthoring) "Hide state creation" else "Create visual states…", onClick = { showStateAuthoring = !showStateAuthoring })
                 if (showStateAuthoring) {
                     Text("State name")

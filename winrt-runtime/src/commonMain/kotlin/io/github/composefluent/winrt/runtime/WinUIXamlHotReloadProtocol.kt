@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 6
+    const val VERSION = 7
     const val MAX_IMAGE_DIMENSION = 4096
     const val MAGIC = 0x4B585248
     const val SESSION_DIRECTORY = "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"
@@ -55,14 +55,22 @@ data class WinUIXamlHotReloadReply(val status: Int, val message: String, val roo
 /** Visual paths use the SDK visual tree, including control-template children. */
 data class WinUIXamlInspectionRequest(val className: String, val resourcePath: String, val instance: Int = 0,
     val selectedPath: List<Int> = emptyList(), val capture: Boolean = true,
-    val previewMarkup: String = "", val width: Int = 800, val height: Int = 600, val theme: String = "Default", val renderScale: Double = 1.0)
+    val previewMarkup: String = "", val width: Int = 800, val height: Int = 600, val theme: String = "Default", val renderScale: Double = 1.0, val animation: WinUIXamlPreviewAnimation? = null)
+/** Preview-only SDK clock command. Resource owner is an exact name in the root namescope. */
+data class WinUIXamlPreviewAnimation(val owner: String, val key: String, val positionMillis: Int = 0, val action: String = "Seek") {
+    fun validate() {
+        require(owner.length <= 256 && key.isNotEmpty() && key.length <= 256 && positionMillis in 0..86_400_000 &&
+            action in listOf("Seek", "Play", "Stop")) { "Invalid storyboard preview command." }
+    }
+}
 data class WinUIXamlVisualBounds(val x: Double, val y: Double, val width: Double, val height: Double)
 data class WinUIXamlVisualNode(val path: List<Int>, val typeName: String, val name: String, val bounds: WinUIXamlVisualBounds)
 data class WinUIXamlVisualProperty(val name: String, val value: String)
 /** BGRA8 premultiplied pixels, as returned by WinUI RenderTargetBitmap.GetPixelsAsync. */
 data class WinUIXamlVisualImage(val width: Int, val height: Int, val pixels: ByteArray)
+data class WinUIXamlPreviewClock(val positionMillis: Int, val playing: Boolean)
 data class WinUIXamlVisualSnapshot(val nodes: List<WinUIXamlVisualNode>, val properties: List<WinUIXamlVisualProperty>,
-    val image: WinUIXamlVisualImage? = null)
+    val image: WinUIXamlVisualImage? = null, val clock: WinUIXamlPreviewClock? = null)
 
 /** Application.RequestedTheme must be chosen during construction, before OnLaunched.
  * The generated SDK adaptation maps this option to its framework's enum. */
