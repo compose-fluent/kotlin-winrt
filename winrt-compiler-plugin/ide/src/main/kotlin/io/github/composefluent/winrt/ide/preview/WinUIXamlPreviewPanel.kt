@@ -133,20 +133,23 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
 
     var startupCancelled by remember { mutableStateOf(false) }
     var startupRevision by remember { mutableIntStateOf(0) }
+    var handledStartupRevision by remember { mutableIntStateOf(0) }
     val catalogService = project.service<WinUIXamlCatalogService>()
     val catalogRevision by catalogService.changes.collectAsState()
     val resourceRevision by project.service<WinRTResourceIndex>().changes.collectAsState()
     LaunchedEffect(static, module, launchModule, launch, wantsProjectCode, startupCancelled, startupRevision) {
         if (static && module != null && !startupCancelled) {
+            val retry = startupRevision != handledStartupRevision
+            handledStartupRevision = startupRevision
             startPreferredXamlPreview(
                 wantsProjectCode = wantsProjectCode && launch != null,
                 projectConnected = matchingProjectHost && projectState.connected,
                 continueStartup = { !startupCancelled },
-                startProject = { design.ensurePreviewReady(launchModule!!, launch!!) },
+                startProject = { design.ensurePreviewReady(launchModule!!, launch!!, retry = retry) },
                 awaitProject = { design.state.first { it.connected || !it.busy }.connected },
                 startBasic = {
                     module.staticPreview?.launch()?.let { sdkLaunch ->
-                        sdk.ensurePreviewReady(module, sdkLaunch)
+                        sdk.ensurePreviewReady(module, sdkLaunch, retry = retry)
                     }
                 })
         }

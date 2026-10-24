@@ -79,7 +79,11 @@ class WinRTDevelopmentLaunchTest : BasePlatformTestCase() {
                     val application = ApplicationManager.getApplication()
                     assertTrue(application.isDispatchThread)
                     assertFalse("The callback must reproduce Compose's missing write intent", application.isWriteIntentLockAcquired)
-                    if (sdk && attempt == 0) session.ensurePreview(module, selected)
+                    if (sdk && attempt > 0) {
+                        session.ensurePreview(module, selected)
+                        assertFalse("Automatic recomposition must not retry a failed launch", session.state.value.busy)
+                    }
+                    if (sdk) session.ensurePreview(module, selected, retry = attempt > 0)
                     else session.start(module, selected, preview = preview)
                     assertTrue(session.state.value.busy)
                 }, false)

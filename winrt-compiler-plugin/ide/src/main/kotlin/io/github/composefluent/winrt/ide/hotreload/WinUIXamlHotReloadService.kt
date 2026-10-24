@@ -357,15 +357,15 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     /** Switching applications must not render against another application's host.
      * The editor coroutine owns this wait, so leaving the tab cancels the request. */
-    suspend fun ensurePreviewReady(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
+    suspend fun ensurePreviewReady(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, retry: Boolean = false) {
         if (display.value.busy && !usesLaunch(module, launch)) state.first { !it.busy }
         currentCoroutineContext().ensureActive()
-        ensurePreview(module, launch)
+        ensurePreview(module, launch, retry)
     }
 
     /** Opening/switching a preview reuses its host; a failed launch needs an explicit retry. */
-    fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
-        if (display.value.busy || (selectedModule == module && selectedLaunch == launch)) return
+    fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, retry: Boolean = false) {
+        if (display.value.busy || (usesLaunch(module, launch) && (display.value.connected || !retry))) return
         start(module, launch, restart = display.value.pid != null, preview = true, rebuild = false)
     }
 
