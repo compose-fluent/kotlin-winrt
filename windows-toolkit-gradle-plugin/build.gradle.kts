@@ -1,3 +1,4 @@
+import java.util.zip.ZipFile
 import org.gradle.api.tasks.testing.Test
 import org.gradle.plugin.devel.tasks.PluginUnderTestMetadata
 import org.gradle.language.jvm.tasks.ProcessResources
@@ -94,6 +95,21 @@ tasks.named<Jar>("jar") {
         exclude("META-INF/MANIFEST.MF", "META-INF/services/org.jetbrains.kotlin.compiler.plugin.*")
     }
     duplicatesStrategy = DuplicatesStrategy.FAIL
+    // A partially restored incremental output must never become an installable
+    // toolkit. The Java bootstrap uses reflection, so Java compilation alone
+    // cannot detect a missing Kotlin plugin implementation.
+    doLast {
+        ZipFile(archiveFile.get().asFile).use { archive ->
+            listOf(
+                "io/github/composefluent/windows/toolkit/gradle/KotlinWindowsToolkitBootstrapPlugin.class",
+                "io/github/composefluent/windows/toolkit/gradle/KotlinWindowsToolkitPlugin.class",
+                "io/github/composefluent/windows/toolkit/gradle/RunWinAppPackageTask.class",
+                "io/github/composefluent/winrt/runtime/WinUIXamlHotReloadProtocol.class",
+            ).forEach { entry -> check(archive.getEntry(entry) != null) {
+                "Incomplete toolkit JAR: missing $entry. Rebuild the toolkit compilation before publishing."
+            } }
+        }
+    }
 }
 
 tasks.withType<Test>().configureEach {
