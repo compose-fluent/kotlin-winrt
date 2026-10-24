@@ -12,6 +12,7 @@ internal suspend fun <T : Any> awaitDevelopmentPublication(
     nanoTime: () -> Long = System::nanoTime,
     discover: suspend () -> T?,
 ): T {
+    val waitingAt = nanoTime()
     var finishedAt: Long? = null
     while (true) {
         currentCoroutineContext().ensureActive()
@@ -23,6 +24,8 @@ internal suspend fun <T : Any> awaitDevelopmentPublication(
                 "The Gradle launch finished, but the application did not publish a development session. See Gradle Run output."
             }
         }
-        delay(100)
+        // Cached hosts normally publish within the first second. Avoid adding
+        // a full 100 ms polling interval to that path; keep long builds cheap.
+        delay(if (nanoTime() - waitingAt < 2_000_000_000L) 25 else 100)
     }
 }
