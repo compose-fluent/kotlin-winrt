@@ -328,22 +328,6 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         }
     }
 
-    /** Cheap routing hint; start() performs the single authoritative content validation. */
-    suspend fun hasNativePreviewCandidate(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData): Boolean {
-        if (!launch.isDirectPreview) return false
-        // start() saves documents before validating the receipt. Do not choose a
-        // cached route from disk while an editor still contains newer inputs.
-        if (withContext(Dispatchers.EDT) { FileDocumentManager.getInstance().unsavedDocuments.isNotEmpty() }) return false
-        return withContext(Dispatchers.IO) {
-            runCatching {
-                val models = project.service<WinRTProjectService>()
-                val cache = WinRTPreviewLaunchCache(Path.of(models.buildRootFor(module) ?: module.projectDirectory),
-                    models.modules.value, module, launch)
-                cache.hasCandidate()
-            }.getOrDefault(false)
-        }
-    }
-
     /** Reuse only a host that has actually exposed this component, not an arbitrary
      * application in the workspace. A library need not have its own executable. */
     fun loadedSourceLaunch(path: String): Pair<WinRTModuleData, WinUIXamlHotReloadLaunchData>? {

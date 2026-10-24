@@ -1,13 +1,11 @@
 package io.github.composefluent.winrt.ide.preview
 
-/** A previously built Native host can supply the first frame without booting the SDK JVM.
- * The bounded fast-path wait only reveals the fallback; it never cancels the host.
- * Cold builds retain the usable SDK artboard before project compilation starts.
+/** Project previews own the build queue until they connect or fail. A slow build
+ * is not a failure: starting the SDK compiler alongside it delays the first frame.
  */
 internal suspend fun startPreferredXamlPreview(
     wantsProjectCode: Boolean,
     projectConnected: Boolean,
-    projectCandidate: suspend () -> Boolean,
     startProject: () -> Unit,
     awaitProject: suspend () -> Boolean,
     startBasic: suspend () -> Unit,
@@ -16,14 +14,9 @@ internal suspend fun startPreferredXamlPreview(
     if (!continueStartup() || wantsProjectCode && projectConnected) return
     com.intellij.openapi.diagnostic.Logger.getInstance("WinUIXamlPreviewStartup")
         .info("XAML designer startup requested: projectCode=$wantsProjectCode")
-    var startedProject = false
-    if (wantsProjectCode && projectCandidate()) {
-        if (!continueStartup()) return
+    if (wantsProjectCode) {
         startProject()
-        startedProject = true
         if (awaitProject()) return
     }
-    if (!continueStartup()) return
-    startBasic()
-    if (continueStartup() && wantsProjectCode && !startedProject) startProject()
+    if (continueStartup()) startBasic()
 }

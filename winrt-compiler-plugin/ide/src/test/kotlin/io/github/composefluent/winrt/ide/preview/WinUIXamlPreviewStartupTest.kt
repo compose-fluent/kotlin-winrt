@@ -1,42 +1,46 @@
 package io.github.composefluent.winrt.ide.preview
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class WinUIXamlPreviewStartupTest {
-    private fun route(wants: Boolean = true, connected: Boolean = false, cached: Boolean = true, ready: Boolean = true) = runBlocking {
+    @Test fun nativeBuildNeverStartsCompetingSdkBuild() = runBlocking {
+        val result = CompletableDeferred<Boolean>()
         val events = mutableListOf<String>()
-        startPreferredXamlPreview(wants, connected,
-            { events += "validate"; cached }, { events += "native" },
-            { events += "await"; ready }, { events += "sdk" })
-        events
+        val startup = launch {
+            startPreferredXamlPreview(true, false, { events += "native" },
+                { result.await() }, { events += "sdk" })
+        }
+        yield()
+        assertEquals(listOf("native"), events)
+        result.complete(true)
+        startup.join()
+        assertEquals(listOf("native"), events)
     }
-    @Test fun cancellingBasicBuildDoesNotAutomaticallyStartNative() = runBlocking {
+    @Test fun failedNativeFallsBackOnce() = runBlocking {
+        val events = mutableListOf<String>()
+        startPreferredXamlPreview(true, false, { events += "native" },
+            { false }, { events += "sdk" })
+        assertEquals(listOf("native", "sdk"), events)
+    }
+    @Test fun cancelledNativeNeverStartsFallback() = runBlocking {
         var active = true
         val events = mutableListOf<String>()
-        startPreferredXamlPreview(true, false, { false }, { events += "native" },
-            { false }, { events += "sdk"; active = false }, { active })
+        startPreferredXamlPreview(true, false, { events += "native" },
+            { active = false; false }, { events += "sdk" }, { active })
+        assertEquals(listOf("native"), events)
+    }
+    @Test fun basicOnlyAndConnectedOrCancelledDoNotLaunchUnneededHosts() = runBlocking {
+        val events = mutableListOf<String>()
+        for ((wants, connected, active) in listOf(Triple(false, false, true),
+                Triple(true, true, true), Triple(true, false, false))) {
+            startPreferredXamlPreview(wants, connected, { events += "native" },
+                { true }, { events += "sdk" }, { active })
+        }
         assertEquals(listOf("sdk"), events)
-    }
-    @Test fun cancellationDuringCandidateLookupDoesNotStartEitherHost() = runBlocking {
-        var active = true
-        val events = mutableListOf<String>()
-        startPreferredXamlPreview(true, false, { active = false; true }, { events += "native" },
-            { false }, { events += "sdk" }, { active })
-        assertEquals(emptyList<String>(), events)
-    }
-    @Test fun validNativeCacheSkipsSdkStartup() {
-        assertEquals(listOf("validate", "native", "await"), route())
-    }
-    @Test fun coldProjectShowsSdkBeforeBuildingNative() {
-        assertEquals(listOf("validate", "sdk", "native"), route(cached = false))
-    }
-    @Test fun slowOrFailedCachedHostRevealsSdkWithoutStartingProjectTwice() {
-        assertEquals(listOf("validate", "native", "await", "sdk"), route(ready = false))
-    }
-    @Test fun basicOnlyAndAlreadyConnectedDoNotLaunchUnneededHosts() {
-        assertEquals(listOf("sdk"), route(wants = false))
-        assertEquals(emptyList<String>(), route(connected = true))
     }
 }
