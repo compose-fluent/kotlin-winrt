@@ -41,7 +41,7 @@ internal object WinUIXamlDesignStates {
                 val states = children(element).filter { sdk(it, "VisualState") }
                     .map { it.getAttributeNS(WinUIXamlCatalog.XAML, "Name") }
                 // Duplicate/missing names have no unambiguous SDK transition target.
-                if (states.isNotEmpty() && states.all(String::isNotEmpty) && states.distinct().size == states.size) {
+                if (states.all(String::isNotEmpty) && states.distinct().size == states.size) {
                     val name = element.getAttributeNS(WinUIXamlCatalog.XAML, "Name")
                     result += DesignerStateGroup("$path:$name:${states.joinToString("|")}",
                         name.ifEmpty { "State group ${result.size + 1}" }, states) to element

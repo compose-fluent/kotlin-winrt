@@ -584,7 +584,7 @@ and undo restores the whole edit. Base attributes remain intact. Duplicate/compl
 setters, ambiguous names and stale source snapshots are rejected. **Create visual states…**
 adds a named state to a source group, or creates a group with its first state on the
 selected source element. Names are checked in their XAML namescope and edits support
-undo. Group/state rename uses the platform usage preview and updates resolved XAML/Kotlin references, including transition From/To references in that group. Dynamically constructed state names in code still need manual review. Removal and storyboard timeline authoring remain unavailable. The session menu (**…**) owns
+undo. Group/state rename uses the platform usage preview and updates resolved XAML/Kotlin references, including transition From/To references in that group. Dynamically constructed state names in code still need manual review. State/group deletion checks resolved external references, removes transitions referring to a deleted state, and supports a single undo. Empty groups remain editable. Storyboard timeline authoring remains unavailable. The session menu (**…**) owns
 launch selection, project-code mode, refresh, rebuild, stop and reconnect. During preparation,
 Cancel stops the native IDE Gradle execution associated with that preview session,
 using a background progress context so Gradle JVM resolution does not block EDT.

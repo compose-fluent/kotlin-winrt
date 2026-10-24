@@ -67,7 +67,7 @@ internal object DesignerStateAuthoring {
             validateName(owner, stateName)
             owner.addSubTag(named(owner, "VisualState", stateName), false)
         }
-    private fun groupTag(project: Project, file: com.intellij.openapi.vfs.VirtualFile, group: DesignerStateGroup): XmlTag {
+    internal fun groupTag(project: Project, file: com.intellij.openapi.vfs.VirtualFile, group: DesignerStateGroup): XmlTag {
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: error("Open a XAML source file.")
         check(xml.isWritable) { "This XAML file is read only." }
         return PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter {

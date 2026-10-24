@@ -189,6 +189,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
     var recordState by remember(source) { mutableStateOf(false) }
     var selectedStates by remember(source) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var stateDeletion by remember(source) { mutableStateOf<DesignerStateDeletion?>(null) }
     var showStateAuthoring by remember(source) { mutableStateOf(false) }
     var authoringGroup by remember(source) { mutableStateOf("") }
     val newGroupName = remember(source) { TextFieldState("") }
@@ -404,6 +405,22 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) runCatching { DesignerStateAuthoring.rename(project, path, group, state) }
                 .onFailure { editFeedback = it.message ?: "Could not rename visual state" }
+        }
+    }
+    fun deleteState(group: DesignerStateGroup, state: String?) {
+        val path = source
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            com.intellij.openapi.application.WriteIntentReadAction.run { com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments() }
+            com.intellij.openapi.application.ReadAction.nonBlocking<Result<DesignerStateDeletion>> {
+                runCatching {
+                    val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: error("The source file is unavailable.")
+                    DesignerStateDeletion.prepare(project, file, group, state)
+                }
+            }.inSmartMode(project).expireWith(project).finishOnUiThread(com.intellij.openapi.application.ModalityState.nonModal()) { result ->
+                result.onSuccess { stateDeletion = it; showSettings = false }
+                    .onFailure { editFeedback = it.message ?: "Could not delete visual state" }
+            }.submit(com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService())
         }
     }
     fun structureEdit(action: (DesignerSelection) -> Unit) {
@@ -791,7 +808,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Link("Rename group…", onClick = { renameState(group, null) })
-                        selectedStates[group.key]?.let { selected ->
+                        Link("Delete group…", onClick = { deleteState(group, null) })
+                    }
+                    selectedStates[group.key]?.let { selected ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Link("Delete state…", onClick = { deleteState(group, selected) })
                             Link("Rename state…", onClick = { renameState(group, selected) })
                         }
                     }
@@ -811,6 +832,23 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             Text("Drag blank canvas to marquee-select. Ctrl/Shift adds to selection; Ctrl/Shift+click toggles elements. Align uses the last selection. Alt temporarily disables snapping. Toolbox controls can be dragged into the canvas.")
             Text("Canvas: drag a selected element or its handles to edit layout. Arrows nudge (Shift: 10 DIP). Ctrl+wheel zooms; wheel, hand mode arrows or Space+drag pan.")
             Text("With canvas focus: +/− zoom, 0 shows 100%, F fits all, Escape selects the parent, Enter opens XAML.")
+        }
+        stateDeletion?.let { deletion ->
+            PreviewPopup("Delete visual state", popupWidth, popupHeight, { stateDeletion = null }) {
+                Text("Delete ${deletion.label} and its contents?")
+                if (deletion.transitions > 0) Text("${deletion.transitions} transitions referring to this state will also be removed.")
+                Text("Resolved external references have been checked. State names computed in code need manual review. Ctrl+Z restores this change.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DefaultButton(onClick = {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (!project.isDisposed) runCatching { deletion.apply(project) }
+                                .onSuccess { stateDeletion = null; editFeedback = "Deleted visual state · Ctrl+Z to undo" }
+                                .onFailure { stateDeletion = null; editFeedback = it.message ?: "Could not delete visual state" }
+                        }
+                    }) { Text("Delete") }
+                    DefaultButton(onClick = { stateDeletion = null }) { Text("Cancel") }
+                }
+            }
         }
         if (showSession) PreviewPopup("Preview session", popupWidth, popupHeight, { showSession = false }) {
             WinRTModulePicker(project)
