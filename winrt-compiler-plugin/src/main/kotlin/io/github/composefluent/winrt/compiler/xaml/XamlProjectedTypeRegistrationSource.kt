@@ -87,14 +87,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
             val convert: (String, String) -> String = { value, target -> "kotlinWinUIXamlMemberValue<$target>($value)" }
             fun localValueSource(property: String): String? {
                 if (!development) return null
-                // XAMLC identifies DPs by their static NameProperty metadata. Keep
-                // the owner lookup here; common runtime does not discover SDK APIs.
-                val declaring = generateSequence(type) { definitions[it.baseTypeName] }.firstOrNull { candidate ->
-                    val statics = closure.resolveRuntimeClass(candidate).activation.staticInterfaces.mapNotNull { it.definitionType }
-                    (candidate.properties.filter { it.isStatic } + statics.flatMap { it.properties }).any {
-                        it.name == "${property}Property" && isXamlTypeName(it.typeName, "DependencyProperty")
-                    }
-                } ?: return null
+                val declaring = closure.xamlDependencyPropertyOwner(type, property) ?: return null
                 val declaringOwner = xamlTypeClassId(declaring.qualifiedName).asSingleFqName().asString()
                 val sdk = framework.xamlKotlinNamespace
                 val accessor = (property + "Property").replaceFirstChar(Char::lowercase)

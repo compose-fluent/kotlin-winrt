@@ -72,6 +72,19 @@ class WinRTMetadataClosureResolver private constructor(
                 resolveRuntimeClass(candidate).instanceInterfaceClosure.any { it.interfaceName == interfaceName }
         }
 
+    /** XAMLC XamlTypeExtensions.IsDependencyProperty discovers static NameProperty
+     * metadata through the declaring hierarchy. WinMD statics live on factory
+     * interfaces; keep that projection detail shared by the compiler and IDE. */
+    fun xamlDependencyPropertyOwner(type: WinRTTypeDefinition, property: String): WinRTTypeDefinition? =
+        (sequenceOf(type) + baseTypes(type).mapNotNull { it.definitionType }).firstOrNull { candidate ->
+            candidate.kind == WinRTTypeKind.RuntimeClass && run {
+                val statics = resolveRuntimeClass(candidate).activation.staticInterfaces.mapNotNull { it.definitionType }
+                (candidate.properties.filter { it.isStatic } + statics.flatMap { it.properties }).any {
+                    it.hasValidAccessors && it.name == "${property}Property" && isXamlTypeName(it.typeName, "DependencyProperty")
+                }
+            }
+        }
+
     private fun baseTypes(type: WinRTTypeDefinition) = sequence {
         val seen = mutableSetOf(type.qualifiedName)
         var current = type

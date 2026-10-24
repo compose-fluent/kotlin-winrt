@@ -10,6 +10,25 @@ import org.junit.Test
 
 class WinRTMetadataModelTest {
     @Test
+    fun xaml_dependency_properties_follow_static_metadata_and_cycle_safe_bases() {
+        // XAMLC XamlTypeExtensions.IsDependencyProperty + CsWinRT static interface projection.
+        listOf("Microsoft.UI.Xaml", "Windows.UI.Xaml").forEach { ns ->
+            val statics = WinRTTypeDefinition(ns, "IBaseStatics", WinRTTypeKind.Interface,
+                properties = listOf(WinRTPropertyDefinition("WidthProperty", "$ns.DependencyProperty")))
+            val base = WinRTTypeDefinition(ns, "Base", WinRTTypeKind.RuntimeClass,
+                baseTypeName = "$ns.Derived", activation = WinRTActivationShape(staticInterfaceNames = listOf("$ns.IBaseStatics")),
+                properties = listOf(WinRTPropertyDefinition("FakeProperty", "$ns.DependencyProperty"),
+                    WinRTPropertyDefinition("WrongProperty", "String", isStatic = true)))
+            val derived = WinRTTypeDefinition(ns, "Derived", WinRTTypeKind.RuntimeClass, baseTypeName = "$ns.Base")
+            val resolver = WinRTMetadataModel(namespaces = listOf(WinRTNamespace(ns, listOf(statics, base, derived)))).closureResolver()
+            assertEquals(base.qualifiedName, resolver.xamlDependencyPropertyOwner(derived, "Width")?.qualifiedName)
+            assertEquals(null, resolver.xamlDependencyPropertyOwner(derived, "Fake"))
+            assertEquals(null, resolver.xamlDependencyPropertyOwner(derived, "Wrong"))
+            assertEquals(null, resolver.xamlDependencyPropertyOwner(derived, "Missing"))
+        }
+    }
+
+    @Test
     fun picker_metadata_preserves_the_original_async_signature() {
         // CsWinRT MarshalInterface<T>.FromAbi(null) and the picker cancellation contract.
         listOf("Windows.Storage.Pickers", "Microsoft.Windows.Storage.Pickers").forEach { namespace ->
