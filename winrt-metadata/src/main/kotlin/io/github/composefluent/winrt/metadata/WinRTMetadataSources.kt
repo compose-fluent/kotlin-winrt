@@ -800,7 +800,12 @@ data class WinRTMetadataCache(
         )
         if (Files.isRegularFile(cacheFile)) {
             runCatching { WinRTMetadataModelCodec.read(cacheFile) }
-                .onSuccess { cached -> return cached.copy(windowsSdkSelections = windowsSdkSelections).normalized() }
+                .onSuccess { cached ->
+                    // The codec already normalized and resolved layouts. Do not
+                    // copy away that snapshot for an unchanged SDK selection.
+                    return if (cached.windowsSdkSelections == windowsSdkSelections) cached
+                        else cached.copy(windowsSdkSelections = windowsSdkSelections).normalized()
+                }
                 .onFailure { Files.deleteIfExists(cacheFile) }
         }
 
