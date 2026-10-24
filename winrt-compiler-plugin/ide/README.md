@@ -571,7 +571,12 @@ into a uniquely identifiable element selects its visual bounds. Matching prefers
 controls and template internals are not guessed. When an internal visual child
 has no source tag, navigation falls back to its nearest identifiable source owner.
 Settings includes viewport presets (360×640, 800×600, 1280×720 and 1920×1080),
-width/height swapping, theme and automatic updates. The session menu (**…**) owns
+width/height swapping, theme and automatic updates. Visual state groups declared in
+this design document also expose state choices. A choice overrides only the group's
+design-time triggers; the real SDK applies its setters and storyboards. Automatic
+restores the source triggers, including adaptive viewport states. Selection never
+writes source or modifies the base document cache. States supplied only by an
+external compiled control/template are not listed by this source-based selector. The session menu (**…**) owns
 launch selection, project-code mode, refresh, rebuild, stop and reconnect. During preparation,
 Cancel stops the native IDE Gradle execution associated with that preview session,
 using a background progress context so Gradle JVM resolution does not block EDT.

@@ -187,6 +187,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var failure by remember { mutableStateOf<String?>(null) }
     var manualRefresh by remember { mutableIntStateOf(0) }
     var prepared by remember { mutableStateOf<WinUIXamlDesignDocument?>(null) }
+    var selectedStates by remember(source) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val stateGroups = remember(prepared?.markup) {
+        prepared?.markup?.let { runCatching { WinUIXamlDesignStates.groups(it) }.getOrDefault(emptyList()) }.orEmpty()
+    }
+    LaunchedEffect(stateGroups) {
+        if (prepared != null) selectedStates = selectedStates.filter { (key, value) -> stateGroups.any { it.key == key && value in it.states } }
+    }
     var submitted by remember(source, projectCode, static) {
         mutableStateOf<Triple<WinUIXamlInspectionRequest, Long?, Pair<Int, Long>>?>(null)
     }
@@ -264,13 +271,19 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision) {
+    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision, selectedStates) {
         if (static && root != null && state.connected && prepared != null) {
             run {
                 val (w, h) = viewport
                 if (state.inspection != null) delay(150)
+                val document = prepared ?: return@LaunchedEffect
+                val choices = selectedStates
+                val markup = try { withContext(Dispatchers.IO) { WinUIXamlDesignStates.select(document.markup, choices) } }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: Exception) { failure = error.message; return@LaunchedEffect }
+                failure = null
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
-                    prepared!!.markup, w, h, theme, captureScale)
+                    markup, w, h, theme, captureScale)
                 val key = Triple(request, state.pid, manualRefresh to resourceRevision)
                 // Metadata notifications can prepare the same document again. Keep
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
@@ -719,6 +732,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     width.setTextAndPlaceCursorAtEnd(height.text.toString()); height.setTextAndPlaceCursorAtEnd(previousWidth)
                 })
                 WinRTChoice("Theme", listOf("Default", "Light", "Dark").map { it to it }, theme) { theme = it }
+                stateGroups.forEach { group ->
+                    WinRTChoice("Visual state · ${group.label}", listOf("" to "Automatic") + group.states.map { it to it },
+                        selectedStates[group.key].orEmpty()) { value ->
+                        selectedStates = if (value.isEmpty()) selectedStates - group.key else selectedStates + (group.key to value)
+                    }
+                }
+                if (stateGroups.isNotEmpty()) Text("State selection affects this preview only. Automatic restores the document's triggers.")
             } else {
                 if (roots.size > 1) WinRTChoice("Window", roots.map { WinUIXamlVisualInspectionSelection.key(it) to it.className.substringAfterLast('.') }, root?.let(WinUIXamlVisualInspectionSelection::key)) { selection.selectRoot(it) }
                 if ((root?.instances ?: 0) > 1) WinRTChoice("Instance", (0 until root!!.instances).map { it.toString() to "Instance ${it + 1}" }, instance.toString()) {
