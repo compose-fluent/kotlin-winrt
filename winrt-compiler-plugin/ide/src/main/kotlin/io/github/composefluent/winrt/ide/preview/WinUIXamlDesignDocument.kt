@@ -21,6 +21,7 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
             sdkType: ((String, String) -> Boolean)? = null,
             visualType: ((String, String) -> Boolean)? = null,
             designData: ((String, String) -> WinUIXamlDesignResource?)? = resource,
+            compiledResourceFallback: Boolean = false,
             event: (String, String, String) -> Boolean = { _, _, _ -> false }): WinUIXamlDesignDocument {
             val factory = DocumentBuilderFactory.newInstance().apply {
                 isNamespaceAware = true
@@ -93,19 +94,23 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                 if (externalDictionary || projectDictionary != null) {
                     val uri = tag.getAttribute("Source")
                     val loaded = projectDictionary ?: resource!!(uri, sourcePath)
-                        ?: error("Resource dictionary '$uri' could not be found from '$sourcePath'.")
-                    require(loaded.packagePath !in stack) { "Resource dictionary cycle at '${loaded.packagePath}'." }
-                    expandedSize += loaded.text.length
-                    require(expandedSize <= 128 * 1024) { "The expanded design resources exceed the static preview limit." }
-                    val dictionary = parse(loaded.text).documentElement
-                    require(dictionary.localName == "ResourceDictionary") { "'$uri' must contain a ResourceDictionary." }
-                    val replacement = tag.ownerDocument.importNode(dictionary, true) as Element
-                    namespaces(tag, replacement)
-                    if (tag.hasAttributeNS(WinUIXamlCatalog.XAML, "Key"))
-                        replacement.setAttributeNS(WinUIXamlCatalog.XAML, "x:Key", tag.getAttributeNS(WinUIXamlCatalog.XAML, "Key"))
-                    sanitize(replacement, loaded.packagePath, stack + loaded.packagePath)
-                    tag.parentNode.replaceChild(replacement, tag)
-                    return
+                    if (loaded == null && !compiledResourceFallback)
+                        error("Resource dictionary '$uri' could not be found from '$sourcePath'.")
+                    if (loaded == null) notes += "Resource dictionary '$uri' uses the compiled package because its source is unavailable."
+                    else {
+                        require(loaded.packagePath !in stack) { "Resource dictionary cycle at '${loaded.packagePath}'." }
+                        expandedSize += loaded.text.length
+                        require(expandedSize <= 128 * 1024) { "The expanded design resources exceed the static preview limit." }
+                        val dictionary = parse(loaded.text).documentElement
+                        require(dictionary.localName == "ResourceDictionary") { "'$uri' must contain a ResourceDictionary." }
+                        val replacement = tag.ownerDocument.importNode(dictionary, true) as Element
+                        namespaces(tag, replacement)
+                        if (tag.hasAttributeNS(WinUIXamlCatalog.XAML, "Key"))
+                            replacement.setAttributeNS(WinUIXamlCatalog.XAML, "x:Key", tag.getAttributeNS(WinUIXamlCatalog.XAML, "Key"))
+                        sanitize(replacement, loaded.packagePath, stack + loaded.packagePath)
+                        tag.parentNode.replaceChild(replacement, tag)
+                        return
+                    }
                 }
                 if (sdkType != null && tag.namespaceURI.orEmpty().startsWith("using:") &&
                     !sdkType(tag.namespaceURI, tag.localName.substringBefore('.'))) {

@@ -263,7 +263,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     if (!projectCode) documents.stageAssets()
                     WinUIXamlDesignDocument.prepare(documents.read(source), application?.let(documents::read),
                         documents.target(source), application?.let(documents::target).orEmpty(),
-                        resource = if (projectCode) null else documents::resolve,
+                        resource = documents::resolve,
+                        compiledResourceFallback = projectCode,
                         designData = documents::resolve,
                         sdkType = if (projectCode) null else { uri, type -> catalog?.resolve(uri, type) != null },
                         visualType = if (projectCode) null else { uri, type -> catalog?.let { schema -> schema.resolve(uri, type)?.let(schema::isVisual) == true } == true }) { uri, type, attribute ->

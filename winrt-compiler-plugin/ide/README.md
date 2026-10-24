@@ -608,6 +608,9 @@ This does not claim exact navigation into that dependency's XAML.
 
 When a project-code launch is available, the preview defaults to rendering real
 project controls. The per-module choice is saved across editor and IDE restarts.
+Source-backed merged dictionaries use the current editor documents in project-code previews,
+so dictionary edits do not require rebuilding the package. Dictionaries available only
+in compiled dependencies retain their package URI and report that fallback in preview notes.
 Disable **Render project controls (requires compilation)** to use the independent
 SDK designer when application code cannot build. Without a project-code launch,
 the SDK designer is selected automatically.

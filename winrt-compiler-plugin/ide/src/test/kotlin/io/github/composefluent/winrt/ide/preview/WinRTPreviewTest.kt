@@ -11,6 +11,23 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 
 class WinRTPreviewTest {
     private val namespaces = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
+    @Test fun projectResourcesExpandEditableSourcesAndRetainUnavailableCompiledDictionaries() {
+        val document = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="Editable.xaml"/><ResourceDictionary Source="Binary.xaml"/>
+            </ResourceDictionary.MergedDictionaries></ResourceDictionary></Page.Resources><TextBlock/></Page>""",
+            packagePath = "UI/Page.xaml", compiledResourceFallback = true,
+            resource = { uri, _ -> if (uri == "Editable.xaml") WinUIXamlDesignResource(
+                """<ResourceDictionary $namespaces xmlns:local="using:sample"><local:Converter x:Key="Converter"/><Style TargetType="TextBlock"><Setter Property="FontSize" Value="42"/></Style></ResourceDictionary>""", "UI/Editable.xaml") else null })
+        assertTrue(document.markup.contains("Value=\"42\""))
+        assertTrue(document.markup.contains("local:Converter"))
+        assertFalse(document.markup.contains("Source=\"Editable.xaml\""))
+        assertTrue(document.markup.contains("ms-appx:///UI/Binary.xaml"))
+        assertTrue(document.notes.any { it.contains("compiled package") })
+        assertTrue(runCatching { WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="Cycle.xaml"/></Page.Resources></Page>""",
+            compiledResourceFallback = true, resource = { _, _ -> WinUIXamlDesignResource("""<ResourceDictionary $namespaces Source="Cycle.xaml"/>""", "Cycle.xaml") }) }
+            .exceptionOrNull()!!.message!!.contains("cycle"))
+    }
+
     @Test fun visual_tree_selects_the_main_window_without_requiring_a_picker_and_preserves_an_explicit_choice() {
         val primary = WinUIXamlHotReloadRoot("sample.MainWindow", "MainWindow.xaml", "hash", 0, emptyList())
         val secondary = primary.copy(className = "sample.SettingsWindow", resourcePath = "SettingsWindow.xaml")
