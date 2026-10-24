@@ -12,6 +12,26 @@ class WinRTPreviewLaunchCacheTest {
         assertEquals("Concurrent validation must retain receipt compatibility", cache.reusable(result.first), result.second)
         result.second
     }
+    @Test fun boundedReadAheadPreservesExistingReceiptDigest() {
+        val root = Files.createTempDirectory("preview-hash-compatibility")
+        try {
+            val files = (0..9).map { index -> Files.write(root.resolve("file$index.bin"),
+                ByteArray(if (index == 3) 4 * 1024 * 1024 + 7 else index * 33) { (it % 251).toByte() }) }
+            val missing = root.resolve("missing")
+            val module = WinRTModuleData(":app", root.toString(), root.resolve("build").toString(), "2.4", "sdk", emptyList(), emptyList(), emptyList(), emptyList())
+            val cache = WinRTPreviewLaunchCache(root, listOf(module), module, WinUIXamlHotReloadLaunchData("run", root.resolve("app.exe").toString(), root.toString()))
+            val legacy = java.security.MessageDigest.getInstance("SHA-256")
+            fun add(value: String) { legacy.update(value.toByteArray()); legacy.update(0.toByte()) }
+            add("missing:$missing")
+            files.sorted().forEach { add(it.toString()); legacy.update(Files.readAllBytes(it)); legacy.update(0.toByte()) }
+            val expected = legacy.digest().joinToString("") { "%02x".format(it) }
+            val fingerprint = WinRTPreviewLaunchCache::class.java.getDeclaredMethod("fingerprint", List::class.java,
+                Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType, List::class.java)
+            fingerprint.isAccessible = true
+            assertEquals("Read-ahead must not force rebuilding an otherwise valid cached Native binary", expected,
+                fingerprint.invoke(cache, listOf(root, missing), true, false, false, emptyList<java.nio.file.Path>()))
+        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
+    }
     @Test fun dependencyEditsConfigurationChangesAndDeploymentChangesRequireRebuild() {
         val root = Files.createTempDirectory("preview-launch-cache")
         val external = Files.createTempFile("preview-external", ".klib")
@@ -39,12 +59,14 @@ class WinRTPreviewLaunchCacheTest {
             assertTrue(checked(cache))
             val deploymentIdentity = cache.connectedDeploymentIdentity()
             assertNotNull(deploymentIdentity)
+            assertEquals(deploymentIdentity, cache.validatedDeploymentIdentity)
             val externalTime = Files.getLastModifiedTime(external)
             Files.writeString(external, "library-two")
             Files.setLastModifiedTime(external, externalTime)
             assertEquals("External artifact is not part of the project source scan", initial, cache.inputs())
             assertTrue("Routing hint must never authorize reuse", cache.hasCandidate())
             assertFalse("Changed resolved artifact invalidates even with preserved size/time", checked(cache))
+            assertNull(cache.validatedDeploymentIdentity)
             assertNotEquals(deploymentIdentity, cache.connectedDeploymentIdentity())
             Files.writeString(external, "library-one")
             assertTrue(checked(cache))

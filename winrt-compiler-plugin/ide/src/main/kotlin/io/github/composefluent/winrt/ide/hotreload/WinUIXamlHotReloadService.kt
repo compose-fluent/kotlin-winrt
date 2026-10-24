@@ -299,7 +299,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }.onFailure { log.debug("Preview launch cache unavailable", it) }
                 }
                 if (preview && cache != null) {
-                    val identity = cache.connectedDeploymentIdentity()
+                    val identity = (if (reused) cache.validatedDeploymentIdentity else null) ?: cache.connectedDeploymentIdentity()
                     withCurrent(request) { connectedPreviewDeployment = identity }
                 }
                 deploymentReady.complete(Unit)

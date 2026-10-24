@@ -78,11 +78,16 @@ internal class WinRTPreviewLaunchCache(
     fun connectedDeploymentIdentity(): String? = if (!supported()) null
         else runCatching { record("", environment()) }.getOrNull()
 
+    var validatedDeploymentIdentity: String? = null
+        private set
+
     fun reusable(inputs: String): Boolean = reusable(inputs, ::environment)
 
     private fun reusable(inputs: String, environment: () -> Map<String, String>): Boolean = supported() && runCatching {
         val stored = Files.readAllLines(receipt)
-        val current = record(inputs, environment()).lines()
+        val prepared = environment()
+        val current = record(inputs, prepared).lines()
+        validatedDeploymentIdentity = if (stored == current) record("", prepared) else null
         if (stored != current) {
             com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java)
                 .info("Preview build cache changed: " + current.filter { it !in stored }.map { it.substringBefore('=') })
@@ -180,12 +185,27 @@ internal class WinRTPreviewLaunchCache(
         fun add(text: String) { hash.update(text.toByteArray()); hash.update(0.toByte()) }
         missing.forEach { add("missing:$it") }
         val buffer = if (content) ByteArray(65536) else null
-        files.forEach { file ->
+        fun consume(file: Path, prefetched: ByteArray?) {
             add(file.toString())
-            if (content) Files.newInputStream(file).use { stream ->
+            if (prefetched != null) { hash.update(prefetched); readBytes += prefetched.size }
+            else if (content) Files.newInputStream(file).use { stream ->
                 while (true) { val count = stream.read(buffer!!); if (count < 0) break; hash.update(buffer, 0, count); readBytes += count }
             } else { add(Files.size(file).toString()); add(Files.getLastModifiedTime(file).toString()) }
             hash.update(0.toByte())
+        }
+        if (!content) files.forEach { consume(it, null) }
+        else files.chunked(4).forEach { batch ->
+            // File opens dominate inventories with many small projection sources.
+            // Bound read-ahead to four 4 MiB buffers, preserving the original
+            // byte order and receipt hash. Large files still stream with 64 KiB.
+            val pending = batch.map { file -> java.util.concurrent.CompletableFuture.supplyAsync({
+                val limit = 4 * 1024 * 1024
+                if (Files.size(file) > limit) null else Files.newInputStream(file).use { stream ->
+                    stream.readNBytes(limit + 1).takeIf { it.size <= limit }
+                }
+            }, com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService()) }
+            try { batch.zip(pending).forEach { (file, future) -> consume(file, future.join()) } }
+            finally { pending.forEach { it.cancel(true) } }
         }
         com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java).info(
             "Preview fingerprint: content=$content, excludeBuild=$excludeBuild, files=${files.size}, bytes=$readBytes, scan=${(scanned - started) / 1_000_000}ms, hash=${(System.nanoTime() - scanned) / 1_000_000}ms")
