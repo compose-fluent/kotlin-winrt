@@ -75,5 +75,32 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
         sources.stageAssets()
         assertEquals("changed asset", Files.readString(staged))
         assertFalse(Files.exists(Path.of(root, "build/classes/kotlin")))
+        // Cache validity includes editor buffers and WinMD bytes, even before
+        // the asynchronous source enumeration has supplied its file list.
+        val metadata = Path.of(root, "preview.winmd")
+        Files.writeString(metadata, "first metadata")
+        val references = Path.of(root, "preview-references.json")
+        Files.writeString(references, kotlinx.serialization.json.buildJsonObject {
+            put("ReferenceAssemblies", kotlinx.serialization.json.buildJsonArray {
+                add(kotlinx.serialization.json.buildJsonObject {
+                    put("FullPath", kotlinx.serialization.json.JsonPrimitive(metadata.toString()))
+                })
+            })
+        }.toString())
+        val cachedModule = module.copy(xamlCompilations = listOf(WinUIXamlCompilationData(
+            "compileXaml", listOf("$root/src/main/kotlin"), "", references.toString(), "", "")))
+        fun cacheKey() = WinUIXamlPreviewSources(project, cachedModule, emptyList(), page.path).projectDocumentKey()
+        val originalKey = cacheKey()
+        assertNotNull(originalKey)
+        val pageDocument = FileDocumentManager.getInstance().getDocument(page)!!
+        val originalText = pageDocument.text
+        WriteCommandAction.runWriteCommandAction(project) { pageDocument.setText(originalText.replace("/>", " Width=\"123\"/>")) }
+        assertFalse(originalKey == cacheKey())
+        WriteCommandAction.runWriteCommandAction(project) { pageDocument.setText(originalText) }
+        assertEquals(originalKey, cacheKey())
+        val metadataTime = Files.getLastModifiedTime(metadata)
+        Files.writeString(metadata, "other metadata")
+        Files.setLastModifiedTime(metadata, metadataTime)
+        assertFalse("Equal-length metadata with unchanged timestamps must invalidate the document", originalKey == cacheKey())
     }
 }

@@ -235,9 +235,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     val cache = if (projectCode) WinUIXamlDesignDocumentCache(
                         Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-design-documents"), source) else null
                     val cacheKey = if (projectCode) documents.projectDocumentKey() else null
+                    cacheKey?.let { cache?.read(it) }?.let { return@withContext it }
                     val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
                     val events = if (projectCode && catalog == null) catalogService.eventsForFile(source) else null
-                    if (catalog == null && events == null) return@withContext cacheKey?.let { cache?.read(it) }
+                    if (catalog == null && events == null) return@withContext null
 
                     val application = documents.application()
                     if (!projectCode) documents.stageAssets()

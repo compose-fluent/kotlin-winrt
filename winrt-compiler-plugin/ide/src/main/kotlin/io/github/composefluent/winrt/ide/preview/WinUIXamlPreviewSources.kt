@@ -18,7 +18,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 /** Source documents (including unsaved edits) are the designer's resource input. */
 internal class WinUIXamlPreviewSources(private val project: Project, private val module: WinRTModuleData,
-    private val files: List<String>, source: String) {
+    private val files: List<String>, private val source: String) {
     private val lookup = project.service<WinRTResourceIndex>().forFile(source)
     private val roots = (module.xamlCompilations.flatMap { it.sourceRoots } + module.sourceSets.flatMap { it.kotlinRoots })
         .map { Path.of(it).toAbsolutePath().normalize() }.distinct().sortedByDescending { it.nameCount }
@@ -78,6 +78,7 @@ internal class WinUIXamlPreviewSources(private val project: Project, private val
         if (metadata.isEmpty()) return null
         WinUIXamlDesignDocumentCache.key(buildList {
             add(module.toString())
+            add(source); add(target(source)); add(read(source))
             addAll(manifests)
             add(WinRTMetadataModelCodec.cacheKey(metadata))
             documents.values.sortedBy { it.target }.forEach { add(it.target); add(it.source); add(read(it.source)) }
