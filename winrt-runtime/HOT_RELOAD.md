@@ -240,3 +240,7 @@ tracks with undo: Double, Color, Point and Object keyframes, bounded KeyTime and
 attribute values. Existing spline/easing metadata is preserved. New frames use
 linear or discrete interpolation (Object uses discrete). Complex object values,
 ambiguous resource identities and template realizations remain source-only.
+The timeline can create a keyed root storyboard and an SDK keyframe track for a
+selected uniquely named element and writable dependency property. It preserves
+existing dictionary/theme entries, rejects duplicate target tracks, selects the
+created storyboard after preparation, and records the change as one undo command.

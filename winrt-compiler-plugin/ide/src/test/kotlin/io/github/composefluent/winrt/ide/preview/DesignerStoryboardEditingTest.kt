@@ -38,6 +38,24 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
         assertEquals(after, xml.text)
     }
+    fun testCreateTrackUsesSourceTargetAndUndoPreservesExistingResources() {
+        val xml = source()
+        val target = xml.rootTag!!.subTags.last()
+        val selection = DesignerSelection(com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(target), target.text,
+            listOf(DesignerProperty("Opacity", "Double", "0.8", emptyList(), true, false, true)),
+            io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(0.0, 0.0, 10.0, 10.0), "Grid", emptyMap())
+        val before = xml.text
+        DesignerStoryboardEditing.createTrack(project, selection, "NewMotion", "Opacity", 1000, "0.3", false)
+        assertEquals("Greeting · Opacity", DesignerStoryboardEditing.tracks(xml, "NewMotion").single().label)
+        assertTrue(xml.text.contains("KeyTime=\"0:0:1.000\""))
+        assertTrue(xml.text.contains("KeySpline=\"0,0 1,1\""))
+        val after = xml.text
+        assertTrue(runCatching { DesignerStoryboardEditing.createTrack(project, selection, "NewMotion", "Opacity", 2000, "0.5", false) }.isFailure)
+        assertEquals(after, xml.text)
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertEquals(before, xml.text)
+    }
     fun testDuplicateResourceIdentityIsNotGuessed() {
         assertTrue(DesignerStoryboardEditing.tracks(source(true), "Fade").isEmpty())
     }

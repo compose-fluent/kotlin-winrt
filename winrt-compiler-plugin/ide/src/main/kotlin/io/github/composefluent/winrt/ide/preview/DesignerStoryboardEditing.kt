@@ -48,6 +48,70 @@ internal object DesignerStoryboardEditing {
                     "${track.getAttributeValue("Storyboard.TargetName").orEmpty()} · ${track.getAttributeValue("Storyboard.TargetProperty").orEmpty()}", kind, frames)
             }
     }
+    fun createTrack(project: Project, selection: DesignerSelection, key: String, propertyName: String,
+        millis: Int, value: String, dependent: Boolean) {
+        require(key.isNotBlank() && key.length <= 256) { "Enter a storyboard resource key (up to 256 characters)." }
+        val property = selection.properties.singleOrNull { it.name == propertyName && it.writable && it.dependencyProperty }
+            ?: error("Select a writable dependency property.")
+        require(value.isNotBlank()) { "Enter the first keyframe value." }
+        WinUIXamlDesignerEditing.validate(property, value)?.let { error(it) }
+        val keyTime = time(millis)
+        val targetProperty = if ('.' in propertyName) "($propertyName)" else propertyName
+        val kind = when (property.type.substringAfterLast('.')) {
+            "Double" -> "Double"
+            "Point" -> "Point"
+            "Color" -> "Color"
+            else -> "Object"
+        }
+        WriteCommandAction.writeCommandAction(project).withName("Create XAML animation track").run<RuntimeException> {
+            val documents = PsiDocumentManager.getInstance(project)
+            documents.commitAllDocuments()
+            val target = selection.pointer.element ?: error("Select an element first.")
+            check(target.isValid && target.containingFile.isWritable && target.text == selection.text) { "XAML changed. Select the element again." }
+            val root = (target.containingFile as? XmlFile)?.rootTag ?: error("Open a XAML document.")
+            check(generateSequence(target) { it.parentTag }.none { it.localName in setOf("ControlTemplate", "DataTemplate", "Style") }) { "Open the template's animation in XAML." }
+            val name = target.getAttributeValue("Name", WinUIXamlCatalog.XAML)?.takeIf(String::isNotBlank)
+                ?: error("Give the selected element an x:Name first.")
+            val all = listOf(root) + PsiTreeUtil.findChildrenOfType(root, XmlTag::class.java)
+            check(all.count { it.getAttributeValue("Name", WinUIXamlCatalog.XAML) == name } == 1) { "The target name is ambiguous." }
+            val properties = root.subTags.filter { sdk(it, "${root.localName}.Resources") }
+            check(properties.size <= 1) { "Duplicate resource collections. Edit them in XAML." }
+            val resources = properties.singleOrNull()
+            val dictionaries = resources?.subTags.orEmpty().filter { sdk(it, "ResourceDictionary") }
+            check(dictionaries.size <= 1 && (dictionaries.isEmpty() || resources!!.subTags.size == 1)) { "The resource collection is ambiguous." }
+            val owner = dictionaries.singleOrNull() ?: resources
+            val matches = all.filter { (it.getAttributeValue("Key", WinUIXamlCatalog.XAML) ?: it.getAttributeValue("Name", WinUIXamlCatalog.XAML)) == key }
+            check(matches.size <= 1 && matches.all { sdk(it, "Storyboard") && it.parentTag == owner }) { "This resource key belongs to a different resource or namescope." }
+            val existing = matches.singleOrNull()
+            check(existing == null || PsiTreeUtil.findChildrenOfType(existing, XmlTag::class.java).none {
+                it.getAttributeValue("Storyboard.TargetName") == name && it.getAttributeValue("Storyboard.TargetProperty") == targetProperty
+            }) { "A track already animates this property. Edit its keyframes." }
+            val track = root.createChildTag("${kind}AnimationUsingKeyFrames", WinUIXamlCatalog.PRESENTATION, null, false)
+            track.setAttribute("Storyboard.TargetName", name)
+            track.setAttribute("Storyboard.TargetProperty", targetProperty)
+            if (dependent) track.setAttribute("EnableDependentAnimation", "True")
+            val frame = track.createChildTag("${if (kind == "Object") "Discrete" else "Linear"}${kind}KeyFrame", WinUIXamlCatalog.PRESENTATION, null, false)
+            frame.setAttribute("KeyTime", keyTime); frame.setAttribute("Value", value)
+            track.addSubTag(frame, false)
+            if (existing != null) {
+                val children = existing.subTags.filter { sdk(it, "Storyboard.Children") }
+                check(children.size <= 1) { "Duplicate animation collections. Edit them in XAML." }
+                (children.singleOrNull() ?: existing).addSubTag(track, false)
+            } else {
+                val storyboard = root.createChildTag("Storyboard", WinUIXamlCatalog.PRESENTATION, null, false)
+                val prefix = root.getPrefixByNamespace(WinUIXamlCatalog.XAML)?.takeIf(String::isNotEmpty) ?: "x".also { storyboard.setAttribute("xmlns:x", WinUIXamlCatalog.XAML) }
+                storyboard.setAttribute("$prefix:Key", key)
+                storyboard.addSubTag(track, false)
+                if (owner != null) owner.addSubTag(storyboard, false)
+                else {
+                    val collection = root.createChildTag("${root.localName}.Resources", WinUIXamlCatalog.PRESENTATION, null, false)
+                    collection.addSubTag(storyboard, false)
+                    root.addSubTag(collection, true)
+                }
+            }
+            documents.getDocument(root.containingFile)?.let(documents::doPostponedOperationsAndUnblockDocument)
+        }
+    }
     fun time(millis: Int): String {
         require(millis in 0..86_400_000) { "Use a position between 0 and 86400000 ms." }
         return "${millis / 3600000}:${millis / 60000 % 60}:${millis / 1000 % 60}.${(millis % 1000).toString().padStart(3, '0')}"

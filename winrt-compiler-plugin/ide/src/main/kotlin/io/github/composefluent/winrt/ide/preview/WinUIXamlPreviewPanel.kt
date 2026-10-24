@@ -213,8 +213,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val storyboards = storyboardDocument?.storyboards.orEmpty()
     var showTimeline by remember { mutableStateOf(false) }
     var editTimeline by remember { mutableStateOf(false) }
+    var createAnimationTrack by remember { mutableStateOf(false) }
     var timelineEnd by remember(source) { mutableIntStateOf(10_000) }
     var storyboardId by remember(source) { mutableStateOf("") }
+    var createdStoryboardKey by remember(source) { mutableStateOf<String?>(null) }
     val editorStoryboardKey = remember(source, storyboardId) { storyboards.singleOrNull { it.id == storyboardId }?.key.orEmpty() }
     var animationRevision by remember(source) { mutableIntStateOf(0) }
     var animationCommand by remember(source) { mutableStateOf<WinUIXamlPreviewAnimation?>(null) }
@@ -232,7 +234,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         animationPlaying = action == "Play"
         animationRevision++
     }
-    LaunchedEffect(storyboards, prepared) {
+    LaunchedEffect(storyboards, prepared, createdStoryboardKey) {
+        storyboards.singleOrNull { it.key == createdStoryboardKey }?.let {
+            storyboardId = it.id
+            createdStoryboardKey = null
+            animationCommand = null
+            animationPlaying = false
+        }
         if (prepared != null && storyboards.none { it.id == storyboardId }) {
             storyboardId = ""; animationCommand = null; animationPlaying = false
             animationPosition.setTextAndPlaceCursorAtEnd("0")
@@ -845,8 +853,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Playback leaves source XAML unchanged.")
+                    Link(if (createAnimationTrack) "Hide new track" else "New animation track…", onClick = { createAnimationTrack = !createAnimationTrack })
                     Link(if (editTimeline) "Hide keyframe editor" else "Edit keyframes…", onClick = { editTimeline = !editTimeline })
                 }
+                if (createAnimationTrack) DesignerStoryboardCreatePanel(project, currentEditables.singleOrNull(), animationTime(), editorStoryboardKey) { createdStoryboardKey = it }
                 if (editTimeline) DesignerStoryboardPanel(project, source,
                     editorStoryboardKey, revision, animationTime())
                 (state.animationError ?: failure)?.let { Text(it) }
@@ -863,7 +873,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     PreviewAction("Select elements", "select", view != null, selected = !panTool) { panTool = false }
                     PreviewAction("Pan canvas", "hand", view != null, selected = panTool) { panTool = true; armedTool = null }
                     if (static) {
-                        PreviewAction("Storyboard timeline", "timeline", enabled = storyboards.isNotEmpty(), selected = showTimeline) { showTimeline = !showTimeline }
+                        PreviewAction("Storyboard timeline", "timeline", enabled = static, selected = showTimeline) { showTimeline = !showTimeline }
                         PreviewAction("Toolbox", "toolbox", selected = showToolbox) { showToolbox = !showToolbox }
                         PreviewAction("Snap to edges and centers (Alt to bypass)", "snap", selected = snapEnabled) { snapEnabled = !snapEnabled }
                         Dropdown(enabled = editables.size > 1, menuContent = {

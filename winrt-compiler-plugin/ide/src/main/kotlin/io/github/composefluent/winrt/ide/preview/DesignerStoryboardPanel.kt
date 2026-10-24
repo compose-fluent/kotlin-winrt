@@ -62,3 +62,38 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
         feedback?.let { Text(it) }
     }
 }
+
+@Composable
+internal fun DesignerStoryboardCreatePanel(project: Project, selection: DesignerSelection?, position: Int, selectedKey: String, onCreated: (String) -> Unit) {
+    val key = remember(selectedKey) { TextFieldState(selectedKey.ifEmpty { "Animation" }) }
+    val properties = selection?.properties.orEmpty().filter { it.writable && it.dependencyProperty && !it.elementValue }
+    var property by remember(selection?.pointer) { mutableStateOf("Opacity") }
+    val initial = remember(selection?.pointer, property) { TextFieldState(properties.singleOrNull { it.name == property }?.value.orEmpty()) }
+    var dependent by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Create a track for the selected named element")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Storyboard key")
+            TextField(key, modifier = Modifier.width(180.dp))
+            Box(Modifier.weight(1f)) { WinRTChoice("Property", properties.map { it.name to it.name }, property) { property = it } }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("First value")
+            TextField(initial, modifier = Modifier.width(150.dp))
+            CheckboxRow("Allow dependent animations", dependent, { dependent = it })
+            OutlinedButton(enabled = selection != null && properties.any { it.name == property } && key.text.isNotBlank() && initial.text.isNotBlank(), onClick = {
+                val target = selection ?: return@OutlinedButton
+                val resourceKey = key.text.toString().trim()
+                val propertyName = property
+                val text = initial.text.toString()
+                ApplicationManager.getApplication().invokeLater {
+                    if (!project.isDisposed) runCatching { DesignerStoryboardEditing.createTrack(project, target, resourceKey, propertyName, position, text, dependent) }
+                        .onSuccess { feedback = "Created $resourceKey · $propertyName at $position ms · Ctrl+Z to undo"; onCreated(resourceKey) }
+                        .onFailure { feedback = it.message ?: "Could not create animation track" }
+                }
+            }) { Text("Create track") }
+        }
+        feedback?.let { Text(it) }
+    }
+}
