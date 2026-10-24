@@ -231,7 +231,7 @@ class WinUIXamlHotReloadTest {
         if (uri != WinUIXamlCatalog.PRESENTATION) null else when (property ?: type) {
             "Window" -> WinUIXamlContentMember("Content", false)
             "StackPanel", "Children" -> WinUIXamlContentMember("Children", true)
-            "Text", "FontSize", "Width" -> WinUIXamlContentMember(property!!, false)
+            "Text", "FontSize", "Width", "Background", "Color" -> WinUIXamlContentMember(property!!, false)
             else -> null
         }
 
@@ -257,6 +257,28 @@ class WinUIXamlHotReloadTest {
             .patch(WinUIXamlHotReloadMarkup.parse(unnamed), root(unnamed), contentMember = ::content)
         assertEquals(listOf(WinUIXamlHotReloadStep.Property("Content"), WinUIXamlHotReloadStep.Property("Children"),
             WinUIXamlHotReloadStep.Index(0, 1)), edited.changes.single().path)
+    }
+
+    /** CsWinRT ObjectLifetimeTests/CustomGroupedItemPages.cs uses the SDK loader
+     * for property elements; no new runtime parser or connection contract is needed. */
+    @Test fun new_sdk_subtrees_accept_resolved_property_elements_without_connections() {
+        val added = "<Border><Border.Background><SolidColorBrush Color=\"Red\"/></Border.Background></Border>"
+        val next = source.replace("<StackPanel>", "<StackPanel>$added")
+        val patch = WinUIXamlHotReloadMarkup.parse(next).patch(WinUIXamlHotReloadMarkup.parse(source), root(), contentMember = ::content)
+        assertTrue((patch.children.single().items.first() as WinUIXamlHotReloadItem.Markup).xaml.contains("Border.Background"))
+        val removal = WinUIXamlHotReloadMarkup.parse(source).patch(WinUIXamlHotReloadMarkup.parse(next), root(next), contentMember = ::content)
+        assertEquals(listOf(WinUIXamlHotReloadItem.Existing(1)), removal.children.single().items)
+        listOf(
+            added.replace("Border.Background", "Border.Unknown"),
+            added.replace("Border.Background", "Border.Loaded"),
+            added.replace("Border.Background", "Button.Background"),
+            added.replace("Color=\"Red\"", "Color=\"{Binding Color}\""),
+            added.replace("<SolidColorBrush", "<SolidColorBrush x:Name=\"Brush\""),
+            added.replace("<Border.Background>", "<Border.Background x:Uid=\"Brush\">"),
+        ).forEach { invalid -> assertTrue(invalid, runCatching {
+            WinUIXamlHotReloadMarkup.parse(source.replace("<StackPanel>", "<StackPanel>$invalid"))
+                .patch(WinUIXamlHotReloadMarkup.parse(source), root(), contentMember = ::content)
+        }.isFailure) }
     }
 
     @Test fun child_changes_reject_compiled_connections_and_authored_component_lifetimes() {

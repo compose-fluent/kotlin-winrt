@@ -200,9 +200,20 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
             visit(owner, true, keys)
             return result.distinct()
         }
-        fun validateVisual(element: XamlElement) {
-            require(element.type.uri == WinUIXamlCatalog.PRESENTATION && element.elementName.isEmpty() && !element.template && '.' !in element.type.local) {
-                "A new or removed subtree must use SDK elements without names, templates or property elements; rebuild to update its connections."
+        fun validateVisual(element: XamlElement, owner: XamlElement? = null) {
+            require(element.type.uri == WinUIXamlCatalog.PRESENTATION && element.elementName.isEmpty() && !element.template) {
+                "A new or removed subtree must use SDK elements without names or templates; rebuild to update its connections."
+            }
+            if ('.' in element.type.local) {
+                val property = element.type.local.substringAfterLast('.')
+                require(owner != null && owner.type.uri == element.type.uri &&
+                    element.type.local.substringBeforeLast('.') == owner.type.local &&
+                    contentMember(owner.type.uri, owner.type.local, property) != null) {
+                    "Resolve the SDK property element before changing this subtree."
+                }
+                require(element.attributes.keys.all { it.uri == XMLConstants.XMLNS_ATTRIBUTE_NS_URI }) {
+                    "Directives on a property element require rebuilding."
+                }
             }
             element.attributes.forEach { (name, value) ->
                 require(name.uri.isEmpty() || name.uri == XMLConstants.XMLNS_ATTRIBUTE_NS_URI) {
@@ -218,7 +229,7 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 }
                 literal(value)
             }
-            element.content.filterIsInstance<XamlElement>().forEach(::validateVisual)
+            element.content.filterIsInstance<XamlElement>().forEach { validateVisual(it, element) }
         }
         fun sequence(old: List<Any>, next: List<Any>, target: WinUIXamlHotReloadTarget?,
             visit: (XamlElement, XamlElement, WinUIXamlHotReloadTarget?) -> Unit) {

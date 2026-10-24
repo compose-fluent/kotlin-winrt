@@ -112,7 +112,9 @@ children; same-size application reordering is outside the supported contract.
 
 Existing connected children may move within the same collection. New or removed
 subtrees must use unnamed SDK presentation elements with literal properties and no
-events, bindings, templates, property elements or authored controls. Removing a
+events, bindings, templates or authored controls. Resolved SDK property elements
+(such as Border.Background with a literal SolidColorBrush) are accepted inside
+these new/removed subtrees; their descendants follow the same connection guards. Removing a
 connected child, changing its type/name/parent, or changing a content property to a
 different object requires rebuilding. SDK Loaded/Unloaded callbacks can run during
 remove/insert, so object identity and explicit values are retained but keyboard
