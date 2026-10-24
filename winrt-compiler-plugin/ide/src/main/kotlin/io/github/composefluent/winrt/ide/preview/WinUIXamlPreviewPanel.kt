@@ -398,6 +398,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
         }
     }
+    fun renameState(group: DesignerStateGroup, state: String?) {
+        showSettings = false
+        val path = source
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) runCatching { DesignerStateAuthoring.rename(project, path, group, state) }
+                .onFailure { editFeedback = it.message ?: "Could not rename visual state" }
+        }
+    }
     fun structureEdit(action: (DesignerSelection) -> Unit) {
         val target = currentEditables.singleOrNull() ?: return
         ApplicationManager.getApplication().invokeLater {
@@ -780,6 +788,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     WinRTChoice("Visual state · ${group.label}", listOf("" to "Automatic") + group.states.map { it to it },
                         selectedStates[group.key].orEmpty()) { value ->
                         selectedStates = if (value.isEmpty()) selectedStates - group.key else selectedStates + (group.key to value)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Link("Rename group…", onClick = { renameState(group, null) })
+                        selectedStates[group.key]?.let { selected ->
+                            Link("Rename state…", onClick = { renameState(group, selected) })
+                        }
                     }
                 }
                 if (stateGroups.isNotEmpty()) {

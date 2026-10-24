@@ -234,6 +234,24 @@ class WinUIXamlBindingTest : BasePlatformTestCase() {
         assertTrue(second.text, second.text.contains("x:Name=\"Same\"") && second.text.contains("ElementName=Same"))
     }
 
+    fun testStateRenameUpdatesOnlyTransitionsInItsGroup() {
+        val file = configure("""<VisualStateManager.VisualStateGroups>
+          <VisualStateGroup x:Name="First"><VisualState x:Name="Normal"/><VisualState x:Name="Pressed"/>
+            <VisualStateGroup.Transitions><VisualTransition From="Normal" To="Pressed"/><VisualTransition To="Normal"/></VisualStateGroup.Transitions>
+          </VisualStateGroup>
+          <VisualStateGroup x:Name="Second"><VisualState x:Name="Normal"/>
+            <VisualStateGroup.Transitions><VisualTransition To="Normal"/></VisualStateGroup.Transitions>
+          </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>""")
+        val groups = file.rootTag!!.subTags.single().subTags
+        val definition = groups[0].subTags[0].getAttribute("Name", WinUIXamlCatalog.XAML)!!.valueElement!!
+        val refs = allowAnalysisOnEdt { ReferencesSearch.search(definition).findAll() }
+        assertEquals(refs.toString(), 2, refs.size)
+        allowAnalysisOnEdt { RenameProcessor(project, definition, "Resting", false, false).run() }
+        assertTrue(groups[0].text, groups[0].text.contains("From=\"Resting\"") && groups[0].text.contains("To=\"Resting\""))
+        assertTrue(groups[1].text, groups[1].text.contains("x:Name=\"Normal\"") && groups[1].text.contains("To=\"Normal\""))
+    }
+
     override fun tearDown() {
         try {
             directory?.let { root ->

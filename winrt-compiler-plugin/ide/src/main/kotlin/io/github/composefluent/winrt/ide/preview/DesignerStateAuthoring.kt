@@ -63,13 +63,32 @@ internal object DesignerStateAuthoring {
 
     fun addState(project: Project, file: com.intellij.openapi.vfs.VirtualFile, group: DesignerStateGroup, stateName: String) =
         edit(project, "Create XAML visual state") {
-            val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: error("Open a XAML source file.")
-            check(xml.isWritable) { "This XAML file is read only." }
-            val owner = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter {
-                sdk(it, "VisualStateGroup") && name(it) == group.label &&
-                    it.subTags.filter { child -> sdk(child, "VisualState") }.map(::name) == group.states
-            }.singleOrNull() ?: error("The state group changed or is ambiguous. Select it again.")
+            val owner = groupTag(project, file, group)
             validateName(owner, stateName)
             owner.addSubTag(named(owner, "VisualState", stateName), false)
         }
+    private fun groupTag(project: Project, file: com.intellij.openapi.vfs.VirtualFile, group: DesignerStateGroup): XmlTag {
+        val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: error("Open a XAML source file.")
+        check(xml.isWritable) { "This XAML file is read only." }
+        return PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter {
+            sdk(it, "VisualStateGroup") && name(it) == group.label &&
+                it.subTags.filter { child -> sdk(child, "VisualState") }.map(::name) == group.states
+        }.singleOrNull() ?: error("The state group changed or is ambiguous. Select it again.")
+    }
+
+    fun rename(project: Project, path: String, group: DesignerStateGroup, state: String?) {
+        val definition = com.intellij.openapi.application.WriteIntentReadAction.compute {
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: error("The source file is unavailable.")
+            val owner = groupTag(project, file, group)
+            val target = if (state == null) owner else owner.subTags.singleOrNull { sdk(it, "VisualState") && name(it) == state }
+                ?: error("The visual state changed. Select it again.")
+            target.getAttribute("Name", WinUIXamlCatalog.XAML)?.valueElement ?: error("Give this group an x:Name in XAML first.")
+        }
+        // Use the existing platform rename/usage preview and collision checks.
+        // Transition From/To references participate through the XAML provider.
+        io.github.composefluent.winrt.ide.xaml.WinUIXamlNameRenameHandler().invoke(project, arrayOf(definition),
+            com.intellij.openapi.actionSystem.DataContext.EMPTY_CONTEXT)
+    }
+
 }
