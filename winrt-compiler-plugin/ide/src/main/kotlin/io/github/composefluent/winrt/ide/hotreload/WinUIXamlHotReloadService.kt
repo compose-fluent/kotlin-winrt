@@ -80,6 +80,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var pendingPreviewCache: Pair<WinRTPreviewLaunchCache, String>? = null
     private var launchStartedNanos = 0L
     private var firstFrameReported = false
+    @Volatile private var cachedFirstFrame: CompletableDeferred<Unit>? = null
+
+    /** Only the full catalog yields; cached event indexes already allow document
+     * preparation. Bound the wait so missing design data can never deadlock it. */
+    internal suspend fun awaitCachedFirstFrame() {
+        val pending = cachedFirstFrame ?: return
+        if (pending.isCompleted) return
+        val started = System.nanoTime()
+        withTimeoutOrNull(2_000) { pending.await() }
+        log.info("Full XAML catalog yielded to preview: ${(System.nanoTime() - started) / 1_000_000}ms")
+    }
     private val log = com.intellij.openapi.diagnostic.Logger.getInstance(WinRTDevelopmentSession::class.java)
 
     /** Drain the last UI transaction before LLDB suspends the process. */
@@ -139,6 +150,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         if (display.value.busy) return
         val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true))
         launchStartedNanos = startedAt; firstFrameReported = false
+        val firstFrame = CompletableDeferred<Unit>()
         gradleProcess = null
         worker = scope.launch(Dispatchers.IO) {
             try {
@@ -176,6 +188,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage"))) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
+                if (preview && !sdkPreview && !rebuild && cache?.hasCandidate() == true) withCurrent(request) {
+                    cachedFirstFrame = firstFrame
+                }
                 val validation = cache?.let { runCatching {
                     if (rebuild) it.inputs() to false else it.checkedInputs()
                 }.getOrNull() }
@@ -186,6 +201,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     pendingPreviewCache = cache to inputs
                 }
                 val reusable = validation?.second == true
+                if (!reusable) firstFrame.complete(Unit)
                 if (preview && reusable) log.info("XAML preview cache validated: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                 val preparedSources = sourcePreparation.await()
                 mutex.withLock {
@@ -213,6 +229,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (error is CancellationException && error !is TimeoutCancellationException) throw error
                         currentCoroutineContext().ensureActive()
                         mutex.withLock { stopOwned(); client?.close(); client = null }
+                        firstFrame.complete(Unit)
                         cache.invalidate()
                         // TimeoutCancellationException is coroutine control flow; IntelliJ
                         // rejects logging it as a Throwable. Preserve the reason without a stack.
@@ -278,6 +295,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output.") }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { withCurrent(request) { display.value = WinUIXamlHotReloadState(error.message.orEmpty(), pid = owned?.process?.takeIf { it.isAlive }?.pid()) } }
+            finally { if (!display.value.connected || !isCurrent(request)) firstFrame.complete(Unit) }
         }
     }
 
@@ -602,6 +620,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         } ?: break
                         if (client === connection) withCurrent(epoch) {
                             if (next.previewMarkup.isNotEmpty() && reply.status != WinUIXamlHotReloadProtocol.APPLIED) {
+                                cachedFirstFrame?.complete(Unit)
                                 display.value = display.value.copy(inspection = null, inspectionError = reply.message, message = reply.message)
                                 inspectionOwner = null
                                 return@withCurrent
@@ -619,6 +638,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 log.info("XAML preview rendered: ${display.value.renderMillis}ms")
                                 if (!firstFrameReported && launchStartedNanos != 0L && reply.inspection?.image != null) {
                                     firstFrameReported = true
+                                    cachedFirstFrame?.complete(Unit)
                                     log.info("XAML preview first frame: ${(System.nanoTime() - launchStartedNanos) / 1_000_000}ms")
                                 }
                             }
@@ -705,6 +725,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     private fun cancelRequests() {
+        cachedFirstFrame?.complete(Unit); cachedFirstFrame = null
         worker?.cancel(); edits?.cancel(); update?.cancel(); inspection?.cancel()
         pendingInspection = null
         pendingPreviewCache = null
