@@ -66,6 +66,39 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertNull(service.loadedSourceLaunch(fixture.source.toString()))
     }
 
+    fun testConnectedHostMatchesItsApplicationAndLaunchOnly() = session { fixture ->
+        val service = fixture.service()
+        val launch = fixture.module.hotReloadLaunches.single()
+        assertFalse(service.usesLaunch(fixture.module, launch))
+        service.reconnect(); fixture.connected(service)
+        assertTrue(service.usesLaunch(fixture.module, launch))
+        assertFalse(service.usesLaunch(fixture.module.copy(projectDirectory = fixture.root.resolve("other-app").toString()), launch))
+        assertFalse(service.usesLaunch(fixture.module, launch.copy(taskName = "otherLaunch")))
+    }
+
+    fun testLeavingTheEditorCancelsPendingApplicationSwitch() = session { fixture ->
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fixture.beforeHandshake.set { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+        val service = fixture.service()
+        service.reconnect()
+        fixture.await("Original host is connecting", entered)
+        try {
+            runBlocking {
+                val pending = launch(start = CoroutineStart.UNDISPATCHED) {
+                    service.ensurePreviewReady(fixture.module.copy(projectDirectory = fixture.root.resolve("other").toString()),
+                        fixture.module.hotReloadLaunches.single())
+                    fail("A busy other host must not be treated as the requested application")
+                }
+                assertTrue(pending.isActive)
+                pending.cancelAndJoin()
+            }
+        } finally { release.countDown() }
+        fixture.connected(service)
+        assertTrue(service.usesLaunch(fixture.module, fixture.module.hotReloadLaunches.single()))
+        assertEquals(fixture.directory.toString(), service.getState().sessionDirectory)
+    }
+
     fun testProvenSourceHostSurvivesWorkspaceReloadButNotRemovedGradleModels() = session { fixture ->
         val service = fixture.service()
         assertNull(service.sourcePreviewLaunch(fixture.source.toString()))

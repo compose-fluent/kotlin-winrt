@@ -6,7 +6,7 @@ package io.github.composefluent.winrt.ide.preview
 internal suspend fun startPreferredXamlPreview(
     wantsProjectCode: Boolean,
     projectConnected: Boolean,
-    startProject: () -> Unit,
+    startProject: suspend () -> Unit,
     awaitProject: suspend () -> Boolean,
     startBasic: suspend () -> Unit,
     continueStartup: () -> Boolean = { true },

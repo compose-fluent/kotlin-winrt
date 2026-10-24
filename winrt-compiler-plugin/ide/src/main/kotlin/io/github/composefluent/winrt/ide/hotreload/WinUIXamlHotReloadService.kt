@@ -25,6 +25,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.file.Files
@@ -130,7 +131,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
-    fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false) {
+    fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart) {
         if (disposed || project.isDisposed) return
         val sdkPreview = preview && launch == module.staticPreview?.launch()
         val startedAt = System.nanoTime()
@@ -175,7 +176,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     pendingPreviewCache = cache to inputs
                 }
                 var reused = false
-                if (cache != null && inputs != null && !restart && cache.reusable(inputs)) {
+                if (cache != null && inputs != null && !rebuild && cache.reusable(inputs)) {
                     try {
                         if (preview) log.info("XAML preview cache validated: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                         val process = ProcessBuilder(launch.previewExecutable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
@@ -351,10 +352,21 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         loadedSourceLaunch(path) ?: project.service<WinRTPreviewSourceHosts>().resolve(path,
             project.service<WinRTProjectService>().modules.value)
 
+    fun usesLaunch(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData): Boolean =
+        selectedModule == module && selectedLaunch == launch
+
+    /** Switching applications must not render against another application's host.
+     * The editor coroutine owns this wait, so leaving the tab cancels the request. */
+    suspend fun ensurePreviewReady(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
+        if (display.value.busy && !usesLaunch(module, launch)) state.first { !it.busy }
+        currentCoroutineContext().ensureActive()
+        ensurePreview(module, launch)
+    }
+
     /** Opening/switching a preview reuses its host; a failed launch needs an explicit retry. */
     fun ensurePreview(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
         if (display.value.busy || (selectedModule == module && selectedLaunch == launch)) return
-        start(module, launch, restart = display.value.pid != null, preview = true)
+        start(module, launch, restart = display.value.pid != null, preview = true, rebuild = false)
     }
 
     fun reconnect() {

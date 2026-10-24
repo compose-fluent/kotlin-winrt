@@ -118,7 +118,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val projectCodeKey = "winrt.preview.projectCode.${module?.projectDirectory.orEmpty()}"
     var preferProjectCode by remember(projectCodeKey) { mutableStateOf(preferences.getBoolean(projectCodeKey, true)) }
     val wantsProjectCode = preferProjectCode && launches.isNotEmpty()
-    val projectCode = wantsProjectCode && (projectState.connected || projectState.busy || module?.staticPreview == null)
+    val matchingProjectHost = launchModule != null && launch != null && design.usesLaunch(launchModule, launch)
+    val projectCode = wantsProjectCode && (matchingProjectHost && (projectState.connected || projectState.busy) || module?.staticPreview == null)
     val session: WinRTDevelopmentSession = if (!static) live else if (projectCode) design else sdk
     val state by session.state.collectAsState()
     val designLaunch = if (projectCode) launch else module?.staticPreview?.launch()
@@ -139,13 +140,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (static && module != null && !startupCancelled) {
             startPreferredXamlPreview(
                 wantsProjectCode = wantsProjectCode && launch != null,
-                projectConnected = projectState.connected,
+                projectConnected = matchingProjectHost && projectState.connected,
                 continueStartup = { !startupCancelled },
-                startProject = { design.ensurePreview(launchModule!!, launch!!) },
+                startProject = { design.ensurePreviewReady(launchModule!!, launch!!) },
                 awaitProject = { design.state.first { it.connected || !it.busy }.connected },
                 startBasic = {
                     module.staticPreview?.launch()?.let { sdkLaunch ->
-                        sdk.ensurePreview(module, sdkLaunch)
+                        sdk.ensurePreviewReady(module, sdkLaunch)
                     }
                 })
         }
