@@ -194,7 +194,7 @@ object WinRTTemplates {
                         class App : Application() {
                             private var window: MainWindow? = null
 
-                            override fun onLaunched(args: LaunchActivatedEventArgs) {
+                            override fun onLaunched(args: LaunchActivatedEventArgs?) {
                                 window = MainWindow().also { it.activate() }
                             }
                         }
