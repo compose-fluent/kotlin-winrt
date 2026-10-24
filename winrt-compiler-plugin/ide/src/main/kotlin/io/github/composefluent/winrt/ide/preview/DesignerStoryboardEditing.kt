@@ -112,6 +112,17 @@ internal object DesignerStoryboardEditing {
             documents.getDocument(root.containingFile)?.let(documents::doPostponedOperationsAndUnblockDocument)
         }
     }
+    /** Only lossless, bounded millisecond positions can be edited by this timeline. */
+    fun milliseconds(time: String): Int? {
+        val match = Regex("(?:(\\d+)\\.)?(\\d+):([0-5]?\\d):([0-5]?\\d)(?:\\.(\\d{1,7}))?").matchEntire(time.trim()) ?: return null
+        val days = match.groupValues[1].ifEmpty { "0" }.toLongOrNull() ?: return null
+        val hours = match.groupValues[2].toLongOrNull() ?: return null
+        if (days > 1 || hours > 24) return null
+        val fraction = match.groupValues[5].padEnd(7, '0').toLong()
+        if (fraction % 10000L != 0L) return null
+        val millis = ((days * 24 + hours) * 3600 + match.groupValues[3].toLong() * 60 + match.groupValues[4].toLong()) * 1000 + fraction / 10000
+        return millis.takeIf { it in 0..86_400_000 }?.toInt()
+    }
     fun time(millis: Int): String {
         require(millis in 0..86_400_000) { "Use a position between 0 and 86400000 ms." }
         return "${millis / 3600000}:${millis / 60000 % 60}:${millis / 1000 % 60}.${(millis % 1000).toString().padStart(3, '0')}"

@@ -56,6 +56,15 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
         com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
         assertEquals(before, xml.text)
     }
+    fun testFrameTimeEditingIsLosslessAndBounded() {
+        assertEquals(2001, DesignerStoryboardEditing.milliseconds("0:00:02.0010000"))
+        assertEquals(86400000, DesignerStoryboardEditing.milliseconds("1.00:00:00"))
+        assertEquals(3600000, DesignerStoryboardEditing.milliseconds("1:0:0"))
+        for (value in listOf("Uniform", "Paced", "0:0:0.0001", "25:00:00", "0:60:00", "99999999999999999999:00:00"))
+            assertNull(value, DesignerStoryboardEditing.milliseconds(value))
+        for (millis in listOf(0, 1, 12345, 3600123, 86400000))
+            assertEquals(millis, DesignerStoryboardEditing.milliseconds(DesignerStoryboardEditing.time(millis)))
+    }
     fun testDuplicateResourceIdentityIsNotGuessed() {
         assertTrue(DesignerStoryboardEditing.tracks(source(true), "Fade").isEmpty())
     }

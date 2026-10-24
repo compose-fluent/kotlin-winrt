@@ -858,7 +858,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
                 if (createAnimationTrack) DesignerStoryboardCreatePanel(project, currentEditables.singleOrNull(), animationTime(), editorStoryboardKey) { createdStoryboardKey = it }
                 if (editTimeline) DesignerStoryboardPanel(project, source,
-                    editorStoryboardKey, revision, animationTime())
+                    editorStoryboardKey, revision, animationTime()) { millis ->
+                    animationPosition.setTextAndPlaceCursorAtEnd(millis.toString())
+                    animationPlaying = false
+                    controlAnimation("Seek")
+                }
                 (state.animationError ?: failure)?.let { Text(it) }
             }
             Divider(Orientation.Horizontal)

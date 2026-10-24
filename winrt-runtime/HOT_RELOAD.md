@@ -244,3 +244,7 @@ The timeline can create a keyed root storyboard and an SDK keyframe track for a
 selected uniquely named element and writable dependency property. It preserves
 existing dictionary/theme entries, rejects duplicate target tracks, selects the
 created storyboard after preparation, and records the change as one undo command.
+
+Selecting a millisecond keyframe seeks the preview to that frame. Existing frames
+use a separate editable time field; moving the playhead alone never moves a frame.
+Sub-millisecond or symbolic KeyTime values are not silently rounded by the editor.
