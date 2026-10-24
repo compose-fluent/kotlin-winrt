@@ -105,6 +105,40 @@ class DesignerStyleEditingTest : BasePlatformTestCase() {
         assertTrue(runCatching { DesignerStyleAuthoring.create(project, selected, "Shared", true, catalog) }.isFailure)
         assertEquals(before, myFixture.editor.document.text)
     }
+    fun testImplicitStyleUsesNearestSourceScopeAndPreservesNoExplicitReference() {
+        val original = base("""<Setter Property="Width" Value="220"/>""")
+        WriteCommandAction.runWriteCommandAction(project) {
+            original.pointer.element!!.setAttribute("Style", null)
+            (myFixture.file as XmlFile).rootTag!!.subTags.first().subTags.single().setAttribute("x:Key", null)
+        }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val selected = original.copy(text = original.pointer.element!!.text)
+        val style = DesignerStyleEditing.selection(selected, catalog)!!
+        assertEquals("Implicit Button style", style.style!!.label)
+        assertEquals("220", style.properties.single().value)
+        val before = myFixture.editor.document.text
+        WinUIXamlDesignerEditing.apply(project, style, mapOf("Width" to "260"), "Edit implicit style")
+        assertNull(original.pointer.element!!.getAttribute("Style"))
+        assertEquals("100", original.pointer.element!!.getAttributeValue("Width"))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertEquals(before, myFixture.editor.document.text)
+    }
+    fun testImplicitStyleMergedDictionaryOrderAndExplicitNullSuppression() {
+        val original = base("")
+        WriteCommandAction.runWriteCommandAction(project) {
+            original.pointer.element!!.setAttribute("Style", null)
+            val resources = (myFixture.file as XmlFile).rootTag!!.subTags.first()
+            resources.subTags.single().delete()
+            resources.addSubTag(resources.createChildTag("ResourceDictionary", WinUIXamlCatalog.PRESENTATION,
+                """<ResourceDictionary.MergedDictionaries><ResourceDictionary><Style TargetType="Button"><Setter Property="Width" Value="210"/></Style></ResourceDictionary><ResourceDictionary><Style TargetType="Button"><Setter Property="Width" Value="310"/></Style></ResourceDictionary></ResourceDictionary.MergedDictionaries>""", false), false)
+        }
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        val selected = original.copy(text = original.pointer.element!!.text)
+        assertEquals("310", DesignerStyleEditing.selection(selected, catalog)!!.properties.single().value)
+        WriteCommandAction.runWriteCommandAction(project) { original.pointer.element!!.setAttribute("Style", "{x:Null}") }
+        assertNull(DesignerStyleEditing.selection(original.copy(text = original.pointer.element!!.text), catalog))
+    }
+
     fun testComplexDuplicateAndStaleStyleEditsAreRejected() {
         listOf("""<Setter Property="Width"><Setter.Value><x:Double>200</x:Double></Setter.Value></Setter>""",
             """<Setter Property="Width" Value="200"/><Setter Property="Width" Value="300"/>""").forEach { setters ->

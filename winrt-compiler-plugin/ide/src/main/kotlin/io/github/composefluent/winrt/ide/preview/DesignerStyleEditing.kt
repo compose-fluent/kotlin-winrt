@@ -29,7 +29,9 @@ internal object DesignerStyleEditing {
         val value = tag.getAttribute("Style")?.valueElement
         val referenced = value?.let { WinRTResourceReferences.reference(it)?.multiResolve(false) }
             .orEmpty().mapNotNull { PsiTreeUtil.getParentOfType(it.element, XmlTag::class.java) }.distinct()
-        val style = (inline + referenced).singleOrNull()?.takeIf { sdk(it, "Style") } ?: return null
+        val implicit = if (tag.getAttribute("Style") == null && tag.subTags.none { it.localName.substringAfter('.', "") == "Style" })
+            WinRTResourceReferences.implicitStyle(tag, catalog) else null
+        val style = (inline + referenced + listOfNotNull(implicit)).singleOrNull()?.takeIf { sdk(it, "Style") } ?: return null
         if (!style.containingFile.isWritable || collections(style).size > 1) return null
         val targetName = style.getAttributeValue("TargetType") ?: return null
         val target = catalog.resolve(style.getNamespaceByPrefix(targetName.substringBefore(':', "")), targetName.substringAfter(':')) ?: return null
@@ -39,7 +41,7 @@ internal object DesignerStyleEditing {
             property.copy(value = found.singleOrNull()?.getAttributeValue("Value"), writable = property.writable && found.size <= 1,
                 elementValue = found.any { it.subTags.isNotEmpty() })
         }
-        val label = style.getAttributeValue("Key", WinUIXamlCatalog.XAML) ?: "Inline ${target.name} style"
+        val label = style.getAttributeValue("Key", WinUIXamlCatalog.XAML) ?: if (implicit != null) "Implicit ${target.name} style" else "Inline ${target.name} style"
         val file = style.containingFile as XmlFile
         val lookup = file.originalFile.virtualFile?.path?.let { tag.project.service<WinRTResourceIndex>().forFile(it) }
         val keys = WinRTResourceReferences.resourceKeys(file, lookup, style, null).map { it.value }.distinct().sorted()

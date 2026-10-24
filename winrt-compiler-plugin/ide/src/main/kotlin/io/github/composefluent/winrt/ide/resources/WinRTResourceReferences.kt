@@ -177,6 +177,56 @@ internal object WinRTResourceReferences {
         return found + merged + source + nested
     }
 
+    /** Source-owned implicit styles. WinUI EnsureImplicitStyle/GetKeyNoRef
+     * walk logical scopes, then merged dictionaries in reverse order. Runtime
+     * theme/template/foreign-control scopes cannot be inferred from PSI: fail
+     * closed instead of editing a possibly different runtime style.
+     * Reference: microsoft-ui-xaml/docs/design-notes/resources.md. */
+    internal fun implicitStyle(tag: XmlTag, catalog: WinUIXamlCatalog): XmlTag? {
+        val type = catalog.resolve(tag.namespace, tag.localName) ?: return null
+        val file = tag.containingFile as? XmlFile ?: return null
+        val lookup = file.originalFile.virtualFile?.path?.let { file.project.service<WinRTResourceIndex>().forFile(it) }
+        val visited = hashSetOf<XmlTag>()
+        fun dictionary(owner: XmlTag): List<XmlTag>? {
+            if (!visited.add(owner) || visited.size > 128) return null
+            val direct = owner.subTags.filter { child ->
+                if (child.namespace != WinUIXamlCatalog.PRESENTATION || child.localName != "Style" ||
+                    child.getAttribute("Key", WinUIXamlCatalog.XAML) != null || child.getAttribute("Name", WinUIXamlCatalog.XAML) != null) false
+                else child.getAttributeValue("TargetType")?.let { name ->
+                    catalog.resolve(child.getNamespaceByPrefix(name.substringBefore(':', "")), name.substringAfter(':')) == type
+                } == true
+            }
+            if (direct.isNotEmpty()) return direct
+            for (nested in owner.subTags.filter { it.localName == "ResourceDictionary" }) {
+                val found = dictionary(nested) ?: return null
+                if (found.isNotEmpty()) return found
+            }
+            val source = owner.getAttributeValue("Source")
+            if (source != null) {
+                val target = files(owner.containingFile as XmlFile, lookup, source).filterIsInstance<XmlFile>().singleOrNull()?.rootTag ?: return null
+                return dictionary(target)
+            }
+            for (merged in owner.subTags.filter { it.localName.endsWith(".MergedDictionaries") }.flatMap { it.subTags.toList() }.asReversed()) {
+                val found = dictionary(merged) ?: return null
+                if (found.isNotEmpty()) return found
+            }
+            if (owner.subTags.any { it.localName.endsWith(".ThemeDictionaries") }) return null
+            return emptyList()
+        }
+        // Source parents are not logical parents across template instantiation.
+        val owners = generateSequence(tag) { it.parentTag }.toList()
+        if (owners.any { it.namespace == WinUIXamlCatalog.PRESENTATION && it.localName in setOf("ControlTemplate", "DataTemplate", "Style") }) return null
+        for (owner in owners) {
+            for (resources in owner.subTags.filter { it.localName.endsWith(".Resources") }) {
+                val found = dictionary(resources) ?: return null
+                if (found.isNotEmpty()) return found.singleOrNull()
+            }
+        }
+        // Application/theme ownership may depend on the selected launch host.
+        // Never choose a global source candidate without that runtime identity.
+        return null
+    }
+
     internal data class Key(val value: String, val element: PsiElement)
 
     internal fun resourceKeys(file: XmlFile, lookup: WinRTResourceLookup?, tag: XmlTag?, key: String?): List<Key> {

@@ -563,7 +563,7 @@ nodes remain inspection-only, and stale source edits are rejected instead of ove
 concurrent changes. Structure commands edit Grid definitions, reorder siblings and move
 source elements into compatible containers. Marquee selection and XAML copy/cut/paste
 use the same source mapping and undo history. The inspector's **Edit applied style…** edits literal dependency-property setters in
-an inline Style or a uniquely resolved explicit style resource, including Style.Setters.
+an inline Style, a uniquely resolved explicit style resource, or a source-scoped implicit style, including Style.Setters. Implicit style editing follows local resource and reverse merged-dictionary precedence; template scopes and theme-dependent or global runtime ownership remain unavailable rather than selecting an uncertain source.
 Edits preserve consumer-local values, support Reset and undo, and use the style's
 resource scope. Complex/duplicate setters and stale documents are protected.
 **Create style…** creates a keyed style in the nearest source ancestor with Resources
