@@ -24,13 +24,14 @@ internal data class DesignerTransform(val x: Double, val y: Double, val width: D
 
 internal object WinUIXamlDesignerEditing {
     fun selection(project: Project, path: String, selected: WinUIXamlVisualNode,
-        nodes: List<WinUIXamlVisualNode>): DesignerSelection? {
+        nodes: List<WinUIXamlVisualNode>, theme: String? = null, applicationSource: String? = null): DesignerSelection? {
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return null
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return null
+        val context = WinUIXamlSourceSelection.context(xml, theme, applicationSource)
         // Editing must be exact. Navigation's nearest-source-ancestor fallback is unsafe here.
-        val tag = WinUIXamlSourceSelection.sourceTags(xml)
-            .filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml) == selected }.singleOrNull() ?: return null
-        val catalog = WinUIXamlSymbols.catalog(xml) ?: return null
+        val tag = WinUIXamlSourceSelection.sourceTags(xml, context)
+            .filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml, context) == selected }.singleOrNull() ?: return null
+        val catalog = context.catalog ?: return null
         val members = WinUIXamlSymbols.members(tag).filterNot { it.isEvent }.toMutableList()
         tag.parentTag?.let { parent ->
             catalog.resolve(parent.namespace, parent.localName)?.let { owner ->
@@ -48,7 +49,7 @@ internal object WinUIXamlDesignerEditing {
             io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(tag.containingFile as XmlFile,
                 project.getService(io.github.composefluent.winrt.ide.resources.WinRTResourceIndex::class.java).forFile(tag.containingFile.originalFile.virtualFile?.path ?: file.path), tag, null)
                 .map { it.value }.distinct().sorted(), DesignerStructureEditing.inspect(tag, catalog,
-                WinUIXamlSourceSelection.sourceTags(xml).filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml) != null }), sharedTemplate = generateSequence(tag.parentTag) { it.parentTag }.firstOrNull { it.localName == "ControlTemplate" }?.let { template -> generateSequence(template) { it.parentTag }.firstNotNullOfOrNull { it.getAttributeValue("Key", WinUIXamlCatalog.XAML) } })
+                WinUIXamlSourceSelection.sourceTags(xml, context).filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml, context) != null }), sharedTemplate = generateSequence(tag.parentTag) { it.parentTag }.firstOrNull { it.localName == "ControlTemplate" }?.let { template -> generateSequence(template) { it.parentTag }.firstNotNullOfOrNull { it.getAttributeValue("Key", WinUIXamlCatalog.XAML) ?: if (it.localName == "Style") it.getAttributeValue("TargetType")?.let { name -> "Implicit $name style" } else null } })
     }
 
     fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =

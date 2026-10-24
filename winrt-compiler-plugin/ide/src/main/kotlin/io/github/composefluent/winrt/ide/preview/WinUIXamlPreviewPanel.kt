@@ -175,6 +175,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }.distinct().sorted() }
         if (source.isEmpty()) source = value.firstOrNull { it.endsWith("MainWindow.xaml", true) } ?: value.firstOrNull().orEmpty()
     }
+    val previewApplication by produceState<String?>(null, static, module, launchModule, projectCode, files, source, revision, resourceRevision) {
+        value = withContext(Dispatchers.IO) { module?.takeIf { static }?.let {
+            WinUIXamlPreviewSources(project, it, files, source, if (projectCode) launchModule ?: it else it).application()
+        } }
+    }
     val width = remember { TextFieldState("800") }; val height = remember { TextFieldState("600") }
     val validWidth = width.text.toString().toIntOrNull()?.takeIf { it in 64..4096 }
     val validHeight = height.text.toString().toIntOrNull()?.takeIf { it in 64..4096 }
@@ -336,20 +341,20 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
     }
     // Picking includes template parts only when they resolve to editable source for this instance.
-    val authoredPaths by produceState<Set<List<Int>>?>(null, static, source, view?.nodes, revision) {
+    val authoredPaths by produceState<Set<List<Int>>?>(null, static, source, view?.nodes, revision, theme, previewApplication, catalogRevision, resourceRevision) {
         if (!static) { value = null; return@produceState }
         val nodes = view?.nodes ?: return@produceState
         value = withContext(Dispatchers.IO) { ReadAction.compute<Set<List<Int>>, RuntimeException> {
             val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(source.replace('\\', '/'))
             val xml = file?.let { com.intellij.psi.PsiManager.getInstance(project).findFile(it) } as? com.intellij.psi.xml.XmlFile
-            xml?.let { document -> val tags = WinUIXamlSourceSelection.sourceTags(document); nodes.filter { node -> tags.count { tag -> WinUIXamlSourceSelection.node(tag, nodes, node.path, document) == node } == 1 }.map { it.path }.toSet() }.orEmpty()
+            xml?.let { document -> val context = WinUIXamlSourceSelection.context(document, theme, previewApplication); val tags = WinUIXamlSourceSelection.sourceTags(document, context); nodes.filter { node -> tags.count { tag -> WinUIXamlSourceSelection.node(tag, nodes, node.path, document, context) == node } == 1 }.map { it.path }.toSet() }.orEmpty()
         } }
     }
     var editFeedback by remember(source) { mutableStateOf<String?>(null) }
     // A successful write also changes revision; do not erase its feedback on
     // the next composition before the user has a chance to read it.
     LaunchedEffect(editFeedback) { if (editFeedback != null) { delay(6_000); editFeedback = null } }
-    val editableResult by produceState<List<DesignerSelection>?>(null, selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, recordState, selectedStates) {
+    val editableResult by produceState<List<DesignerSelection>?>(null, selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
         value = null
         val snapshot = view
         if (snapshot == null || !static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) { value = emptyList(); return@produceState }
@@ -358,7 +363,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 val node = snapshot.nodes.firstOrNull { it.path == path } ?: return@mapNotNull null
                 val owner = snapshot.nodes.filter { it.path.size <= path.size && path.take(it.path.size) == it.path }
                     .sortedByDescending { it.path.size }.firstNotNullOfOrNull { session.sourcePath(it.typeName) }
-                val base = WinUIXamlDesignerEditing.selection(project, owner ?: source, node, snapshot.nodes)
+                val base = WinUIXamlDesignerEditing.selection(project, owner ?: source, node, snapshot.nodes, theme, previewApplication)
                 if (!recordState) base else {
                     val chosen = selectedStates.entries.singleOrNull()
                     val group = stateGroups.singleOrNull { it.key == chosen?.key }
@@ -495,7 +500,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 // A native template descendant is only a hit target; walk to an
                 // exact source ancestor before inserting any new content.
                 snapshot.nodes.filter { path.take(it.path.size) == it.path }.sortedByDescending { it.path.size }
-                    .firstNotNullOfOrNull { node -> WinUIXamlDesignerEditing.selection(project, source, node, snapshot.nodes) }
+                    .firstNotNullOfOrNull { node -> WinUIXamlDesignerEditing.selection(project, source, node, snapshot.nodes, theme, previewApplication) }
             } }
             if (target == null) { editFeedback = "Select a source container for insertion."; return@launch }
             ApplicationManager.getApplication().invokeLater {
@@ -518,7 +523,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             .sortedByDescending { it.path.size }
             .firstNotNullOfOrNull { item -> session.sourcePath(item.typeName)?.let { it to item.path } }
         val file = owner?.first ?: if (static) source else root?.let { session.sourcePath(it) }
-        if (file != null) scope.launch(Dispatchers.IO) { navigate(project, file, node, snapshot.nodes, owner?.second.orEmpty()) }
+        if (file != null) scope.launch(Dispatchers.IO) { navigate(project, file, node, snapshot.nodes, owner?.second.orEmpty(), theme, previewApplication) }
     }
     DisposableEffect(project, source, static, view?.nodes) {
         val disposable = Disposer.newDisposable("WinRT preview caret selection")
@@ -999,11 +1004,11 @@ internal fun bgraImage(image: WinUIXamlVisualImage): BufferedImage {
     return bitmap
 }
 
-private fun navigate(project: Project, path: String, node: WinUIXamlVisualNode, nodes: List<WinUIXamlVisualNode>, component: List<Int>) {
+private fun navigate(project: Project, path: String, node: WinUIXamlVisualNode, nodes: List<WinUIXamlVisualNode>, component: List<Int>, theme: String? = null, applicationSource: String? = null) {
     val location = ReadAction.compute<Pair<com.intellij.openapi.vfs.VirtualFile, Int>?, RuntimeException> {
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return@compute null
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return@compute null
-        val tag = WinUIXamlSourceSelection.tag(xml, node, nodes, component)
+        val tag = WinUIXamlSourceSelection.tag(xml, node, nodes, component, WinUIXamlSourceSelection.context(xml, theme, applicationSource))
         (tag?.containingFile?.virtualFile ?: file) to (tag ?: xml.rootTag)?.textOffset.orEmptyOffset()
     }
     ApplicationManager.getApplication().invokeLater { if (!project.isDisposed && location != null)

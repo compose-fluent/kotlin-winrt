@@ -161,6 +161,32 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         assertNull(WinUIXamlSourceSelection.node(part, nodes, nodes[2].path, file))
         assertNull(WinUIXamlSourceSelection.node(part, nodes, nodes[4].path, file))
     }
+    fun testImplicitTemplateUsesSelectedApplicationThemeAndLocalScope() {
+        val catalog = io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog(io.github.composefluent.winrt.metadata.WinRTMetadataModel(listOf(
+            io.github.composefluent.winrt.metadata.WinRTNamespace("Microsoft.UI.Xaml.Controls", listOf(
+                io.github.composefluent.winrt.metadata.WinRTTypeDefinition("Microsoft.UI.Xaml.Controls", "Button", io.github.composefluent.winrt.metadata.WinRTTypeKind.RuntimeClass)
+            )))).normalized())
+        val application = myFixture.addFileToProject("App.xaml", """<Application xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Application.Resources><ResourceDictionary><ResourceDictionary.ThemeDictionaries>
+            <ResourceDictionary x:Key="Light"><Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate><TextBlock x:Name="LightPart"/></ControlTemplate></Setter.Value></Setter></Style></ResourceDictionary>
+            <ResourceDictionary x:Key="Dark"><Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate><TextBlock x:Name="DarkPart"/></ControlTemplate></Setter.Value></Setter></Style></ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries></ResourceDictionary></Application.Resources></Application>""") as XmlFile
+        val file = xml("""<Button x:Name="One"/><StackPanel><StackPanel.Resources><Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate><TextBlock x:Name="LocalPart"/></ControlTemplate></Setter.Value></Setter></Style></StackPanel.Resources><Button x:Name="Two"/></StackPanel>""")
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "Button", "One"), node(listOf(0, 0), "TextBlock", "LightPart"),
+            node(listOf(1), "StackPanel"), node(listOf(1, 0), "Button", "Two"), node(listOf(1, 0, 0), "TextBlock", "LocalPart"))
+        val context = WinUIXamlSourceSelection.Context(catalog, "Light", application)
+        val parts = PsiTreeUtil.findChildrenOfType(application, XmlTag::class.java).filter { it.localName == "TextBlock" }
+        assertSame(parts[0], WinUIXamlSourceSelection.tag(file, nodes[2], nodes, emptyList(), context))
+        val darkNodes = nodes.map { if (it == nodes[2]) it.copy(name = "DarkPart") else it }
+        assertSame(parts[1], WinUIXamlSourceSelection.tag(file, darkNodes[2], darkNodes, emptyList(), context.copy(theme = "Dark")))
+        val local = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).single { it.localName == "TextBlock" }
+        assertSame(local, WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList(), context))
+        assertFalse(WinUIXamlSourceSelection.sourceTags(file, context.copy(application = null)).contains(parts[0]))
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            file.rootTag!!.subTags.first().setAttribute("Style", "{x:Null}")
+        }
+        assertFalse("A changed local style must invalidate memoized implicit-template ownership",
+            WinUIXamlSourceSelection.sourceTags(file, context).contains(parts[0]))
+    }
     fun testSharedTemplateRespectsResourceShadowing() {
         val file = xml("""<Grid.Resources><ControlTemplate x:Key="Shared" TargetType="Button"><TextBlock x:Name="Outer"/></ControlTemplate></Grid.Resources>
             <StackPanel><StackPanel.Resources><ControlTemplate x:Key="Shared" TargetType="Button"><TextBlock x:Name="Inner"/></ControlTemplate></StackPanel.Resources>
