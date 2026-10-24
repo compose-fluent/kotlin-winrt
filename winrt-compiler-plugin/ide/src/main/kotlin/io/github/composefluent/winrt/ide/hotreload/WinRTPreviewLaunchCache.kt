@@ -100,6 +100,7 @@ internal class WinRTPreviewLaunchCache(
     ).entries.joinToString("\n") { (name, value) -> "$name=${digest(value.toByteArray())}" }
 
     private fun fingerprint(roots: List<Path>, content: Boolean, excludeBuild: Boolean, configurationOnly: Boolean = false): String {
+        val started = System.nanoTime()
         val files = sortedSetOf<Path>()
         val missing = sortedSetOf<String>()
         val excluded = setOf("build", ".gradle", ".git", ".idea", ".kotlin", ".konan", "node_modules")
@@ -130,6 +131,8 @@ internal class WinRTPreviewLaunchCache(
                 }
             })
         }
+        val scanned = System.nanoTime()
+        var readBytes = 0L
         val hash = MessageDigest.getInstance("SHA-256")
         fun add(text: String) { hash.update(text.toByteArray()); hash.update(0.toByte()) }
         missing.forEach { add("missing:$it") }
@@ -137,10 +140,12 @@ internal class WinRTPreviewLaunchCache(
         files.forEach { file ->
             add(file.toString())
             if (content) Files.newInputStream(file).use { stream ->
-                while (true) { val count = stream.read(buffer!!); if (count < 0) break; hash.update(buffer, 0, count) }
+                while (true) { val count = stream.read(buffer!!); if (count < 0) break; hash.update(buffer, 0, count); readBytes += count }
             } else { add(Files.size(file).toString()); add(Files.getLastModifiedTime(file).toString()) }
             hash.update(0.toByte())
         }
+        com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java).info(
+            "Preview fingerprint: content=$content, excludeBuild=$excludeBuild, files=${files.size}, bytes=$readBytes, scan=${(scanned - started) / 1_000_000}ms, hash=${(System.nanoTime() - scanned) / 1_000_000}ms")
         return hash.digest().joinToString("") { "%02x".format(it) }
     }
 
@@ -148,6 +153,7 @@ internal class WinRTPreviewLaunchCache(
         // A new bundle may resolve newer artifacts than the old Gradle receipt.
         // Hash it once per IDE classloader; UI-only changes need not rebuild Native.
         private val bundledToolchainIdentity: String by lazy {
+            val started = System.nanoTime()
             val type = WinRTPreviewLaunchCache::class.java
             type.getResourceAsStream("/templates/toolchain.zip")?.use { stream ->
                 val hash = MessageDigest.getInstance("SHA-256")
@@ -157,7 +163,9 @@ internal class WinRTPreviewLaunchCache(
                     if (count < 0) break
                     hash.update(buffer, 0, count)
                 }
-                hash.digest().joinToString("") { "%02x".format(it) }
+                hash.digest().joinToString("") { "%02x".format(it) }.also {
+                    com.intellij.openapi.diagnostic.Logger.getInstance(type).info("Preview toolchain identity: ${(System.nanoTime() - started) / 1_000_000}ms")
+                }
             } ?: type.protectionDomain.codeSource?.location?.toString().orEmpty()
         }
     }
