@@ -3,7 +3,7 @@ package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ContextMenuArea
-import androidx.compose.foundation.ContextMenuItem
+import org.jetbrains.jewel.ui.component.ContextMenuItemOption
 import androidx.compose.foundation.focusable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -138,7 +138,17 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
         }))
         else -> PointerIcon.Default
     }
-    ContextMenuArea(items = { contextActions.map { (label, action) -> ContextMenuItem(label, action) } }) {
+    // Selection/accessor discovery completes asynchronously after right-click.
+    // Keep every command in a fixed slot; enabling an edit must never move a
+    // different command under the pointer while the popup is already open.
+    // Jewel's option supports disabled items on both stable AS and Canary.
+    ContextMenuArea(items = {
+        listOf("Copy", "Cut", "Paste", "Delete", "Go to XAML", "Properties", "Fit selection", "Fit all",
+            "Move earlier", "Move later").map { label ->
+            val action = contextActions.firstOrNull { it.first == label }?.second
+            ContextMenuItemOption(label = label, enabled = action != null, action = { action?.invoke() })
+        }
+    }) {
     Canvas(modifier.onGloballyPositioned { canvasOrigin = it.positionInRoot() }.onSizeChanged { viewport = it }.clipToBounds()
         .focusRequester(focus).onFocusChanged { focused = it.isFocused; if (!focused) space = false }
         .onKeyEvent { event ->
