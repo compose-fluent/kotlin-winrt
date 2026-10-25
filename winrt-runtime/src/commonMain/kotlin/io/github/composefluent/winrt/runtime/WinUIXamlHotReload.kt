@@ -15,6 +15,7 @@ internal class WinUIXamlHotReloadRegistry(
     private class Root(owner: Any, val thread: Long, val enqueue: (() -> Unit) -> Boolean) {
         val owner = PlatformManagedWeakReference(owner)
         val elements = mutableMapOf<String, PlatformManagedWeakReference<Any>>()
+        val eventRoutes = mutableMapOf<Pair<String, String>, PlatformManagedWeakReference<WinUIXamlEventRoute>>()
         var ready = false
     }
     private class Page(val className: String, val path: String, val compiledHash: String) {
@@ -58,10 +59,25 @@ internal class WinUIXamlHotReloadRegistry(
             val history = lock.withLock { page.history.toList() }
             runCatching {
                 if (overrides.isNotEmpty() || resources.isNotEmpty()) apply(listOf(root), overrides, resources)
-                history.forEach { apply(listOf(root), it.changes, it.resources, children = it.children) }
+                history.forEach { apply(listOf(root), it.changes, it.resources, children = it.children, events = it.events) }
             }.onFailure {
                 lock.withLock { page.restart = "A new component could not inherit the current XAML updates: ${it.message}" }
             }
+        }
+    }
+
+    fun observeEvent(owner: Any, className: String, path: String, hash: String, element: String,
+        target: Any, event: String, route: WinUIXamlEventRoute) {
+        observe(owner, className, path, hash, element, target)
+        lock.withLock {
+            if (closed) return@withLock
+            val page = pages.getValue(className to path)
+            val root = page.roots.single { it.owner.get() === owner }
+            if (root.ready) page.history.flatMap { it.events }.filter { it.element == element && it.event == event }.forEach {
+                route.validate(it.expectedHandler, it.handler)
+                route.select(it.handler)
+            }
+            root.eventRoutes[element to event] = PlatformManagedWeakReference(route)
         }
     }
 
@@ -92,14 +108,14 @@ internal class WinUIXamlHotReloadRegistry(
                 page.pending -> "A property update is already pending."
                 page.hash != patch.expectedHash || patch.version != page.version + 1 -> "The source fingerprint or update version is stale. Reconnect."
                 roots.map { it.thread }.distinct().size != 1 -> "Components on multiple UI threads require restarting."
-                patch.changes.size + patch.resources.sumOf { 1 + it.references.size } + patch.reads.size +
+                patch.events.size + patch.changes.size + patch.resources.sumOf { 1 + it.references.size } + patch.reads.size +
                     patch.children.sumOf { 1 + it.items.size } > 512 || patch.resources.size > 64 || patch.children.size > 64 -> "The update contains too many changes."
-                (page.graphActive || patch.children.isNotEmpty() || patch.resources.isNotEmpty()) &&
-                    (patch.changes.isNotEmpty() || patch.resources.isNotEmpty() || patch.children.isNotEmpty()) &&
+                (page.graphActive || patch.children.isNotEmpty() || patch.resources.isNotEmpty() || patch.events.isNotEmpty()) &&
+                    (patch.changes.isNotEmpty() || patch.resources.isNotEmpty() || patch.children.isNotEmpty() || patch.events.isNotEmpty()) &&
                     (page.history.size + (if (!page.graphActive && (page.overrides.isNotEmpty() || page.resourceOverrides.isNotEmpty())) 1 else 0) >= 64 ||
                         page.history.sumOf(::storedSize) + storedSize(patch) +
                         (if (!page.graphActive) storedSize(patch.copy(changes = page.overrides.values.toList(),
-                            resources = page.resourceOverrides.values.toList(), children = emptyList(), reads = emptyList())) else 0) > 8 * 1024 * 1024) ->
+                            resources = page.resourceOverrides.values.toList(), children = emptyList(), events = emptyList(), reads = emptyList())) else 0) > 8 * 1024 * 1024) ->
                     "The graph update history reached its limit. Rebuild and restart."
                 !Regex("[0-9a-f]{64}").matches(patch.sourceHash) -> "Invalid source fingerprint."
                 else -> null
@@ -117,18 +133,18 @@ internal class WinUIXamlHotReloadRegistry(
                     check(platformCurrentThreadToken() == root.thread) { "The dispatcher did not reach the component's UI thread." }
                     val roots = lock.withLock { page.roots.filter { it.ready && it.owner.get() != null } }
                     check(roots.isNotEmpty() && roots.all { it.thread == root.thread }) { "The component lifetime changed. Reconnect." }
-                    val values = apply(roots, patch.changes, patch.resources, patch.reads, patch.children)
+                    val values = apply(roots, patch.changes, patch.resources, patch.reads, patch.children, patch.events)
                     lock.withLock {
                         check(page.restart == null) { page.restart.orEmpty() }
                         page.hash = patch.sourceHash; page.version = patch.version
-                        if (!page.graphActive && (patch.children.isNotEmpty() || patch.resources.isNotEmpty())) {
+                        if (!page.graphActive && (patch.children.isNotEmpty() || patch.resources.isNotEmpty() || patch.events.isNotEmpty())) {
                             if (page.overrides.isNotEmpty() || page.resourceOverrides.isNotEmpty())
                                 page.history += patch.copy(changes = page.overrides.values.toList(),
-                                    resources = page.resourceOverrides.values.toList(), reads = emptyList(), children = emptyList())
+                                    resources = page.resourceOverrides.values.toList(), reads = emptyList(), children = emptyList(), events = emptyList())
                             page.overrides.clear(); page.resourceOverrides.clear(); page.graphActive = true
                         }
                         if (page.graphActive) {
-                            if (patch.changes.isNotEmpty() || patch.resources.isNotEmpty() || patch.children.isNotEmpty())
+                            if (patch.changes.isNotEmpty() || patch.resources.isNotEmpty() || patch.children.isNotEmpty() || patch.events.isNotEmpty())
                                 page.history += patch.copy(reads = emptyList())
                         } else {
                             patch.resources.forEach { update ->
@@ -141,7 +157,7 @@ internal class WinUIXamlHotReloadRegistry(
                     values
                 }
                 lock.withLock { page.pending = false }
-                complete(result.fold({ values -> snapshot().copy(message = "${patch.changes.size} properties, ${patch.resources.size} resource dictionaries and ${patch.children.size} child collections updated", values = values) },
+                complete(result.fold({ values -> snapshot().copy(message = "${patch.changes.size} properties, ${patch.resources.size} resource dictionaries and ${patch.children.size} child collections, ${patch.events.size} events updated", values = values) },
                     { error -> WinUIXamlHotReloadReply(if (lock.withLock { page.restart != null }) WinUIXamlHotReloadProtocol.RESTART_REQUIRED
                         else WinUIXamlHotReloadProtocol.REJECTED, error.message.orEmpty(), snapshot().roots) }))
             }) {
@@ -188,6 +204,7 @@ internal class WinUIXamlHotReloadRegistry(
     private class Prepared(val commit: () -> Unit, val rollback: () -> Unit, val result: () -> WinUIXamlHotReloadValue)
 
     private fun storedSize(patch: WinUIXamlHotReloadPatch) = 2 * (
+        patch.events.sumOf { it.element.length + it.event.length + it.expectedHandler.length + it.handler.length } +
         patch.changes.sumOf { it.literal.length + it.element.length + it.property.length + it.path.toString().length } +
         patch.resources.sumOf { it.xaml.length + it.target.toString().length + it.references.toString().length + it.expectedKeys.toString().length } +
         patch.children.sumOf { it.target.toString().length + it.items.sumOf { item ->
@@ -242,7 +259,8 @@ internal class WinUIXamlHotReloadRegistry(
 
     private fun apply(roots: List<Root>, changes: List<WinUIXamlHotReloadChange>,
         resources: List<WinUIXamlHotReloadResources> = emptyList(), reads: List<WinUIXamlHotReloadRead> = emptyList(),
-        children: List<WinUIXamlHotReloadChildren> = emptyList()): List<WinUIXamlHotReloadValue> {
+        children: List<WinUIXamlHotReloadChildren> = emptyList(),
+        events: List<WinUIXamlHotReloadEvent> = emptyList()): List<WinUIXamlHotReloadValue> {
         require(resources.map { it.target }.distinct().size == resources.size) { "A dictionary can be updated only once per transaction." }
         resources.forEach { update ->
             require(resources.none { it !== update && contains(update.target, it.target) }) { "Overlapping resource dictionaries require separate updates." }
@@ -250,6 +268,7 @@ internal class WinUIXamlHotReloadRegistry(
         require(children.map { it.target }.distinct().size == children.size && children.none { parent ->
             children.any { it !== parent && contains(parent.target, it.target) }
         }) { "Overlapping child collections require separate updates." }
+        require(events.map { it.element to it.event }.distinct().size == events.size) { "An event can be changed only once per transaction." }
         // Prepare every getter and conversion before mutating any live object.
         val overlays = mutableMapOf<Root, Map<WinUIXamlHotReloadTarget, Any>>()
         val prepared = roots.flatMap { root -> buildList {
@@ -331,6 +350,14 @@ internal class WinUIXamlHotReloadRegistry(
                     add(prepareProperty(target, member, convertWinUIXamlLiteral(type, change.literal, convert), address))
                 }
             }
+            events.forEach { update ->
+                val route = root.eventRoutes[update.element to update.event]?.get()
+                    ?: error("No compiled event route for '${update.element}.${update.event}'; rebuild.")
+                route.validate(update.expectedHandler, update.handler)
+                add(Prepared({ route.select(update.handler) }, { route.select(update.expectedHandler) }, {
+                    WinUIXamlHotReloadValue(update.element, update.event, route.handlerName)
+                }))
+            }
             overlays[root] = replacements
         } }
         fun read(root: Root, request: WinUIXamlHotReloadRead, replacements: Map<WinUIXamlHotReloadTarget, Any> = emptyMap()): WinUIXamlHotReloadValue {
@@ -347,7 +374,7 @@ internal class WinUIXamlHotReloadRegistry(
         val attempted = mutableListOf<Prepared>()
         try {
             prepared.forEach { attempted += it; it.commit() }
-            return prepared.take(changes.size + resources.sumOf { 1 + it.references.size } + children.size).map { it.result() } +
+            return prepared.take(changes.size + resources.sumOf { 1 + it.references.size } + children.size + events.size).map { it.result() } +
                 reads.map { read(roots.first(), it) }
         } catch (failure: Exception) {
             val rollbackFailures = attempted.asReversed().mapNotNull { runCatching { it.rollback() }.exceptionOrNull() }
@@ -421,3 +448,10 @@ fun completeWinUIXamlHotReloadComponent(owner: Any, className: String, path: Str
 }
 
 internal expect fun platformStartWinUIXamlHotReload(registry: WinUIXamlHotReloadRegistry): AutoCloseable?
+
+/** Called only by compiler-generated event forwarding delegates in development. */
+fun registerWinUIXamlHotReloadEvent(owner: Any, className: String, path: String, sourceHash: String,
+    element: String, target: Any, event: String, route: WinUIXamlEventRoute) {
+    WinUIXamlHotReloadConfiguration.lock.withLock { WinUIXamlHotReloadConfiguration.registry }
+        ?.observeEvent(owner, className, path, sourceHash, element, target, event, route)
+}

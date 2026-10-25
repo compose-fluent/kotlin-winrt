@@ -281,7 +281,11 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                                     }
                                     val addCall = irCall(add.symbol).apply {
                                         dispatchReceiver = irGet(target)
-                                        arguments[1] = irSamConversion(boundReference(pluginContext, handler,
+                                        arguments[1] = if (!connection.isTemplateChild && connection.elementName != null)
+                                            xamlReloadableEvent(pluginContext, this@irBlock, klass, requireNotNull(connect.dispatchReceiverParameter),
+                                                target, delegateType, handler, page.className, page.resourcePath, page.sourceHash,
+                                                requireNotNull(connection.elementName), event.name)
+                                        else irSamConversion(boundReference(pluginContext, handler,
                                             irGet(requireNotNull(connect.dispatchReceiverParameter))), delegateType)
                                     }
                                     if (connection.isTemplateChild) {

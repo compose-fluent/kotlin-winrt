@@ -611,8 +611,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 catalog.attachedMembers(type).firstOrNull { it.name == property && it.isWritable }
                                     ?.let { "${it.owner}.${it.name}" }
                             }
+                        }, isEvent = { uri, type, name ->
+                            catalog?.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == name && member.isEvent } } == true
                         })
-                        val count = patch.changes.size + patch.resources.size + patch.children.size
+                        val count = patch.changes.size + patch.resources.size + patch.children.size + patch.events.size
                         if (!withCurrent(request) {
                             attempted[key] = after
                             display.value = display.value.copy(message = "Applying $count XAML updates…", busy = true)

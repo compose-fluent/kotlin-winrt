@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 9
+    const val VERSION = 10
     const val MAX_IMAGE_DIMENSION = 4096
     const val MAGIC = 0x4B585248
     const val SESSION_DIRECTORY = "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"
@@ -40,11 +40,14 @@ data class WinUIXamlHotReloadChildren(val target: WinUIXamlHotReloadTarget, val 
  * keep their identities; explicit references are reassigned in the transaction. */
 data class WinUIXamlHotReloadResources(val target: WinUIXamlHotReloadTarget, val xaml: String,
     val expectedKeys: List<String>, val references: List<WinUIXamlHotReloadResourceReference>)
+data class WinUIXamlHotReloadEvent(val element: String, val event: String, val expectedHandler: String, val handler: String)
+
 data class WinUIXamlHotReloadPatch(val className: String, val resourcePath: String, val expectedHash: String,
     val sourceHash: String, val version: Long, val changes: List<WinUIXamlHotReloadChange>,
     val resources: List<WinUIXamlHotReloadResources> = emptyList(),
     val reads: List<WinUIXamlHotReloadRead> = emptyList(),
-    val children: List<WinUIXamlHotReloadChildren> = emptyList())
+    val children: List<WinUIXamlHotReloadChildren> = emptyList(),
+    val events: List<WinUIXamlHotReloadEvent> = emptyList())
 data class WinUIXamlHotReloadRoot(val className: String, val resourcePath: String, val sourceHash: String,
     val version: Long, val elements: List<String>, val instances: Int = 1)
 data class WinUIXamlHotReloadValue(val element: String, val property: String, val value: String,

@@ -511,8 +511,11 @@ class XamlSemanticExportTest {
                     check(tag != "failHook") { "hook failed" }
                 }
                 private fun onClick(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { myButton.text += "clicked" }
+                private fun onAlternate(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { myButton.text += "alternate" }
+                private fun onWrong(sender: String, args: microsoft.ui.xaml.RoutedEventArgs) { error("incompatible handler must never run") }
                 fun changeCounter(value: Int) { Counter = value }
             }
+            fun createForReload() = MainPage()
             fun exercise(): String {
                 val first = MainPage()
                 check(first.initializationCount == 1)
@@ -632,7 +635,7 @@ class XamlSemanticExportTest {
         """.trimIndent()) }
         fun compile(final: Boolean = false): Pair<ExitCode, String> {
             val classpath = compilerRuntimeClasspath()
-            val options = mapOf("xamlDeclarations" to input.absolutePath) + if (final)
+            val options = mapOf("xamlDeclarations" to (if (final) File(root, "runtime-declarations.json") else input).absolutePath) + if (final)
                 mapOf("xamlImplementation" to File(root, "final.output.json").absolutePath)
             else mapOf("metadataIndex" to index.absolutePath, "xamlSemanticOutput" to symbols.absolutePath, "xamlReferencesFile" to referenceFile.absolutePath,
                 "xamlApplicationHeader" to header.absolutePath)
@@ -672,6 +675,18 @@ class XamlSemanticExportTest {
         val rewritten = File(finalOutput.getValue("GeneratedXamlFiles").jsonArray.single().jsonPrimitive.content).readText()
         assertTrue(rewritten.contains("ConnectionId"))
         assertFalse(rewritten.contains("Click=\"onClick\""))
+        // Match CompileWinUIXamlTask: semantic declarations remain compiler-owned,
+        // while runtime declarations and the implementation carry the source fingerprint.
+        val fingerprinted = declarations.copy(pages = declarations.pages.map {
+            it.copy(sourceHash = WinUIXamlDeclarations.sourceFingerprint(xaml.readText()))
+        })
+        val runtimeDeclarations = WinUIXamlDeclarations.canonicalText(fingerprinted)
+        File(root, "runtime-declarations.json").writeText(runtimeDeclarations)
+        File(root, "final.output.json").writeText(JsonObject(finalOutput + mapOf(
+            "KotlinDeclarations" to Json.parseToJsonElement(runtimeDeclarations),
+            "KotlinImplementation" to JsonObject(finalOutput.getValue("KotlinImplementation").jsonObject +
+                ("DeclarationFingerprint" to JsonPrimitive(WinUIXamlDeclarations.fingerprint(fingerprinted)))),
+        )).toString())
         val (finalResult, finalDiagnostics) = compile(final = true)
         assertEquals(finalDiagnostics, ExitCode.OK, finalResult)
         val consumerSource = File(root, "Consumer.kt").apply { writeText("""
@@ -704,6 +719,49 @@ class XamlSemanticExportTest {
             assertTrue(pageClass.methods.none { it.name == "setMyButton" })
             assertTrue(pageClass.methods.none { it.name == "setReadOnlyCount" })
             assertEquals("external:reference", loader.loadClass("consumer.ConsumerKt").getMethod("exercise").invoke(null))
+            // Test-only access installs an in-memory transport registry. Production
+            // event forwarding uses only compiler-generated typed calls, never reflection.
+            val registryClass = Class.forName("io.github.composefluent.winrt.runtime.WinUIXamlHotReloadRegistry")
+            val registry = registryClass.constructors.single { it.parameterCount == 5 }.newInstance(
+                { { task: () -> Unit -> task(); true } },
+                { _: kotlin.reflect.KClass<*>, text: String -> text },
+                { _: String -> emptyMap<Any?, Any?>() }, { _: String -> Any() }, null)
+            val configuration = Class.forName("io.github.composefluent.winrt.runtime.WinUIXamlHotReloadConfiguration")
+            val instance = configuration.getDeclaredField("INSTANCE").apply { isAccessible = true }.get(null)
+            val field = configuration.getDeclaredField("registry").apply { isAccessible = true }
+            val previous = field.get(instance)
+            try {
+                field.set(instance, registry)
+                val reloaded = loader.loadClass("probe.MainPageKt").getMethod("createForReload").invoke(null)
+                val control = pageClass.getMethod("getKotlinWinUIXaml_myButton").invoke(reloaded)
+                fun snapshot() = registryClass.getMethod("snapshot").invoke(registry) as io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply
+                fun retarget(expected: String, handler: String): io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply {
+                    val loaded = snapshot().roots.single()
+                    val patch = io.github.composefluent.winrt.runtime.WinUIXamlHotReloadPatch(loaded.className, loaded.resourcePath,
+                        loaded.sourceHash, "b".repeat(64), loaded.version + 1, emptyList(), events = listOf(
+                            io.github.composefluent.winrt.runtime.WinUIXamlHotReloadEvent("myButton", "Click", expected, handler)))
+                    var result: io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply? = null
+                    registryClass.getMethod("submit", io.github.composefluent.winrt.runtime.WinUIXamlHotReloadPatch::class.java,
+                        kotlin.jvm.functions.Function1::class.java).invoke(registry, patch,
+                        { reply: io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply -> result = reply })
+                    return requireNotNull(result)
+                }
+                assertEquals(1, control.javaClass.getMethod("getSubscriptionCount").invoke(control))
+                retarget("onClick", "onAlternate").let { assertEquals(it.message, 0, it.status) }
+                control.javaClass.getMethod("raise").invoke(control)
+                assertEquals("alternate", control.javaClass.getMethod("getText").invoke(control))
+                assertEquals(1, retarget("onAlternate", "onWrong").status)
+                retarget("onAlternate", "").let { assertEquals(it.message, 0, it.status) }
+                control.javaClass.getMethod("raise").invoke(control)
+                assertEquals("alternate", control.javaClass.getMethod("getText").invoke(control))
+                assertEquals(1, control.javaClass.getMethod("getSubscriptionCount").invoke(control))
+                assertTrue(java.lang.reflect.Modifier.isPrivate(pageClass.getDeclaredMethod("onAlternate",
+                    Any::class.java, loader.loadClass("microsoft.ui.xaml.RoutedEventArgs")).modifiers))
+            } finally {
+                field.set(instance, previous)
+                registryClass.getMethod("close").invoke(registry)
+            }
+
         }
         val validSource = source.readText()
         val validArgs = argsType.readText()

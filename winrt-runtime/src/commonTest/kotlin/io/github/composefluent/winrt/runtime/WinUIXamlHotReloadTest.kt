@@ -33,6 +33,60 @@ class WinUIXamlHotReloadTest {
     }
     private fun patch(vararg changes: WinUIXamlHotReloadChange) = WinUIXamlHotReloadPatch("probe.Page", "Page.xaml", hash, next, 1, changes.toList())
 
+    @Test fun compiled_event_routes_validate_atomically_and_replay_for_new_instances() {
+        // CsWinRT EventSource keeps a stable native invoker while its managed handler
+        // state changes. The compiler emits the typed forwarding body, not the IDE.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        val owner = Any(); val element = Element()
+        val route = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        registry.observeEvent(owner, "probe.Page", "Page.xaml", hash, "Greeting", element, "Click", route)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        fun change(name: String) = patch(WinUIXamlHotReloadChange("Greeting", "Text", "updated"))
+            .copy(events = listOf(WinUIXamlHotReloadEvent("Greeting", "Click", "First", name)))
+        val valid = change("Second")
+        assertEquals(valid, WinUIXamlHotReloadCodec.readRequest(WinUIXamlHotReloadCodec.writeRequest("token", valid)).second)
+        var reply: WinUIXamlHotReloadReply? = null
+        registry.submit(change("Uncompiled")) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, reply?.status)
+        assertEquals("First", route.handlerName); assertEquals("original", element.text)
+        registry.submit(valid) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, reply?.status)
+        assertEquals("Second", route.handlerName); assertEquals("updated", element.text)
+        val laterOwner = Any(); val laterElement = Element()
+        val later = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        registry.observeEvent(laterOwner, "probe.Page", "Page.xaml", hash, "Greeting", laterElement, "Click", later)
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, null, null)
+        assertEquals("Second", later.handlerName); assertEquals("updated", laterElement.text)
+        val disable = valid.copy(expectedHash = next, sourceHash = "c".repeat(64), version = 2, changes = emptyList(),
+            events = listOf(WinUIXamlHotReloadEvent("Greeting", "Click", "Second", "")))
+        registry.submit(disable) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, reply?.status)
+        assertEquals("", route.handlerName); assertEquals("", later.handlerName)
+        val reconnected = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        registry.observeEvent(owner, "probe.Page", "Page.xaml", hash, "Greeting", Element(), "Click", reconnected)
+        assertEquals("", reconnected.handlerName)
+    }
+
+    @Test fun event_route_is_restored_when_post_commit_readback_fails() {
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        val owner = Any(); val element = Element()
+        val route = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Element::class,
+            "probe.Element", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("Readback", "String", String::class, {
+                    check(route.handlerName == "First") { "readback failed" }; "ready"
+                }))))
+        registry.observeEvent(owner, "probe.Page", "Page.xaml", hash, "Greeting", element, "Click", route)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        var reply: WinUIXamlHotReloadReply? = null
+        registry.submit(patch().copy(events = listOf(WinUIXamlHotReloadEvent("Greeting", "Click", "First", "Second")),
+            reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("Greeting"), "Readback")))) { reply = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, reply?.status)
+        assertEquals("First", route.handlerName)
+        assertEquals(hash, registry.snapshot().roots.single().sourceHash)
+    }
+
     @Test fun dependency_property_reset_preserves_local_precedence_on_failure_and_replays() {
         // XAMLC supplies typed DP delegates. ClearValue, not assigning a default,
         // restores SDK styling; the rollback captures ReadLocalValue beforehand.

@@ -50,13 +50,15 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
     fun patch(previous: WinUIXamlHotReloadMarkup, loaded: WinUIXamlHotReloadRoot,
         propertyProblem: (uri: String, type: String, property: String) -> String? = { _, _, _ -> null },
         contentMember: (uri: String, type: String, property: String?) -> WinUIXamlContentMember? = { _, _, _ -> null },
-        attachedProperty: (uri: String, owner: String, property: String) -> String? = { _, _, _ -> null }): WinUIXamlHotReloadPatch {
+        attachedProperty: (uri: String, owner: String, property: String) -> String? = { _, _, _ -> null },
+        isEvent: (uri: String, type: String, member: String) -> Boolean = { _, _, _ -> false }): WinUIXamlHotReloadPatch {
         require(className == loaded.className && previous.className == className) { "Changing x:Class requires rebuilding and restarting." }
         require(previous.hash == loaded.sourceHash) { "The loaded component does not match the previous source. Reconnect or rebuild." }
         val changes = mutableListOf<WinUIXamlHotReloadChange>()
         val resources = mutableListOf<WinUIXamlHotReloadResources>()
         val reads = mutableListOf<WinUIXamlHotReloadRead>()
         val children = mutableListOf<WinUIXamlHotReloadChildren>()
+        val events = mutableListOf<WinUIXamlHotReloadEvent>()
         fun XamlElement.address(parent: WinUIXamlHotReloadTarget?, owner: Boolean = false) = when {
             owner -> WinUIXamlHotReloadTarget()
             elementName in loaded.elements -> WinUIXamlHotReloadTarget(elementName)
@@ -292,6 +294,12 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
             (old.attributes.keys - next.attributes.keys).forEach { name ->
                 require(!template) { "Template changes require rebuilding and restarting." }
                 require(name.local != "Name") { "Changing element names requires rebuilding and restarting." }
+                if (name.uri.isEmpty() && isEvent(old.type.uri, old.type.local, name.local)) {
+                    require(target != null && target.path.isEmpty() && target.element.isNotEmpty()) { "Event updates need a compiled named element." }
+                    require(!old.attributes.getValue(name).startsWith('{')) { "Compiled event binding changes require rebuilding." }
+                    events += WinUIXamlHotReloadEvent(target.element, name.local, old.attributes.getValue(name), "")
+                    return@forEach
+                }
                 val property = resolvedProperty(old, name)
                 require(target != null) { "Add x:Name and rebuild before updating this element's properties." }
                 literal(old.attributes.getValue(name)) // Never discard a binding/resource expression.
@@ -301,6 +309,12 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 val before = old.attributes[name]
                 if (before == value) return@forEach
                 require(!template) { "Template changes require rebuilding and restarting." }
+                if (name.uri.isEmpty() && isEvent(next.type.uri, next.type.local, name.local)) {
+                    require(target != null && target.path.isEmpty() && target.element.isNotEmpty()) { "Event updates need a compiled named element." }
+                    require(value.isNotBlank() && !value.startsWith('{') && before?.startsWith('{') != true) { "Compiled event binding changes require rebuilding." }
+                    events += WinUIXamlHotReloadEvent(target.element, name.local, before.orEmpty(), value)
+                    return@forEach
+                }
                 val property = resolvedProperty(next, name)
                 require(name.local != "Name") { "Changing element names requires rebuilding and restarting." }
                 require(target != null) { "Add x:Name and rebuild before updating this element's properties." }
@@ -387,9 +401,9 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
             compare(first, second, address, false, true)
         } else compare(previous.root, root, WinUIXamlHotReloadTarget(), false)
         val readbacks = reads.distinct()
-        require(changes.size + resources.sumOf { 1 + it.references.size } + readbacks.size + children.sumOf { 1 + it.items.size } <= 512 &&
+        require(events.size + changes.size + resources.sumOf { 1 + it.references.size } + readbacks.size + children.sumOf { 1 + it.items.size } <= 512 &&
             resources.size <= 64 && children.size <= 64) { "Too many changes; rebuild the application." }
-        return WinUIXamlHotReloadPatch(className, loaded.resourcePath, previous.hash, hash, loaded.version + 1, changes, resources, readbacks, children)
+        return WinUIXamlHotReloadPatch(className, loaded.resourcePath, previous.hash, hash, loaded.version + 1, changes, resources, readbacks, children, events)
     }
 
     private fun dictionaryMarkup(container: XamlElement): String {

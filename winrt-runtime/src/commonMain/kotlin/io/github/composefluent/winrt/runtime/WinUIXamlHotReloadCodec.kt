@@ -74,6 +74,9 @@ internal object WinUIXamlHotReloadCodec {
                     is WinUIXamlHotReloadItem.Markup -> { writeByte(1); string(item.xaml) }
                 } }
             }
+            writeInt(it.events.size); it.events.forEach { event ->
+                string(event.element); string(event.event); string(event.expectedHandler); string(event.handler)
+            }
         }
     }
     internal data class Request(val token: String, val patch: WinUIXamlHotReloadPatch? = null, val inspection: WinUIXamlInspectionRequest? = null)
@@ -122,7 +125,8 @@ internal object WinUIXamlHotReloadCodec {
                     }
                 })
             }
-            WinUIXamlHotReloadPatch(name, path, expected, hash, version, changes, resources, reads, children)
+            val events = List(count(512)) { WinUIXamlHotReloadEvent(string(), string(), string(), string()) }
+            WinUIXamlHotReloadPatch(name, path, expected, hash, version, changes, resources, reads, children, events)
         }
         Request(token, patch)
     }

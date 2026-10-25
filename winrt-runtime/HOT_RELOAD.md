@@ -125,6 +125,32 @@ restores the tree and properties; it cannot undo arbitrary user event side effec
 Protocol v3 carries no executable code, connection IDs, generated fields or
 subscription replacements. Compiled-connection changes require rebuilding.
 
+## Compiled event routes
+
+Protocol v10 can retarget an ordinary event on an existing named, non-template
+component element to another already compiled compatible handler, or disable and
+restore that route by removing/restoring its XAML attribute. The compiler emits
+typed calls inside the owning page, including private handlers. No reflection,
+executable payload, additional native subscription or class-schema change is used.
+The stable native delegate and mutable managed route follow CsWinRT Runtime2's
+`InteropServices/Events/EventSource{T}.cs`; the original source/token/remover remain
+owned by `WinUIXamlConnectionState`. Non-development execution uses the original
+bound delegate.
+
+The runtime validates source/version, the expected current handler and the compiled
+compatible-handler set before mutations. Route changes join the property transaction,
+roll back on failure, and replay for subsequent component instances and reconnected
+slots. An empty route disables dispatch without releasing the original subscription.
+New handler implementations, new event slots, template events and x:Bind event
+expressions still require rebuilding. This does not replace Kotlin method bodies.
+
+ASC Native acceptance has exercised private-handler retargeting, disabling and
+restoring dispatch while retaining the same process and click counter. An unknown
+handler combined with a Content change was rejected before either mutation, and
+the original handler remained usable. Compiler integration verifies one native
+subscription through retarget/disable, and JVM/Native registry tests cover rollback
+and replay into new instances and reconnected slots.
+
 ## Compiled-connection contract
 
 This is the responsibility boundary for a future connection-update artifact, not
@@ -176,8 +202,7 @@ x:Bind path can change private typed calls, generated callbacks and tracking sta
 Standard JVM [class redefinition](https://docs.oracle.com/en/java/javase/25/docs/specs/jvmti.html#RedefineClasses)
 does not allow arbitrary field/method schema changes, and Kotlin/Native cannot use
 that JVM mechanism. Therefore the shared baseline rebuilds/restarts for these
-changes. Retargeting an event to an already compiled compatible handler could be a
-future ABI-preserving artifact, after subscription ownership exists. Supporting
+changes. Protocol v10 supports the narrower event-route update described below. Supporting
 new field/binding shapes would require a separately designed code-loading boundary;
 Kotlin code Hot Reload and page recreation are outside the current support scope.
 

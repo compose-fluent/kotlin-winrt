@@ -832,12 +832,18 @@ controls can trigger Loaded/Unloaded and affect focus; transient lifecycle state
 not guaranteed. Application changes to collection order are outside this contract.
 
 Style replacement requires explicit string keys and owners/consumers resolved through connected names or compiled property/content paths. Unnamed collection consumers use the same runtime size checks as other indexed updates. ASC Native acceptance has exercised replacing a local button style while refreshing an unnamed Border resource consumer, then mutating the replacement shared brush; both controls changed without restarting the process.
+Ordinary events on existing named, non-template elements can switch to an already
+compiled compatible handler, including private Kotlin methods. Removing the event
+attribute disables dispatch; restoring it reuses the same native subscription.
+Source/version and expected-handler checks, rollback and future-instance replay
+use the normal transaction. Protocol v10 requires rebuilding older development hosts.
+
 Local dictionaries can add/remove keys when no surviving consumer references a
 removed key; dictionary keys and values roll back together after a failed update.
 ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
 dictionaries, captures in other dictionaries/templates, connected-element removal,
 type/name/parent changes, new names or authored controls,
-compiled events/bindings, property expressions and Kotlin changes require rebuilding
+new event slots, template events, compiled bindings, property expressions and Kotlin changes require rebuilding
 and restarting. There is no page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 

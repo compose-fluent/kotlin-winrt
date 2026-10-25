@@ -22,6 +22,20 @@ class WinUIXamlHotReloadTest {
     private val source = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><StackPanel><TextBlock x:Name="Greeting" Text="Hello" Width="100"/></StackPanel></Window>"""
     private fun root(text: String = source) = WinUIXamlHotReloadRoot("probe.Window", "Window.xaml", WinUIXamlHotReloadMarkup.parse(text).hash, 0, listOf("Greeting"))
 
+    @Test fun named_event_changes_are_separate_from_property_updates_and_can_disable_and_restore() {
+        val before = source.replace("Text=\"Hello\"", "Text=\"Hello\" Tapped=\"First\"")
+        fun patch(old: String, next: String) = WinUIXamlHotReloadMarkup.parse(next).patch(
+            WinUIXamlHotReloadMarkup.parse(old), root(old), isEvent = { _, _, member -> member == "Tapped" })
+        val changed = patch(before, before.replace("First", "Second"))
+        assertTrue(changed.changes.isEmpty())
+        assertEquals(listOf(WinUIXamlHotReloadEvent("Greeting", "Tapped", "First", "Second")), changed.events)
+        val removed = before.replace(" Tapped=\"First\"", "")
+        assertEquals("", patch(before, removed).events.single().handler)
+        assertEquals("", patch(removed, before).events.single().expectedHandler)
+        assertThrows(IllegalArgumentException::class.java) { patch(before, before.replace("First", "{x:Bind First}")) }
+        assertThrows(IllegalArgumentException::class.java) { patch(before.replace("First", "{x:Bind First}"), removed) }
+    }
+
     @Test fun removed_literal_properties_emit_resets_but_expressions_remain_guarded() {
         val after = source.replace(" Width=\"100\"", "")
         val patch = WinUIXamlHotReloadMarkup.parse(after).patch(WinUIXamlHotReloadMarkup.parse(source), root())
