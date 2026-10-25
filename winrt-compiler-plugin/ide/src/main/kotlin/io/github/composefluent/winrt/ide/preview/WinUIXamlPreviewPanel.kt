@@ -478,6 +478,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             editables.all { target -> target.properties.first { it.name == property.name }.value == value }
         }) })
     }
+    // Keep only presentation state during same-selection source resolution. Write
+    // capabilities still come exclusively from the freshly resolved editables.
+    var displayedEditable by remember(source, selectedPaths, static, state.connected, failure,
+        state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication,
+        catalogRevision, resourceRevision) { mutableStateOf<DesignerSelection?>(null) }
+    SideEffect { if (editableResult != null) displayedEditable = editable }
+    val propertySelection = if (editableResult != null) editable else displayedEditable
     val currentEditables by rememberUpdatedState(editables)
     fun applyBatch(edits: List<Pair<DesignerSelection, Map<String, String?>>>, title: String) {
         ApplicationManager.getApplication().invokeLater {
@@ -690,7 +697,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         if (editStyle) {
                             Link("Back to element properties", onClick = { editStyle = false })
                             Text("Editing a shared style affects all its consumers. Local values still take precedence.")
-                        } else if (!styleReady && editables.size == 1) Text("Reading applied style…")
+                        } else if (editableResult == null && propertySelection != null) Text("Updating properties…")
+                        else if (!styleReady && editables.size == 1) Text("Reading applied style…")
                         else if (styleSelection != null) Link("Edit applied style…", onClick = { editStyle = true })
                         else if (!recordState && editables.size == 1) {
                             Link(if (createStyle) "Cancel style creation" else "Create style…", onClick = { createStyle = !createStyle })
@@ -725,13 +733,15 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                                 val moved = DesignerStructureEditing.reparent(project, target, container)
                                 pendingStructureSelection = com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(moved)
                             } })
-                        if (editableResult == null) Text("Loading editable properties…")
-                        else if (editStyle) {
+                        if (editStyle) {
                             if (styleSelection == null) Text("The applied style is unavailable or changed. Return to element properties and select it again.")
                             else DesignerProperties(styleSelection, propertyFilter.text.toString()) { changes, title ->
                                 styleSelection?.let { applyBatch(listOf(it to changes), "$title in style") }
                             }
-                        } else DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
+                        } else {
+                            if (propertySelection == null && editableResult == null) Text("Loading editable properties…")
+                            else DesignerProperties(propertySelection, propertyFilter.text.toString(), active = editableResult != null, apply = ::applyEdit)
+                        }
                         Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath || !state.inspectionPropertiesRead) Text("Reading selection…")
                         else androidx.compose.foundation.text.selection.SelectionContainer {
