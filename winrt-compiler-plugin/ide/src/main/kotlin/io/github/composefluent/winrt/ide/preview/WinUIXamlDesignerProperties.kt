@@ -16,8 +16,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import org.jetbrains.jewel.ui.component.*
 
+internal data class DesignerEditRejection(val revision: Long, val edits: List<Pair<DesignerSelection, Set<String>>>) {
+    fun revisionFor(selection: DesignerSelection, name: String): Long = if (edits.any { (target, properties) ->
+        target.pointer == selection.pointer && target.state?.pointer == selection.state?.pointer &&
+            target.style?.pointer == selection.style?.pointer && name in properties
+    }) revision else 0
+}
+
 @Composable
-internal fun DesignerProperties(selection: DesignerSelection?, filter: String, active: Boolean = true, effectiveValues: Map<String, String> = emptyMap(), apply: (Map<String, String?>, String) -> Unit) {
+internal fun DesignerProperties(selection: DesignerSelection?, filter: String, active: Boolean = true, effectiveValues: Map<String, String> = emptyMap(), rejection: DesignerEditRejection? = null, apply: (Map<String, String?>, String) -> Unit) {
     val expansion = remember { mutableStateMapOf<String, Boolean>() }
     val currentSelection by rememberUpdatedState(selection)
     val currentActive by rememberUpdatedState(active)
@@ -35,7 +42,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
             }.thenBy { it.name }).forEach { property ->
             key(selection.pointer, selection.state?.pointer, selection.style?.pointer, property.name) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    DesignerPropertyRow(property, selection.bounds, effectiveValues[property.name], apply,
+                    DesignerPropertyRow(property, selection.bounds, effectiveValues[property.name], rejection?.revisionFor(selection, property.name) ?: 0, apply,
                         isCurrent = { currentActive && currentSelection?.pointer == selection.pointer &&
                             currentSelection?.state?.pointer == selection.state?.pointer &&
                             currentSelection?.style?.pointer == selection.style?.pointer },
@@ -144,6 +151,7 @@ internal class DesignerPropertyDraft(value: String?) {
         expected = value
         submitted = null
     }
+    fun reject() { submitted = null }
     fun changed(source: String?) = source != expected && (submitted == null || source != submitted)
     fun submission(property: DesignerProperty): String? {
         val value = buffer.text.toString()
@@ -156,7 +164,7 @@ internal class DesignerPropertyDraft(value: String?) {
 
 @Composable
 private fun DesignerPropertyRow(property: DesignerProperty,
-    bounds: io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds, inherited: String?,
+    bounds: io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds, inherited: String?, rejectedRevision: Long,
     apply: (Map<String, String?>, String) -> Unit, isCurrent: () -> Boolean, advanced: () -> Unit) {
     val draft = remember { DesignerPropertyDraft(property.value) }
     val currentApply by rememberUpdatedState(apply)
@@ -164,6 +172,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
     val currentGuard by rememberUpdatedState(isCurrent)
     var focused by remember { mutableStateOf(false) }
     LaunchedEffect(property.value) { draft.accept(property.value) }
+    LaunchedEffect(rejectedRevision) { if (rejectedRevision != 0L) draft.reject() }
     val commit = {
         if (currentGuard()) draft.submission(currentProperty)?.let { value ->
             currentApply(mapOf(currentProperty.name to value), "Set ${currentProperty.name}")
@@ -199,7 +208,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
             }) { Text(property.value ?: effectiveChoice?.let { "$it (inherited)" } ?: "Default", maxLines = 1) }
             else if (property.type.substringAfterLast('.') == "Thickness" &&
                 (property.value == null || WinUIXamlDesignerEditing.thickness(property.value) != null)) {
-                DesignerThicknessFields(property, inherited, currentGuard, currentApply, Modifier.weight(1f))
+                DesignerThicknessFields(property, inherited, currentGuard, currentApply, Modifier.weight(1f), rejectedRevision)
             }
             else TextField(draft.buffer, placeholder = {
                 Text(designerPropertyPlaceholder(property, inherited, bounds), maxLines = 1)

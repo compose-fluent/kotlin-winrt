@@ -45,6 +45,27 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
         assertTrue(myFixture.editor.document.text.contains("x:Name=\"Greeting\""))
     }
 
+    fun testNamingAnUnnamedElementCreatesADirectiveWithoutOverwritingAPrefix() {
+        val target = selection("xmlns:x=\"using:example\"").let {
+            it.copy(properties = it.properties + DesignerProperty("Name", "String", null, emptyList(), true, false))
+        }
+        WinUIXamlDesignerEditing.apply(project, target, mapOf("Name" to "NamedButton"), "Name element")
+        val tag = target.pointer.element!!
+        assertEquals("using:example", tag.getNamespaceByPrefix("x"))
+        assertEquals("NamedButton", tag.getAttributeValue("Name", io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.XAML))
+        assertNull(tag.getAttribute("Name"))
+    }
+
+    fun testNewNameCannotBeAnExpressionOrInvalidIdentifier() {
+        val target = selection().let {
+            it.copy(properties = it.properties + DesignerProperty("Name", "String", null, emptyList(), true, false))
+        }
+        listOf("{Binding Name}", "two words", "2name").forEach { value ->
+            assertTrue(runCatching { WinUIXamlDesignerEditing.apply(project, target, mapOf("Name" to value), "Name element") }.isFailure)
+        }
+        assertEquals(target.text, target.pointer.element!!.text)
+    }
+
     fun testClipboardRenamesInternalNameReferencesWithoutChangingTextOrBindingPaths() {
         com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
             val copied = DesignerClipboard.fragment(project, """<StackPanel><Button x:Name="First" Content="First"/><TextBlock Text="{Binding Content, ElementName=First}"/><TextBlock Text="{x:Bind First.Content}"/><TextBlock Text="{Binding First.Content}"/></StackPanel>""", setOf("First", "First1")).single()

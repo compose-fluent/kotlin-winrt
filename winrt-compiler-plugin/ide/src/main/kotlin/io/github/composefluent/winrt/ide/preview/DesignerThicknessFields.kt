@@ -56,11 +56,12 @@ internal class DesignerThicknessDraft(value: String?, private var inherited: Str
 
 @Composable
 internal fun DesignerThicknessFields(property: DesignerProperty, inherited: String?, isCurrent: () -> Boolean,
-    apply: (Map<String, String?>, String) -> Unit, modifier: Modifier = Modifier) {
+    apply: (Map<String, String?>, String) -> Unit, modifier: Modifier = Modifier, rejectedRevision: Long = 0) {
     val state = remember { DesignerThicknessDraft(property.value, inherited) }
     val currentProperty by rememberUpdatedState(property)
     val currentGuard by rememberUpdatedState(isCurrent)
     val currentApply by rememberUpdatedState(apply)
+    LaunchedEffect(rejectedRevision) { if (rejectedRevision != 0L) state.draft.reject() }
     LaunchedEffect(property.value, inherited) {
         // Missing effective values while an inspection is pending are not zeroes.
         if (inherited == null) state.accept(property.value) else state.accept(property.value, inherited)

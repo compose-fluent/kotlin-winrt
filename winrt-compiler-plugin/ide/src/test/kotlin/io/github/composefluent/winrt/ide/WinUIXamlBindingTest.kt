@@ -251,6 +251,14 @@ class WinUIXamlBindingTest : BasePlatformTestCase() {
         assertTrue(file.text, file.text.contains("x:Name=\"Renamed\""))
         assertTrue(file.text, file.text.contains("ElementName=Renamed"))
         assertNull(tag.getAttribute("Name"))
+        val other = file.rootTag!!.subTags[1]
+        val unnamed = selection().copy(pointer = com.intellij.psi.SmartPointerManager.createPointer(other),
+            text = other.text, properties = selection().properties.map { it.copy(value = null) })
+        allowAnalysisOnEdt {
+            assertTrue(runCatching { io.github.composefluent.winrt.ide.preview.WinUIXamlDesignerEditing.apply(
+                project, unnamed, mapOf("Name" to "Renamed"), "Name element") }.isFailure)
+        }
+        assertNull(other.getAttributeValue("Name", WinUIXamlCatalog.XAML))
     }
 
     fun testStateRenameUpdatesOnlyTransitionsInItsGroup() {

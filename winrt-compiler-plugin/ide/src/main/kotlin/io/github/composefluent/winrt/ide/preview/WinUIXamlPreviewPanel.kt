@@ -496,11 +496,16 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     SideEffect { if (editableResult != null) displayedEditable = editable }
     val propertySelection = if (editableResult != null) editable else displayedEditable
     val currentEditables by rememberUpdatedState(editables)
+    var rejectedEdits by remember { mutableStateOf<DesignerEditRejection?>(null) }
     fun applyBatch(edits: List<Pair<DesignerSelection, Map<String, String?>>>, title: String) {
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) runCatching { WinUIXamlDesignerEditing.applyBatch(project, edits, title) }
                 .onSuccess { editFeedback = "$title · Ctrl+Z to undo" }
-                .onFailure { editFeedback = it.message ?: "Could not update XAML" }
+                .onFailure {
+                    editFeedback = it.message ?: "Could not update XAML"
+                    rejectedEdits = DesignerEditRejection((rejectedEdits?.revision ?: 0) + 1,
+                        edits.map { (selection, changes) -> selection to changes.keys })
+                }
         }
     }
     fun authorState(createGroup: Boolean) {
@@ -745,14 +750,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             } })
                         if (editStyle) {
                             if (styleSelection == null) Text("The applied style is unavailable or changed. Return to element properties and select it again.")
-                            else DesignerProperties(styleSelection, propertyFilter.text.toString()) { changes, title ->
+                            else DesignerProperties(styleSelection, propertyFilter.text.toString(), rejection = rejectedEdits) { changes, title ->
                                 styleSelection?.let { applyBatch(listOf(it to changes), "$title in style") }
                             }
                         } else {
                             if (propertySelection == null && editableResult == null) Text("Loading editable properties…")
                             else DesignerProperties(propertySelection, propertyFilter.text.toString(), active = editableResult != null,
                                 effectiveValues = if (state.inspectionPath == selectedPath && state.inspectionPropertiesRead)
-                                    view?.properties.orEmpty().associate { it.name to it.value } else emptyMap(), apply = ::applyEdit)
+                                    view?.properties.orEmpty().associate { it.name to it.value } else emptyMap(), rejection = rejectedEdits, apply = ::applyEdit)
                         }
                         Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath || !state.inspectionPropertiesRead) Text("Reading selection…")

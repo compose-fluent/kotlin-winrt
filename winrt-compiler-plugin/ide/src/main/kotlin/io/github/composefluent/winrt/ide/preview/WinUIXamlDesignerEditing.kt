@@ -126,6 +126,11 @@ internal object WinUIXamlDesignerEditing {
                     check(!property.elementValue) { "$name uses a property element. Edit it in XAML." }
                     check(name != "Name" || selection.style != null || selection.state != null ||
                         tag.getAttribute("Name", WinUIXamlCatalog.XAML) == null) { "Rename an x:Name separately to update its references." }
+                    if (name == "Name" && selection.style == null && selection.state == null && value != null) {
+                        check(edits.size == 1) { "Name one element at a time." }
+                        val conflicts = xamlNameConflicts(tag, value)
+                        check(conflicts.isEmpty()) { conflicts.joinToString("\n") }
+                    }
                     value?.let { validate(property, it)?.let { message -> error(message) } }
                 }
                 selection.state?.let { DesignerStateEditing.validate(selection, changes) }
@@ -137,7 +142,15 @@ internal object WinUIXamlDesignerEditing {
                 val (tag, changes) = validatedEdit
                 if (edit.first.style != null) DesignerStyleEditing.write(edit.first, changes)
                 else if (edit.first.state != null) DesignerStateEditing.write(edit.first, changes)
-                else changes.forEach { (name, value) -> tag.setAttribute(name, value) }
+                else changes.forEach { (name, value) ->
+                    if (name == "Name" && value != null && tag.getAttribute("Name") == null) {
+                        val prefix = tag.getPrefixByNamespace(WinUIXamlCatalog.XAML)?.takeIf(String::isNotEmpty)
+                            ?: generateSequence("x") { it + "x" }.first { tag.getNamespaceByPrefix(it).isEmpty() }.also {
+                                tag.setAttribute("xmlns:$it", WinUIXamlCatalog.XAML)
+                            }
+                        tag.setAttribute("$prefix:Name", value)
+                    } else tag.setAttribute(name, value)
+                }
             }
             (validated.map { it.first.containingFile } + edits.mapNotNull { it.first.style?.pointer?.element?.containingFile }).distinct().forEach { file ->
                 documents.getDocument(file)?.let(documents::doPostponedOperationsAndUnblockDocument)

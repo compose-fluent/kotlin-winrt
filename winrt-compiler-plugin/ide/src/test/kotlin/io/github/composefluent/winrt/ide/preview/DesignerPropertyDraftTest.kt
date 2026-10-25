@@ -18,6 +18,17 @@ class DesignerPropertyDraftTest : TestCase() {
         assertEquals("400.0 (inherited)", designerPropertyPlaceholder(width(null), "400.0", bounds))
         assertEquals("Default", designerPropertyPlaceholder(width(null), "Unavailable: getter failed", bounds))
     }
+    fun testRejectedSubmissionCanBeCorrectedWithoutDiscardingTheDraft() {
+        val draft = DesignerPropertyDraft("100")
+        draft.buffer.setTextAndPlaceCursorAtEnd("200")
+        assertEquals("200", draft.submission(width("100")))
+        draft.reject()
+        assertEquals("200", draft.buffer.text.toString())
+        draft.buffer.setTextAndPlaceCursorAtEnd("300")
+        assertEquals("300", draft.submission(width("100")))
+        draft.accept("300")
+        assertFalse(draft.changed("300"))
+    }
     private fun width(value: String?) = DesignerProperty("Width", "Double", value, emptyList(), true, false)
     fun testUntouchedDefaultDoesNotCreateLocalValue() {
         assertNull(DesignerPropertyDraft(null).submission(width(null)))
