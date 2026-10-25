@@ -73,6 +73,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var inspection: Job? = null
     private var pendingInspection: WinUIXamlInspectionRequest? = null
     private var inspectionOwner: Triple<String, String, Int>? = null
+    private var rejectedPreviewDocument = false
     private var uncertain = false
     private var owned: WinUIXamlHotReloadClient? = null
     @Volatile private var gradleProcess: com.intellij.execution.process.ProcessHandler? = null
@@ -628,6 +629,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             if (display.value.inspecting) return
             display.value = display.value.copy(inspecting = true)
             inspection = scope.launch(Dispatchers.IO) {
+                var activeRequest: WinUIXamlInspectionRequest? = null
                 try {
                     while (isCurrent(epoch)) {
                         val next = synchronized(lifecycle) {
@@ -636,6 +638,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 if (it == null) { inspection = null; display.value = display.value.copy(inspecting = false) }
                             }
                         } ?: break
+                        activeRequest = next
                         val renderStarted = System.nanoTime()
                         val reply = mutex.withLock {
                             if (debuggerAttached()) null else runInterruptible { connection.inspect(next) }
@@ -645,15 +648,22 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 cachedFirstFrame?.complete(Unit)
                                 display.value = display.value.copy(inspection = null, inspectionError = reply.message, message = reply.message)
                                 inspectionOwner = null
+                                rejectedPreviewDocument = true
                                 return@withCurrent
                             }
                             if (next.animation != null) {
                                 display.value = display.value.copy(animationError = reply.message.takeIf { reply.status != WinUIXamlHotReloadProtocol.APPLIED })
                                 if (reply.status != WinUIXamlHotReloadProtocol.APPLIED) return@withCurrent
                             }
+                            if (reply.status != WinUIXamlHotReloadProtocol.APPLIED) {
+                                display.value = display.value.copy(inspectionError = reply.message,
+                                    message = reply.message, inspectionPropertiesRead = false)
+                                return@withCurrent
+                            }
                             // Selection/capture of the native host's retained
                             // content must not revive a rejected design document.
-                            if (display.value.inspectionError != null && next.previewMarkup.isEmpty()) return@withCurrent
+                            if (rejectedPreviewDocument && next.previewMarkup.isEmpty()) return@withCurrent
+                            if (next.previewMarkup.isNotEmpty()) rejectedPreviewDocument = false
                             val owner = Triple(next.className, next.resourcePath, next.instance)
                             val image = display.value.inspection?.image.takeIf { inspectionOwner == owner }
                             display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(image = it.image ?: image) } ?: display.value.inspection,
@@ -682,7 +692,19 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         }
                     }
                 } catch (error: CancellationException) { throw error }
-                catch (error: Exception) { withCurrent(epoch) { display.value = display.value.copy(message = error.message.orEmpty()) } }
+                catch (error: Exception) { withCurrent(epoch) {
+                    cachedFirstFrame?.complete(Unit)
+                    val message = error.message?.takeIf { it.isNotBlank() } ?: "The preview request failed. Refresh the preview."
+                    // A lost reply may have replaced the host's document. Do not
+                    // re-enable editing of the old image or revive it by selection.
+                    if (activeRequest?.previewMarkup?.isNotEmpty() == true) {
+                        rejectedPreviewDocument = true
+                        inspectionOwner = null
+                    }
+                    display.value = display.value.copy(message = message, inspectionError = message,
+                        inspection = display.value.inspection.takeUnless { rejectedPreviewDocument },
+                        inspectionPropertiesRead = false)
+                } }
                 finally { withCurrent(epoch) { if (inspection === coroutineContext[Job]) {
                     inspection = null; display.value = display.value.copy(inspecting = false)
                 } } }
@@ -757,6 +779,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         pendingInspection = null
         pendingPreviewCache = null
         inspectionOwner = null
+        rejectedPreviewDocument = false
         // Closing the sockets interrupts blocking transport IO immediately.
         // Cancellation alone cannot interrupt Socket.read on Dispatchers.IO.
         client?.close(); client = null

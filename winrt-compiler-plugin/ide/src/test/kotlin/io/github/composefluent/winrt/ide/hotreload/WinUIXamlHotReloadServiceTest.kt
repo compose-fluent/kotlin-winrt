@@ -243,6 +243,52 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertNotNull(service.state.value.inspection!!.image)
     }
 
+    fun testLostDesignReplyInvalidatesOldImageUntilAFullDocumentRecovers() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        fun inspect(markup: String) {
+            val count = fixture.inspections.size
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = markup))
+            PlatformTestUtil.waitWithEventsDispatching("Inspection completes", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        inspect("<Grid/>")
+        assertNotNull(service.state.value.inspection!!.image)
+        fixture.beforeInspection.set { it.close() }
+        inspect("<Border/>")
+        assertNotNull(service.state.value.inspectionError)
+        assertNull(service.state.value.inspection)
+        fixture.beforeInspection.set(null)
+        inspect("")
+        assertNotNull("A selection cannot certify which document was committed", service.state.value.inspectionError)
+        assertNull(service.state.value.inspection)
+        inspect("<Border/>")
+        assertNull(service.state.value.inspectionError)
+        assertNotNull(service.state.value.inspection!!.image)
+    }
+
+    fun testRejectedSelectionIsReportedAndSuccessfulInspectionCanRecover() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        fun inspect() {
+            val count = fixture.inspections.size
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+            PlatformTestUtil.waitWithEventsDispatching("Selection completes", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        inspect()
+        val previous = service.state.value.inspection
+        fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Selected visual was removed"))
+        inspect()
+        assertEquals("Selected visual was removed", service.state.value.inspectionError)
+        assertSame(previous, service.state.value.inspection)
+        assertFalse(service.state.value.inspectionPropertiesRead)
+        fixture.inspectionReply.set(null)
+        inspect()
+        assertNull(service.state.value.inspectionError)
+        assertTrue(service.state.value.inspectionPropertiesRead)
+    }
+
     fun testSdkReceiptWaitsForSuccessfulDocumentCaptureAfterAssetsAreStaged() = session { fixture ->
         val service = fixture.service(); service.reconnect(); fixture.connected(service)
         val host = Files.createDirectories(Path.of(fixture.module.buildDirectory, "sdk-host"))
