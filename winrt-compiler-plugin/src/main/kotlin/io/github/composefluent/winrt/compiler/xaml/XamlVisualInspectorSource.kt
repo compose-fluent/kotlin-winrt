@@ -35,9 +35,9 @@ internal fun xamlDevelopmentConfigurationSource(inspector: String, framework: Xa
 """.trimIndent()
 }
 
-/** The desktop designer keeps its WinUI visual tree hidden. UWP uses the activated CoreWindow.
- * AppWindow.Show(false) initializes it without taking focus; Hide keeps it alive.
- * https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.windowing.appwindow.hide
+/** The desktop designer initializes its visual tree offscreen without activation.
+ * Keeping the host shown avoids the hidden-window startup rendering delay.
+ * UWP uses the activated CoreWindow.
  */
 private fun xamlPreviewWindowSource(framework: XamlFramework): String = if (framework == XamlFramework.UWP) """
     requireNotNull(Window.current).apply {
@@ -51,10 +51,9 @@ private fun xamlPreviewWindowSource(framework: XamlFramework): String = if (fram
       content = ${framework.xamlKotlinNamespace}.controls.Grid().apply { width = 800.0; height = 600.0 }
       val host = requireNotNull(appWindow)
       host.isShownInSwitchers = false
-      // Keep initialization out of the desktop even before Hide runs.
+      // Keep the host offscreen and out of task switching without taking focus.
       host.move(windows.graphics.PointInt32(-32000, -32000))
       host.show(false)
-      host.hide()
       completeWinUIXamlHotReloadComponent(this, WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
     }
 """.trimIndent()

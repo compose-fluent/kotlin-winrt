@@ -209,7 +209,7 @@ AppContainer namespace, preview rendering, live property updates and rollback.
 
 The native application entry wrapper also reads these arguments before choosing
 the project-code static designer. Preview mode starts the generated Application,
-registers project and dependency XAML types, and retains a hidden preview Window;
+registers project and dependency XAML types, and retains an offscreen preview Window;
 it does not invoke the user's main or Application constructor. This uses the
 Application.Start/OnLaunched ownership split in CsWinRT's WinUIDesktopSample.
 Project controls still execute their compiled constructors when XamlReader creates
