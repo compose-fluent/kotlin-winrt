@@ -6,6 +6,23 @@ import org.junit.Assert.*
 import java.nio.file.Files
 
 class WinRTPreviewLaunchCacheTest {
+    @Test fun packagedIdentityMatchesActualToolchainArchive() {
+        val type = WinRTPreviewLaunchCache::class.java
+        val identity = requireNotNull(type.getResourceAsStream("/templates/toolchain-sha256.txt"))
+            .bufferedReader().use { it.readText().trim() }
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
+        requireNotNull(type.getResourceAsStream("/templates/toolchain.zip")).use { stream ->
+            val buffer = ByteArray(65536)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                hash.update(buffer, 0, count)
+            }
+        }
+        assertEquals("A changed archive must regenerate its packaged identity",
+            java.util.HexFormat.of().formatHex(hash.digest()), identity)
+    }
+
     private fun checked(cache: WinRTPreviewLaunchCache): Boolean = kotlinx.coroutines.runBlocking {
         val result = cache.checkedInputs()
         assertEquals(cache.inputs(), result.first)

@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+import java.util.HexFormat
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.ComposedJarTask
 import org.jetbrains.intellij.platform.gradle.tasks.PatchPluginXmlTask
@@ -186,6 +188,32 @@ val bundleWinRTToolchain by tasks.registering(Zip::class) {
     }
 }
 tasks.processResources { from(bundleWinRTToolchain.map { it.destinationDirectory.dir("..") }) }
+
+// The bundle is immutable inside a plugin distribution. Compute its identity at
+// packaging time, rather than inflating and hashing it during every IDE startup.
+val prepareToolchainIdentity by tasks.registering {
+    val archive = bundleWinRTToolchain.flatMap { it.archiveFile }
+    val output = layout.buildDirectory.dir("toolchain-identity")
+    inputs.file(archive)
+    outputs.dir(output)
+    doLast {
+        val hash = MessageDigest.getInstance("SHA-256")
+        archive.get().asFile.inputStream().use { stream ->
+            val buffer = ByteArray(65536)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                hash.update(buffer, 0, count)
+            }
+        }
+        output.get().file("templates/toolchain-sha256.txt").asFile.apply {
+            parentFile.mkdirs()
+            writeText(HexFormat.of().formatHex(hash.digest()))
+        }
+    }
+}
+tasks.processResources { from(prepareToolchainIdentity) }
+
 
 tasks.named<PrepareSandboxTask>("prepareTestSandbox") {
     // The installed unified IDEA also bundles commercial startup services.
