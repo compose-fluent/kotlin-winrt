@@ -683,7 +683,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         else -> state.message
     } else state.message
     val codeOutdated = static && projectCode && state.projectCodeChanged
-    val error = failure ?: state.inspectionError ?: if (codeOutdated)
+    // A rebuild keeps the stale-code guard until the new host is ready, but its
+    // in-progress status must not be presented as a failed preview.
+    val error = if (state.busy) null else failure ?: state.inspectionError ?: if (codeOutdated)
         "Kotlin source changed · rebuild project code to update this preview" else null
     val missingModule = staticFile != null && (module == null || designLaunch == null)
     fun startPreview() {
