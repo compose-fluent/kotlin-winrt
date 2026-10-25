@@ -13,6 +13,63 @@ import kotlinx.serialization.json.*
 class ProjectionIdeImportTest {
     @get:Rule val temporary = TemporaryFolder()
 
+    // CsWinRT keeps design-time reference declarations separate from implementation
+    // compilation. KGP must give each reference source root one IDE module owner.
+    @Test fun native_import_keeps_reference_sources_owned_by_business_source_set() {
+        val root = temporary.newFolder()
+        root.resolve("build/generated/kotlin-winrt/reference/src/Probe.kt").apply {
+            parentFile.mkdirs()
+            writeText("package sdk; class Probe")
+        }
+        root.resolve("settings.gradle").writeText("""
+            pluginManagement { repositories { gradlePluginPortal(); mavenCentral() } }
+            rootProject.name = 'native-source-ownership'
+        """.trimIndent())
+        root.resolve("gradle.properties").writeText("org.gradle.jvmargs=-Xmx512m -XX:+UseSerialGC\norg.gradle.workers.max=1\n")
+        root.resolve("build.gradle").writeText("""
+            plugins {
+                id 'org.jetbrains.kotlin.multiplatform' version '2.4.0'
+                id 'io.github.compose-fluent.windows-toolkit'
+            }
+            kotlin { mingwX64() }
+            windows { packageReferences { type 'Windows.Foundation.Uri' } }
+            tasks.register('verifyProjectionSourceOwnership') {
+                doLast {
+                    def roots = kotlin.sourceSets.collectEntries { sourceSet ->
+                        [(sourceSet.name): sourceSet.kotlin.srcDirs.collect { it.canonicalFile }]
+                    }
+                    def reference = file('build/generated/kotlin-winrt/reference/src').canonicalFile
+                    def consumer = tasks.named('compileKotlinMingwX64').get()
+                    def probe = new File(reference, 'Probe.kt')
+                    def nativeMain = kotlin.targets.getByName('mingwX64').compilations.getByName('main')
+                    def artifactAttribute = org.gradle.api.attributes.Attribute.of('io.github.composefluent.winrt.native-projection-artifact', String)
+                    def artifactKind = configurations.getByName(nativeMain.compileDependencyConfigurationName).attributes.getAttribute(artifactAttribute)
+                    if (System.getProperty('idea.sync.active') == 'true') {
+                        assert artifactKind == null
+                        assert !kotlin.targets.getByName('mingwX64').compilations.getByName('main').associatedCompilations.any { it.name == 'winRTProjectionReference' }
+                        assert consumer.sources.files.contains(probe)
+                        assert consumer.multiplatformStructure.fragments.get().find { it.fragmentName == 'winuiMain' }.sources.files.contains(probe)
+                        def owners = roots.findAll { name, dirs -> dirs.contains(reference) }.keySet()
+                        assert owners == ['winuiMain'] as Set : "Reference source owners: " + owners
+                        assert roots.winRTProjectionMain.empty
+                        assert roots.winRTProjectionReferenceMain.empty
+                    } else {
+                        assert artifactKind == 'reference'
+                        assert kotlin.targets.getByName('mingwX64').compilations.getByName('main').associatedCompilations.any { it.name == 'winRTProjectionReference' }
+                        assert !consumer.sources.files.contains(probe)
+                        assert roots.winRTProjectionReferenceMain.contains(reference)
+                        assert !roots.winRTProjectionMain.empty
+                    }
+                }
+            }
+        """.trimIndent())
+        listOf(true, false).forEach { importing ->
+            val result = GradleRunner.create().withProjectDir(root).withPluginClasspath()
+                .withArguments("verifyProjectionSourceOwnership", "-Didea.sync.active=$importing", "--offline", "--stacktrace").build()
+            assertEquals(TaskOutcome.SUCCESS, result.task(":verifyProjectionSourceOwnership")?.outcome)
+            assertFalse(result.tasks.any { it.path.contains("compile", ignoreCase = true) })
+        }
+    }
     @Test fun task_graph_does_not_scan_installed_sdk_metadata() {
         val root = temporary.newFolder()
         root.resolve("settings.gradle").writeText("rootProject.name = 'sdk-task-graph'\ndependencyResolutionManagement { repositories { mavenCentral() } }")

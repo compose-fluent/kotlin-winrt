@@ -3453,11 +3453,11 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
     kotlin.targets.withType(KotlinNativeTarget::class.java).all { target ->
         if (!target.isMingwX64Target()) return@all
         val sharedProjectionSources = kotlin.sourceSets.maybeCreate("winRTProjectionMain").apply {
-            this.kotlin.setSrcDirs(listOf(
-                projectionIdeSourceDirectory(project, generatedSources, referenceSources),
-                projectionIdeSourceDirectory(project, supportSources,
-                    project.layout.buildDirectory.dir("generated/kotlin-winrt/reference/compiler-support")),
-            ))
+            // During IDE import winuiMain owns the reference declarations. Assigning
+            // the same roots to isolated compilations lets the IDE move SDK symbols
+            // into a module the shared business source set cannot depend on.
+            this.kotlin.setSrcDirs(if (projectionIdeImport(project).get()) emptyList<Any>()
+                else listOf(generatedSources, supportSources))
             this.kotlin.include { element -> element.isDirectory || isGeneratedWinRTProjectionSource(element.file) }
         }
         // Register while KGP's model is open. No association with main: that would import
@@ -3465,7 +3465,7 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
         val projection = target.compilations.create("winRTProjection")
         val projectionReference = target.compilations.create("winRTProjectionReference")
         val sharedReferenceSources = kotlin.sourceSets.maybeCreate("winRTProjectionReferenceMain").apply {
-            this.kotlin.setSrcDirs(listOf(
+            this.kotlin.setSrcDirs(if (projectionIdeImport(project).get()) emptyList<Any>() else listOf(
                 referenceSources, project.layout.buildDirectory.dir("generated/kotlin-winrt/reference/compiler-support"),
             ))
             this.kotlin.include { element -> element.isDirectory || isGeneratedWinRTProjectionSource(element.file) }
@@ -3527,12 +3527,17 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
             // Every compiler consumes dependency contracts, including projection producers.
             // Otherwise a layered SDK reference pulls the lower SDK's implementation build.
             // Only nativeDemandConfiguration selects recipes for implementation generation.
-            target.compilations.forEach { compilation ->
+            if (!projectionIdeImport(project).get()) target.compilations.forEach { compilation ->
                 project.configurations.getByName(compilation.compileDependencyConfigurationName)
                     .attributes.attribute(WINRT_NATIVE_PROJECTION_ARTIFACT, "reference")
             }
+            // KGP maps project dependencies through its standard target variants.
+            // Selecting our build-only header variant during sync loses that mapping
+            // and drops the dependency project's source modules from IDE resolution.
             val hasProjection = kotlinWinRTLocalGenerationRequired(project).get() && generateTask.get().emitProjectionSources.get()
-            if (!project.plugins.hasPlugin("winrt.prebuilt-projection")) {
+            // IDE fragments retain reference declarations. Build-only input replacement
+            // must not hide those declarations from KGP's imported compilation model.
+            if (!project.plugins.hasPlugin("winrt.prebuilt-projection") && !projectionIdeImport(project).get()) {
                 val replacedRoots = listOf(generatedSources, supportSources, referenceSources,
                     referenceSupportSources, authoringSources, referenceAuthoringSources)
                     .map { it.get().asFile.toPath().toAbsolutePath().normalize() }
@@ -3693,6 +3698,10 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
                 }
             }
             target.compilations.filter { it != projection && it != projectionReference }.forEach { business ->
+                // KGP interprets associated compilations as test/friend modules in IDE
+                // models. Import uses declarations in winuiMain, so keep build-only
+                // friendship and reference artifacts out of that model.
+                if (projectionIdeImport(project).get()) return@forEach
                 // Business overlays retain access to internal helpers from their own projection
                 // module. Friendship is one-way; the projection never sees business declarations.
                 business.associateWith(projectionReference)
