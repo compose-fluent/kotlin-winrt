@@ -876,7 +876,7 @@ The implementation queue remains in the local, uncommitted
 `IDE_SUPPORT_LOCAL_PLAN.md`; this README records module boundaries and supported
 behavior rather than revising root `PLAN.md`.
 
-A selected XAML split/preview editor starts the existing Native session before initializing its Compose canvas when the imported module model is available. Cache validation and host initialization can then overlap the editor UI setup. Background tabs and code-only views do not request this work; restoring a code-only Canary editor was verified without a preview process, followed by first-host startup when switching to Split.
+A selected XAML split/preview editor starts the existing Native session before initializing its Compose canvas when the imported module model is available. During restoration it waits for the source file's own module instead of temporarily borrowing the tool-window selection. Hiding or closing the editor cancels that wait. Cache validation and host initialization can then overlap the editor UI setup. Background tabs and code-only views do not request this work; restoring a code-only Canary editor was verified without a preview process, followed by first-host startup when switching to Split.
 
 Project previews prefer a validated cached Native deployment. When no reusable project deployment exists, the independent SDK artboard can render while project controls compile. Changing Light/Dark restarts the preview host with Application.RequestedTheme set before initialization, so implicit theme styles match the rendered application. A connected deployment can be reused for this theme-only restart after XAML edits; changes to its binaries, dependencies or toolchain still require build validation.
 

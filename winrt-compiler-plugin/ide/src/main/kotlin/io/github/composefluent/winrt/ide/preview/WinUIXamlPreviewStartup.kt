@@ -1,13 +1,20 @@
 package io.github.composefluent.winrt.ide.preview
 
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.fileEditor.FileEditorManager
 import io.github.composefluent.winrt.ide.gradle.WinRTModuleData
 import io.github.composefluent.winrt.ide.gradle.WinUIXamlHotReloadLaunchData
 import io.github.composefluent.winrt.ide.hotreload.WinRTStaticPreviewService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import java.nio.file.Path
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 internal fun previewSourceModule(path: String, modules: List<WinRTModuleData>): WinRTModuleData? =
     modules.filter { candidate -> runCatching {
@@ -18,12 +25,27 @@ internal fun previewProjectLaunches(module: WinRTModuleData?, inherited: WinUIXa
     (inherited?.let(::listOf) ?: module?.hotReloadLaunches.orEmpty())
         .filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
 
+/** The editor owns/cancels each wait; the project owns the injected scope and
+ * the eventual development session. During IDE restore the model may arrive
+ * after selectNotify but before the first Compose frame.
+ */
+@Service(Service.Level.PROJECT)
+internal class WinUIXamlPreviewStartup(private val project: Project, private val scope: CoroutineScope) {
+    fun prepare(path: String) = scope.launch(Dispatchers.EDT) {
+        project.service<WinRTProjectService>().modules.first { previewSourceModule(path, it) != null }
+        prepareSelectedXamlPreview(project, path)
+    }
+}
+
 /** A selected, visible split editor has already requested preview. Start its
  * existing session before Compose initializes the canvas and property UI, so
  * cache validation and native initialization can overlap that work. No background
- * tab or code-only editor calls this; absent models still use the normal effect.
+ * tab or code-only editor calls this. The normal effect shares its session.
  */
 internal fun prepareSelectedXamlPreview(project: Project, path: String) {
+    val source = Path.of(path).toAbsolutePath().normalize()
+    if (FileEditorManager.getInstance(project).selectedFiles.none {
+            Path.of(it.path).toAbsolutePath().normalize() == source }) return
     val modules = project.service<WinRTProjectService>().modules.value
     val module = previewSourceModule(path, modules) ?: return
     val preferences = PropertiesComponent.getInstance(project)
@@ -34,6 +56,8 @@ internal fun prepareSelectedXamlPreview(project: Project, path: String) {
     if (launch.nativeCompilerHome.isBlank()) return
     val theme = preferences.getValue("winrt.preview.theme.${module.projectDirectory}", "Default")
         .takeIf { it in setOf("Default", "Light", "Dark") } ?: "Default"
+    com.intellij.openapi.diagnostic.Logger.getInstance(WinUIXamlPreviewStartup::class.java)
+        .info("XAML editor preview requested: ${source.fileName}, theme=$theme")
     design.ensurePreview(inherited?.first ?: module, launch, theme = theme)
 }
 

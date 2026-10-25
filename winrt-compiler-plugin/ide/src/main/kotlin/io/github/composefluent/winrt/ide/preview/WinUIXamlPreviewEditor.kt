@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposePanel
 import com.intellij.openapi.fileEditor.*
+import com.intellij.openapi.components.service
+import kotlinx.coroutines.Job
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
@@ -57,6 +59,7 @@ private class WinUIXamlPreviewEditor(private val project: Project, private val f
     private var selected = false
     private var previewVisible = false
     private var active by mutableStateOf(false)
+    private var startup: Job? = null
     private val component = compose(focusOnClickInside = true) {
         if (active) WinUIXamlPreviewPanel(project, staticFile = file.path)
     }
@@ -68,7 +71,8 @@ private class WinUIXamlPreviewEditor(private val project: Project, private val f
     fun setPreviewVisible(visible: Boolean) { previewVisible = visible; updateActive() }
     private fun updateActive() {
         val next = selected && previewVisible && !disposed
-        if (next && !active) prepareSelectedXamlPreview(project, file.path)
+        if (next && !active) startup = project.service<WinUIXamlPreviewStartup>().prepare(file.path)
+        if (!next) { startup?.cancel(); startup = null }
         active = next
     }
     override fun selectNotify() { selected = true; updateActive() }

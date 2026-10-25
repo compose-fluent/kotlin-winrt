@@ -104,7 +104,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var snapEnabled by remember { mutableStateOf(true) }
     val modules by project.service<WinRTProjectService>().modules.collectAsState()
     val selectedModule = selectedWinRTModule(project)
-    val module = staticFile?.let { previewSourceModule(it, modules) } ?: selectedModule
+    // A restored file must wait for its own imported module. Falling back to the
+    // tool-window selection can briefly start another host/theme during restore.
+    val module = if (staticFile != null) previewSourceModule(staticFile, modules) else selectedModule
     val declarations by project.service<WinUIXamlSnapshotService>().state.collectAsState()
     val inheritedLaunch = remember(staticFile, modules, projectState.pid, projectState.connected) {
         staticFile?.takeIf { module?.hotReloadLaunches.isNullOrEmpty() }?.let(design::sourcePreviewLaunch)
