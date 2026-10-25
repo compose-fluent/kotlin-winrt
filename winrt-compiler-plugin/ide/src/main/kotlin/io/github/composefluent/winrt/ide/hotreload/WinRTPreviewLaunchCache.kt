@@ -188,37 +188,40 @@ internal class WinRTPreviewLaunchCache(
         if (!content) files.forEach { file ->
             add(file.toString()); add(Files.size(file).toString()); add(Files.getLastModifiedTime(file).toString())
         } else {
-            // Hash each file on its reader thread. Combining fixed-size digests in
-            // sorted path order is deterministic without serializing all source bytes.
-            // Each worker streams 64 KiB, so large generated projections stay bounded.
-            val remaining = files.iterator()
-            val pending = java.util.ArrayDeque<Pair<Path, java.util.concurrent.CompletableFuture<Pair<ByteArray, Long>>>>()
-            fun enqueue() {
-                if (!remaining.hasNext()) return
-                val file = remaining.next()
-                pending.addLast(file to java.util.concurrent.CompletableFuture.supplyAsync({
-                    val fileHash = MessageDigest.getInstance("SHA-256")
+            // Reuse four streaming readers across the entire input set. Scheduling
+            // and allocating a 64 KiB buffer per file competes with IDE startup.
+            // Each file is still fully hashed and combined in sorted path order.
+            val ordered = files.toList()
+            val results = arrayOfNulls<Pair<ByteArray, Long>>(ordered.size)
+            val next = java.util.concurrent.atomic.AtomicInteger()
+            val workers = List(minOf(4, ordered.size)) {
+                com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService().submit {
                     val buffer = ByteArray(65536)
-                    var countBytes = 0L
-                    Files.newInputStream(file).use { stream ->
-                        while (true) {
-                            val count = stream.read(buffer)
-                            if (count < 0) break
-                            fileHash.update(buffer, 0, count); countBytes += count
+                    val fileHash = MessageDigest.getInstance("SHA-256")
+                    while (!Thread.currentThread().isInterrupted) {
+                        val index = next.getAndIncrement()
+                        if (index >= ordered.size) break
+                        val file = ordered[index]
+                        var countBytes = 0L
+                        Files.newInputStream(file).use { stream ->
+                            while (true) {
+                                if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                                val count = stream.read(buffer)
+                                if (count < 0) break
+                                fileHash.update(buffer, 0, count); countBytes += count
+                            }
                         }
+                        results[index] = fileHash.digest() to countBytes
                     }
-                    fileHash.digest() to countBytes
-                }, com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService()))
+                }
             }
             try {
-                repeat(4) { enqueue() }
-                while (pending.isNotEmpty()) {
-                    val (file, future) = pending.removeFirst()
-                    val (bytes, size) = future.join()
-                    enqueue()
+                workers.forEach { it.get() }
+                ordered.forEachIndexed { index, file ->
+                    val (bytes, size) = requireNotNull(results[index])
                     add(file.toString()); hash.update(bytes); hash.update(0.toByte()); readBytes += size
                 }
-            } finally { pending.forEach { it.second.cancel(true) } }
+            } finally { workers.forEach { it.cancel(true) } }
         }
         com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java).info(
             "Preview fingerprint: content=$content, excludeBuild=$excludeBuild, files=${files.size}, bytes=$readBytes, scan=${(scanned - started) / 1_000_000}ms, hash=${(System.nanoTime() - scanned) / 1_000_000}ms")
