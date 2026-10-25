@@ -46,7 +46,7 @@ data class WinUIXamlHotReloadState(val message: String = "Start a JVM applicatio
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
-    var processId: Long = 0, var startedUtc: String = "", var previewTheme: String = "Default")
+    var processId: Long = 0, var startedUtc: String = "", var previewTheme: String = "Default", var projectCodeChanged: Boolean = false)
 
 open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
     private val isolatedPreview: Boolean = false) : Disposable, PersistentStateComponent<WinUIXamlHotReloadLaunchState> {
@@ -125,7 +125,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     private fun debuggerAttached() = client?.process?.pid()?.let { it == debuggerPid } == true
 
-    override fun getState(): WinUIXamlHotReloadLaunchState = synchronized(lifecycle) { savedLaunch.copy() }
+    override fun getState(): WinUIXamlHotReloadLaunchState = synchronized(lifecycle) { savedLaunch.copy(projectCodeChanged = display.value.projectCodeChanged || savedLaunch.projectCodeChanged) }
     override fun loadState(state: WinUIXamlHotReloadLaunchState) = synchronized(lifecycle) {
         savedLaunch = state.copy()
         Unit
@@ -176,7 +176,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             if (roots.any { root ->
                 val base = Path.of(root).toAbsolutePath().normalize()
                 file.startsWith(base) && base.relativize(file).none { it.toString() in ignored }
-            }) display.value = display.value.copy(projectCodeChanged = true)
+            }) {
+                display.value = display.value.copy(projectCodeChanged = true)
+                savedLaunch = savedLaunch.copy(projectCodeChanged = true)
+            }
         }
     }
 
@@ -504,6 +507,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         }
                         directory = folder; selectedModule = module; selectedLaunch = launch; previewTheme = saved.previewTheme
                         client = candidate; owned = candidate
+                        display.value = display.value.copy(projectCodeChanged = display.value.projectCodeChanged || saved.projectCodeChanged)
                     }) {
                         candidate.close(); return@launch
                     }
@@ -647,7 +651,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     fun disconnect() {
-        beginRequest(WinUIXamlHotReloadState("Development connection closed. The application can continue running.", pid = owned?.process?.takeIf { it.isAlive }?.pid()))
+        beginRequest(WinUIXamlHotReloadState("Development connection closed. The application can continue running.", pid = owned?.process?.takeIf { it.isAlive }?.pid(), projectCodeChanged = display.value.projectCodeChanged))
     }
 
     fun inspect(request: WinUIXamlInspectionRequest) {

@@ -83,6 +83,13 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         }, 10)
         assertTrue("Matching XAML does not certify Kotlin changes", live.state.value.projectCodeChanged)
         assertEquals("Tracking edits must not restart the application", process, live.state.value.pid)
+        live.disconnect()
+        assertTrue(live.state.value.projectCodeChanged)
+        live.reconnect(); fixture.connected(live)
+        assertTrue("Reconnection does not replace compiled code", live.state.value.projectCodeChanged)
+        val restored = fixture.service(live.getState())
+        restored.reconnect(); fixture.connected(restored)
+        assertTrue("Restoring the same process must retain the source warning", restored.state.value.projectCodeChanged)
     }
 
     fun testLoadedSourceReusesOnlyTheConnectedHostThatExposesItsType() = session { fixture ->
