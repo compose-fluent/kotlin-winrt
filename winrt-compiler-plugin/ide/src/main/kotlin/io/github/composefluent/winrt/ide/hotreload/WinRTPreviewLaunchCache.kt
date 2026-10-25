@@ -149,6 +149,7 @@ internal class WinRTPreviewLaunchCache(
     private fun fingerprint(roots: List<Path>, content: Boolean, excludeBuild: Boolean, configurationOnly: Boolean = false, ignored: List<Path> = emptyList()): String {
         val started = System.nanoTime()
         val files = sortedSetOf<Path>()
+        val outputAttributes = mutableMapOf<Path, BasicFileAttributes>()
         val missing = sortedSetOf<String>()
         val excluded = setOf("build", ".gradle", ".git", ".idea", ".kotlin", ".konan", "node_modules")
         // Project/module/source roots overlap heavily. Scan each reachable subtree
@@ -177,7 +178,12 @@ internal class WinRTPreviewLaunchCache(
                         name.endsWith(".gradle.kts") || name.endsWith(".gradle") ||
                             name.endsWith(".toml") || name.endsWith(".properties") || name.endsWith(".json") ||
                             file.any { it.toString() in setOf("buildSrc", "build-logic", "gradle") }
-                    })) files.add(file)
+                    })) {
+                        files.add(file)
+                        // walkFileTree already obtained the deployment metadata.
+                        // Avoid two additional filesystem queries per output.
+                        if (!content) outputAttributes[file] = attrs
+                    }
                     check(files.size <= 30_000) { "Preview inputs require Gradle validation" }
                     return FileVisitResult.CONTINUE
                 }
@@ -190,7 +196,8 @@ internal class WinRTPreviewLaunchCache(
         missing.forEach { add("missing:$it") }
         add("content-fingerprint-v2")
         if (!content) files.forEach { file ->
-            add(file.toString()); add(Files.size(file).toString()); add(Files.getLastModifiedTime(file).toString())
+            val attrs = outputAttributes.getValue(file)
+            add(file.toString()); add(attrs.size().toString()); add(attrs.lastModifiedTime().toString())
         } else {
             // Reuse four streaming readers across the entire input set. Scheduling
             // and allocating a 64 KiB buffer per file competes with IDE startup.
