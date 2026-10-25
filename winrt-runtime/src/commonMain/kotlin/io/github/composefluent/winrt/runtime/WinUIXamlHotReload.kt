@@ -189,7 +189,7 @@ internal class WinUIXamlHotReloadRegistry(
             } else null
         }
         try {
-            if (!selection.enqueue {
+            val enqueued = selection.enqueue {
                 dispatchTiming?.let { println("XAML preview UI dispatched: " + it.elapsedNow().inWholeMilliseconds + "ms") }
                 val owner = selection.owner.get()
                 if (owner == null || lock.withLock { closed }) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The component has closed."))
@@ -197,7 +197,9 @@ internal class WinUIXamlHotReloadRegistry(
                 else inspector.inspect(owner, request) { result -> complete(result.fold(
                     { view -> snapshot().copy(message = "${view.nodes.size} visual nodes", inspection = view) },
                     { error -> WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, error.message.orEmpty()) })) }
-            }) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The UI dispatcher rejected inspection."))
+            }
+            dispatchTiming?.let { println("XAML preview enqueue returned: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+            if (!enqueued) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The UI dispatcher rejected inspection."))
         } catch (error: Exception) { complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, error.message.orEmpty())) }
     }
 
