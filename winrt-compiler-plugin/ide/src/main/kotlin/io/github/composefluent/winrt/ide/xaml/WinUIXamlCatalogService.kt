@@ -111,6 +111,8 @@ class WinUIXamlCatalogService(private val project: Project, private val scope: C
         com.intellij.openapi.diagnostic.Logger.getInstance(WinUIXamlCatalogService::class.java)
             .info("XAML preview event indexes ready: ${previewEvents.size}/${references.size}, ${(System.nanoTime() - startedIndexes) / 1_000_000}ms")
         if (references.isNotEmpty() && previewEvents.size == references.size) {
+            project.getServiceIfCreated(io.github.composefluent.winrt.ide.preview.WinUIXamlPreviewStartup::class.java)
+                ?.awaitPreparation()
             project.getServiceIfCreated(io.github.composefluent.winrt.ide.hotreload.WinRTStaticPreviewService::class.java)
                 ?.awaitCachedFirstFrame()
         }

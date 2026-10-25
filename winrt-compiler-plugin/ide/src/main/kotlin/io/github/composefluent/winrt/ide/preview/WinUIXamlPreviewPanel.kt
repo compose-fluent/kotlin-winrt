@@ -71,6 +71,7 @@ import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalogService
 import io.github.composefluent.winrt.runtime.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 import org.jetbrains.jewel.foundation.lazy.tree.*
 import org.jetbrains.jewel.ui.component.*
@@ -337,15 +338,18 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(root, state.connected, state.pid, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision, selectedStates, animationCommand, animationRevision) {
-        if (static && root != null && state.connected && session.usesPreviewTheme(theme) && prepared != null) {
-            run {
+    LaunchedEffect(session, launchModule, launch, projectCode, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision, selectedStates, animationCommand, animationRevision) {
+        if (static && prepared != null) withContext(Dispatchers.IO) {
+            session.state.previewRenderTargets().collectLatest { target ->
+                val (pid, root) = target ?: return@collectLatest
+                if (!session.usesPreviewTheme(theme) || projectCode &&
+                    (launchModule == null || launch == null || !session.usesLaunch(launchModule, launch))) return@collectLatest
                 val (w, h) = viewport
-                val document = prepared ?: return@LaunchedEffect
+                val document = prepared ?: return@collectLatest
                 val choices = selectedStates
-                val markup = try { withContext(Dispatchers.IO) { WinUIXamlDesignStates.select(storyboardDocument?.markup ?: document.markup, choices) } }
+                val markup = try { WinUIXamlDesignStates.select(storyboardDocument?.markup ?: document.markup, choices) }
                     catch (cancelled: CancellationException) { throw cancelled }
-                    catch (error: Exception) { failure = error.message; return@LaunchedEffect }
+                    catch (error: Exception) { failure = error.message; return@collectLatest }
                 failure = null
                 // Preparation and selection effects can run in the same composition.
                 // Never replay a command whose resource disappeared in the new document.
@@ -356,18 +360,19 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 // The selection effect reads those once this snapshot is published.
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
                     markup, w, h, theme, captureScale, validAnimation, readProperties = false)
-                val key = Triple(request, state.pid, Triple(manualRefresh, resourceRevision, animationRevision))
+                val key = Triple(request, pid, Triple(manualRefresh, resourceRevision, animationRevision))
                 // Metadata notifications can prepare the same document again. Keep
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
                 if (submitted != key) {
                     val previous = submitted
                     // Source edits already waited before preparation. Only coalesce
                     // capture-density changes during continuous canvas zoom here.
-                    if (previous != null && previous.second == state.pid && previous.third == key.third &&
+                    if (previous != null && previous.second == pid && previous.third == key.third &&
                         previous.first.previewMarkup == request.previewMarkup && previous.first.animation == request.animation &&
                         previous.first.renderScale != request.renderScale) delay(150)
-                    val clockOnly = previous != null && previous.second == state.pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
+                    val clockOnly = previous != null && previous.second == pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
                         previous.first.copy(animation = request.animation, readProperties = request.readProperties) == request
+                    currentCoroutineContext().ensureActive()
                     session.inspect(if (clockOnly) request.copy(previewMarkup = "", selectedPath = selectedPath) else request)
                     submitted = key
                 }

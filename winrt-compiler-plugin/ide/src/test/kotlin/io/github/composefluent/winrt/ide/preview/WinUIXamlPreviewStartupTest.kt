@@ -4,10 +4,31 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadState
+import io.github.composefluent.winrt.runtime.WinUIXamlHotReloadRoot
+import io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class WinUIXamlPreviewStartupTest {
+    @Test fun renderTargetsFollowReadyHostsWithoutWaitingForCanvasRecomposition() = runBlocking {
+        val root = WinUIXamlHotReloadRoot(WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64), 0, emptyList())
+        val ready = WinUIXamlHotReloadState(connected = true, pid = 10L, inspectionRoots = listOf(root))
+        val targets = flowOf(
+            WinUIXamlHotReloadState(),
+            ready.copy(inspectionRoots = emptyList()),
+            ready.copy(inspectionRoots = listOf(root.copy(className = "UserPage"))),
+            ready,
+            ready.copy(message = "Rendering", inspecting = true),
+            ready.copy(message = "21 visual nodes"),
+            ready.copy(connected = false),
+            ready.copy(pid = 11L),
+        ).previewRenderTargets().toList()
+        assertEquals(listOf(null, 10L to root, null, 11L to root), targets)
+    }
+
     @Test fun editorAndCanvasShareSourceOwnershipAndLaunchOrder() {
         val root = java.nio.file.Path.of("preview-project").toAbsolutePath()
         val first = io.github.composefluent.winrt.ide.gradle.WinUIXamlHotReloadLaunchData(

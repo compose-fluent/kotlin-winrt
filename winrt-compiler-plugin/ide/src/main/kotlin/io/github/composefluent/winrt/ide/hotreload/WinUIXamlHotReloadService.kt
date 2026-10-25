@@ -202,6 +202,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         previewTheme = theme
         launchStartedNanos = startedAt; firstFrameReported = false
         val firstFrame = CompletableDeferred<Unit>()
+        // Publish before scheduling IO: catalog loading must not race the cache
+        // decision. A cache miss completes this gate before any Gradle build.
+        if (preview && !sdkPreview && !rebuild) cachedFirstFrame = firstFrame
         gradleProcess = null
         worker = scope.launch(Dispatchers.IO) {
             try {
@@ -240,9 +243,6 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage"))) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
-                if (preview && !sdkPreview && !rebuild && cache?.hasCandidate() == true) withCurrent(request) {
-                    cachedFirstFrame = firstFrame
-                }
                 val validation = cache?.let { runCatching {
                     if (priorDeployment != null && it.connectedDeploymentIdentity() == priorDeployment) null to true
                     else if (rebuild) it.inputs() to false else it.checkedInputs()

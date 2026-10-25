@@ -11,10 +11,17 @@ import io.github.composefluent.winrt.ide.gradle.WinUIXamlHotReloadLaunchData
 import io.github.composefluent.winrt.ide.hotreload.WinRTStaticPreviewService
 import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import java.nio.file.Path
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadState
+import io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol
 
 internal fun previewSourceModule(path: String, modules: List<WinRTModuleData>): WinRTModuleData? =
     modules.filter { candidate -> runCatching {
@@ -31,10 +38,23 @@ internal fun previewProjectLaunches(module: WinRTModuleData?, inherited: WinUIXa
  */
 @Service(Service.Level.PROJECT)
 internal class WinUIXamlPreviewStartup(private val project: Project, private val scope: CoroutineScope) {
-    fun prepare(path: String) = scope.launch(Dispatchers.EDT) {
-        project.service<WinRTProjectService>().modules.first { previewSourceModule(path, it) != null }
-        prepareSelectedXamlPreview(project, path)
+    @Volatile private var preparation: CompletableDeferred<Unit>? = null
+
+    fun prepare(path: String): kotlinx.coroutines.Job {
+        val ready = CompletableDeferred<Unit>()
+        preparation = ready
+        return scope.launch(Dispatchers.EDT) {
+            project.service<WinRTProjectService>().modules.first { previewSourceModule(path, it) != null }
+            prepareSelectedXamlPreview(project, path)
+        }.also { job -> job.invokeOnCompletion { ready.complete(Unit) } }
     }
+
+    // The catalog's IO coroutine can receive the restored model before the EDT
+    // resumes selectNotify. Honor the already-visible editor's pending request.
+    internal suspend fun awaitPreparation() {
+        preparation?.let { withTimeoutOrNull(1_000) { it.await() } }
+    }
+
 }
 
 /** A selected, visible split editor has already requested preview. Start its
@@ -81,3 +101,12 @@ internal suspend fun startPreferredXamlPreview(
     }
     if (continueStartup()) startBasic()
 }
+
+/** Connection changes drive rendering directly, without waiting for the Swing/Compose
+ * frame that displays that connection. Disconnects cancel pending zoom coalescing;
+ * property/bitmap replies do not resubmit the same document. */
+internal fun Flow<WinUIXamlHotReloadState>.previewRenderTargets() = map { state ->
+    if (!state.connected) null else state.inspectionRoots.firstOrNull {
+        it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS
+    }?.let { state.pid to it }
+}.distinctUntilChanged()
