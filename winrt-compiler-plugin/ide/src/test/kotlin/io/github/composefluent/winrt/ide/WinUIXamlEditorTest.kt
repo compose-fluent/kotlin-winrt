@@ -28,6 +28,35 @@ import java.nio.file.Path
 class WinUIXamlEditorTest : BasePlatformTestCase() {
     private var root: Path? = null
 
+    fun testSdkNamesAreNotRejectedBeforeMetadataButUnknownNamesRemainErrorsAfterLoading() {
+        val waiting = myFixture.configureByText("Waiting.xaml", """
+            <Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Width="42">
+                <Grid.RowDefinitions/>
+                <NotAnSdkControl/>
+            </Grid>
+        """.trimIndent()) as XmlFile
+        assertNull(project.service<WinUIXamlCatalogService>().forFile(waiting.virtualFile.path))
+        allowAnalysisOnEdt {
+            val tag = waiting.rootTag!!
+            assertNotNull(tag.descriptor!!.declaration)
+            assertNotNull(tag.subTags.first().descriptor!!.declaration)
+            assertNotNull(tag.descriptor!!.getAttributeDescriptor("Width", tag)!!.declaration)
+        }
+        val ready = configure("""
+            <Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" UnknownProperty="42">
+                <Grid.RowDefinitions/>
+                <NotAnSdkControl/>
+            </Grid>
+        """.trimIndent())
+        allowAnalysisOnEdt {
+            val tag = ready.rootTag!!
+            assertNotNull(tag.subTags.first().descriptor!!.declaration)
+            assertNull("Loaded metadata must still reject unknown SDK types", tag.subTags.last().descriptor!!.declaration)
+            assertNull("Loaded metadata must still reject unknown properties",
+                tag.descriptor!!.getAttributeDescriptor("UnknownProperty", tag)!!.declaration)
+        }
+    }
+
     private fun configure(markup: String): XmlFile {
         myFixture.addFileToProject("Shell.kt", "package sample\nclass Shell { val reservedHandler = 0; fun onClick(sender: Any, args: Any) {} }")
         myFixture.addFileToProject("Widget.kt", """

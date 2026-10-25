@@ -37,6 +37,8 @@ class WinUIXamlSchemaProvider : XmlSchemaProvider() {
     }
 }
 
+private val sdkXamlNamespaces = setOf(WinUIXamlCatalog.PRESENTATION, "http://schemas.microsoft.com/windows/2010/directui")
+
 private fun isXamlNamespace(uri: String) = uri.substringBefore('?') in setOf(WinUIXamlCatalog.XAML,
     "http://schemas.microsoft.com/expression/blend/2008", "http://schemas.openxmlformats.org/markup-compatibility/2006") ||
     WinUIXamlCatalog.namespaces(uri).isNotEmpty()
@@ -87,7 +89,12 @@ private class WinUIXamlElementDescriptor(private val tag: XmlTag, private val el
         // WinMD can be ready before its Kotlin projection has been indexed. A
         // known SDK element remains valid during that boundary; unknown names
         // still produce the native XML unresolved-reference diagnostic.
-        val catalog = WinUIXamlSymbols.catalog(tag.containingFile) ?: return null
+        // The Native first frame intentionally precedes full WinMD loading.
+        // Absence of a catalog is not evidence that an SDK name is invalid.
+        // Catalog publication restarts highlighting and restores exact checking.
+        val catalog = WinUIXamlSymbols.catalog(tag.containingFile) ?: return tag.takeIf {
+            namespace.substringBefore('?') in sdkXamlNamespaces
+        }
         val owner = catalog.resolve(namespace, name.substringBefore('.')) ?: return null
         return tag.takeIf { !name.contains('.') || (catalog.members(owner) + catalog.attachedMembers(owner))
             .any { it.name == name.substringAfter('.') } }
@@ -128,7 +135,10 @@ private class WinUIXamlAttributeDescriptor(private val tag: XmlTag, private val 
     override fun getName(context: PsiElement?) = attributeName
     override fun init(element: PsiElement?) = Unit
     override fun getDeclaration(): PsiElement? = WinUIXamlAttributeAnalysis.forName(tag, attributeName)?.targets?.firstOrNull()
-        ?: tag.getAttribute(attributeName)?.takeIf { member != null }
+        ?: tag.getAttribute(attributeName)?.takeIf {
+            member != null || !attributeName.contains(':') && tag.namespace.substringBefore('?') in sdkXamlNamespaces &&
+                WinUIXamlSymbols.catalog(tag.containingFile) == null
+        }
     override fun isRequired() = false
     override fun isFixed() = false
     override fun hasIdType() = attributeName.substringAfter(':') == "Name"
