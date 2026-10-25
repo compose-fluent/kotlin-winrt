@@ -273,6 +273,16 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val canvasPan = remember(source) { mutableStateOf(Offset.Zero) }
     LaunchedEffect(source, resetViewport) { canvasPan.value = Offset.Zero }
     var lastView by remember(source, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
+    val placeholderCache = remember(source, module?.buildDirectory, static) {
+        module?.takeIf { static && source.isNotBlank() }?.let {
+            WinUIXamlPreviewPlaceholder(Path.of(it.buildDirectory).resolve("kotlin-winrt/ide-preview-frames"), source)
+        }
+    }
+    val placeholder by produceState<WinUIXamlVisualSnapshot?>(null, placeholderCache, theme, viewport) {
+        value = null
+        value = withContext(Dispatchers.IO) { placeholderCache?.read(theme, viewport.first, viewport.second) }
+    }
+
     val scope = rememberCoroutineScope()
     var selectedSourceIdentity by remember(source) { mutableStateOf<Pair<String, String>?>(null) }
     fun selectPath(path: List<Int>) { if (static) {
@@ -418,6 +428,22 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
+    val showingPlaceholder = static && view == null && placeholder != null
+    LaunchedEffect(state.inspection?.image, state.inspectionDocument, placeholderCache) {
+        val document = state.inspectionDocument
+        val image = state.inspection?.image
+        // Correlate the response with this file's prepared document. A previous
+        // tab/theme, selected state or animation must never overwrite its image.
+        if (static && image != null && document != null && document == submitted?.first && document.previewMarkup == prepared?.markup &&
+            document.theme == theme && document.width == viewport.first && document.height == viewport.second &&
+            document.animation == null && selectedStates.isEmpty() && !animationPlaying &&
+            state.connected && state.inspectionError == null) {
+            withContext(Dispatchers.IO) {
+                runCatching { placeholderCache?.write(theme, viewport.first, viewport.second, image) }
+            }
+        }
+    }
+
     var pendingStructureSelection by remember(source) { mutableStateOf<com.intellij.psi.SmartPsiElementPointer<com.intellij.psi.xml.XmlTag>?>(null) }
     var structureNodesBefore by remember(source) { mutableStateOf(view?.nodes) }
     LaunchedEffect(view?.nodes) {
@@ -671,7 +697,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         onDispose { Disposer.dispose(disposable) }
     }
     val projectPreparing = static && wantsProjectCode && !projectCode
-    val status = if (static && startupCancelled) {
+    val status = if (showingPlaceholder) {
+        "Previous render · " + if (startupCancelled) "preview stopped" else if (state.busy) state.message
+            else if (state.connected) "rendering current XAML…" else state.message
+    } else if (static && startupCancelled) {
         if (view != null) "Preview stopped · last successful render" else "Preview stopped"
     } else if (projectPreparing && view != null) {
         val renderedHost = if (state.connected) "Basic preview" else "Last successful render"
@@ -835,6 +864,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             multiPaths = paths - setOf(staticPath)
                         }
                     }, ::clipboardAction, panState = canvasPan)
+            } else if (showingPlaceholder) {
+                PreviewImage(placeholder!!, emptyList(), {}, {}, zoom, false, false,
+                    { actualZoom = it }, { zoom = it }, {}, Modifier.fillMaxSize(),
+                    selectedPaths = emptySet(), sourcePaths = emptySet())
             } else Column(Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (staticFile != null) Text(Path.of(staticFile).fileName.toString())

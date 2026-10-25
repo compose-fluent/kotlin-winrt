@@ -269,6 +269,10 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         }
         inspect("<Grid/>")
         assertNotNull(service.state.value.inspection!!.image)
+        val renderedDocument = service.state.value.inspectionDocument
+        assertEquals("<Grid/>", renderedDocument?.previewMarkup)
+        inspect()
+        assertEquals("Selection-only replies retain the image's actual document", renderedDocument, service.state.value.inspectionDocument)
         fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Missing theme resource"))
         inspect("<Invalid/>")
         assertNull(service.state.value.inspection)
