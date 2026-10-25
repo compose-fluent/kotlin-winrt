@@ -47,14 +47,22 @@ private fun xamlPreviewWindowSource(framework: XamlFramework): String = if (fram
     }
 """.trimIndent() else """
     Window().apply {
+      val startup = kotlin.time.TimeSource.Monotonic.markNow()
       title = "Kotlin WinRT XAML Preview"
-      content = ${framework.xamlKotlinNamespace}.controls.Grid().apply { width = 800.0; height = 600.0 }
+      // The first inspection supplies the sized document. Do not lay out an
+      // empty placeholder tree before that document is available.
       val host = requireNotNull(appWindow)
       host.isShownInSwitchers = false
       // Keep the host offscreen and out of task switching without taking focus.
       host.move(windows.graphics.PointInt32(-32000, -32000))
       host.show(false)
+      println("XAML preview window shown: " + startup.elapsedNow().inWholeMilliseconds + "ms")
       completeWinUIXamlHotReloadComponent(this, WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
+      println("XAML preview root registered: " + startup.elapsedNow().inWholeMilliseconds + "ms")
+      requireNotNull(microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()).tryEnqueue(
+        microsoft.ui.dispatching.DispatcherQueueHandler {
+          println("XAML preview first UI turn: " + startup.elapsedNow().inWholeMilliseconds + "ms")
+        })
     }
 """.trimIndent()
 
@@ -318,17 +326,17 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               timing?.let { println("XAML preview markup loaded: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               element.width = request.width.toDouble(); element.height = request.height.toDouble()
               element.requestedTheme = when (request.theme) { "Dark" -> ElementTheme.Dark; "Light" -> ElementTheme.Light; else -> ElementTheme.Default }
+              stage = "attach the visual tree"
+              window.content = element
+              attached = true
               stage = "size the design surface"
-              // Use the real client area so window-aware SDK controls (TitleBar)
-              // see the same layout as the artboard, even while it is hidden.
-              val dpi = window.content?.asWinRT<FrameworkElement>()?.xamlRoot?.rasterizationScale ?: 1.0
+              // Read DPI from the attached document, including the first frame
+              // when the isolated desktop window has no placeholder content.
+              val dpi = element.xamlRoot?.rasterizationScale ?: 1.0
               require(dpi.isFinite() && dpi > 0) { "The visual root has an invalid DPI scale." }
               ${if (framework == XamlFramework.WinUI) """requireNotNull(window.appWindow).resizeClient(windows.graphics.SizeInt32(
                 (request.width * dpi).toInt(), (request.height * dpi).toInt()))""" else """windows.ui.viewmanagement.ApplicationView.getForCurrentView()?.tryResizeView(
                 windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))"""}
-              stage = "attach the visual tree"
-              window.content = element
-              attached = true
               stage = "lay out the visual tree"
               // UWP defers the first Window content layout until rendering. Establish
               // the requested artboard before capture chooses its bounded pixel size.
