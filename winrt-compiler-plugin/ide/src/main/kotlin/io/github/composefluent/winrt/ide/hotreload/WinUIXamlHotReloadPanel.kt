@@ -31,6 +31,7 @@ fun WinUIXamlHotReloadPanel(project: Project) {
                     it.taskName }, launch?.taskName) { task = it }
             }
             Text(state.message)
+            if (state.projectCodeChanged) Text("Kotlin source changed. The application still runs the previous compiled code. Rebuild and restart to apply code changes.")
         }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

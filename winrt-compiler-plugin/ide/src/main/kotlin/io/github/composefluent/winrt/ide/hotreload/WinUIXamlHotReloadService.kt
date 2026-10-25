@@ -158,10 +158,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         }
     }
 
-    /** The designer runs compiled Kotlin constructors. XAML renders cannot certify
-     * a changed binary; keep that fact separate from successful render feedback. */
+    /** Both the designer and live application run compiled Kotlin. XAML updates cannot
+     * certify a changed binary. Tracking this never restarts a user application. */
     internal fun markProjectCodeChanged(path: String) {
-        if (!isolatedPreview || disposed || !path.endsWith(".kt", true)) return
+        if (disposed || !path.endsWith(".kt", true)) return
         synchronized(lifecycle) {
             val module = selectedModule ?: return
             val launch = selectedLaunch ?: return

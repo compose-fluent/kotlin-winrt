@@ -219,8 +219,9 @@ in the project or its imported dependency modules, including external file chang
 Generated Kotlin outputs are excluded. Further XAML renders retain this warning;
 layout/property writes based on the old compiled tree are disabled until rebuilding.
 The status bar exposes **Rebuild project code**, which uses the existing Gradle
-build/launch path and restores the preview connection. SDK-only preview and live
-application sessions do not inherit this designer-only rebuild state.
+build/launch path and restores the preview connection. SDK-only previews are excluded.
+Live applications also retain a separate stale-Kotlin warning after XAML updates;
+tracking source changes never restarts or disconnects the application automatically.
 
 CsWinRT has no IDE socket/session counterpart. The Windows transport is a tooling
 adaptation; projection ownership, custom-property accessors, conversion and UI

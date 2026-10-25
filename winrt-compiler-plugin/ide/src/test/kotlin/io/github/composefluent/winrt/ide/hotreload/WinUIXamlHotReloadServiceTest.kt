@@ -74,7 +74,15 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         val live = fixture.service()
         live.reconnect(); fixture.connected(live)
         live.markProjectCodeChanged(dependency.resolve("Control.kt").toString())
-        assertFalse("Designer rebuild tracking must not restart the user's live application", live.state.value.projectCodeChanged)
+        assertTrue("Live applications must also report stale compiled Kotlin", live.state.value.projectCodeChanged)
+        assertTrue("Tracking Kotlin edits must not disconnect the live application", live.state.value.connected)
+        val process = live.state.value.pid
+        live.apply()
+        PlatformTestUtil.waitWithEventsDispatching("The XAML check completes", {
+            live.state.value.message == "XAML matches the running components."
+        }, 10)
+        assertTrue("Matching XAML does not certify Kotlin changes", live.state.value.projectCodeChanged)
+        assertEquals("Tracking edits must not restart the application", process, live.state.value.pid)
     }
 
     fun testLoadedSourceReusesOnlyTheConnectedHostThatExposesItsType() = session { fixture ->
