@@ -74,9 +74,10 @@ reassigns this page's explicit StaticResource consumers. Readbacks inspect effec
 style properties on the UI thread. Prepared replacements also supply subsequent
 literal overrides when a new component finishes loading its original XBF.
 
-The IDE currently recognizes resources on root or connected named owners. Style
-replacement requires a self-contained local dictionary and resolvable named/root
-consumers. Implicit keys, merged/external/theme dictionaries, references captured
+The IDE recognizes resource owners and consumers through connected names or
+compiled property/content paths, including unnamed collection children. Indexed
+paths retain the runtime collection-size guard. Style replacement requires a
+self-contained local dictionary and resolvable consumers. Implicit keys, merged/external/theme dictionaries, references captured
 by another dictionary/template, new names, events and binding expressions require
 rebuilding. A ThemeResource consumer cannot be reassigned as a local value without
 losing its theme expression, so it rejects replacement rather than claiming theme

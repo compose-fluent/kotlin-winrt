@@ -235,6 +235,19 @@ class WinUIXamlHotReloadTest {
             else -> null
         }
 
+    @Test fun sealed_styles_refresh_unnamed_consumers_through_compiled_content_paths() {
+        for (explicit in listOf(false, true)) {
+            var text = resourceSource.replace(" x:Name=\"Second\"", "")
+            if (explicit) text = text.replace("<TextBlock x:Name=\"Greeting\"", "<StackPanel.Children><TextBlock x:Name=\"Greeting\"")
+                .replace("</StackPanel>", "</StackPanel.Children></StackPanel>")
+            val patch = WinUIXamlHotReloadMarkup.parse(text.replace("Value=\"28\"", "Value=\"36\""))
+                .patch(WinUIXamlHotReloadMarkup.parse(text), resourceRoot(text), contentMember = ::content)
+            val consumer = patch.resources.single().references.single { it.property == "Style" && it.target.element != "Greeting" }
+            assertEquals(WinUIXamlHotReloadTarget("Layout", listOf(WinUIXamlHotReloadStep.Property("Children"),
+                WinUIXamlHotReloadStep.Index(1, 2))), consumer.target)
+        }
+    }
+
     @Test fun child_collections_reuse_connected_objects_and_load_only_unconnected_subtrees() {
         val first = "<TextBlock x:Name=\"Greeting\" Text=\"Hello\" Style=\"{StaticResource GreetingStyle}\" Foreground=\"{StaticResource Accent}\"/>"
         val second = "<TextBlock x:Name=\"Second\" Style=\"{StaticResource ResourceKey=GreetingStyle}\"/>"

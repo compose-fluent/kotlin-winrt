@@ -176,7 +176,7 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
         }
         fun references(owner: XamlElement, dictionary: XamlElement, target: WinUIXamlHotReloadTarget, keys: Set<String>): List<WinUIXamlHotReloadResourceReference> {
             val result = mutableListOf<WinUIXamlHotReloadResourceReference>()
-            fun visit(element: XamlElement, ownerElement: Boolean, available: Set<String>, inDictionary: Boolean = false, inTemplate: Boolean = false) {
+            fun visit(element: XamlElement, address: WinUIXamlHotReloadTarget?, available: Set<String>, inDictionary: Boolean = false, inTemplate: Boolean = false) {
                 if (element === dictionary) return
                 val localKeys = element.content.filterIsInstance<XamlElement>().filter { it.type.local.endsWith(".Resources") && it !== dictionary }
                     .flatMap { block -> runCatching { resourceEntries(block).map(::key) }.getOrElse {
@@ -189,15 +189,30 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                     require(!reference.theme) { "Replacing a resource used by ThemeResource requires rebuilding to preserve its theme expression." }
                     require(!inDictionary && !inTemplate && !element.template) { "A resource captured by another dictionary or template requires rebuilding." }
                     val property = resolvedProperty(element, name)
-                    val address = if (ownerElement) target else element.address(null)
-                    require(address != null) { "Add x:Name and rebuild before refreshing this resource consumer." }
+                    require(address != null) { "The resource consumer has no compiled object path; rebuild before refreshing it." }
                     result += WinUIXamlHotReloadResourceReference(address, property, reference.key)
                 }
-                element.content.filterIsInstance<XamlElement>().forEach { child ->
-                    visit(child, false, visible, inDictionary || child.type.local.endsWith(".Resources"), inTemplate || element.template)
+                val elements = element.content.filterIsInstance<XamlElement>()
+                val direct = elements.filter { '.' !in it.type.local }
+                val shape = contentMember(element.type.uri, element.type.local, null)
+                fun childAddress(child: XamlElement, member: WinUIXamlContentMember?, index: Int, count: Int): WinUIXamlHotReloadTarget? {
+                    child.address(null)?.let { return it }
+                    if (address == null || member == null || !member.collection && count != 1) return null
+                    val path = address.path + WinUIXamlHotReloadStep.Property(member.name)
+                    return address.copy(path = if (member.collection) path + WinUIXamlHotReloadStep.Index(index, count) else path)
+                }
+                elements.forEach { child ->
+                    val property = child.type.local.substringBefore('.') == element.type.local &&
+                        child.type.uri == element.type.uri && '.' in child.type.local && !child.type.local.endsWith(".Resources")
+                    if (property && !inDictionary && !inTemplate && !element.template) {
+                        val member = contentMember(element.type.uri, element.type.local, child.type.local.substringAfter('.'))
+                        val values = child.content.filterIsInstance<XamlElement>()
+                        values.forEachIndexed { index, value -> visit(value, childAddress(value, member, index, values.size), visible) }
+                    } else visit(child, childAddress(child, shape, direct.indexOf(child), direct.size).takeIf { child in direct },
+                        visible, inDictionary || child.type.local.endsWith(".Resources"), inTemplate || element.template)
                 }
             }
-            visit(owner, true, keys)
+            visit(owner, target, keys)
             return result.distinct()
         }
         fun validateVisual(element: XamlElement, owner: XamlElement? = null) {

@@ -826,7 +826,7 @@ and subsequent property/resource updates in order (64 entries / 8 MiB). Moving
 controls can trigger Loaded/Unloaded and affect focus; transient lifecycle state is
 not guaranteed. Application changes to collection order are outside this contract.
 
-Style replacement requires explicit string keys and named/root owners and consumers.
+Style replacement requires explicit string keys and owners/consumers resolved through connected names or compiled property/content paths. Unnamed collection consumers use the same runtime size checks as other indexed updates.
 Local dictionaries can add/remove keys when no surviving consumer references a
 removed key; dictionary keys and values roll back together after a failed update.
 ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
