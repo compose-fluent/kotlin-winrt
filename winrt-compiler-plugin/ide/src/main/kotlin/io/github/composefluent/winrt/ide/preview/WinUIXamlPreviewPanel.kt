@@ -219,6 +219,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var storyboardId by remember(source) { mutableStateOf("") }
     var createdStoryboardKey by remember(source) { mutableStateOf<String?>(null) }
     val editorStoryboardKey = remember(source, storyboardId) { storyboards.singleOrNull { it.id == storyboardId }?.key.orEmpty() }
+    // Keep the source scope while a new render temporarily clears prepared markup.
+    // Losing it resets the keyframe selection and hides successful edit feedback.
+    val editorStoryboardOwner = remember(source, storyboardId) {
+        storyboards.singleOrNull { it.id == storyboardId }?.owner
+            ?.takeUnless { it in storyboardDocument?.syntheticOwners.orEmpty() }
+    }
     var animationRevision by remember(source) { mutableIntStateOf(0) }
     var animationCommand by remember(source) { mutableStateOf<WinUIXamlPreviewAnimation?>(null) }
     var animationPlaying by remember(source) { mutableStateOf(false) }
@@ -914,8 +920,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
                 if (createAnimationTrack) DesignerStoryboardCreatePanel(project, currentEditables.singleOrNull(), animationTime(), editorStoryboardKey) { createdStoryboardKey = it }
                 if (editTimeline) DesignerStoryboardPanel(project, source,
-                    editorStoryboardKey, revision, animationTime(), storyboards.singleOrNull { it.id == storyboardId }?.owner
-                        ?.takeUnless { it in storyboardDocument?.syntheticOwners.orEmpty() }) { millis ->
+                    editorStoryboardKey, revision, animationTime(), editorStoryboardOwner) { millis ->
                     animationPosition.setTextAndPlaceCursorAtEnd(millis.toString())
                     animationPlaying = false
                     controlAnimation("Seek")
