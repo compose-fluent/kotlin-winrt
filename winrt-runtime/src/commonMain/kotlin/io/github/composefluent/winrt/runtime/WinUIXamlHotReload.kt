@@ -31,6 +31,7 @@ internal class WinUIXamlHotReloadRegistry(
     private val lock = PlatformLock()
     private val pages = linkedMapOf<Pair<String, String>, Page>()
     private var closed = false
+    private var tracedInspectionDispatch = false
 
     fun observe(owner: Any, className: String, path: String, hash: String, name: String?, target: Any?) {
         if (lock.withLock { closed }) return
@@ -165,8 +166,15 @@ internal class WinUIXamlHotReloadRegistry(
         if (selection == null || inspector == null) {
             complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "No live visual inspector. Rebuild with the current toolchain and select a loaded component.")); return
         }
+        val dispatchTiming = lock.withLock {
+            if (request.previewMarkup.isNotEmpty() && !tracedInspectionDispatch) {
+                tracedInspectionDispatch = true
+                kotlin.time.TimeSource.Monotonic.markNow()
+            } else null
+        }
         try {
             if (!selection.enqueue {
+                dispatchTiming?.let { println("XAML preview UI dispatched: " + it.elapsedNow().inWholeMilliseconds + "ms") }
                 val owner = selection.owner.get()
                 if (owner == null || lock.withLock { closed }) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The component has closed."))
                 else if (platformCurrentThreadToken() != selection.thread) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Visual inspection must run on the owning UI thread."))
