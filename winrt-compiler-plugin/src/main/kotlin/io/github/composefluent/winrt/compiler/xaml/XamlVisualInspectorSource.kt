@@ -184,6 +184,10 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           }
           var activeStoryboard: Storyboard? = null
           var playing = false
+          // Report only the first isolated designer frame, never live inspection
+          // or animation frames. The IDE owns the redirected preview-host log.
+          var tracedPreview = false
+          var traceCapture = false
           return WinUIXamlVisualInspector(
           visualRoot = { owner -> if (owner is Window) owner.content else owner },
           children = { value ->
@@ -246,6 +250,8 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             (basic + winUIXamlInspectionProperties(value, ::display)).distinctBy { it.name }
           },
           capture = { value, renderScale, complete ->
+            val timing = if (traceCapture) kotlin.time.TimeSource.Monotonic.markNow() else null
+            traceCapture = false
             val element = value.asWinRT<FrameworkElement>()
             val queue = requireNotNull(${dispatching}.DispatcherQueue.getForCurrentThread())
             val dispatcher = object : CoroutineDispatcher() {
@@ -256,6 +262,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val lifetime = Job()
             CoroutineScope(lifetime + dispatcher).launch {
               var stage = "render the visual tree"
+              timing?.let { println("XAML preview capture queued: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               try {
                 val bitmap = RenderTargetBitmap()
                 // RenderAsync's requested size is in view pixels. PixelWidth and
@@ -280,18 +287,23 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 } finally { element.rasterizationScale = previousRasterizationScale }""" else """// Windows.UI.Xaml has no public UIElement.RasterizationScale setter.
                 // UWP retains RenderAsync density scaling without changing its layout.
                 requireNotNull(bitmap.renderAsync(element, width, height)).await()"""}
+                timing?.let { println("XAML preview bitmap rendered: " + it.elapsedNow().inWholeMilliseconds + "ms") }
                 stage = "read the rendered pixels"
                 val buffer = requireNotNull(requireNotNull(bitmap.getPixelsAsync()).await())
                 require(bitmap.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && bitmap.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
                   "WinUI returned an unsupported bitmap size or pixel buffer."
                 }
+                timing?.let { println("XAML preview pixels available: " + it.elapsedNow().inWholeMilliseconds + "ms") }
                 val bytes = readWinUIXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())
+                timing?.let { println("XAML preview pixels copied: " + it.elapsedNow().inWholeMilliseconds + "ms") }
                 complete(Result.success(WinUIXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes)))
+                timing?.let { println("XAML preview snapshot delivered: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               } catch (error: Exception) { complete(Result.failure(IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error))) }
               finally { lifetime.cancel() }
             }
           },
           preview = { owner, request ->
+            val timing = if (!tracedPreview) kotlin.time.TimeSource.Monotonic.markNow() else null
             val window = owner.asWinRT<Window>()
             activeStoryboard?.stop(); activeStoryboard = null; playing = false
             val previousContent = window.content
@@ -299,6 +311,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             var stage = "load the XAML"
             try {
               val element = requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(request.previewMarkup)).asWinRT<FrameworkElement>()
+              timing?.let { println("XAML preview markup loaded: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               element.width = request.width.toDouble(); element.height = request.height.toDouble()
               element.requestedTheme = when (request.theme) { "Dark" -> ElementTheme.Dark; "Light" -> ElementTheme.Light; else -> ElementTheme.Default }
               stage = "size the design surface"
@@ -318,6 +331,9 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               element.measure(windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))
               element.arrange(windows.foundation.Rect(0f, 0f, request.width.toFloat(), request.height.toFloat()))
               element.updateLayout()
+              timing?.let { println("XAML preview layout completed: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+              traceCapture = !tracedPreview
+              tracedPreview = true
             } catch (error: Exception) {
               // Deferred DataTemplate loading can fail during Measure/Arrange after
               // attachment. Detach that poisoned tree before returning to the SDK
