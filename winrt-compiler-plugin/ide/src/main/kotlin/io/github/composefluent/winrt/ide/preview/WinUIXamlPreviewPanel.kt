@@ -287,11 +287,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }, disposable)
         onDispose { Disposer.dispose(disposable) }
     }
+    var preparationRevision by remember(source) { mutableLongStateOf(revision) }
+    var preparationRefresh by remember(source) { mutableIntStateOf(manualRefresh) }
     LaunchedEffect(static, source, files, declarations, catalogRevision, resourceRevision, projectCode, launchModule, if (automatic) revision else 0L, manualRefresh) {
+        val typing = automatic && revision != preparationRevision && manualRefresh == preparationRefresh
+        preparationRevision = revision
+        preparationRefresh = manualRefresh
         prepared = null; failure = null
         if (static && source.isNotEmpty() && module != null) {
-            // Debounce typing, not opening an already prepared document.
-            if (revision > 0) delay(150)
+            // Only new typing needs a quiet interval. Opening another document,
+            // explicit refresh and metadata notifications can prepare immediately.
+            if (typing) delay(150)
             try {
                 prepared = withContext(Dispatchers.IO) {
                     val documents = WinUIXamlPreviewSources(project, module, files, source, if (projectCode) launchModule ?: module else module)
@@ -328,7 +334,6 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         if (static && root != null && state.connected && session.usesPreviewTheme(theme) && prepared != null) {
             run {
                 val (w, h) = viewport
-                if (state.inspection != null && submitted?.first?.animation == animationCommand) delay(150)
                 val document = prepared ?: return@LaunchedEffect
                 val choices = selectedStates
                 val markup = try { withContext(Dispatchers.IO) { WinUIXamlDesignStates.select(storyboardDocument?.markup ?: document.markup, choices) } }
@@ -349,6 +354,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
                 if (submitted != key) {
                     val previous = submitted
+                    // Source edits already waited before preparation. Only coalesce
+                    // capture-density changes during continuous canvas zoom here.
+                    if (previous != null && previous.second == state.pid && previous.third == key.third &&
+                        previous.first.previewMarkup == request.previewMarkup && previous.first.animation == request.animation &&
+                        previous.first.renderScale != request.renderScale) delay(150)
                     val clockOnly = previous != null && previous.second == state.pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
                         previous.first.copy(animation = request.animation, readProperties = request.readProperties) == request
                     session.inspect(if (clockOnly) request.copy(previewMarkup = "", selectedPath = selectedPath) else request)
