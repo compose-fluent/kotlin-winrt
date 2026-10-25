@@ -27,6 +27,7 @@ internal class NativeWinUIXamlHotReloadServer(
 ) : AutoCloseable {
     private val lock = PlatformLock()
     private var closed = false
+    private var tracedPreview = false
     private val server = memScoped {
         requireNotNull(kotlin_winrt_development_open(directory.wcstr.ptr, WinUIXamlHotReloadProtocol.VERSION)) { "Cannot create the native development session." }
     }
@@ -73,6 +74,7 @@ internal class NativeWinUIXamlHotReloadServer(
     private fun handle() {
         val header = receive(12)
         val command = WinUIXamlHotReloadCodec.readCommand(header + receive(WinUIXamlHotReloadCodec.frameSize(header)))
+        val timing = if (!tracedPreview && command.inspection?.previewMarkup?.isNotEmpty() == true) GetTickCount64() else null
         val token = command.token.encodeToByteArray()
         val authenticated = token.size == 43 && token.usePinned {
             kotlin_winrt_development_authenticate(server, it.addressOf(0), token.size) != 0
@@ -96,8 +98,15 @@ internal class NativeWinUIXamlHotReloadServer(
                     "The UI update is still pending. Reconnect before sending another version.")
             }
         }
+        val trace = timing?.takeIf { reply.inspection?.image != null }
+        if (trace != null) {
+            tracedPreview = true
+            println("XAML preview response ready: " + (GetTickCount64() - trace) + "ms")
+        }
         val bytes = WinUIXamlHotReloadCodec.writeReply(reply)
+        trace?.let { println("XAML preview response encoded: " + (GetTickCount64() - it) + "ms") }
         bytes.usePinned { kotlin_winrt_development_write(server, it.addressOf(0), bytes.size) }
+        trace?.let { println("XAML preview response sent: " + (GetTickCount64() - it) + "ms") }
     }
 
     override fun close() {

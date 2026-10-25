@@ -10,6 +10,9 @@ import java.time.Instant
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.io.OutputStream
+import java.io.InputStream
+import java.io.FilterInputStream
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Credentials remain private and ephemeral; only protocol DTOs enter the Compose display state. */
 internal class WinUIXamlHotReloadClient private constructor(
@@ -18,6 +21,7 @@ internal class WinUIXamlHotReloadClient private constructor(
     private val pipeNamespace: String = "LOCAL",
 ) : AutoCloseable {
     private val connections = ConcurrentHashMap.newKeySet<AutoCloseable>()
+    private val tracedImage = AtomicBoolean()
     @Volatile private var closed = false
     val alive get() = !closed && process.isAlive && process.info().startInstant().orElse(null) == started
 
@@ -30,6 +34,7 @@ internal class WinUIXamlHotReloadClient private constructor(
     private fun exchange(send: (OutputStream) -> Unit): WinUIXamlHotReloadReply {
         check(alive) { "The application has exited. Start a new development session." }
         if (pipeName != null) return exchangePipe(pipeName, send)
+        val started = System.nanoTime()
         return Socket().use { socket ->
             connections += socket
             try {
@@ -37,21 +42,50 @@ internal class WinUIXamlHotReloadClient private constructor(
                 socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 2_000)
                 socket.soTimeout = 12_000
                 send(socket.getOutputStream())
-                WinUIXamlHotReloadWire.readReply(socket.getInputStream())
+                readReply(socket.getInputStream(), started)
             } finally { connections -= socket }
         }
     }
 
     private fun exchangePipe(name: String, send: (OutputStream) -> Unit): WinUIXamlHotReloadReply {
+        val started = System.nanoTime()
         val pipe = WinRTDevelopmentPipe("\\\\.\\pipe\\${pipeNamespace.replace('/', '\\')}\\$name", isCancelled = { closed })
         connections += pipe.cancellation
         try {
             check(!closed) { "The development connection is closed." }
             send(pipe.output)
-            return WinUIXamlHotReloadWire.readReply(pipe.input).also { pipe.output.write(0x6b) }
+            return readReply(pipe.input, started).also { pipe.output.write(0x6b) }
         } finally {
             connections -= pipe.cancellation
             pipe.dispose()
+        }
+    }
+
+    /** First-frame diagnostics contain durations/counts only, never session data. */
+    private fun readReply(input: InputStream, started: Long): WinUIXamlHotReloadReply {
+        if (tracedImage.get()) return WinUIXamlHotReloadWire.readReply(input)
+        val reading = System.nanoTime()
+        var ioNanos = 0L
+        var byteCount = 0L
+        var firstReadNanos = -1L
+        val measured = object : FilterInputStream(input) {
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                val before = System.nanoTime()
+                return try { super.read(bytes, offset, length).also { if (it > 0) byteCount += it } }
+                finally {
+                    val elapsed = System.nanoTime() - before
+                    ioNanos += elapsed
+                    if (firstReadNanos < 0) firstReadNanos = elapsed
+                }
+            }
+        }
+        return WinUIXamlHotReloadWire.readReply(measured).also { reply ->
+            val finished = System.nanoTime()
+            if (reply.inspection?.image != null && tracedImage.compareAndSet(false, true)) {
+                com.intellij.openapi.diagnostic.Logger.getInstance(WinUIXamlHotReloadClient::class.java).info(
+                    "XAML first image transfer: open/send=${(reading - started) / 1_000_000}ms, " +
+                        "wait/read=${ioNanos / 1_000_000}ms (header=${firstReadNanos / 1_000_000}ms), decode=${(finished - reading - ioNanos) / 1_000_000}ms, bytes=$byteCount")
+            }
         }
     }
 
