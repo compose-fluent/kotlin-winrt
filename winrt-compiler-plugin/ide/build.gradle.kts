@@ -4,6 +4,8 @@ import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.ComposedJarTask
 import org.jetbrains.intellij.platform.gradle.tasks.PatchPluginXmlTask
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
+import java.util.zip.ZipOutputStream
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -189,6 +191,60 @@ val bundleWinRTToolchain by tasks.registering(Zip::class) {
 }
 tasks.processResources { from(bundleWinRTToolchain.map { it.destinationDirectory.dir("..") }) }
 
+// Maven publication timestamps and ZIP headers do not change the compiler/runtime.
+// Keep the exact archive checksum separately; reuse keys cover every payload and
+// dependency descriptor, excluding only publication routing/checksum metadata.
+fun toolchainContentIdentity(archive: java.io.File): String {
+    val entries = sortedMapOf<String, String>()
+    ZipFile(archive).use { zip ->
+        zip.entries().asSequence().filterNot { it.isDirectory }.forEach { entry ->
+            val name = entry.name.substringAfterLast('/')
+            if (name.startsWith("maven-metadata") || name.endsWith(".sha1") ||
+                name.endsWith(".sha256") || name.endsWith(".sha512") || name.endsWith(".md5")) return@forEach
+            val path = entry.name.replace(Regex("-\\d{8}\\.\\d{6}-\\d+(?=[.-])"), "-SNAPSHOT")
+            val hash = MessageDigest.getInstance("SHA-256")
+            zip.getInputStream(entry).use { stream ->
+                val buffer = ByteArray(65536)
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    hash.update(buffer, 0, count)
+                }
+            }
+            check(entries.put(path, HexFormat.of().formatHex(hash.digest())) == null) {
+                "Ambiguous toolchain publication: $path"
+            }
+        }
+    }
+    val hash = MessageDigest.getInstance("SHA-256")
+    hash.update("toolchain-content-v1\n".toByteArray())
+    entries.forEach { (path, digest) -> hash.update("$path\u0000$digest\n".toByteArray()) }
+    return HexFormat.of().formatHex(hash.digest())
+}
+
+val verifyToolchainContentIdentity by tasks.registering {
+    doLast {
+        val directory = temporaryDir
+        fun archive(name: String, stamp: String, payload: String = "compiler", pom: String = "dependencies") =
+            directory.resolve(name).also { file ->
+                ZipOutputStream(file.outputStream()).use { zip ->
+                    mapOf("repository/a/1-SNAPSHOT/a-1-$stamp.jar" to payload,
+                        "repository/a/1-SNAPSHOT/a-1-$stamp.pom" to pom,
+                        "repository/a/1-SNAPSHOT/maven-metadata.xml" to stamp,
+                        "repository/a/1-SNAPSHOT/a-1-$stamp.jar.sha1" to stamp).forEach { (path, text) ->
+                        zip.putNextEntry(ZipEntry(path)); zip.write(text.toByteArray()); zip.closeEntry()
+                    }
+                }
+            }
+        val baseline = toolchainContentIdentity(archive("first.zip", "20261025.120000-1"))
+        check(baseline == toolchainContentIdentity(archive("republished.zip", "20261026.130000-2")))
+        check(baseline != toolchainContentIdentity(archive("compiler-changed.zip", "20261026.130000-2", payload = "new compiler")))
+        check(baseline != toolchainContentIdentity(archive("dependencies-changed.zip", "20261026.130000-2", pom = "new dependency")))
+    }
+}
+
+tasks.check { dependsOn(verifyToolchainContentIdentity) }
+
 // The bundle is immutable inside a plugin distribution. Compute its identity at
 // packaging time, rather than inflating and hashing it during every IDE startup.
 val prepareToolchainIdentity by tasks.registering {
@@ -210,6 +266,7 @@ val prepareToolchainIdentity by tasks.registering {
             parentFile.mkdirs()
             writeText(HexFormat.of().formatHex(hash.digest()))
         }
+        output.get().file("templates/toolchain-content-sha256.txt").asFile.writeText(toolchainContentIdentity(archive.get().asFile))
     }
 }
 tasks.processResources { from(prepareToolchainIdentity) }

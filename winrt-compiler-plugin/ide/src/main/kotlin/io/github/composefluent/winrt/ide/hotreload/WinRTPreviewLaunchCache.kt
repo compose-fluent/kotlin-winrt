@@ -245,12 +245,12 @@ internal class WinRTPreviewLaunchCache(
 
     companion object {
         // A new bundle may resolve newer artifacts than the old Gradle receipt.
-        // Packaging records the exact archive digest; UI-only changes need not
+        // Packaging records payload identity without Maven publication timestamps; UI-only changes need not
         // rebuild Native. Older development bundles retain the streaming fallback.
         private val bundledToolchainIdentity: String by lazy {
             val started = System.nanoTime()
             val type = WinRTPreviewLaunchCache::class.java
-            val packaged = type.getResourceAsStream("/templates/toolchain-sha256.txt")?.bufferedReader()?.use {
+            val packaged = type.getResourceAsStream("/templates/toolchain-content-sha256.txt")?.bufferedReader()?.use {
                 it.readText().trim().takeIf { value -> value.matches(Regex("[0-9a-f]{64}")) }
             }
             packaged ?: type.getResourceAsStream("/templates/toolchain.zip")?.use { stream ->

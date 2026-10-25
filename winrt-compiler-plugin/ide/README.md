@@ -534,6 +534,11 @@ fall back to Gradle. A successful first build records the resulting generated so
 when user inputs remain unchanged; the Gradle model identifies the owning generation
 tasks. Later edits to those generated files still invalidate reuse. Older workspace
 models use conservative full-source validation until synchronization.
+The bundled toolchain reuse key hashes payloads and dependency descriptors, while
+ignoring ZIP headers, Maven publication timestamps and redundant checksums.
+Republishing identical artifacts does not force a Native rebuild; changing an
+artifact or dependency descriptor does. The exact archive checksum remains separate.
+`verifyToolchainContentIdentity` checks those invalidation boundaries.
 **Rebuild project code** always bypasses this cache. First builds,
 UWP activation and JVM launch configuration still use Gradle. Startup and render
 durations are recorded as `XAML preview connected`, `XAML preview rendered` and
