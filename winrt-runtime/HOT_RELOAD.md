@@ -214,6 +214,13 @@ it does not invoke the user's main or Application constructor. This uses the
 Application.Start/OnLaunched ownership split in CsWinRT's WinUIDesktopSample.
 Project controls still execute their compiled constructors when XamlReader creates
 them. Changing their Kotlin implementation requires rebuilding/restarting the host.
+The IDE marks a connected project designer out of date after Kotlin source edits
+in the project or its imported dependency modules, including external file changes.
+Generated Kotlin outputs are excluded. Further XAML renders retain this warning;
+layout/property writes based on the old compiled tree are disabled until rebuilding.
+The status bar exposes **Rebuild project code**, which uses the existing Gradle
+build/launch path and restores the preview connection. SDK-only preview and live
+application sessions do not inherit this designer-only rebuild state.
 
 CsWinRT has no IDE socket/session counterpart. The Windows transport is a tooling
 adaptation; projection ownership, custom-property accessors, conversion and UI

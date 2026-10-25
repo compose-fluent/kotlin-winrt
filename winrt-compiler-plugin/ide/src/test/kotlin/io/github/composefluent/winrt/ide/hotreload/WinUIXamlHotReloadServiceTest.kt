@@ -52,6 +52,31 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(1, fixture.patches.get())
     }
 
+    fun testCompiledPreviewBecomesOutdatedAfterDependencyKotlinEditAndStaysOutdatedAfterRender() = session { fixture ->
+        val dependency = fixture.root.resolve("controls")
+        val generated = dependency.resolve("generated")
+        val dependencyModule = fixture.module.copy(projectDirectory = dependency.toString(),
+            sourceSets = listOf(io.github.composefluent.winrt.ide.gradle.WinRTSourceSetData("main",
+                listOf(dependency.toString()), emptyList(), emptyList(), generatedKotlinRoots = listOf(generated.toString()))))
+        project.service<WinRTProjectService>().replaceBuildModels(fixture.root.toString(), listOf(fixture.module, dependencyModule))
+        val service = fixture.previewService()
+        service.reconnect(); fixture.connected(service)
+        service.markProjectCodeChanged(generated.resolve("Generated.kt").toString())
+        service.markProjectCodeChanged(fixture.root.resolve("build/Generated.kt").toString())
+        service.markProjectCodeChanged(fixture.root.resolve("Page.xaml").toString())
+        service.markProjectCodeChanged(fixture.root.resolveSibling("outside/Other.kt").toString())
+        assertFalse(service.state.value.projectCodeChanged)
+        service.markProjectCodeChanged(dependency.resolve("Control.kt").toString())
+        assertTrue(service.state.value.projectCodeChanged)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", capture = true))
+        PlatformTestUtil.waitWithEventsDispatching("Inspection completes", { service.state.value.inspection != null }, 10)
+        assertTrue("A successful XAML render does not update compiled Kotlin", service.state.value.projectCodeChanged)
+        val live = fixture.service()
+        live.reconnect(); fixture.connected(live)
+        live.markProjectCodeChanged(dependency.resolve("Control.kt").toString())
+        assertFalse("Designer rebuild tracking must not restart the user's live application", live.state.value.projectCodeChanged)
+    }
+
     fun testLoadedSourceReusesOnlyTheConnectedHostThatExposesItsType() = session { fixture ->
         val unknown = fixture.root.resolve("Unknown.xaml")
         Files.writeString(unknown, markup.replace("probe.Window", "dependency.Unknown"))
@@ -472,7 +497,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         val inspectionReply = AtomicReference<WinUIXamlHotReloadReply?>()
         private val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
         private val executor = Executors.newCachedThreadPool()
-        private val services = linkedMapOf<WinUIXamlHotReloadService, CoroutineScope>()
+        private val services = linkedMapOf<WinRTDevelopmentSession, CoroutineScope>()
         private val activeRequests = AtomicInteger()
         private val liveRoot = AtomicReference(WinUIXamlHotReloadRoot("probe.Window", "Window.xaml",
             WinUIXamlHotReloadMarkup.parse(markup).hash, 0, listOf("Greeting")))
@@ -537,7 +562,16 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
             }
         }
 
-        fun connected(service: WinUIXamlHotReloadService) = PlatformTestUtil.waitWithEventsDispatching("Development handshake", {
+        fun previewService(): WinRTDevelopmentSession {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            return WinRTDevelopmentSession(project, scope, isolatedPreview = true).also {
+                services[it] = scope
+                Disposer.register(testRootDisposable, it)
+                it.loadState(savedState())
+            }
+        }
+
+        fun connected(service: WinRTDevelopmentSession) = PlatformTestUtil.waitWithEventsDispatching("Development handshake", {
             service.state.value.connected && !service.state.value.busy
         }, 10)
 
@@ -547,7 +581,12 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
             activeRequests.get() == 0 && services.values.none { scope -> scope.coroutineContext[Job]!!.children.any { it.isCancelled && !it.isCompleted } }
         }, 10)
 
-        fun dispose(service: WinUIXamlHotReloadService) {
+        fun dispose(service: WinRTDevelopmentSession) {
+            if (service !is WinUIXamlHotReloadService) {
+                // This wire peer runs in the test JVM, not an owned designer child.
+                service.disconnect()
+                WinRTDevelopmentSession::class.java.getDeclaredField("owned").apply { isAccessible = true }.set(service, null)
+            }
             Disposer.dispose(service)
             services.getValue(service).cancel()
         }

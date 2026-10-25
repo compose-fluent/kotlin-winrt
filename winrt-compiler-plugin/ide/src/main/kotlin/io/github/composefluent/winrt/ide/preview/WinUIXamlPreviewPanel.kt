@@ -433,10 +433,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     // A new selection/revision must lose edit capabilities in this composition,
     // before the asynchronous resolver starts. produceState keys alone retain
     // the previous value until its new coroutine runs, exposing stale commands.
-    val editableResult by key(selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
+    val editableResult by key(selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
       produceState<List<DesignerSelection>?>(null) {
         val snapshot = view
-        if (snapshot == null || !static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) { value = emptyList(); return@produceState }
+        if (snapshot == null || !static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null || state.projectCodeChanged) { value = emptyList(); return@produceState }
         value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerSelection>, RuntimeException> {
             selectedPaths.mapNotNull { path ->
                 val node = snapshot.nodes.firstOrNull { it.path == path } ?: return@mapNotNull null
@@ -641,16 +641,23 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             else -> "$renderedHost · project preview is not running"
         }
     } else if (view != null && static) when {
-        !state.connected && !state.busy -> "Disconnected · last successful render"
+        state.busy -> state.message
+        !state.connected -> "Last successful render · ${state.message}"
         failure != null || state.inspectionError != null -> "Out of date · last successful render"
         !state.connected || prepared == null || state.inspecting -> "Updating preview…"
         else -> state.message
     } else state.message
-    val error = failure ?: state.inspectionError
+    val codeOutdated = static && projectCode && state.projectCodeChanged
+    val error = failure ?: state.inspectionError ?: if (codeOutdated)
+        "Kotlin source changed · rebuild project code to update this preview" else null
     val missingModule = staticFile != null && (module == null || designLaunch == null)
     fun startPreview() {
         if (static) { basicFallback = false; startupCancelled = false; startupRevision++ }
         else live.start(module!!, launch!!, preview = false)
+    }
+    fun rebuildProjectPreview() {
+        showSession = false; basicFallback = false; startupCancelled = false
+        design.start(launchModule!!, launch!!, restart = true, preview = true, theme = theme)
     }
     fun stopPreview() {
         startupCancelled = true
@@ -948,7 +955,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 if (projectPreparing && projectState.busy) Link("Cancel project build", onClick = { startupCancelled = true; design.stop(); editFeedback = "Project build cancellation requested" })
                 else if (state.busy) Link("Cancel", onClick = ::stopPreview)
                 else {
-                    if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)
+                    if (codeOutdated) Link("Rebuild project code", onClick = ::rebuildProjectPreview)
+                    else if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)
                     else if (error != null && state.connected) Link("Retry", enabled = !state.inspecting, onClick = { manualRefresh++ })
                     if (error != null) { Spacer(Modifier.width(8.dp)); Link("Details", onClick = { showDiagnostics = true }) }
                 }
@@ -1057,10 +1065,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }, enabled = launches.isNotEmpty())
             if (!state.connected) Link(if (static) "Retry preview" else "Start application", enabled = canStart, onClick = { showSession = false; startPreview() })
             Link("Refresh", enabled = state.connected && !state.inspecting, onClick = { manualRefresh++; showSession = false })
-            if (static && wantsProjectCode) Link("Rebuild project code", enabled = !projectState.busy, onClick = {
-                showSession = false; basicFallback = false; startupCancelled = false
-                design.start(launchModule!!, launch!!, restart = true, preview = true)
-            })
+            if (static && wantsProjectCode) Link("Rebuild project code", enabled = !projectState.busy, onClick = ::rebuildProjectPreview)
             Link("Reconnect", enabled = !state.busy, onClick = { showSession = false; session.reconnect() })
             Link(if (state.busy) "Cancel build" else "Stop preview", enabled = state.pid != null || state.busy,
                 onClick = { showSession = false; stopPreview() })

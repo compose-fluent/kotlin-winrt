@@ -41,7 +41,8 @@ data class WinUIXamlHotReloadState(val message: String = "Start a JVM applicatio
     val inspection: WinUIXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
     val inspectionRoots: List<WinUIXamlHotReloadRoot> = emptyList(),
     val startupMillis: Long? = null, val renderMillis: Long? = null, val reusedBuild: Boolean = false,
-    val inspectionPath: List<Int>? = null, val animationError: String? = null, val inspectionPropertiesRead: Boolean = false)
+    val inspectionPath: List<Int>? = null, val animationError: String? = null, val inspectionPropertiesRead: Boolean = false,
+    val projectCodeChanged: Boolean = false)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
@@ -133,16 +134,49 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     init {
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
-                if (!disposed && FileDocumentManager.getInstance().getFile(event.document)?.extension.equals("xaml", true) && automatic.value && client != null) {
+                val file = FileDocumentManager.getInstance().getFile(event.document) ?: return
+                markProjectCodeChanged(file.path)
+                if (!disposed && file.extension.equals("xaml", true) && automatic.value && client != null) {
                     edits?.cancel()
                     edits = scope.launch { delay(450); apply() }
                 }
             }
         }, this)
+        project.messageBus.connect(this).subscribe(com.intellij.openapi.vfs.VirtualFileManager.VFS_CHANGES,
+            object : com.intellij.openapi.vfs.newvfs.BulkFileListener {
+                override fun before(events: List<com.intellij.openapi.vfs.newvfs.events.VFileEvent>) {
+                    events.filterNot { it.isFromSave }.forEach { markProjectCodeChanged(it.path) }
+                }
+                override fun after(events: List<com.intellij.openapi.vfs.newvfs.events.VFileEvent>) {
+                    events.filterNot { it.isFromSave }.forEach { markProjectCodeChanged(it.path) }
+                }
+            })
         scope.launch {
             project.service<WinRTProjectService>().modules.collect { modules ->
                 if (selectedModule != null && modules.none { it.projectDirectory == selectedModule?.projectDirectory }) disconnect()
             }
+        }
+    }
+
+    /** The designer runs compiled Kotlin constructors. XAML renders cannot certify
+     * a changed binary; keep that fact separate from successful render feedback. */
+    internal fun markProjectCodeChanged(path: String) {
+        if (!isolatedPreview || disposed || !path.endsWith(".kt", true)) return
+        synchronized(lifecycle) {
+            val module = selectedModule ?: return
+            val launch = selectedLaunch ?: return
+            if (launch == module.staticPreview?.launch() || display.value.projectCodeChanged ||
+                (!display.value.connected && !display.value.busy)) return
+            val file = runCatching { Path.of(path).toAbsolutePath().normalize() }.getOrNull() ?: return
+            val modules = project.service<WinRTProjectService>().modules.value
+            val generated = modules.flatMap { it.sourceSets }.flatMap { it.generatedKotlinRoots.orEmpty() }
+            if (generated.any { file.startsWith(Path.of(it).toAbsolutePath().normalize()) }) return
+            val roots = modules.flatMap { listOf(it.projectDirectory) + it.sourceSets.flatMap { source -> source.kotlinRoots } }
+            val ignored = setOf("build", ".gradle", ".git", ".idea", ".kotlin", ".konan")
+            if (roots.any { root ->
+                val base = Path.of(root).toAbsolutePath().normalize()
+                file.startsWith(base) && base.relativize(file).none { it.toString() in ignored }
+            }) display.value = display.value.copy(projectCodeChanged = true)
         }
     }
 
@@ -155,11 +189,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
         val themeOnly = preview && !rebuild && display.value.connected && usesLaunch(module, launch) && !usesPreviewTheme(theme)
+        val retainedCodeChange = themeOnly && display.value.projectCodeChanged
         val priorDeployment = connectedPreviewDeployment.takeIf { themeOnly }
         connectedPreviewDeployment = null
         val deploymentReady = CompletableDeferred<Unit>()
         connectedDeploymentReady = deploymentReady
-        val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true))
+        val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true,
+            projectCodeChanged = retainedCodeChange))
         previewTheme = theme
         launchStartedNanos = startedAt; firstFrameReported = false
         val firstFrame = CompletableDeferred<Unit>()
@@ -183,6 +219,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         check(owned?.process?.isAlive != true) { "Stop or restart the existing development application first." }
                         stopOwned()
                     }
+                    if (!themeOnly) display.value = display.value.copy(projectCodeChanged = false)
                     sources = emptyList()
                     baselines.clear(); attempted.clear(); uncertain = false
                     selectedModule = module; selectedLaunch = launch
