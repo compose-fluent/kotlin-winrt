@@ -340,8 +340,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 val validAnimation = animationCommand?.takeIf { command ->
                     storyboards.any { it.owner == command.owner && it.key == command.key }
                 }
+                // Deliver the new image before invoking effective-property getters.
+                // The selection effect reads those once this snapshot is published.
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
-                    markup, w, h, theme, captureScale, validAnimation, readProperties = showInspector || treeOnly)
+                    markup, w, h, theme, captureScale, validAnimation, readProperties = false)
                 val key = Triple(request, state.pid, Triple(manualRefresh, resourceRevision, animationRevision))
                 // Metadata notifications can prepare the same document again. Keep
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
@@ -356,7 +358,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
     }
     LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes, captureScale, showInspector, state.inspectionPropertiesRead) {
-        if (root != null && state.connected && (!static || prepared != null && state.inspection != null && (state.inspectionPath != selectedPath || showInspector && !state.inspectionPropertiesRead))) {
+        if (root != null && state.connected && (!static || prepared != null && state.inspection != null && (state.inspectionPath != selectedPath || (showInspector || treeOnly) && !state.inspectionPropertiesRead))) {
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
                 if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static, renderScale = captureScale, readProperties = !static || showInspector || treeOnly))
         }
@@ -724,7 +726,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             }
                         } else DesignerProperties(editable, propertyFilter.text.toString(), ::applyEdit)
                         Text("Effective values · read only")
-                        if (state.inspecting || state.inspectionPath != selectedPath) Text("Reading selection…")
+                        if (state.inspecting || state.inspectionPath != selectedPath || !state.inspectionPropertiesRead) Text("Reading selection…")
                         else androidx.compose.foundation.text.selection.SelectionContainer {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 view?.properties?.filter { it.name.contains(propertyFilter.text, ignoreCase = true) }
@@ -794,6 +796,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }
         }
     }
+    // Inspector/toolbox toggles move the canvas between layout branches. Keep
+    // its decoded bitmap, viewport and gesture state instead of flashing blank.
+    val canvasContent by rememberUpdatedState<@Composable () -> Unit>({ canvas() })
+    val retainedCanvas = remember { movableContentOf { canvasContent() } }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val popupWidth = (maxWidth - 24.dp).coerceIn(180.dp, 400.dp)
         val popupHeight = (maxHeight - 24.dp).coerceAtLeast(100.dp)
@@ -805,11 +811,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             @Composable fun workspace() {
                 if (treeOnly) inspector()
                 else if (showInspector) HorizontalSplitLayout(
-                    first = { canvas() }, second = { inspector() },
+                    first = { retainedCanvas() }, second = { inspector() },
                     state = rememberSplitLayoutState(.65f),
                     firstPaneMinWidth = 80.dp, secondPaneMinWidth = 160.dp,
                     modifier = Modifier.fillMaxSize(),
-                ) else canvas()
+                ) else retainedCanvas()
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (showToolbox && static) HorizontalSplitLayout(
