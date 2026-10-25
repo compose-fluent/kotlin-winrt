@@ -76,9 +76,12 @@ class WinUIXamlVisualInspector(
 fun winUIXamlInspectionTypeName(value: Any): String? = WinUIAuthoredTypeMetadata.registeredTypeName(value)
 
 /** Read generated ICustomProperty accessors; inspect failures stay local to a property. */
-fun winUIXamlInspectionProperties(value: Any): List<WinUIXamlVisualProperty> =
+fun winUIXamlInspectionProperties(
+    value: Any,
+    format: (Any?) -> String = { it?.toString().orEmpty() },
+): List<WinUIXamlVisualProperty> =
     WinUIAuthoredTypeMetadata.customProperties(value).take(64).map { member ->
-        WinUIXamlVisualProperty(member.name, runCatching { member.getValue(value)?.toString().orEmpty().take(4096) }
+        WinUIXamlVisualProperty(member.name, runCatching { format(member.getValue(value)).take(4096) }
             .getOrElse { "Unavailable: ${it.message}" })
     }
 

@@ -83,6 +83,26 @@ class WinUIXamlVisualInspectorTest {
             assertNull(winUIXamlInspectionTypeName(Any()))
         } finally { WinUIAuthoredTypeMetadata.clearForTests() }
     }
+    @Test fun inspection_formats_sdk_values_and_isolates_getter_or_formatter_failures() {
+        // Generated SDK adaptation supplies CsWinRT-compatible value display;
+        // ICustomProperty access, per-property errors and size bounds remain common.
+        try {
+            WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+                PropertyControl::class, "probe.PropertyControl", "System.Object", members = listOf(
+                    WinUIXamlMemberDefinition("Formatted", "String", String::class, get = { "raw" }),
+                    WinUIXamlMemberDefinition("GetterFailure", "String", String::class, get = { error("getter failed") }),
+                    WinUIXamlMemberDefinition("FormatFailure", "String", String::class, get = { "bad" }),
+                    WinUIXamlMemberDefinition("Bounded", "String", String::class, get = { "long" }),
+                )))
+            val values = winUIXamlInspectionProperties(PropertyControl()) {
+                when (it) { "raw" -> "1,2,3,4"; "bad" -> error("format failed"); else -> "x".repeat(5000) }
+            }.associate { it.name to it.value }
+            assertEquals("1,2,3,4", values["Formatted"])
+            assertTrue(values.getValue("GetterFailure").contains("getter failed"))
+            assertTrue(values.getValue("FormatFailure").contains("format failed"))
+            assertEquals(4096, values.getValue("Bounded").length)
+        } finally { WinUIAuthoredTypeMetadata.clearForTests() }
+    }
     @Test fun control_properties_are_kept_before_the_inherited_inspection_limit() {
         // CsWinRT's source-generated ICustomProperty ownership remains on the
         // declaring type; inspect the derived control before its base UI surface.

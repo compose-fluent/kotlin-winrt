@@ -152,6 +152,37 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
         import ${framework.xamlKotlinNamespace}.media.animation.Storyboard
         import kotlin.time.Duration.Companion.milliseconds
         internal fun $name(): WinUIXamlVisualInspector {
+          // CsWinRT strings/additions/*/Thickness.cs and CornerRadius.cs use
+          // invariant component order. SDK-specific display stays in this adapter,
+          // while the runtime owns getter failure isolation and output limits.
+          fun number(value: Double): String = if (value.isNaN()) "Auto" else value.toString().removeSuffix(".0")
+          fun components(vararg values: Double): String = values.joinToString(",") { number(it) }
+          fun color(value: windows.ui.Color): String = "#" + listOf(value.a, value.r, value.g, value.b)
+            .joinToString("") { it.toString(16).padStart(2, '0').uppercase() }
+          fun display(value: Any?): String = when (value) {
+            null -> ""
+            is Thickness -> components(value.left, value.top, value.right, value.bottom)
+            is CornerRadius -> components(value.topLeft, value.topRight, value.bottomRight, value.bottomLeft)
+            is windows.foundation.Point -> components(value.x.toDouble(), value.y.toDouble())
+            is windows.foundation.Size -> components(value.width.toDouble(), value.height.toDouble())
+            is windows.foundation.Rect -> components(value.x.toDouble(), value.y.toDouble(), value.width.toDouble(), value.height.toDouble())
+            is GridLength -> when (value.gridUnitType) {
+              GridUnitType.Auto -> "Auto"
+              GridUnitType.Star -> number(value.value) + "*"
+              else -> number(value.value)
+            }
+            is windows.ui.text.FontWeight -> value.weight.toString()
+            is windows.ui.Color -> color(value)
+            is ${framework.xamlKotlinNamespace}.media.FontFamily -> value.source
+            is ${framework.xamlKotlinNamespace}.media.Brush -> {
+              val reference = value.nativeObject
+              if (reference.tryQueryInterface(${framework.xamlKotlinNamespace}.media.SolidColorBrush.DEFAULT_INTERFACE_IID)?.use { true } == true)
+                color(value.asWinRT<${framework.xamlKotlinNamespace}.media.SolidColorBrush>().color)
+              else reference.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
+            }
+            is IWinRTObject -> value.nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
+            else -> value.toString()
+          }
           var activeStoryboard: Storyboard? = null
           var playing = false
           return WinUIXamlVisualInspector(
@@ -211,9 +242,9 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val basic = element?.let { listOf(WinUIXamlVisualProperty("Name", it.name),
               WinUIXamlVisualProperty("ActualWidth", it.actualWidth.toString()), WinUIXamlVisualProperty("ActualHeight", it.actualHeight.toString()),
               WinUIXamlVisualProperty("Visibility", it.visibility.toString()), WinUIXamlVisualProperty("Opacity", it.opacity.toString()),
-              WinUIXamlVisualProperty("DataContext", it.dataContext?.toString().orEmpty()),
+              WinUIXamlVisualProperty("DataContext", display(it.dataContext)),
               WinUIXamlVisualProperty("XamlRoot.IsHostVisible", it.xamlRoot?.isHostVisible?.toString().orEmpty())) }.orEmpty()
-            (basic + winUIXamlInspectionProperties(value)).distinctBy { it.name }
+            (basic + winUIXamlInspectionProperties(value, ::display)).distinctBy { it.name }
           },
           capture = { value, renderScale, complete ->
             val element = value.asWinRT<FrameworkElement>()

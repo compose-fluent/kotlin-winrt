@@ -283,3 +283,10 @@ the selected realization; ordinary live inspection keeps its existing defaults.
 The shared request flag is encoded on both JVM and Native transports. This is a
 designer scheduling decision, not a change to generated ICustomProperty ownership
 or the live reload transaction.
+Effective-property display is supplied by the generated SDK adapter on both
+JVM and Native. Thickness, corner radii and geometry use invariant component
+order; grid lengths retain Auto/star units; colors and solid brushes use ARGB
+hex, fonts use their source name and weights use their numeric value. Other
+WinRT objects show their runtime type instead of a wrapper address. This is
+read-only inspection, not a serialization contract for editing resources or
+bindings. Getter and formatter failures remain local to a property.
