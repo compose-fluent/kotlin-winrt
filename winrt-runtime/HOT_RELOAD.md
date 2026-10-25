@@ -297,3 +297,9 @@ hex, fonts use their source name and weights use their numeric value. Other
 WinRT objects show their runtime type instead of a wrapper address. This is
 read-only inspection, not a serialization contract for editing resources or
 bindings. Getter and formatter failures remain local to a property.
+
+The designer adapter prioritizes inherited layout properties within the existing
+64-property inspection budget. Width/height constraints, alignment, margin and
+padding therefore remain available on controls with many declared properties.
+The shared runtime still resolves each value through generated ICustomProperty
+metadata; omitted properties are not read and the transport limit is unchanged.

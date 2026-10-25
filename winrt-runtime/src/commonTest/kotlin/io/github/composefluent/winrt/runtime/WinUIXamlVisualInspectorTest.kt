@@ -125,6 +125,28 @@ class WinUIXamlVisualInspectorTest {
             assertEquals(64, properties.size)
         } finally { WinUIAuthoredTypeMetadata.clearForTests() }
     }
+    @Test fun preferred_inherited_properties_stay_inside_the_getter_budget() {
+        // CsWinRT ICustomProperty lookup still resolves the declaring owner.
+        // Designer ordering must not invoke getters beyond the bounded selection.
+        try {
+            var reads = 0
+            WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+                PropertyBase::class, "probe.PropertyBase", baseName = "System.Object",
+                members = listOf(WinUIXamlMemberDefinition("VerticalAlignment", "String", String::class,
+                    get = { reads++; "Stretch" }))))
+            WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+                PropertyControl::class, "probe.PropertyControl", baseName = "probe.PropertyBase", baseType = PropertyBase::class,
+                members = (0 until 80).map { index -> WinUIXamlMemberDefinition("Own$index", "String", String::class,
+                    get = { reads++; "own" }) }))
+            val values = winUIXamlInspectionProperties(PropertyControl(), listOf("Missing", "VerticalAlignment"))
+            assertEquals("VerticalAlignment", values.first().name)
+            assertEquals("Stretch", values.first().value)
+            assertEquals("Own0", values[1].name)
+            assertEquals(64, values.size)
+            assertEquals(64, reads)
+        } finally { WinUIAuthoredTypeMetadata.clearForTests() }
+    }
+
     @Test fun actual_visual_paths_are_inspected_on_the_owning_dispatcher_without_changing_hot_reload_version() {
         // CsWinRT generated accessor/runtime boundary; WinUI VisualTreeHelper owns the adapter's children.
         val leaf = Visual("TemplateChild"); val root = Visual("Root", listOf(Visual("Control", listOf(leaf))))

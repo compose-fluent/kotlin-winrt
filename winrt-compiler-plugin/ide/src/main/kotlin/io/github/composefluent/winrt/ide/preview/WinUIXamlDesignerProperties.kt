@@ -30,7 +30,9 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
             .groupBy(::designerPropertyCategory).toSortedMap().forEach { (category, properties) ->
             val expanded = expansion[category] ?: (category == "Layout" || category == "Common")
             Link("${if (expanded || filter.isNotEmpty()) "▾" else "▸"} $category (${properties.size})", onClick = { expansion[category] = !expanded })
-            if (expanded || filter.isNotEmpty()) properties.forEach { property ->
+            if (expanded || filter.isNotEmpty()) properties.sortedWith(compareBy<DesignerProperty> {
+                if (category == "Layout") designerLayoutOrder.indexOf(it.name).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE else 0
+            }.thenBy { it.name }).forEach { property ->
             key(selection.pointer, selection.state?.pointer, selection.style?.pointer, property.name) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     DesignerPropertyRow(property, selection.bounds, effectiveValues[property.name], apply,
@@ -200,8 +202,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
                 DesignerThicknessFields(property, inherited, currentGuard, currentApply, Modifier.weight(1f))
             }
             else TextField(draft.buffer, placeholder = {
-                val actual = when (property.name) { "Width" -> bounds.width; "Height" -> bounds.height; else -> null }
-                Text(actual?.let { "Default (${java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString()})" } ?: "Default", maxLines = 1)
+                Text(designerPropertyPlaceholder(property, inherited, bounds), maxLines = 1)
             }, modifier = Modifier.weight(1f).semantics { contentDescription = "Edit ${property.name}" }
                 .onFocusChanged {
                     val leaving = focused && !it.hasFocus
@@ -223,6 +224,21 @@ private fun DesignerPropertyRow(property: DesignerProperty,
             Link("Reload value", onClick = { draft.reload(property.value) })
         } else if (error != null) Text(error)
     }
+}
+
+// Keep the common sizing/alignment controls adjacent, as in the XAML designer;
+// alphabetic ordering otherwise separates Width from Height and the two alignments.
+private val designerLayoutOrder = listOf("Width", "Height", "HorizontalAlignment", "VerticalAlignment", "Margin", "Padding",
+    "MinWidth", "MinHeight", "MaxWidth", "MaxHeight", "Orientation", "Spacing")
+
+internal fun designerPropertyPlaceholder(property: DesignerProperty, inherited: String?,
+    bounds: io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds): String {
+    val effective = inherited?.takeUnless { it.isEmpty() || it.startsWith("Unavailable:") }
+    if (property.name in setOf("Width", "Height") && effective == "NaN") {
+        val actual = if (property.name == "Width") bounds.width else bounds.height
+        return "Auto (${java.math.BigDecimal.valueOf(actual).stripTrailingZeros().toPlainString()})"
+    }
+    return effective?.let { "$it (inherited)" } ?: "Default"
 }
 
 internal fun designerEffectiveChoice(property: DesignerProperty, inherited: String?): String? =

@@ -247,7 +247,11 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               WinUIXamlVisualProperty("Visibility", it.visibility.toString()), WinUIXamlVisualProperty("Opacity", it.opacity.toString()),
               WinUIXamlVisualProperty("DataContext", display(it.dataContext)),
               WinUIXamlVisualProperty("XamlRoot.IsHostVisible", it.xamlRoot?.isHostVisible?.toString().orEmpty())) }.orEmpty()
-            (basic + winUIXamlInspectionProperties(value, ::display)).distinctBy { it.name }
+            // Keep inherited layout editors populated even on controls with many
+            // declared properties. Runtime lookup/getter limits stay unchanged.
+            (basic + winUIXamlInspectionProperties(value, listOf(
+              "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight",
+              "HorizontalAlignment", "VerticalAlignment", "Margin", "Padding"), ::display)).distinctBy { it.name }
           },
           capture = { value, renderScale, complete ->
             val timing = if (traceCapture) kotlin.time.TimeSource.Monotonic.markNow() else null

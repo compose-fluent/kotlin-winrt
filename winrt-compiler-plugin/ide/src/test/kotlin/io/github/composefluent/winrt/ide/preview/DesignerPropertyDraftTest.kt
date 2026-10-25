@@ -12,6 +12,12 @@ class DesignerPropertyDraftTest : TestCase() {
         org.junit.Assert.assertNull(designerEffectiveChoice(property, "unavailable"))
         org.junit.Assert.assertNull(property.value)
     }
+    fun testAutoDimensionsAndInheritedLiteralsAreShownWithoutBecomingLocalValues() {
+        val bounds = io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(0.0, 0.0, 800.0, 600.0)
+        assertEquals("Auto (800)", designerPropertyPlaceholder(width(null), "NaN", bounds))
+        assertEquals("400.0 (inherited)", designerPropertyPlaceholder(width(null), "400.0", bounds))
+        assertEquals("Default", designerPropertyPlaceholder(width(null), "Unavailable: getter failed", bounds))
+    }
     private fun width(value: String?) = DesignerProperty("Width", "Double", value, emptyList(), true, false)
     fun testUntouchedDefaultDoesNotCreateLocalValue() {
         assertNull(DesignerPropertyDraft(null).submission(width(null)))

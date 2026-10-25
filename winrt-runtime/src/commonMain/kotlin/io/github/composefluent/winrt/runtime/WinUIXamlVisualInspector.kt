@@ -79,11 +79,23 @@ fun winUIXamlInspectionTypeName(value: Any): String? = WinUIAuthoredTypeMetadata
 fun winUIXamlInspectionProperties(
     value: Any,
     format: (Any?) -> String = { it?.toString().orEmpty() },
-): List<WinUIXamlVisualProperty> =
-    WinUIAuthoredTypeMetadata.customProperties(value).take(64).map { member ->
-        WinUIXamlVisualProperty(member.name, runCatching { format(member.getValue(value)).take(4096) }
-            .getOrElse { "Unavailable: ${it.message}" })
-    }
+): List<WinUIXamlVisualProperty> = winUIXamlInspectionProperties(value, emptyList(), format)
+
+/** The designer adapter chooses priority names; generated ICustomProperty metadata
+ * still owns lookup and inheritance. Prioritization never raises the getter budget. */
+fun winUIXamlInspectionProperties(
+    value: Any,
+    preferredNames: List<String>,
+    format: (Any?) -> String = { it?.toString().orEmpty() },
+): List<WinUIXamlVisualProperty> {
+    require(preferredNames.size <= 64)
+    val priorities = preferredNames.withIndex().associate { it.value to it.index }
+    return WinUIAuthoredTypeMetadata.customProperties(value)
+        .sortedBy { priorities[it.name] ?: preferredNames.size }.take(64).map { member ->
+            WinUIXamlVisualProperty(member.name, runCatching { format(member.getValue(value)).take(4096) }
+                .getOrElse { "Unavailable: ${it.message}" })
+        }
+}
 
 /** Mirrors CsWinRT WinRT.Runtime2/Windows.Storage.Streams/Extensions/WindowsRuntimeBufferExtensions.cs
  * CopyTo: copy a contiguous span with its IBufferByteAccess owner leased. Uses the robuffer.h
