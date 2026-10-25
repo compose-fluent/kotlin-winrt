@@ -72,4 +72,19 @@ class DesignerPropertyDraftTest : TestCase() {
         assertEquals("250", draft.buffer.text.toString())
         assertEquals("250", draft.submission(width("200")))
     }
+    fun testEditingOneInheritedThicknessSidePreservesOtherEffectiveSides() {
+        val draft = DesignerThicknessDraft(null, "8,12,16,20")
+        assertNull(draft.submission(margin(null)))
+        draft.fields[0].setTextAndPlaceCursorAtEnd("40")
+        assertEquals("40,12,16,20", draft.submission(margin(null)))
+    }
+    fun testInheritedThicknessChangeDoesNotOverwriteUnsubmittedDraft() {
+        val draft = DesignerThicknessDraft(null, "8")
+        draft.fields[0].setTextAndPlaceCursorAtEnd("40")
+        draft.accept(null, "12")
+        assertTrue(draft.inheritedChanged)
+        assertNull(draft.submission(margin(null)))
+        draft.reload(null, "12")
+        assertEquals(listOf("12", "12", "12", "12"), draft.fields.map { it.text.toString() })
+    }
 }

@@ -740,7 +740,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             }
                         } else {
                             if (propertySelection == null && editableResult == null) Text("Loading editable properties…")
-                            else DesignerProperties(propertySelection, propertyFilter.text.toString(), active = editableResult != null, apply = ::applyEdit)
+                            else DesignerProperties(propertySelection, propertyFilter.text.toString(), active = editableResult != null,
+                                effectiveValues = if (state.inspectionPath == selectedPath && state.inspectionPropertiesRead)
+                                    view?.properties.orEmpty().associate { it.name to it.value } else emptyMap(), apply = ::applyEdit)
                         }
                         Text("Effective values · read only")
                         if (state.inspecting || state.inspectionPath != selectedPath || !state.inspectionPropertiesRead) Text("Reading selection…")

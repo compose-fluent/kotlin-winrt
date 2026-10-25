@@ -15,37 +15,56 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 
 /** XAML Thickness shorthand is expanded by the existing source-editing parser. */
-internal class DesignerThicknessDraft(value: String?) {
+internal class DesignerThicknessDraft(value: String?, private var inherited: String? = null) {
     val draft = DesignerPropertyDraft(value)
-    val fields = expanded(value).map(::TextFieldState)
+    private var baseline = expanded(value ?: inherited)
+    val fields = baseline.map(::TextFieldState)
+    var inheritedChanged by mutableStateOf(false)
+        private set
     private fun expanded(value: String?): List<String> =
         (value?.let(WinUIXamlDesignerEditing::thickness) ?: DoubleArray(4)).map {
             java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString()
         }
     fun sync() {
         val values = fields.map { it.text.toString() }
-        draft.buffer.setTextAndPlaceCursorAtEnd(if (values == expanded(draft.expected)) draft.expected.orEmpty() else values.joinToString(","))
+        draft.buffer.setTextAndPlaceCursorAtEnd(if (values == baseline) draft.expected.orEmpty() else values.joinToString(","))
     }
-    fun reload(value: String?) {
+    fun reload(value: String?, effective: String? = inherited) {
+        inherited = effective
+        inheritedChanged = false
         draft.reload(value)
-        expanded(value).forEachIndexed { index, text -> fields[index].setTextAndPlaceCursorAtEnd(text) }
+        baseline = expanded(value ?: effective)
+        baseline.forEachIndexed { index, text -> fields[index].setTextAndPlaceCursorAtEnd(text) }
     }
-    fun accept(value: String?) {
+    fun accept(value: String?, effective: String? = inherited) {
         sync()
+        val clean = draft.buffer.text.toString() == draft.expected.orEmpty()
+        val oldExpected = draft.expected
+        if (!clean && oldExpected == null && expanded(effective) != expanded(inherited)) inheritedChanged = true
         draft.accept(value)
-        if (draft.expected == value && draft.buffer.text.toString() == value.orEmpty()) reload(value)
+        if (draft.expected == value && draft.buffer.text.toString() == value.orEmpty()) reload(value, effective)
+        else if (draft.expected != oldExpected) {
+            inherited = effective
+            baseline = expanded(value ?: effective)
+        }
     }
-    fun submission(property: DesignerProperty): String? { sync(); return draft.submission(property) }
+    fun submission(property: DesignerProperty): String? {
+        sync()
+        return if (inheritedChanged) null else draft.submission(property)
+    }
 }
 
 @Composable
-internal fun DesignerThicknessFields(property: DesignerProperty, isCurrent: () -> Boolean,
+internal fun DesignerThicknessFields(property: DesignerProperty, inherited: String?, isCurrent: () -> Boolean,
     apply: (Map<String, String?>, String) -> Unit, modifier: Modifier = Modifier) {
-    val state = remember { DesignerThicknessDraft(property.value) }
+    val state = remember { DesignerThicknessDraft(property.value, inherited) }
     val currentProperty by rememberUpdatedState(property)
     val currentGuard by rememberUpdatedState(isCurrent)
     val currentApply by rememberUpdatedState(apply)
-    LaunchedEffect(property.value) { state.accept(property.value) }
+    LaunchedEffect(property.value, inherited) {
+        // Missing effective values while an inspection is pending are not zeroes.
+        if (inherited == null) state.accept(property.value) else state.accept(property.value, inherited)
+    }
     fun commit() {
         if (currentGuard()) state.submission(currentProperty)?.let {
             currentApply(mapOf(currentProperty.name to it), "Set ${currentProperty.name}")
@@ -63,7 +82,7 @@ internal fun DesignerThicknessFields(property: DesignerProperty, isCurrent: () -
                             .onFocusChanged { val leaving = focused && !it.hasFocus; focused = it.hasFocus; if (leaving) commit() }
                             .onPreviewKeyEvent {
                                 if (it.type == KeyEventType.KeyDown && it.key == Key.Enter) { commit(); true }
-                                else if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { state.reload(currentProperty.value); true }
+                                else if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) { if (inherited == null) state.reload(currentProperty.value) else state.reload(currentProperty.value, inherited); true }
                                 else false
                             })
                     }
@@ -72,7 +91,7 @@ internal fun DesignerThicknessFields(property: DesignerProperty, isCurrent: () -
         }
         val literal = state.fields.joinToString(",") { it.text.toString() }
         WinUIXamlDesignerEditing.validate(property, literal)?.let { Text(it) }
-        if (state.draft.changed(property.value)) {
+        if (state.inheritedChanged || state.draft.changed(property.value)) {
             Text("Changed in XAML. Press Escape to reload.")
         }
     }

@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.jewel.ui.component.*
 
 @Composable
-internal fun DesignerProperties(selection: DesignerSelection?, filter: String, active: Boolean = true, apply: (Map<String, String?>, String) -> Unit) {
+internal fun DesignerProperties(selection: DesignerSelection?, filter: String, active: Boolean = true, effectiveValues: Map<String, String> = emptyMap(), apply: (Map<String, String?>, String) -> Unit) {
     val expansion = remember { mutableStateMapOf<String, Boolean>() }
     val currentSelection by rememberUpdatedState(selection)
     val currentActive by rememberUpdatedState(active)
@@ -33,7 +33,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
             if (expanded || filter.isNotEmpty()) properties.forEach { property ->
             key(selection.pointer, selection.state?.pointer, selection.style?.pointer, property.name) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    DesignerPropertyRow(property, selection.bounds, apply,
+                    DesignerPropertyRow(property, selection.bounds, effectiveValues[property.name], apply,
                         isCurrent = { currentActive && currentSelection?.pointer == selection.pointer &&
                             currentSelection?.state?.pointer == selection.state?.pointer &&
                             currentSelection?.style?.pointer == selection.style?.pointer },
@@ -154,7 +154,7 @@ internal class DesignerPropertyDraft(value: String?) {
 
 @Composable
 private fun DesignerPropertyRow(property: DesignerProperty,
-    bounds: io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds,
+    bounds: io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds, inherited: String?,
     apply: (Map<String, String?>, String) -> Unit, isCurrent: () -> Boolean, advanced: () -> Unit) {
     val draft = remember { DesignerPropertyDraft(property.value) }
     val currentApply by rememberUpdatedState(apply)
@@ -196,7 +196,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
             }) { Text(property.value ?: "Default", maxLines = 1) }
             else if (property.type.substringAfterLast('.') == "Thickness" &&
                 (property.value == null || WinUIXamlDesignerEditing.thickness(property.value) != null)) {
-                DesignerThicknessFields(property, currentGuard, currentApply, Modifier.weight(1f))
+                DesignerThicknessFields(property, inherited, currentGuard, currentApply, Modifier.weight(1f))
             }
             else TextField(draft.buffer, placeholder = {
                 val actual = when (property.name) { "Width" -> bounds.width; "Height" -> bounds.height; else -> null }
