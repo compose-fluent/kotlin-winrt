@@ -47,10 +47,11 @@ class WinRTIdeCommandLineProcessor : CommandLineProcessor {
     // input is relevant to frontend analysis; outputs are deliberately ignored.
     override val pluginOptions: Collection<AbstractCliOption> = listOf(
         "xamlDeclarations", "xamlSemanticOutput", "xamlReferences", "xamlReferencesFile", "xamlApplicationHeader",
-        "xamlImplementation", "xamlLibraryOutput", "xamlLibraryAssembly", "xamlLibraryReferences", "metadataIndex", "typeIndexOutput",
+        "xamlImplementation", "xamlCompile", "xamlFramework", "xamlLibraryCompile", "xamlLibraryOutput", "xamlLibraryAssembly", "xamlLibraryReferences", "metadataIndex", "typeIndexOutput",
         "authoredCandidatesOutput", "authoredMetadataOutput", "authoredWinmdOutput", "authoredHostManifestOutput",
         "authoringAssemblyName", "authoringTargetArtifactName", "projectionSupportOwnerArtifactName",
         "compilerSupportManifest", "compilerSupportClassOutputDirectory", "projectionSupportMode",
+        "compilerSupportReferenceOutputDirectory",
     ).map { CliOption(it, "<value>", "Build option accepted by the WinRT IDE adapter", required = false, allowMultipleOccurrences = true) }
 
     override fun processOption(option: AbstractCliOption, value: String, configuration: CompilerConfiguration) {
