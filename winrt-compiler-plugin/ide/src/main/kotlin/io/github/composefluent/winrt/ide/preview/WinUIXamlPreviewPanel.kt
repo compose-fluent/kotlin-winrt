@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -1116,7 +1117,15 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
 @Composable
 internal fun PreviewAction(label: String, icon: String, enabled: Boolean = true, selected: Boolean? = null, action: () -> Unit) {
     Tooltip(tooltip = { Text(label) }) {
-        val modifier = Modifier.size(28.dp).semantics { contentDescription = label }
+        // Some IDE themes use the panel background for selected icon buttons.
+        // A theme-derived outline keeps persistent selection visible separately
+        // from the transient hover background (including High Contrast).
+        var focused by remember { mutableStateOf(false) }
+        val modifier = Modifier.size(28.dp).onFocusChanged { focused = it.isFocused }
+            .then(if (focused || selected == true) Modifier.border(
+            if (focused) 2.dp else 1.dp, JewelTheme.globalColors.outlines.focused,
+            androidx.compose.foundation.shape.RoundedCornerShape(4.dp)) else Modifier)
+            .semantics { contentDescription = label }
         val key = PathIconKey("icons/preview/$icon.svg", WinUIXamlPreviewEditorProvider::class.java)
         if (selected == null) IconButton(onClick = action, enabled = enabled, modifier = modifier) {
             Icon(key, null, Modifier.size(16.dp).then(if (enabled) Modifier else Modifier.alpha(.4f)))

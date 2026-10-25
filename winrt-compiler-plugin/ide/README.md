@@ -69,7 +69,11 @@ navigation controls, Tab between dimensions, focus return from Settings and
 Space activation of the visual-tree checkbox. Its SDK designer renders eight
 visual nodes; normal exit terminates the preview, and a full restart restores
 the light theme and XAML split editor and renders again using the cached SDK
-host build. Actual Windows screen-reader output remains unverified; accessible
+host build. Canary High Contrast checks also cover visible selected toolbar/alignment
+buttons, Tab focus on property reset actions, Space activation and Native layout
+updates, followed by restoring Islands Light. Selected buttons use a theme-colored
+outline; keyboard focus uses a thicker outline so the two states remain distinct.
+Actual Windows screen-reader output remains unverified; accessible
 names and keyboard checks do not substitute for spoken-output acceptance.
 
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
