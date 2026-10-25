@@ -914,7 +914,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
                 if (createAnimationTrack) DesignerStoryboardCreatePanel(project, currentEditables.singleOrNull(), animationTime(), editorStoryboardKey) { createdStoryboardKey = it }
                 if (editTimeline) DesignerStoryboardPanel(project, source,
-                    editorStoryboardKey, revision, animationTime()) { millis ->
+                    editorStoryboardKey, revision, animationTime(), storyboards.singleOrNull { it.id == storyboardId }?.owner
+                        ?.takeUnless { it in storyboardDocument?.syntheticOwners.orEmpty() }) { millis ->
                     animationPosition.setTextAndPlaceCursorAtEnd(millis.toString())
                     animationPlaying = false
                     controlAnimation("Seek")

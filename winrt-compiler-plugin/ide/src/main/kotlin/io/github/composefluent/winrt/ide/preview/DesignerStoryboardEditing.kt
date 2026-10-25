@@ -18,18 +18,28 @@ internal data class DesignerAnimationFrame(val pointer: SmartPsiElementPointer<X
 internal object DesignerStoryboardEditing {
     private val kinds = setOf("Double", "Color", "Point", "Object")
     private fun sdk(tag: XmlTag, name: String) = tag.namespace == WinUIXamlCatalog.PRESENTATION && tag.localName == name
-    fun tracks(project: Project, path: String, key: String): List<DesignerAnimationTrack> {
+    fun tracks(project: Project, path: String, key: String, owner: String? = null): List<DesignerAnimationTrack> {
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return emptyList()
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return emptyList()
-        return tracks(xml, key)
+        return tracks(xml, key, owner)
     }
-    fun tracks(xml: XmlFile, key: String): List<DesignerAnimationTrack> {
+    fun tracks(xml: XmlFile, key: String, owner: String? = null): List<DesignerAnimationTrack> {
         val storyboard = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter {
             sdk(it, "Storyboard") && (it.getAttributeValue("Key", WinUIXamlCatalog.XAML)
                 ?: it.getAttributeValue("Name", WinUIXamlCatalog.XAML)) == key
+        }.filter { storyboard ->
+            if (owner == null) true else {
+                val parent = storyboard.parentTag
+                val resources = if (parent != null && sdk(parent, "ResourceDictionary")) parent.parentTag else parent
+                val sourceOwner = resources?.parentTag
+                resources?.localName == "${sourceOwner?.localName}.Resources" &&
+                    resources.namespace == WinUIXamlCatalog.PRESENTATION &&
+                    (if (owner.isEmpty()) sourceOwner == xml.rootTag
+                     else sourceOwner?.getAttributeValue("Name", WinUIXamlCatalog.XAML) == owner)
+            }
         }.singleOrNull() ?: return emptyList()
         // A preview-transformed owner name is not a source locator. Accept only
-        // one source resource with this key, never guess among repeated templates.
+        // one source resource in the selected owner, never guess among repeated templates.
         if (generateSequence(storyboard.parentTag) { it.parentTag }.any {
             it.localName in setOf("ControlTemplate", "DataTemplate", "Style", "VisualState")
         }) return emptyList()

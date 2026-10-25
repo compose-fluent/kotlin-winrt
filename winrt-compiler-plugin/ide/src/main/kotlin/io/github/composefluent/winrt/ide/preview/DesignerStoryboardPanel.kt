@@ -18,24 +18,24 @@ import org.jetbrains.jewel.ui.component.*
 import io.github.composefluent.winrt.ide.ui.WinRTChoice
 
 @Composable
-internal fun DesignerStoryboardPanel(project: Project, source: String, key: String, revision: Long, position: Int, onSeek: (Int) -> Unit) {
+internal fun DesignerStoryboardPanel(project: Project, source: String, key: String, revision: Long, position: Int, owner: String?, onSeek: (Int) -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
-    val tracks by produceState(emptyList<DesignerAnimationTrack>(), source, key, revision, refresh) {
+    val tracks by produceState(emptyList<DesignerAnimationTrack>(), source, key, owner, revision, refresh) {
         value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerAnimationTrack>, RuntimeException> {
-            DesignerStoryboardEditing.tracks(project, source, key)
+            DesignerStoryboardEditing.tracks(project, source, key, owner)
         } }
     }
-    var trackIndex by remember(source, key) { mutableIntStateOf(0) }
-    var frameIndex by remember(source, key, trackIndex) { mutableIntStateOf(-1) }
+    var trackIndex by remember(source, key, owner) { mutableIntStateOf(0) }
+    var frameIndex by remember(source, key, owner, trackIndex) { mutableIntStateOf(-1) }
     val track = tracks.getOrNull(trackIndex)
     val frame = track?.frames?.getOrNull(frameIndex)
-    val frameTime = remember(source, key, trackIndex, frameIndex, frame?.time) {
+    val frameTime = remember(source, key, owner, trackIndex, frameIndex, frame?.time) {
         TextFieldState(frame?.time?.let(DesignerStoryboardEditing::milliseconds)?.toString().orEmpty())
     }
     val validFrameTime = frameTime.text.toString().toIntOrNull()?.takeIf { it in 0..86_400_000 }
-    val value = remember(source, key, trackIndex, frameIndex, frame?.value) { TextFieldState(frame?.value.orEmpty()) }
+    val value = remember(source, key, owner, trackIndex, frameIndex, frame?.value) { TextFieldState(frame?.value.orEmpty()) }
     var interpolation by remember(track?.kind) { mutableStateOf(if (track?.kind == "Object") "Discrete" else "Linear") }
-    var feedback by remember(source, key) { mutableStateOf<String?>(null) }
+    var feedback by remember(source, key, owner) { mutableStateOf<String?>(null) }
     fun edit(remove: Boolean) {
         val selected = track ?: return
         val text = value.text.toString()

@@ -82,6 +82,18 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
             assertEquals(before, xml.text)
         }
     }
+    fun testSameResourceKeyInNamedScopesEditsOnlySelectedStoryboard() {
+        val text = source().text
+        val resource = """<Storyboard x:Key="Fade"><DoubleAnimationUsingKeyFrames Storyboard.TargetName="Greeting" Storyboard.TargetProperty="Opacity"><LinearDoubleKeyFrame KeyTime="0:0:1" Value="0.2"/></DoubleAnimationUsingKeyFrames></Storyboard>"""
+        val xml = myFixture.configureByText("Scoped.xaml", text.replace("</Grid>", """<Grid x:Name="Nested"><Grid.Resources><ResourceDictionary>$resource</ResourceDictionary></Grid.Resources></Grid></Grid>""")) as XmlFile
+        assertTrue(DesignerStoryboardEditing.tracks(xml, "Fade").isEmpty())
+        assertEquals("0.4", DesignerStoryboardEditing.tracks(xml, "Fade", "").single().frames.single().value)
+        val nested = DesignerStoryboardEditing.tracks(xml, "Fade", "Nested").single()
+        DesignerStoryboardEditing.write(project, nested, nested.frames.single(), 1500, "0.7", "Linear")
+        assertEquals("0.7", DesignerStoryboardEditing.tracks(xml, "Fade", "Nested").single().frames.single().value)
+        assertEquals("0.4", DesignerStoryboardEditing.tracks(xml, "Fade", "").single().frames.single().value)
+        assertTrue(DesignerStoryboardEditing.tracks(xml, "Fade", "Missing").isEmpty())
+    }
     fun testDuplicateResourceIdentityIsNotGuessed() {
         assertTrue(DesignerStoryboardEditing.tracks(source(true), "Fade").isEmpty())
     }
