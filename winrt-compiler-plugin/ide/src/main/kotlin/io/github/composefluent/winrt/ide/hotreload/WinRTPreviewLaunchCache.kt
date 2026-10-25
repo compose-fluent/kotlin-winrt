@@ -154,89 +154,93 @@ internal class WinRTPreviewLaunchCache(
         val excluded = setOf("build", ".gradle", ".git", ".idea", ".kotlin", ".konan", "node_modules")
         // Project/module/source roots overlap heavily. Scan each reachable subtree
         // once, but retain explicit roots below an excluded build directory.
-        val scanRoots = mutableListOf<Path>()
-        roots.map { it.toAbsolutePath().normalize() }.distinct().sortedBy { it.nameCount }.forEach { root ->
-            if (!Files.exists(root) || scanRoots.none { parent -> root.startsWith(parent) &&
-                    (!excludeBuild || parent.relativize(root).none { it.toString() in excluded }) }) scanRoots.add(root)
-        }
-        scanRoots.filterNot { root -> ignored.any { root.startsWith(it) } }.forEach { root ->
-            if (!Files.exists(root)) { missing += root.toString(); return@forEach }
-            Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
-                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-                    if (ignored.any { dir.startsWith(it) } || excludeBuild && dir != root && dir.fileName.toString() in excluded) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
-                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                    if (ignored.any { file.startsWith(it) }) return FileVisitResult.CONTINUE
-                    check(!attrs.isSymbolicLink) { "Preview input links require Gradle validation" }
-                    // SDK host inputs exclude app XAML/Kotlin edits. Build logic,
-                    // version catalogs, restore locks and model/toolchain identity
-                    // still invalidate it; deployed runtime changes are checked below.
-                    // Native validation includes every regular file. Classify SDK
-                    // configuration only when that filter is actually requested;
-                    // walking every path segment also invokes IDE filesystem routing.
-                    if (attrs.isRegularFile && (!configurationOnly || run {
-                        val name = file.fileName.toString()
-                        name.endsWith(".gradle.kts") || name.endsWith(".gradle") ||
-                            name.endsWith(".toml") || name.endsWith(".properties") || name.endsWith(".json") ||
-                            file.any { it.toString() in setOf("buildSrc", "build-logic", "gradle") }
-                    })) {
-                        files.add(file)
-                        // walkFileTree already obtained the deployment metadata.
-                        // Avoid two additional filesystem queries per output.
-                        if (!content) outputAttributes[file] = attrs
-                    }
-                    check(files.size <= 30_000) { "Preview inputs require Gradle validation" }
-                    return FileVisitResult.CONTINUE
-                }
-            })
-        }
-        val scanned = System.nanoTime()
-        var readBytes = 0L
-        val hash = MessageDigest.getInstance("SHA-256")
-        fun add(text: String) { hash.update(text.toByteArray()); hash.update(0.toByte()) }
-        missing.forEach { add("missing:$it") }
-        add("content-fingerprint-v2")
-        if (!content) files.forEach { file ->
-            val attrs = outputAttributes.getValue(file)
-            add(file.toString()); add(attrs.size().toString()); add(attrs.lastModifiedTime().toString())
-        } else {
-            // Reuse four streaming readers across the entire input set. Scheduling
-            // and allocating a 64 KiB buffer per file competes with IDE startup.
-            // Each file is still fully hashed and combined in sorted path order.
-            val ordered = files.toList()
-            val results = arrayOfNulls<Pair<ByteArray, Long>>(ordered.size)
-            val next = java.util.concurrent.atomic.AtomicInteger()
-            val workers = List(minOf(4, ordered.size)) {
-                com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService().submit {
-                    val buffer = ByteArray(65536)
-                    val fileHash = MessageDigest.getInstance("SHA-256")
-                    while (!Thread.currentThread().isInterrupted) {
-                        val index = next.getAndIncrement()
-                        if (index >= ordered.size) break
-                        val file = ordered[index]
-                        var countBytes = 0L
-                        Files.newInputStream(file).use { stream ->
-                            while (true) {
-                                if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                                val count = stream.read(buffer)
-                                if (count < 0) break
-                                fileHash.update(buffer, 0, count); countBytes += count
-                            }
+        // Read each discovered file while the remaining directories are scanned.
+        // An unbounded path queue avoids a producer deadlock if a reader fails;
+        // the existing 30,000-file limit bounds its size. Digests are still reduced
+        // in sorted path order, preserving receipts and full-content validation.
+        val pending = java.util.concurrent.LinkedBlockingQueue<Path>()
+        val end = Path.of("")
+        val results = java.util.concurrent.ConcurrentHashMap<Path, Pair<ByteArray, Long>>()
+        val workers = if (!content) emptyList() else List(4) {
+            com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService().submit {
+                val buffer = ByteArray(65536)
+                val fileHash = MessageDigest.getInstance("SHA-256")
+                while (true) {
+                    val file = pending.take()
+                    if (file === end) break
+                    var countBytes = 0L
+                    Files.newInputStream(file).use { stream ->
+                        while (true) {
+                            if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                            val count = stream.read(buffer)
+                            if (count < 0) break
+                            fileHash.update(buffer, 0, count); countBytes += count
                         }
-                        results[index] = fileHash.digest() to countBytes
                     }
+                    results[file] = fileHash.digest() to countBytes
                 }
             }
-            try {
+        }
+        try {
+            val scanRoots = mutableListOf<Path>()
+            roots.map { it.toAbsolutePath().normalize() }.distinct().sortedBy { it.nameCount }.forEach { root ->
+                if (!Files.exists(root) || scanRoots.none { parent -> root.startsWith(parent) &&
+                        (!excludeBuild || parent.relativize(root).none { it.toString() in excluded }) }) scanRoots.add(root)
+            }
+            // Explicit roots below excluded build directories contain generated
+            // sources. Read those early while broader project trees are scanned.
+            scanRoots.sortedByDescending { it.nameCount }
+                .filterNot { root -> ignored.any { root.startsWith(it) } }.forEach { root ->
+                if (!Files.exists(root)) { missing += root.toString(); return@forEach }
+                Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
+                    override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
+                        if (ignored.any { dir.startsWith(it) } || excludeBuild && dir != root && dir.fileName.toString() in excluded) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        if (ignored.any { file.startsWith(it) }) return FileVisitResult.CONTINUE
+                        check(!attrs.isSymbolicLink) { "Preview input links require Gradle validation" }
+                        // SDK host inputs exclude app XAML/Kotlin edits. Build logic,
+                        // version catalogs, restore locks and model/toolchain identity
+                        // still invalidate it; deployed runtime changes are checked below.
+                        // Native validation includes every regular file. Classify SDK
+                        // configuration only when that filter is actually requested;
+                        // walking every path segment also invokes IDE filesystem routing.
+                        if (attrs.isRegularFile && (!configurationOnly || run {
+                            val name = file.fileName.toString()
+                            name.endsWith(".gradle.kts") || name.endsWith(".gradle") ||
+                                name.endsWith(".toml") || name.endsWith(".properties") || name.endsWith(".json") ||
+                                file.any { it.toString() in setOf("buildSrc", "build-logic", "gradle") }
+                        })) {
+                            if (files.add(file) && content) pending.add(file)
+                            // walkFileTree already obtained the deployment metadata.
+                            // Avoid two additional filesystem queries per output.
+                            if (!content) outputAttributes[file] = attrs
+                        }
+                        check(files.size <= 30_000) { "Preview inputs require Gradle validation" }
+                        return FileVisitResult.CONTINUE
+                    }
+                })
+            }
+            repeat(workers.size) { pending.add(end) }
+            val scanned = System.nanoTime()
+            var readBytes = 0L
+            val hash = MessageDigest.getInstance("SHA-256")
+            fun add(text: String) { hash.update(text.toByteArray()); hash.update(0.toByte()) }
+            missing.forEach { add("missing:$it") }
+            add("content-fingerprint-v2")
+            if (!content) files.forEach { file ->
+                val attrs = outputAttributes.getValue(file)
+                add(file.toString()); add(attrs.size().toString()); add(attrs.lastModifiedTime().toString())
+            } else {
                 workers.forEach { it.get() }
-                ordered.forEachIndexed { index, file ->
-                    val (bytes, size) = requireNotNull(results[index])
+                files.forEach { file ->
+                    val (bytes, size) = results.getValue(file)
                     add(file.toString()); hash.update(bytes); hash.update(0.toByte()); readBytes += size
                 }
-            } finally { workers.forEach { it.cancel(true) } }
-        }
-        com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java).info(
-            "Preview fingerprint: content=$content, excludeBuild=$excludeBuild, files=${files.size}, bytes=$readBytes, scan=${(scanned - started) / 1_000_000}ms, hash=${(System.nanoTime() - scanned) / 1_000_000}ms")
-        return java.util.HexFormat.of().formatHex(hash.digest())
+            }
+            com.intellij.openapi.diagnostic.Logger.getInstance(WinRTPreviewLaunchCache::class.java).info(
+                "Preview fingerprint: content=$content, excludeBuild=$excludeBuild, files=${files.size}, bytes=$readBytes, scan=${(scanned - started) / 1_000_000}ms, hash=${(System.nanoTime() - scanned) / 1_000_000}ms")
+            return java.util.HexFormat.of().formatHex(hash.digest())
+        } finally { workers.forEach { it.cancel(true) } }
     }
 
     companion object {
