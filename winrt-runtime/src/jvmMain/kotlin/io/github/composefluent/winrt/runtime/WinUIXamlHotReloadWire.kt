@@ -9,8 +9,11 @@ object WinUIXamlHotReloadWire {
     private fun read(stream: InputStream): ByteArray {
         val input = DataInputStream(stream)
         val header = ByteArray(12).also(input::readFully)
-        val body = ByteArray(WinUIXamlHotReloadCodec.frameSize(header)).also(input::readFully)
-        return header + body
+        val bodySize = WinUIXamlHotReloadCodec.frameSize(header)
+        return ByteArray(12 + bodySize).also { frame ->
+            header.copyInto(frame)
+            input.readFully(frame, 12, bodySize)
+        }
     }
     private fun write(stream: OutputStream, bytes: ByteArray) { stream.write(bytes); stream.flush() }
     fun writeRequest(stream: OutputStream, token: String, patch: WinUIXamlHotReloadPatch?) =

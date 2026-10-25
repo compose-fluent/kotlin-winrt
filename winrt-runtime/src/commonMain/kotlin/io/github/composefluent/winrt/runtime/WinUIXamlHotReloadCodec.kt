@@ -35,16 +35,15 @@ internal object WinUIXamlHotReloadCodec {
     }
     private fun Writer.target(target: WinUIXamlHotReloadTarget) { string(target.element); path(target.path) }
     private fun Reader.target() = WinUIXamlHotReloadTarget(string(), path())
-    private fun write(body: Writer.() -> Unit): ByteArray {
-        val payload = Writer().apply(body).bytes()
-        require(payload.size <= MAX_FRAME) { "Hot Reload frame exceeds its protocol limit." }
-        return Writer().apply {
-            writeInt(WinUIXamlHotReloadProtocol.MAGIC)
-            writeInt(WinUIXamlHotReloadProtocol.VERSION)
-            writeInt(payload.size)
-            write(payload)
-        }.bytes()
-    }
+    private fun write(body: Writer.() -> Unit): ByteArray = Writer().apply {
+        // Reserve the wire header in the same buffer as the payload. A designer
+        // bitmap can be tens of MiB; materializing and then wrapping a separate
+        // payload copied every pixel twice more on both JVM and Native.
+        writeInt(WinUIXamlHotReloadProtocol.MAGIC)
+        writeInt(WinUIXamlHotReloadProtocol.VERSION)
+        writeInt(0)
+        body()
+    }.frame()
     fun frameSize(header: ByteArray): Int = Reader(header).run {
         require(readInt() == WinUIXamlHotReloadProtocol.MAGIC && readInt() == WinUIXamlHotReloadProtocol.VERSION) { "Unsupported Hot Reload protocol." }
         count(MAX_FRAME)
@@ -188,7 +187,12 @@ internal object WinUIXamlHotReloadCodec {
         private var size = 0
         private fun reserve(count: Int) {
             require(count >= 0 && size <= MAX_FRAME + 12 - count) { "Hot Reload frame exceeds its protocol limit." }
-            if (size + count > buffer.size) buffer = buffer.copyOf(maxOf(size + count, minOf(buffer.size * 2, MAX_FRAME + 12)))
+            if (size + count > buffer.size) {
+                // Leave room for metadata following a large pixel block instead
+                // of immediately doubling/copying it for the final clock flag.
+                val capacity = minOf(MAX_FRAME + 12, maxOf(buffer.size * 2, size + count + 256))
+                buffer = buffer.copyOf(capacity)
+            }
         }
         fun write(bytes: ByteArray) { reserve(bytes.size); bytes.copyInto(buffer, size); size += bytes.size }
         fun writeByte(value: Int) { reserve(1); buffer[size++] = value.toByte() }
@@ -196,7 +200,12 @@ internal object WinUIXamlHotReloadCodec {
         fun writeInt(value: Int) { for (shift in 24 downTo 0 step 8) writeByte(value ushr shift) }
         fun writeLong(value: Long) { for (shift in 56 downTo 0 step 8) writeByte((value ushr shift).toInt()) }
         fun writeDouble(value: Double) = writeLong(value.toBits())
-        fun bytes() = buffer.copyOf(size)
+        fun frame(): ByteArray {
+            val payloadSize = size - 12
+            require(payloadSize in 0..MAX_FRAME) { "Hot Reload frame exceeds its protocol limit." }
+            for (index in 0..3) buffer[8 + index] = (payloadSize ushr (24 - index * 8)).toByte()
+            return buffer.copyOf(size)
+        }
     }
     private class Reader(private val buffer: ByteArray, private var offset: Int = 0) {
         fun available() = buffer.size - offset

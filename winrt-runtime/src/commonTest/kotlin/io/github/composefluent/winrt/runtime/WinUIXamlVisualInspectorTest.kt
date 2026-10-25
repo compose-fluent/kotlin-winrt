@@ -37,7 +37,12 @@ class WinUIXamlVisualInspectorTest {
         assertFailsWith<IllegalArgumentException> { WinUIXamlHotReloadCodec.writeInspectionRequest("token", request.copy(renderScale = Double.POSITIVE_INFINITY)) }
         val pixels = ByteArray(1600 * 1200 * 4) { (it % 251).toByte() }
         val reply = WinUIXamlHotReloadReply(0, "", inspection = WinUIXamlVisualSnapshot(emptyList(), emptyList(), WinUIXamlVisualImage(1600, 1200, pixels)))
-        val decoded = WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(reply)).inspection!!.image!!
+        // The IDE transport is a development extension, not a CsWinRT ABI.
+        // Preserve its existing frame contract across the shared JVM/Native writer.
+        val frame = WinUIXamlHotReloadCodec.writeReply(reply)
+        assertEquals(frame.size - 12, WinUIXamlHotReloadCodec.frameSize(frame.copyOfRange(0, 12)))
+        assertFailsWith<IllegalArgumentException> { WinUIXamlHotReloadCodec.readReply(frame.copyOf(frame.size - 1)) }
+        val decoded = WinUIXamlHotReloadCodec.readReply(frame).inspection!!.image!!
         assertEquals(1600, decoded.width)
         assertContentEquals(pixels, decoded.pixels)
     }
