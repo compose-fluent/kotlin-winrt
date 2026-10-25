@@ -88,6 +88,7 @@ internal class NativeWinUIXamlHotReloadServer(
                 val response = PendingReply()
                 if (command.inspection != null) registry.inspect(command.inspection, response::complete)
                 else registry.submit(requireNotNull(command.patch), response::complete)
+                timing?.let { println("XAML preview request queued: " + (GetTickCount64() - it) + "ms") }
                 val deadline = GetTickCount64() + 10_000uL
                 var result = response.get()
                 while (result == null && GetTickCount64() < deadline && !lock.withLock { closed }) {
