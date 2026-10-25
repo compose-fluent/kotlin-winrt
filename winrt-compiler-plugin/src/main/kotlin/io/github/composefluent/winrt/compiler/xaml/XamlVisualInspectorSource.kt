@@ -20,8 +20,12 @@ internal fun xamlDevelopmentConfigurationSource(inspector: String, framework: Xa
     io.github.composefluent.winrt.runtime.configureWinUIXamlHotReload(
       dispatcherFactory = {
         val queue = requireNotNull(${dispatching}.DispatcherQueue.getForCurrentThread())
+        // The isolated host has no application input to prioritize over design edits.
+        // Keep ordinary live application hot reload on the SDK's normal queue.
+        val priority = if (io.github.composefluent.winrt.runtime.isWinUIXamlPreviewHost())
+          ${dispatching}.DispatcherQueuePriority.High else ${dispatching}.DispatcherQueuePriority.Normal
         val enqueue: (() -> Unit) -> Boolean = { action ->
-          queue.tryEnqueue(${dispatching}.DispatcherQueueHandler { action() })
+          queue.tryEnqueue(priority, ${dispatching}.DispatcherQueueHandler { action() })
         }
         enqueue
       },

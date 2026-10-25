@@ -84,6 +84,18 @@ class KotlinWinRTAuthoringScannerCliTest {
     }
 
     @Test
+    fun only_isolated_design_hosts_prioritize_inspection_dispatch() {
+        // Microsoft.UI/Windows.System DispatcherQueue overloads share the SDK's
+        // High/Normal priority contract; user applications retain normal dispatch.
+        for ((framework, namespace) in listOf(XamlFramework.WinUI to "microsoft.ui.dispatching", XamlFramework.UWP to "windows.system")) {
+            val source = io.github.composefluent.winrt.compiler.xaml.xamlDevelopmentConfigurationSource("inspector", framework)
+            assertTrue(source.contains("isWinUIXamlPreviewHost()"))
+            assertTrue(source.contains("$namespace.DispatcherQueuePriority.High else $namespace.DispatcherQueuePriority.Normal"))
+            assertTrue(source.contains("queue.tryEnqueue(priority, $namespace.DispatcherQueueHandler"))
+        }
+    }
+
+    @Test
     fun uwp_development_sources_use_core_window_and_the_system_dispatcher() {
         val root = Files.createTempDirectory("kotlin-winrt-uwp-inspector-")
         io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.UWP)

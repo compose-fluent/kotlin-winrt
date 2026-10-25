@@ -81,3 +81,9 @@ data class WinUIXamlVisualSnapshot(val nodes: List<WinUIXamlVisualNode>, val pro
 fun winUIXamlPreviewStartupTheme(): String =
     platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT)
         ?.takeIf { it == "Light" || it == "Dark" } ?: "Default"
+
+/** Shared designer-host flag after the platform launcher has normalized activation
+ * arguments. SDK adapters use it to isolate interactive design scheduling from
+ * the user's live application dispatcher. */
+fun isWinUIXamlPreviewHost(): Boolean =
+    platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT) == "1"

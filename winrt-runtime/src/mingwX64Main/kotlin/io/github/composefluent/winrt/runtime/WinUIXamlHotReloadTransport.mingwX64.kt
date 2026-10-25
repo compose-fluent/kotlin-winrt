@@ -132,7 +132,7 @@ internal class NativeWinUIXamlHotReloadServer(
  * Packaged activation supplies arguments rather than inheriting the IDE environment. */
 fun isNativeWinUIXamlPreviewRequested(): Boolean {
     initializeNativeXamlDevelopmentArguments()
-    return platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT) == "1"
+    return isWinUIXamlPreviewHost()
 }
 
 private fun initializeNativeXamlDevelopmentArguments() = memScoped {
