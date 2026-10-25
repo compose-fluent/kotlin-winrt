@@ -21,6 +21,30 @@ class WinUIXamlDesignerEditingTest : BasePlatformTestCase() {
         return DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text, properties,
             WinUIXamlVisualBounds(20.0, 30.0, 100.0, 40.0), parent, tag.attributes.associate { it.name to it.value.orEmpty() })
     }
+    fun testQualifiedNameUsesExistingDirectiveAndRenameIsUndoable() {
+        val target = selection("xmlns:n=\"http://schemas.microsoft.com/winfx/2006/xaml\" n:Name=\"Greeting\"").let {
+            it.copy(properties = it.properties + DesignerProperty("Name", "String", "Greeting", emptyList(), true, false))
+        }
+        assertEquals("Greeting", WinUIXamlDesignerEditing.sourceValue(target.pointer.element!!, "Name"))
+        WinUIXamlDesignerEditing.apply(project, target, mapOf("Name" to "RenamedGreeting"), "Rename element")
+        val tag = target.pointer.element!!
+        assertEquals("RenamedGreeting", tag.getAttributeValue("Name", io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.XAML))
+        assertNull(tag.getAttribute("Name"))
+        assertTrue(tag.text.contains("n:Name="))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertTrue(myFixture.editor.document.text.contains("n:Name=\"Greeting\""))
+    }
+
+    fun testUnreferencedQualifiedNameCanBeReset() {
+        val target = selection("xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" x:Name=\"Greeting\"").let {
+            it.copy(properties = it.properties + DesignerProperty("Name", "String", "Greeting", emptyList(), true, false))
+        }
+        WinUIXamlDesignerEditing.apply(project, target, mapOf("Name" to null), "Reset name")
+        assertNull(WinUIXamlDesignerEditing.sourceValue(target.pointer.element!!, "Name"))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        assertTrue(myFixture.editor.document.text.contains("x:Name=\"Greeting\""))
+    }
+
     fun testClipboardRenamesInternalNameReferencesWithoutChangingTextOrBindingPaths() {
         com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
             val copied = DesignerClipboard.fragment(project, """<StackPanel><Button x:Name="First" Content="First"/><TextBlock Text="{Binding Content, ElementName=First}"/><TextBlock Text="{x:Bind First.Content}"/><TextBlock Text="{Binding First.Content}"/></StackPanel>""", setOf("First", "First1")).single()

@@ -41,7 +41,7 @@ internal object WinUIXamlDesignerEditing {
         val properties = members.distinctBy { it.name }.map { member ->
             val choices = if (member.typeName in setOf("Boolean", "System.Boolean", "boolean")) listOf("True", "False")
                 else catalog.types[member.typeName]?.enumMembers?.map { it.name }.orEmpty()
-            DesignerProperty(member.name, member.typeName, tag.getAttributeValue(member.name), choices,
+            DesignerProperty(member.name, member.typeName, sourceValue(tag, member.name), choices,
                 member.isWritable, tag.subTags.any { it.localName.substringAfter('.', "") == member.name.substringAfter('.') }, catalog.isDependencyProperty(member))
         }.sortedWith(compareBy({ it.name !in layoutProperties }, { it.name }))
         return DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text,
@@ -58,11 +58,60 @@ internal object WinUIXamlDesignerEditing {
                 })
     }
 
+    internal fun sourceValue(tag: XmlTag, name: String): String? =
+        if (name == "Name") tag.getAttributeValue("Name", WinUIXamlCatalog.XAML) ?: tag.getAttributeValue(name)
+        else tag.getAttributeValue(name)
+
     fun apply(project: Project, selection: DesignerSelection, changes: Map<String, String?>, title: String) =
         applyBatch(project, listOf(selection to changes), title)
 
     /** Validate the entire command before touching any tag. One gesture = one undo. */
     fun applyBatch(project: Project, edits: List<Pair<DesignerSelection, Map<String, String?>>>, title: String) {
+        // x:Name owns generated fields and scoped XAML references. Delegate its
+        // rename to the existing PSI refactoring instead of writing a second Name.
+        val namedEdit = edits.singleOrNull()?.takeIf { (selection, changes) ->
+            selection.state == null && selection.style == null && changes.keys == setOf("Name")
+        }
+        if (namedEdit != null) {
+            val (selection, changes) = namedEdit
+            val definition = com.intellij.openapi.application.ReadAction.compute<XmlAttributeValue?, RuntimeException> {
+                val tag = selection.pointer.element ?: error("The selected element no longer exists. Select it again.")
+                check(tag.isValid && tag.text == selection.text) { "XAML changed during this edit. Select the element again." }
+                check(tag.containingFile.isWritable) { "This XAML file is read only." }
+                check(selection.properties.any { it.name == "Name" && it.writable && !it.elementValue }) { "Name is read only." }
+                tag.getAttribute("Name", WinUIXamlCatalog.XAML)?.valueElement
+            }
+            if (definition != null) {
+                val next = changes["Name"]
+                if (next.isNullOrBlank()) {
+                    var referenced = true
+                    val completed = com.intellij.openapi.progress.ProgressManager.getInstance().runProcessWithProgressSynchronously(Runnable {
+                        referenced = com.intellij.openapi.application.ReadAction.compute<Boolean, RuntimeException> {
+                            com.intellij.psi.search.searches.ReferencesSearch.search(definition).findFirst() != null
+                        }
+                    }, "Checking XAML name usages", true, project)
+                    if (!completed) return
+                    check(!referenced) { "This x:Name is referenced. Rename it or remove its references before resetting it." }
+                    WriteCommandAction.writeCommandAction(project).withName(title).run<RuntimeException> {
+                        val tag = selection.pointer.element ?: error("The selected element no longer exists.")
+                        check(tag.text == selection.text) { "XAML changed during this edit. Select the element again." }
+                        tag.getAttribute("Name", WinUIXamlCatalog.XAML)?.delete()
+                        PsiDocumentManager.getInstance(project).getDocument(tag.containingFile)?.let {
+                            PsiDocumentManager.getInstance(project).doPostponedOperationsAndUnblockDocument(it)
+                        }
+                    }
+                    return
+                }
+                val conflicts = com.intellij.util.containers.MultiMap<PsiElement, String>()
+                com.intellij.openapi.application.ReadAction.run<RuntimeException> {
+                    WinUIXamlNameRenameProcessor().findExistingNameConflicts(definition, next, conflicts)
+                }
+                check(conflicts.isEmpty) { conflicts.values().joinToString("\n") }
+                com.intellij.refactoring.rename.RenameProcessor(project, definition, next, false, false)
+                    .apply { setPreviewUsages(false) }.run()
+                return
+            }
+        }
         WriteCommandAction.writeCommandAction(project).withName(title).run<RuntimeException> {
             val documents = PsiDocumentManager.getInstance(project)
             documents.commitAllDocuments()
@@ -75,6 +124,8 @@ internal object WinUIXamlDesignerEditing {
                         ?: error("$name is not available on this element.")
                     check(property.writable) { "$name is read only." }
                     check(!property.elementValue) { "$name uses a property element. Edit it in XAML." }
+                    check(name != "Name" || selection.style != null || selection.state != null ||
+                        tag.getAttribute("Name", WinUIXamlCatalog.XAML) == null) { "Rename an x:Name separately to update its references." }
                     value?.let { validate(property, it)?.let { message -> error(message) } }
                 }
                 selection.state?.let { DesignerStateEditing.validate(selection, changes) }

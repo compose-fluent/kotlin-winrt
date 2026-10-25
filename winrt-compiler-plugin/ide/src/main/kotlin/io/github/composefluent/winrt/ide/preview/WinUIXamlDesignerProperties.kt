@@ -169,6 +169,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
     }
     val currentCommit by rememberUpdatedState(commit)
     DisposableEffect(Unit) { onDispose { currentCommit() } }
+    val effectiveChoice = designerEffectiveChoice(property, inherited)
     val dirty = draft.buffer.text.toString() != draft.expected.orEmpty()
     val error = if (dirty) WinUIXamlDesignerEditing.validate(property, draft.buffer.text.toString()) else null
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -180,7 +181,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
                 val values = if (horizontal) listOf("Left", "Center", "Right", "Stretch") else listOf("Top", "Center", "Bottom", "Stretch")
                 values.filter { it in property.choices }.forEach { value ->
                     PreviewAction("${property.name}: $value", "align-${if (horizontal) "h" else "v"}-${value.lowercase()}",
-                        selected = property.value == value) {
+                        selected = effectiveChoice == value) {
                         if (currentGuard() && value != currentProperty.value)
                             currentApply(mapOf(property.name to value), "Set ${property.name}")
                     }
@@ -189,11 +190,11 @@ private fun DesignerPropertyRow(property: DesignerProperty,
             else if (property.choices.isNotEmpty()) Dropdown(modifier = Modifier.weight(1f).semantics {
                 contentDescription = "Edit ${property.name}"
             }, menuContent = {
-                property.choices.forEach { value -> selectableItem(selected = property.value == value, onClick = {
+                property.choices.forEach { value -> selectableItem(selected = effectiveChoice == value, onClick = {
                     if (currentGuard() && value != currentProperty.value)
                         currentApply(mapOf(property.name to value), "Set ${property.name}")
                 }) { Text(value) } }
-            }) { Text(property.value ?: "Default", maxLines = 1) }
+            }) { Text(property.value ?: effectiveChoice?.let { "$it (inherited)" } ?: "Default", maxLines = 1) }
             else if (property.type.substringAfterLast('.') == "Thickness" &&
                 (property.value == null || WinUIXamlDesignerEditing.thickness(property.value) != null)) {
                 DesignerThicknessFields(property, inherited, currentGuard, currentApply, Modifier.weight(1f))
@@ -223,6 +224,11 @@ private fun DesignerPropertyRow(property: DesignerProperty,
         } else if (error != null) Text(error)
     }
 }
+
+internal fun designerEffectiveChoice(property: DesignerProperty, inherited: String?): String? =
+    property.value ?: inherited?.substringAfterLast('.')?.let { value ->
+        property.choices.firstOrNull { it.equals(value, ignoreCase = true) }
+    }
 
 /** Presentation grouping only; writable types and members still come from WinMD. */
 internal fun designerPropertyCategory(property: DesignerProperty): String = when {

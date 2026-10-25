@@ -5,6 +5,13 @@ import junit.framework.TestCase
 
 /** Source-authoring draft validation: concurrent PSI changes and duplicate focus events. */
 class DesignerPropertyDraftTest : TestCase() {
+    fun testInheritedEnumChoiceIsShownWithoutWritingALocalValue() {
+        val property = DesignerProperty("HorizontalAlignment", "HorizontalAlignment", null, listOf("Left", "Center", "Right", "Stretch"), true, false)
+        org.junit.Assert.assertEquals("Stretch", designerEffectiveChoice(property, "Microsoft.UI.Xaml.HorizontalAlignment.Stretch"))
+        org.junit.Assert.assertEquals("Left", designerEffectiveChoice(property.copy(value = "Left"), "Stretch"))
+        org.junit.Assert.assertNull(designerEffectiveChoice(property, "unavailable"))
+        org.junit.Assert.assertNull(property.value)
+    }
     private fun width(value: String?) = DesignerProperty("Width", "Double", value, emptyList(), true, false)
     fun testUntouchedDefaultDoesNotCreateLocalValue() {
         assertNull(DesignerPropertyDraft(null).submission(width(null)))
