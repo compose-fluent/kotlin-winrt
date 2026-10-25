@@ -104,16 +104,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var snapEnabled by remember { mutableStateOf(true) }
     val modules by project.service<WinRTProjectService>().modules.collectAsState()
     val selectedModule = selectedWinRTModule(project)
-    val module = staticFile?.let { path -> modules.filter { candidate -> runCatching {
-        Path.of(path).toAbsolutePath().normalize().startsWith(Path.of(candidate.projectDirectory).toAbsolutePath().normalize())
-    }.getOrDefault(false) }.maxByOrNull { it.projectDirectory.length } } ?: selectedModule
+    val module = staticFile?.let { previewSourceModule(it, modules) } ?: selectedModule
     val declarations by project.service<WinUIXamlSnapshotService>().state.collectAsState()
     val inheritedLaunch = remember(staticFile, modules, projectState.pid, projectState.connected) {
         staticFile?.takeIf { module?.hotReloadLaunches.isNullOrEmpty() }?.let(design::sourcePreviewLaunch)
     }
     val launchModule = inheritedLaunch?.first ?: module
     var launchName by remember(launchModule?.projectDirectory) { mutableStateOf<String?>(null) }
-    val launches = (inheritedLaunch?.second?.let(::listOf) ?: module?.hotReloadLaunches.orEmpty()).filter { !static || it.previewExecutable.isNotBlank() }.distinctBy { it.executable }
+    val launches = previewProjectLaunches(module, inheritedLaunch?.second, static)
     val launch = launches.firstOrNull { it.taskName == launchName } ?: launches.firstOrNull()
     val preferences = remember(project) { PropertiesComponent.getInstance(project) }
     val projectCodeKey = "winrt.preview.projectCode.${module?.projectDirectory.orEmpty()}"

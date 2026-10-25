@@ -52,7 +52,7 @@ private class WinUIXamlEditorWithPreview(editor: TextEditor, private val preview
     private fun updatePreviewMode() = preview.setPreviewVisible(getLayout()?.let { it != Layout.SHOW_EDITOR } == true)
 }
 
-private class WinUIXamlPreviewEditor(project: Project, private val file: VirtualFile) : UserDataHolderBase(), FileEditor {
+private class WinUIXamlPreviewEditor(private val project: Project, private val file: VirtualFile) : UserDataHolderBase(), FileEditor {
     private var disposed = false
     private var selected = false
     private var previewVisible = false
@@ -66,7 +66,11 @@ private class WinUIXamlPreviewEditor(project: Project, private val file: Virtual
     override fun getFile() = file
     override fun setState(state: FileEditorState) = Unit
     fun setPreviewVisible(visible: Boolean) { previewVisible = visible; updateActive() }
-    private fun updateActive() { active = selected && previewVisible && !disposed }
+    private fun updateActive() {
+        val next = selected && previewVisible && !disposed
+        if (next && !active) prepareSelectedXamlPreview(project, file.path)
+        active = next
+    }
     override fun selectNotify() { selected = true; updateActive() }
     override fun deselectNotify() { selected = false; updateActive() }
     override fun isModified() = false
