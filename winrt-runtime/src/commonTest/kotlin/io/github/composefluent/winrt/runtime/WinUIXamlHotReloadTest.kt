@@ -4,6 +4,7 @@ import kotlin.test.*
 
 class WinUIXamlHotReloadTest {
     private class Element(var text: String = "original", var size: Int = 1, var style: Element? = null, var rejectStyle: Boolean = false)
+    private class Caption(val inlines: MutableList<Element> = mutableListOf(Element("caption")))
     private class Page(val resources: MutableMap<Any?, Any?>, val children: MutableList<Element> = mutableListOf())
     private val hash = "a".repeat(64)
     private val next = "b".repeat(64)
@@ -24,7 +25,7 @@ class WinUIXamlHotReloadTest {
                     if (element.rejectStyle && value.text == "reloaded style") error("style setter failed after mutation")
                 }),
             )))
-        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Page::class, "probe.Page", "System.Object", isWinRTComponent = false,
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Page::class, "probe.Page", "System.Object", isWinRTComponent = false, contentProperty = "Children",
             members = listOf(
                 WinUIXamlMemberDefinition("Resources", "Map", MutableMap::class, { (it as Page).resources }),
                 WinUIXamlMemberDefinition("Children", "List", MutableList::class, { (it as Page).children }),
@@ -210,6 +211,73 @@ class WinUIXamlHotReloadTest {
         queue.removeAt(0).invoke()
         assertEquals(WinUIXamlHotReloadProtocol.REJECTED, result?.status)
         assertEquals("blue", brush.text); assertEquals(current, registry.snapshot().roots.single())
+    }
+
+    @Test fun same_size_application_reorder_and_replacement_cannot_retarget_indexed_edits() {
+        // CsWinRT IWeakReference + IUnknown identity preserves the compiled target,
+        // even when the projected vector still has the expected Count.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        val first = Element("first"); val second = Element("second")
+        val owner = Page(mutableMapOf(), mutableListOf(first, second))
+        val lifetime = WinUIXamlConnectionState()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null, lifetime)
+        assertNotNull(lifetime.hotReloadBaseline)
+        val collection = WinUIXamlHotReloadTarget(path = listOf(WinUIXamlHotReloadStep.Property("Children")))
+        val edit = patch(WinUIXamlHotReloadChange("", "Text", "changed",
+            collection.path + WinUIXamlHotReloadStep.Index(0, 2)))
+        fun send(update: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var reply: WinUIXamlHotReloadReply? = null
+            registry.submit(update) { reply = it }; queue.removeAt(0).invoke()
+            return requireNotNull(reply)
+        }
+        owner.children.reverse()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(edit).status)
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(patch().copy(children = listOf(
+            WinUIXamlHotReloadChildren(collection, 2, listOf(WinUIXamlHotReloadItem.Existing(0)))))).status)
+        assertEquals("first", first.text); assertEquals("second", second.text)
+        owner.children.reverse()
+        val replacement = Element("first")
+        owner.children[0] = replacement
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(edit).status)
+        assertEquals("first", replacement.text)
+        assertEquals(hash, registry.snapshot().roots.single().sourceHash)
+        owner.children[0] = first
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(edit).status)
+        assertEquals("changed", first.text); assertEquals("second", second.text)
+        registry.close()
+        assertNull(lifetime.hotReloadBaseline)
+    }
+
+    @Test fun property_side_effects_refresh_only_the_changed_owner_collection_baseline() {
+        // TextBlock.Text can replace Inlines through the SDK setter. Refresh that
+        // owner without accepting an unrelated application-owned child reorder.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Caption::class,
+            "probe.Caption", "System.Object", isWinRTComponent = false, contentProperty = "Inlines", members = listOf(
+                WinUIXamlMemberDefinition("Text", "String", String::class, { (it as Caption).inlines.single().text },
+                    { target, value -> (target as Caption).inlines.apply { clear(); add(Element(value as String)) } }),
+                WinUIXamlMemberDefinition("Inlines", "List", MutableList::class, { (it as Caption).inlines }))))
+        val first = Element("first"); val second = Element("second")
+        val owner = Page(mutableMapOf(), mutableListOf(first, second)); val caption = Caption()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Caption", caption)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        owner.children.reverse()
+        fun send(update: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var reply: WinUIXamlHotReloadReply? = null
+            registry.submit(update) { reply = it }; queue.removeAt(0).invoke()
+            return requireNotNull(reply)
+        }
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED,
+            send(patch(WinUIXamlHotReloadChange("Caption", "Text", "new text"))).status)
+        val nextPatch = patch(WinUIXamlHotReloadChange("Caption", "Text", "inline changed",
+            listOf(WinUIXamlHotReloadStep.Property("Inlines"), WinUIXamlHotReloadStep.Index(0, 1))))
+            .copy(expectedHash = next, sourceHash = "c".repeat(64), version = 2)
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(nextPatch.copy(changes = listOf(
+            WinUIXamlHotReloadChange("", "Text", "wrong target", listOf(
+                WinUIXamlHotReloadStep.Property("Children"), WinUIXamlHotReloadStep.Index(0, 2)))))).status)
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(nextPatch).status)
+        assertEquals("inline changed", caption.inlines.single().text)
+        assertEquals("first", first.text); assertEquals("second", second.text)
     }
 
     /** Style.IsSealed requires constructing a replacement; the native parser is

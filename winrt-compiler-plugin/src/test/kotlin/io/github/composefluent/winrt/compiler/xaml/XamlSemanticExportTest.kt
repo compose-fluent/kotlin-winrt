@@ -175,7 +175,10 @@ class XamlSemanticExportTest {
             val namespace = framework.xamlNamespace
             val types = listOf(
                 WinRTTypeDefinition(namespace, "UIElement", WinRTTypeKind.RuntimeClass,
-                    baseTypeName = "System.Object"),
+                    baseTypeName = "System.Object", customAttributes = listOf(
+                        WinRTCustomAttributeDefinition(framework.xamlTypeName("Markup.ContentPropertyAttribute"),
+                            namedArguments = listOf(WinRTCustomAttributeNamedArgument("Name",
+                                WinRTCustomAttributeValue.StringValue("Content")))))),
                 WinRTTypeDefinition("$namespace.Shapes", "Shape", WinRTTypeKind.RuntimeClass,
                     baseTypeName = "$namespace.UIElement"),
                 WinRTTypeDefinition("$namespace.Shapes", "Rectangle", WinRTTypeKind.RuntimeClass,
@@ -197,6 +200,7 @@ class XamlSemanticExportTest {
                 listOf("$namespace.UIElement", "$namespace.Shapes.Shape", "$namespace.Shapes.Rectangle").forEach { name ->
                     assertTrue(startup, startup.contains("${xamlTypeClassId(name).asSingleFqName().asString()}::class"))
                 }
+                assertTrue(source.contains("contentProperty = \"Content\""))
                 assertFalse(source.contains("Unused"))
                 assertFalse(source.contains("activate ="))
             } finally {

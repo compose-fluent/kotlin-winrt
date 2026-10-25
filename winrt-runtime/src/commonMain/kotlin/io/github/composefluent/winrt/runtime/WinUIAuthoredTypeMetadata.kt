@@ -108,6 +108,17 @@ internal object WinUIAuthoredTypeMetadata {
         return null
     }
 
+    /** Content traversal follows generated IXamlType metadata, including inherited content. */
+    internal fun contentProperty(source: Any): String? {
+        var definition = definitionsByType[source::class]
+        val seen = mutableSetOf<String>()
+        while (definition != null && seen.add(definition.name)) {
+            definition.contentProperty?.let { return it }
+            definition = definition.baseType?.let { definitionsByType[it] } ?: definitions[definition.baseName]
+        }
+        return null
+    }
+
     fun customProperties(source: Any): List<microsoft.ui.xaml.data.ICustomProperty> {
         val names = linkedSetOf<String>()
         var definition = definitionsByType[source::class]

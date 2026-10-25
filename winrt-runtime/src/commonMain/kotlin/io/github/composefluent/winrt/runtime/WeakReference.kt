@@ -22,6 +22,16 @@ class WeakReference<T : Any>(
         previous?.close()
     }
 
+    /** CsWinRT EventSourceCache resolves IUnknown directly for identity/liveness.
+     * Comparing a live projection does not require resurrecting another typed RCW. */
+    internal fun matchesTarget(target: Any): Boolean = lock.withWeakReferenceLock {
+        if (managedWeakReference?.get() === target) return@withWeakReferenceLock true
+        val current = ComWrappersSupport.tryUnwrapObject(target) ?: return@withWeakReferenceLock false
+        current.use { reference ->
+            nativeWeakReference?.resolve(IID.IUnknown)?.use { it.sameIdentity(reference) } == true
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     fun tryGetTarget(): T? =
         lock.withWeakReferenceLock {

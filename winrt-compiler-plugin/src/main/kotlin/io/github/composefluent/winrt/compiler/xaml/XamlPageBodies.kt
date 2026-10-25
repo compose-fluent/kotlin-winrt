@@ -179,6 +179,7 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                     arguments[1] = irString(page.className)
                     arguments[2] = irString(page.resourcePath)
                     arguments[3] = irString(page.sourceHash)
+                    arguments[4] = irGetField(irGet(requireNotNull(load.dispatchReceiverParameter)), connectionState)
                 }
             }
             val initialize = function(xamlInitializeName)

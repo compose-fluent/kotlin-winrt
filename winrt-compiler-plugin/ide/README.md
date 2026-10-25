@@ -825,13 +825,18 @@ WinMD content properties and mutable-vector interfaces drive child-collection
 updates. Existing children can reorder within the same collection. The SDK loads
 new unnamed presentation subtrees with literal properties; unnamed disconnected
 subtrees can be removed. The transaction preserves retained native objects, checks
-the live collection size and rolls back changes on failure. New/reordered unnamed
-children use checked property/index paths. Future component instances replay graph
+the live collection size and object identities and rolls back changes on failure.
+New/reordered unnamed children use checked property/index paths. Future component instances replay graph
 and subsequent property/resource updates in order (64 entries / 8 MiB). Moving
 controls can trigger Loaded/Unloaded and affect focus; transient lifecycle state is
-not guaranteed. Application changes to collection order are outside this contract.
+not guaranteed. Application changes to collection order or replacement of an item
+are rejected before indexed edits, even when the count is unchanged. Baselines
+follow generated content-property and resource paths and belong to the generated
+component connection state, not the session registry; an indexed path without a
+captured baseline requires rebuilding. Successful graph
+updates refresh the baseline; failed transactions retain the previous baseline.
 
-Style replacement requires explicit string keys and owners/consumers resolved through connected names or compiled property/content paths. Unnamed collection consumers use the same runtime size checks as other indexed updates. ASC Native acceptance has exercised replacing a local button style while refreshing an unnamed Border resource consumer, then mutating the replacement shared brush; both controls changed without restarting the process.
+Style replacement requires explicit string keys and owners/consumers resolved through connected names or compiled property/content paths. Unnamed collection consumers use the same runtime size and object-identity checks as other indexed updates. ASC Native acceptance has exercised replacing a local button style while refreshing an unnamed Border resource consumer, then mutating the replacement shared brush; both controls changed without restarting the process.
 Ordinary events on existing named, non-template elements can switch to an already
 compiled compatible handler, including private Kotlin methods. Removing the event
 attribute disables dispatch; restoring it reuses the same native subscription.

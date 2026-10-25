@@ -55,7 +55,7 @@ retained elements; changed connections require their own compiler contract.
 
 Protocol version 2 adds bounded object paths through generated property getters,
 projected dictionary keys and collection indices. An index includes the expected
-collection size; a changed live shape rejects the update. Mutable resource values,
+collection size; live size and baseline identity checks reject a changed shape. Mutable resource values,
 such as a shared SolidColorBrush, receive literal property updates in place,
 preserving StaticResource and ThemeResource consumers' references.
 The IDE also addresses mutable entries in inline merged and theme dictionaries,
@@ -76,7 +76,7 @@ literal overrides when a new component finishes loading its original XBF.
 
 The IDE recognizes resource owners and consumers through connected names or
 compiled property/content paths, including unnamed collection children. Indexed
-paths retain the runtime collection-size guard. Style replacement requires a
+paths retain the runtime collection-size and object-identity guards. Style replacement requires a
 self-contained local dictionary and resolvable consumers. Implicit keys, merged/external/theme dictionaries, references captured
 by another dictionary/template, new names, events and binding expressions require
 rebuilding. A ThemeResource consumer cannot be reassigned as a local value without
@@ -108,8 +108,8 @@ unnamed children by their new index; setters and readbacks participate in the sa
 transaction. Failure restores the original sequence and property values. Graph
 updates and later property/resource updates are replayed in order for new instances
 after their compiled XBF connects, with a 64-entry / 8 MiB history limit. Rebuild
-and restart clears the history. The size guard detects application-added/removed
-children; same-size application reordering is outside the supported contract.
+and restart clears the history. Size and object-identity guards reject application
+additions, removals, same-size reordering, and replacement before indexed mutation.
 
 Existing connected children may move within the same collection. New or removed
 subtrees must use unnamed SDK presentation elements with literal properties and no
@@ -330,3 +330,20 @@ The designer adapter prioritizes inherited layout properties within the existing
 padding therefore remain available on controls with many declared properties.
 The shared runtime still resolves each value through generated ICustomProperty
 metadata; omitted properties are not read and the transport limit is unchanged.
+
+Collection baselines are captured at component completion using generated content
+metadata and resource graph accessors. Indexed edits and child-collection updates
+check object identities, not only Count. A same-size application reorder or
+replacement is rejected without advancing the source version. Successful writes
+refresh affected owners and collections, preserving unrelated baselines; rollback
+restores the previous baselines. Generated getters recover collections. The
+generated component connection state owns the snapshot objects, like x:Name
+fields; the session registry holds only
+a weak reference to that state and clears it when the session closes. WinUI
+reference tracking can disconnect a weak peer while its visual remains present,
+so weak child identities alone cannot provide this guard. Uncaptured indexed paths
+fail closed with a rebuild diagnostic. This does not preserve Loaded/Unloaded side effects.
+
+ASC Native acceptance covers an ordinary unnamed text update, a same-count
+application reorder rejected without mutating either text control, and successful
+retry after restoring the order in the same running process without reconnecting.

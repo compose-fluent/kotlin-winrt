@@ -7,6 +7,9 @@ package io.github.composefluent.winrt.runtime
  * Access belongs to the component's UI thread.
  */
 class WinUIXamlConnectionState {
+    // Component-owned, never rooted by the development session registry.
+    internal var hotReloadBaseline: WinUIXamlCollectionBaseline? = null
+
     private data class Subscription(val connectionId: Int, val remove: () -> Unit)
     private val subscriptions = mutableListOf<Subscription>()
     private var failure: Throwable? = null

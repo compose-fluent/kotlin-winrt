@@ -16,6 +16,13 @@ internal class WinUIXamlHotReloadRegistry(
         val owner = PlatformManagedWeakReference(owner)
         val elements = mutableMapOf<String, PlatformManagedWeakReference<Any>>()
         val eventRoutes = mutableMapOf<Pair<String, String>, PlatformManagedWeakReference<WinUIXamlEventRoute>>()
+        var lifetime: PlatformManagedWeakReference<WinUIXamlConnectionState>? = null
+        private var legacyBaseline: WinUIXamlCollectionBaseline? = null
+        var baseline: WinUIXamlCollectionBaseline?
+            get() = if (lifetime == null) legacyBaseline else lifetime?.get()?.hotReloadBaseline
+            set(value) {
+                if (lifetime == null) legacyBaseline = value else lifetime?.get()?.hotReloadBaseline = value
+            }
         var ready = false
     }
     private class Page(val className: String, val path: String, val compiledHash: String) {
@@ -34,7 +41,8 @@ internal class WinUIXamlHotReloadRegistry(
     private var closed = false
     private var tracedInspectionDispatch = false
 
-    fun observe(owner: Any, className: String, path: String, hash: String, name: String?, target: Any?) {
+    fun observe(owner: Any, className: String, path: String, hash: String, name: String?, target: Any?,
+        lifetime: WinUIXamlConnectionState? = null) {
         if (lock.withLock { closed }) return
         val page = lock.withLock {
             pages.getOrPut(className to path) { Page(className, path, hash) }.also {
@@ -54,10 +62,12 @@ internal class WinUIXamlHotReloadRegistry(
             }
         }
         if (name == null) {
+            if (lifetime != null) root.lifetime = PlatformManagedWeakReference(lifetime)
             val overrides = lock.withLock { page.overrides.values.toList() }
             val resources = lock.withLock { page.resourceOverrides.values.toList() }
             val history = lock.withLock { page.history.toList() }
             runCatching {
+                root.baseline = captureBaseline(root)
                 if (overrides.isNotEmpty() || resources.isNotEmpty()) apply(listOf(root), overrides, resources)
                 history.forEach { apply(listOf(root), it.changes, it.resources, children = it.children, events = it.events) }
             }.onFailure {
@@ -170,7 +180,11 @@ internal class WinUIXamlHotReloadRegistry(
         }
     }
 
-    fun close() = lock.withLock { closed = true; pages.clear() }
+    fun close() = lock.withLock {
+        closed = true
+        pages.values.forEach { page -> page.roots.forEach { it.baseline = null } }
+        pages.clear()
+    }
 
     fun inspect(request: WinUIXamlInspectionRequest, complete: (WinUIXamlHotReloadReply) -> Unit) {
         if ((request.previewMarkup.isNotEmpty() || request.animation != null) && request.className != WinUIXamlHotReloadProtocol.PREVIEW_CLASS) {
@@ -216,12 +230,20 @@ internal class WinUIXamlHotReloadRegistry(
     private fun contains(parent: WinUIXamlHotReloadTarget, child: WinUIXamlHotReloadTarget) =
         parent.element == child.element && child.path.take(parent.path.size) == parent.path
 
+    private fun captureBaseline(root: Root, previous: WinUIXamlCollectionBaseline? = null,
+        objects: List<Any> = emptyList(), collections: List<Any> = emptyList()) = WinUIXamlCollectionBaseline.capture(buildList {
+        root.owner.get()?.let { add(it) }
+        root.elements.values.forEach { reference -> reference.get()?.let { add(it) } }
+    }, previous, objects, collections, retainObjects = root.lifetime != null)
+
     private fun target(root: Root, address: WinUIXamlHotReloadTarget,
         replacements: Map<WinUIXamlHotReloadTarget, Any> = emptyMap()): Any {
         require(address.path.size <= 64) { "The object path exceeds its limit." }
         var value: Any = (if (address.element.isEmpty()) root.owner.get() else root.elements[address.element]?.get())
             ?: error("Element '${address.element}' is not connected in the current name scope.")
+        var replaced = false
         address.path.forEachIndexed { index, step ->
+            if (address.copy(path = address.path.take(index + 1)) in replacements) replaced = true
             value = replacements[address.copy(path = address.path.take(index + 1))] ?: requireNotNull(when (step) {
                 is WinUIXamlHotReloadStep.Property -> {
                     val member = WinUIAuthoredTypeMetadata.customProperty(value, step.name)
@@ -239,6 +261,8 @@ internal class WinUIXamlHotReloadRegistry(
                     require(step.expectedSize in 0..4096 && list.size == step.expectedSize && step.index in list.indices) {
                         "The live collection no longer matches XAML; rebuild or restart."
                     }
+                    if (!replaced) root.baseline?.validate(list)
+                        ?: error("The component collection baseline is unavailable; rebuild.")
                     list[step.index]
                 }
             }) { "The live object path contains a null value; rebuild or restart." }
@@ -273,6 +297,8 @@ internal class WinUIXamlHotReloadRegistry(
         require(events.map { it.element to it.event }.distinct().size == events.size) { "An event can be changed only once per transaction." }
         // Prepare every getter and conversion before mutating any live object.
         val overlays = mutableMapOf<Root, Map<WinUIXamlHotReloadTarget, Any>>()
+        val changedObjects = mutableMapOf<Root, MutableList<Any>>()
+        val changedCollections = mutableMapOf<Root, MutableList<Any>>()
         val prepared = roots.flatMap { root -> buildList {
             val replacements = mutableMapOf<WinUIXamlHotReloadTarget, Any>()
             children.forEach { update ->
@@ -281,6 +307,8 @@ internal class WinUIXamlHotReloadRegistry(
                 val collection = target(root, update.target) as? MutableList<Any?>
                     ?: error("The child target must be a mutable projected list.")
                 require(collection.size == update.expectedSize) { "The live child collection no longer matches XAML; rebuild or restart." }
+                root.baseline?.validate(collection) ?: error("The component collection baseline is unavailable; rebuild.")
+                changedCollections.getOrPut(root) { mutableListOf() }.add(collection)
                 val previous = collection.toList()
                 val reused = update.items.filterIsInstance<WinUIXamlHotReloadItem.Existing>().map { it.index }
                 require(reused.distinct().size == reused.size && reused.all { it in previous.indices }) {
@@ -329,6 +357,7 @@ internal class WinUIXamlHotReloadRegistry(
                 update.references.forEach { reference ->
                     require(next.containsKey(reference.key)) { "Resource '${reference.key}' is not part of this dictionary." }
                     val consumer = target(root, reference.target, replacements)
+                    changedObjects.getOrPut(root) { mutableListOf() } += consumer
                     add(prepareProperty(consumer, property(consumer, reference.property), next[reference.key], reference.target))
                 }
             }
@@ -338,6 +367,7 @@ internal class WinUIXamlHotReloadRegistry(
                 // later literal override must address the prepared replacement,
                 // rather than mutate the old resource about to be detached.
                 val target = target(root, address, replacements)
+                changedObjects.getOrPut(root) { mutableListOf() } += target
                 val member = property(target, change.property)
                 if (change.reset) {
                     require(change.literal.isEmpty()) { "A property reset cannot carry a literal." }
@@ -373,12 +403,17 @@ internal class WinUIXamlHotReloadRegistry(
         }
         // Validate requested readbacks too; a late failure rolls back the entire update.
         roots.forEach { root -> reads.forEach { read(root, it, overlays.getValue(root)) } }
+        val previousBaselines = roots.associateWith { it.baseline }
         val attempted = mutableListOf<Prepared>()
         try {
             prepared.forEach { attempted += it; it.commit() }
+            if (prepared.isNotEmpty()) roots.forEach { root ->
+                root.baseline = captureBaseline(root, root.baseline, changedObjects[root].orEmpty(), changedCollections[root].orEmpty())
+            }
             return prepared.take(changes.size + resources.sumOf { 1 + it.references.size } + children.size + events.size).map { it.result() } +
                 reads.map { read(roots.first(), it) }
         } catch (failure: Exception) {
+            previousBaselines.forEach { (root, baseline) -> root.baseline = baseline }
             val rollbackFailures = attempted.asReversed().mapNotNull { runCatching { it.rollback() }.exceptionOrNull() }
             if (rollbackFailures.isNotEmpty()) {
                 lock.withLock { pages.values.filter { page -> page.roots.any { it in roots } }.forEach {
@@ -444,9 +479,10 @@ fun registerWinUIXamlHotReloadAccessors(definition: WinUIXamlTypeDefinition) {
 fun isWinUIXamlHotReloadEnabled(): Boolean = WinUIXamlHotReloadConfiguration.lock.withLock {
     WinUIXamlHotReloadConfiguration.registry != null
 }
-fun completeWinUIXamlHotReloadComponent(owner: Any, className: String, path: String, sourceHash: String) {
+fun completeWinUIXamlHotReloadComponent(owner: Any, className: String, path: String, sourceHash: String,
+    lifetime: WinUIXamlConnectionState? = null) {
     WinUIXamlHotReloadConfiguration.lock.withLock { WinUIXamlHotReloadConfiguration.registry }
-        ?.observe(owner, className, path, sourceHash, null, null)
+        ?.observe(owner, className, path, sourceHash, null, null, lifetime)
 }
 
 internal expect fun platformStartWinUIXamlHotReload(registry: WinUIXamlHotReloadRegistry): AutoCloseable?

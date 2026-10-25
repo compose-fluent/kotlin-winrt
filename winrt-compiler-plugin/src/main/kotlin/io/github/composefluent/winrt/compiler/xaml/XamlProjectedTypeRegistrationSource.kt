@@ -80,6 +80,10 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
             appendLine("  io.github.composefluent.winrt.runtime.$registration(io.github.composefluent.winrt.runtime.WinUIXamlTypeDefinition(")
             appendLine("    type = $owner::class, name = ${literal(name)},")
             appendLine("    baseName = ${literal(baseName)}, baseType = $base::class,")
+            type.customAttributes.firstOrNull { it.typeName == framework.xamlTypeName("Markup.ContentPropertyAttribute") }
+                ?.namedArguments?.firstOrNull { it.name == "Name" }?.value?.stringValue?.let {
+                    appendLine("    contentProperty = ${literal(it)},")
+                }
             if (!development) appendLine("    activate = { $owner() },")
             else appendLine("    isWinRTComponent = false,")
             appendLine("    isBindable = false,")
