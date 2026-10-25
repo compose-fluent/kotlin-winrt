@@ -140,6 +140,15 @@ internal object DesignerStoryboardEditing {
             check(tag.isValid && tag.containingFile.isWritable && tag.containingFile.text == track.source) { "XAML changed. Select the animation again." }
             val existing = frame?.pointer?.element
             check(frame == null || existing != null && existing.isValid && !frame.complex) { "This keyframe uses an object value. Edit it in XAML." }
+            if (existing != null) {
+                val owner = existing.parentTag
+                check(owner == tag || owner?.parentTag == tag && sdk(owner, "${tag.localName}.KeyFrames")) {
+                    "The keyframe no longer belongs to this animation. Select it again."
+                }
+                check(existing.namespace == WinUIXamlCatalog.PRESENTATION && existing.localName.endsWith("${track.kind}KeyFrame")) {
+                    "The keyframe type no longer matches this animation. Select it again."
+                }
+            }
             if (remove) requireNotNull(existing) { "Select a keyframe." }.delete()
             else if (existing != null) {
                 // Preserve spline/easing and object metadata when editing a value.

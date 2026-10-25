@@ -65,6 +65,23 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
         for (millis in listOf(0, 1, 12345, 3600123, 86400000))
             assertEquals(millis, DesignerStoryboardEditing.milliseconds(DesignerStoryboardEditing.time(millis)))
     }
+    fun testForeignFrameCannotModifyAnotherTrack() {
+        val xml = source()
+        val target = xml.rootTag!!.subTags.last()
+        val selection = DesignerSelection(com.intellij.psi.SmartPointerManager.getInstance(project).createSmartPsiElementPointer(target), target.text,
+            listOf(DesignerProperty("Opacity", "Double", "0.8", emptyList(), true, false, true)),
+            io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(0.0, 0.0, 10.0, 10.0), "Grid", emptyMap())
+        DesignerStoryboardEditing.createTrack(project, selection, "Other", "Opacity", 1000, "0.2", false)
+        val track = DesignerStoryboardEditing.tracks(xml, "Fade").single()
+        val foreign = DesignerStoryboardEditing.tracks(xml, "Other").single().frames.single()
+        val before = xml.text
+        for (remove in listOf(false, true)) {
+            val result = runCatching { DesignerStoryboardEditing.write(project, track, foreign, 2000, "0.6", "Linear", remove) }
+            assertTrue(result.isFailure)
+            assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("belongs to this animation"))
+            assertEquals(before, xml.text)
+        }
+    }
     fun testDuplicateResourceIdentityIsNotGuessed() {
         assertTrue(DesignerStoryboardEditing.tracks(source(true), "Fade").isEmpty())
     }
