@@ -70,7 +70,8 @@ fun WinUIXamlHotReloadPanel(project: Project) {
         item {
             WinRTDetails("supported edits") {
                 Text("Properties, local resources, explicit styles and supported child collections update while the application runs.")
-                Text("Names, events, bindings, templates and parent changes require rebuilding. Moving controls preserves their objects; focus and Loaded/Unloaded state may change.")
+                Text("Existing named-element events can switch to already compiled compatible handlers, or be disabled and restored without restarting.")
+                Text("New event handlers or slots, names, bindings, templates and parent changes require rebuilding. Moving controls preserves their objects; focus and Loaded/Unloaded state may change.")
                 Text("Theme expressions, implicit styles and external dictionaries require rebuilding.")
             }
         }
