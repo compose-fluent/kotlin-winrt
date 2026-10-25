@@ -490,11 +490,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     // Keep only presentation state during same-selection source resolution. Write
     // capabilities still come exclusively from the freshly resolved editables.
+    // Catalog/resource notifications also follow our own property writes. They
+    // invalidate resolution above, not the displayed editor or its keyboard focus.
     var displayedEditable by remember(source, selectedPaths, static, state.connected, failure,
-        state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication,
-        catalogRevision, resourceRevision) { mutableStateOf<DesignerSelection?>(null) }
-    SideEffect { if (editableResult != null) displayedEditable = editable }
-    val propertySelection = if (editableResult != null) editable else displayedEditable
+        state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication) {
+        mutableStateOf<DesignerSelection?>(null)
+    }
+    // Renaming can temporarily leave the old native snapshot unmatched to the
+    // new source. Retain its editor as a disabled presentation until resolution
+    // succeeds; a changed selection, connection or error still clears it above.
+    SideEffect { if (editable != null) displayedEditable = editable }
+    val propertySelection = editable ?: displayedEditable
     val currentEditables by rememberUpdatedState(editables)
     var rejectedEdits by remember { mutableStateOf<DesignerEditRejection?>(null) }
     fun applyBatch(edits: List<Pair<DesignerSelection, Map<String, String?>>>, title: String) {
@@ -712,7 +718,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         if (editStyle) {
                             Link("Back to element properties", onClick = { editStyle = false })
                             Text("Editing a shared style affects all its consumers. Local values still take precedence.")
-                        } else if (editableResult == null && propertySelection != null) Text("Updating properties…")
+                        } else if (editable == null && propertySelection != null) Text(
+                            if (editableResult == null || state.inspecting || prepared == null) "Updating properties…"
+                            else "Source selection unavailable. Select the element again.")
                         else if (!styleReady && editables.size == 1) Text("Reading applied style…")
                         else if (styleSelection != null) Link("Edit applied style…", onClick = { editStyle = true })
                         else if (!recordState && editables.size == 1) {
@@ -755,7 +763,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             }
                         } else {
                             if (propertySelection == null && editableResult == null) Text("Loading editable properties…")
-                            else DesignerProperties(propertySelection, propertyFilter.text.toString(), active = editableResult != null,
+                            else DesignerProperties(propertySelection, propertyFilter.text.toString(), active = editable != null,
                                 effectiveValues = if (state.inspectionPath == selectedPath && state.inspectionPropertiesRead)
                                     view?.properties.orEmpty().associate { it.name to it.value } else emptyMap(), rejection = rejectedEdits, apply = ::applyEdit)
                         }
