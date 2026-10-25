@@ -826,7 +826,7 @@ and subsequent property/resource updates in order (64 entries / 8 MiB). Moving
 controls can trigger Loaded/Unloaded and affect focus; transient lifecycle state is
 not guaranteed. Application changes to collection order are outside this contract.
 
-Style replacement requires explicit string keys and owners/consumers resolved through connected names or compiled property/content paths. Unnamed collection consumers use the same runtime size checks as other indexed updates.
+Style replacement requires explicit string keys and owners/consumers resolved through connected names or compiled property/content paths. Unnamed collection consumers use the same runtime size checks as other indexed updates. ASC Native acceptance has exercised replacing a local button style while refreshing an unnamed Border resource consumer, then mutating the replacement shared brush; both controls changed without restarting the process.
 Local dictionaries can add/remove keys when no surviving consumer references a
 removed key; dictionary keys and values roll back together after a failed update.
 ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
