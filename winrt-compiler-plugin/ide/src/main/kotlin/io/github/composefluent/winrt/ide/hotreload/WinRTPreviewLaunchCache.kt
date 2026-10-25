@@ -169,11 +169,15 @@ internal class WinRTPreviewLaunchCache(
                     // SDK host inputs exclude app XAML/Kotlin edits. Build logic,
                     // version catalogs, restore locks and model/toolchain identity
                     // still invalidate it; deployed runtime changes are checked below.
-                    val name = file.fileName.toString()
-                    val configuration = name.endsWith(".gradle.kts") || name.endsWith(".gradle") ||
-                        name.endsWith(".toml") || name.endsWith(".properties") || name.endsWith(".json") ||
-                        file.any { it.toString() in setOf("buildSrc", "build-logic", "gradle") }
-                    if (attrs.isRegularFile && (!configurationOnly || configuration)) files.add(file)
+                    // Native validation includes every regular file. Classify SDK
+                    // configuration only when that filter is actually requested;
+                    // walking every path segment also invokes IDE filesystem routing.
+                    if (attrs.isRegularFile && (!configurationOnly || run {
+                        val name = file.fileName.toString()
+                        name.endsWith(".gradle.kts") || name.endsWith(".gradle") ||
+                            name.endsWith(".toml") || name.endsWith(".properties") || name.endsWith(".json") ||
+                            file.any { it.toString() in setOf("buildSrc", "build-logic", "gradle") }
+                    })) files.add(file)
                     check(files.size <= 30_000) { "Preview inputs require Gradle validation" }
                     return FileVisitResult.CONTINUE
                 }
