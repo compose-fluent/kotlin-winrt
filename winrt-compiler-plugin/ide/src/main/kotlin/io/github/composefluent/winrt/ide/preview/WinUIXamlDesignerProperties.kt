@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
@@ -14,6 +13,8 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.Layout
 import org.jetbrains.jewel.ui.component.*
 
 internal data class DesignerEditRejection(val revision: Long, val edits: List<Pair<DesignerSelection, Set<String>>>) {
@@ -184,10 +185,10 @@ private fun DesignerPropertyRow(property: DesignerProperty,
     val dirty = draft.buffer.text.toString() != draft.expected.orEmpty()
     val error = if (dirty) WinUIXamlDesignerEditing.validate(property, draft.buffer.text.toString()) else null
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Tooltip(tooltip = { Text(property.name) }) { Text(when (property.name) { "HorizontalAlignment" -> "H. alignment"; "VerticalAlignment" -> "V. alignment"; else -> property.name }, Modifier.width(104.dp), maxLines = 1) }
-            if (property.elementValue) Text("Property element", Modifier.weight(1f), maxLines = 1)
-            else if (property.name in setOf("HorizontalAlignment", "VerticalAlignment") && property.choices.isNotEmpty()) Row(Modifier.weight(1f)) {
+        Layout(modifier = Modifier.fillMaxWidth(), content = {
+            Tooltip(tooltip = { Text(property.name) }) { Text(when (property.name) { "HorizontalAlignment" -> "H. alignment"; "VerticalAlignment" -> "V. alignment"; else -> property.name }, Modifier, maxLines = 1) }
+            if (property.elementValue) Text("Property element", Modifier.fillMaxWidth(), maxLines = 1)
+            else if (property.name in setOf("HorizontalAlignment", "VerticalAlignment") && property.choices.isNotEmpty()) Row(Modifier.fillMaxWidth()) {
                 val horizontal = property.name == "HorizontalAlignment"
                 val values = if (horizontal) listOf("Left", "Center", "Right", "Stretch") else listOf("Top", "Center", "Bottom", "Stretch")
                 values.filter { it in property.choices }.forEach { value ->
@@ -198,7 +199,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
                     }
                 }
             }
-            else if (property.choices.isNotEmpty()) Dropdown(modifier = Modifier.weight(1f).semantics {
+            else if (property.choices.isNotEmpty()) Dropdown(modifier = Modifier.fillMaxWidth().semantics {
                 contentDescription = "Edit ${property.name}"
             }, menuContent = {
                 property.choices.forEach { value -> selectableItem(selected = effectiveChoice == value, onClick = {
@@ -208,11 +209,11 @@ private fun DesignerPropertyRow(property: DesignerProperty,
             }) { Text(property.value ?: effectiveChoice?.let { "$it (inherited)" } ?: "Default", maxLines = 1) }
             else if (property.type.substringAfterLast('.') == "Thickness" &&
                 (property.value == null || WinUIXamlDesignerEditing.thickness(property.value) != null)) {
-                DesignerThicknessFields(property, inherited, currentGuard, currentApply, Modifier.weight(1f), rejectedRevision)
+                DesignerThicknessFields(property, inherited, currentGuard, currentApply, Modifier.fillMaxWidth(), rejectedRevision)
             }
             else TextField(draft.buffer, placeholder = {
                 Text(designerPropertyPlaceholder(property, inherited, bounds), maxLines = 1)
-            }, modifier = Modifier.weight(1f).semantics { contentDescription = "Edit ${property.name}" }
+            }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Edit ${property.name}" }
                 .onFocusChanged {
                     val leaving = focused && !it.hasFocus
                     focused = it.hasFocus
@@ -227,6 +228,28 @@ private fun DesignerPropertyRow(property: DesignerProperty,
                 if (currentGuard()) currentApply(mapOf(property.name to null), "Reset ${property.name}")
             }
             PreviewAction("More ${property.name} options", "more", enabled = !property.elementValue, action = advanced)
+        }) { children, constraints ->
+            // Reflow during measurement, keeping the same editor composition so
+            // resizing the inspector preserves its draft, selection and focus.
+            val width = constraints.maxWidth
+            val gap = 4.dp.roundToPx()
+            val reset = children[2].measure(Constraints())
+            val more = children[3].measure(Constraints())
+            val actionsWidth = reset.width + more.width + gap
+            val stacked = width < 320.dp.roundToPx()
+            val labelWidth = if (stacked) (width - actionsWidth - gap).coerceAtLeast(0) else 104.dp.roundToPx()
+            val label = children[0].measure(Constraints.fixedWidth(labelWidth))
+            val editorWidth = if (stacked) width else (width - labelWidth - actionsWidth - 2 * gap).coerceAtLeast(0)
+            val editor = children[1].measure(Constraints.fixedWidth(editorWidth))
+            val headingHeight = maxOf(label.height, reset.height, more.height, if (stacked) 0 else editor.height)
+            val height = if (stacked) headingHeight + gap + editor.height else headingHeight
+            layout(width, height) {
+                label.placeRelative(0, (headingHeight - label.height) / 2)
+                reset.placeRelative(width - actionsWidth, (headingHeight - reset.height) / 2)
+                more.placeRelative(width - more.width, (headingHeight - more.height) / 2)
+                editor.placeRelative(if (stacked) 0 else labelWidth + gap,
+                    if (stacked) headingHeight + gap else (headingHeight - editor.height) / 2)
+            }
         }
         if (draft.changed(property.value)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Changed in XAML.")
