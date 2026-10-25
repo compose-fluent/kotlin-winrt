@@ -428,8 +428,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     // A successful write also changes revision; do not erase its feedback on
     // the next composition before the user has a chance to read it.
     LaunchedEffect(editFeedback) { if (editFeedback != null) { delay(6_000); editFeedback = null } }
-    val editableResult by produceState<List<DesignerSelection>?>(null, selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
-        value = null
+    // A new selection/revision must lose edit capabilities in this composition,
+    // before the asynchronous resolver starts. produceState keys alone retain
+    // the previous value until its new coroutine runs, exposing stale commands.
+    val editableResult by key(selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
+      produceState<List<DesignerSelection>?>(null) {
         val snapshot = view
         if (snapshot == null || !static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null) { value = emptyList(); return@produceState }
         value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerSelection>, RuntimeException> {
@@ -446,23 +449,26 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
             }.takeIf { it.size == selectedPaths.size }.orEmpty()
         } }
+      }
     }
     val editables = editableResult.orEmpty()
     var editStyle by remember(source, selectedPaths, recordState) { mutableStateOf(false) }
     var createStyle by remember(source, selectedPaths, recordState) { mutableStateOf(false) }
     val styleKey = remember(source, selectedPaths) { TextFieldState("") }
     var extractStyle by remember(source, selectedPaths) { mutableStateOf(true) }
-    val styleSelection by produceState<DesignerSelection?>(null, editables, revision, theme, launchModule, projectCode, resourceRevision) {
-        value = null
-        val selected = editables.singleOrNull() ?: return@produceState
-        value = withContext(Dispatchers.IO) {
-            val application = module?.takeIf { static }?.let { WinUIXamlPreviewSources(project, it, files, source,
-                if (projectCode) launchModule ?: it else it).application() }
-            ReadAction.compute<DesignerSelection?, RuntimeException> {
-                DesignerStyleEditing.selection(selected, previewTheme = theme, applicationSource = application)
+    val styleResult by key(editables, revision, theme, launchModule, projectCode, resourceRevision) {
+        produceState<Pair<Boolean, DesignerSelection?>>(false to null) {
+            val selected = editables.singleOrNull()
+            value = true to if (selected == null) null else withContext(Dispatchers.IO) {
+                val application = module?.takeIf { static }?.let { WinUIXamlPreviewSources(project, it, files, source,
+                    if (projectCode) launchModule ?: it else it).application() }
+                ReadAction.compute<DesignerSelection?, RuntimeException> {
+                    DesignerStyleEditing.selection(selected, previewTheme = theme, applicationSource = application)
+                }
             }
         }
     }
+    val (styleReady, styleSelection) = styleResult
     val editable = editables.lastOrNull()?.let { primary ->
         primary.copy(properties = primary.properties.filter { property -> editables.all { target ->
             target.properties.any { it.name == property.name && it.writable && !it.elementValue }
@@ -675,7 +681,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         if (editStyle) {
                             Link("Back to element properties", onClick = { editStyle = false })
                             Text("Editing a shared style affects all its consumers. Local values still take precedence.")
-                        } else if (styleSelection != null) Link("Edit applied style…", onClick = { editStyle = true })
+                        } else if (!styleReady && editables.size == 1) Text("Reading applied style…")
+                        else if (styleSelection != null) Link("Edit applied style…", onClick = { editStyle = true })
                         else if (!recordState && editables.size == 1) {
                             Link(if (createStyle) "Cancel style creation" else "Create style…", onClick = { createStyle = !createStyle })
                             if (createStyle) {
