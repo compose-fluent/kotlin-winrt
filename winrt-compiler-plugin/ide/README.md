@@ -854,9 +854,10 @@ Kotlin and XAML changes that cannot form an in-process patch into a separate sta
 layout. The current process remains alive during compilation and after build failure.
 A successful build captures compatible named-control state, replaces the process,
 and restores that state after the new component is ready. Component instance ordinals
-are process-local: if a component has multiple live instances, automatic replacement
-keeps the old application and reports that their state cannot be matched safely.
-Restoration also rejects a component that becomes ambiguous in the replacement.
+are process-local: components with multiple live instances are skipped during state
+capture and reported after replacement; uniquely matched components still recover.
+Restoration also skips a component that becomes ambiguous in the replacement.
+Automatic rebuilding continues even when some component state cannot be saved.
 Further edits during a build are coalesced into another build before replacement.
 The original IDE Run session remains active after its Gradle launch finishes and
 continues owning replacement processes, so Stop still terminates the current app.

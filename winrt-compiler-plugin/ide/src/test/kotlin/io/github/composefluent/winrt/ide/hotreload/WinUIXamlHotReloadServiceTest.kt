@@ -37,11 +37,11 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         val first = WinUIXamlHotReloadRoot("First", "First.xaml", "hash", 0, emptyList())
         val second = first.copy(className = "Second", resourcePath = "Second.xaml")
         assertEquals(listOf(WinUIXamlStateRequest("First", "First.xaml"),
-            WinUIXamlStateRequest("Second", "Second.xaml")), restartStateRequests(listOf(first, second)))
-        assertTrue(restartStateRequests(listOf(first.copy(instances = 0))).isEmpty())
-        val failure = runCatching { restartStateRequests(listOf(first, second.copy(instances = 2))) }.exceptionOrNull()
-        assertTrue(failure is IllegalStateException)
-        assertTrue(failure!!.message.orEmpty().contains("Second"))
+            WinUIXamlStateRequest("Second", "Second.xaml")), restartStatePlan(listOf(first, second)).requests)
+        assertTrue(restartStatePlan(listOf(first.copy(instances = 0))).requests.isEmpty())
+        val plan = restartStatePlan(listOf(first, second.copy(instances = 2)))
+        assertEquals(listOf(WinUIXamlStateRequest("First", "First.xaml")), plan.requests)
+        assertEquals(listOf("Second (Second.xaml)"), plan.skippedComponents)
     }
 
     fun testIdeLaunchAttachesWithoutAnEarlierToolWindowSessionAndAutomaticallyAppliesEditorChanges() = session { fixture ->

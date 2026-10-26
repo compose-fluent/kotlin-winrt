@@ -51,13 +51,13 @@ data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var t
 
 /** Instance ordinals identify live objects only within one process. They cannot
  * establish object identity after a restart; never move input between such roots. */
-internal fun restartStateRequests(roots: List<WinUIXamlHotReloadRoot>): List<WinUIXamlStateRequest> {
-    val ambiguous = roots.firstOrNull { it.instances > 1 }
-    check(ambiguous == null) {
-        "${ambiguous!!.className} has multiple live instances; their state cannot be matched safely across restart."
-    }
-    return roots.filter { it.instances == 1 }.map { WinUIXamlStateRequest(it.className, it.resourcePath) }
-}
+internal data class WinRTRestartStatePlan(
+    val requests: List<WinUIXamlStateRequest>, val skippedComponents: List<String>,
+)
+internal fun restartStatePlan(roots: List<WinUIXamlHotReloadRoot>) = WinRTRestartStatePlan(
+    roots.filter { it.instances == 1 }.map { WinUIXamlStateRequest(it.className, it.resourcePath) },
+    roots.filter { it.instances > 1 }.map { "${it.className} (${it.resourcePath})" },
+)
 
 open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
     private val isolatedPreview: Boolean = false) : Disposable, PersistentStateComponent<WinUIXamlHotReloadLaunchState> {
@@ -302,7 +302,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     // A designer re-renders its source after replacement; it must not
                     // replay the synthetic artboard's control state into application roots.
                     val roots = if (isolatedPreview) emptyList() else connection.request().roots
-                    val states = restartStateRequests(roots).mapNotNull { capture ->
+                    val statePlan = restartStatePlan(roots)
+                    val states = statePlan.requests.mapNotNull { capture ->
                         val reply = connection.transferState(capture)
                         check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
                         reply.savedState?.takeIf { it.isNotEmpty() }?.let { capture.copy(restore = it) }
@@ -312,7 +313,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             // start cancels outstanding jobs; relinquish this completed build first.
                             codeRebuild = null
                             start(module, launch, restart = true, preview = isolatedPreview,
-                                theme = previewTheme, restoredState = states,
+                                theme = previewTheme, restoredState = states, skippedStateComponents = statePlan.skippedComponents,
                                 launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment)
                         }
                     }
@@ -330,9 +331,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         }
     }
 
-    private suspend fun restoreAfterRestart(request: Long, states: List<WinUIXamlStateRequest>) {
+    private suspend fun restoreAfterRestart(request: Long, states: List<WinUIXamlStateRequest>, skippedComponents: List<String>) {
         try {
             val pending = states.toMutableList()
+            val skipped = skippedComponents.toMutableSet()
             withTimeout(15_000) {
                 while (pending.isNotEmpty() && isCurrent(request)) {
                     mutex.withLock {
@@ -341,8 +343,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         val matchingRoots = roots.filter { root -> pending.any {
                             it.className == root.className && it.resourcePath == root.resourcePath
                         } }
-                        val readyRoots = restartStateRequests(matchingRoots)
-                        val ready = pending.filter { saved -> readyRoots.any {
+                        val statePlan = restartStatePlan(matchingRoots)
+                        skipped += statePlan.skippedComponents
+                        pending.removeAll { saved -> matchingRoots.any {
+                            it.instances > 1 && it.className == saved.className && it.resourcePath == saved.resourcePath
+                        } }
+                        val ready = pending.filter { saved -> statePlan.requests.any {
                             it.className == saved.className && it.resourcePath == saved.resourcePath
                         } }
                         ready.forEach { saved ->
@@ -354,7 +360,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     if (pending.isNotEmpty()) delay(150)
                 }
             }
-            withCurrent(request) { display.value = display.value.copy(message = "Code changes loaded; saved control state restored.") }
+            withCurrent(request) { display.value = display.value.copy(message =
+                if (skipped.isEmpty()) "Code changes loaded; saved control state restored."
+                else "Code changes loaded; state skipped for components with multiple instances: ${skipped.joinToString()}. Other saved control state restored.") }
         } catch (error: Exception) {
             if (error is CancellationException && error !is TimeoutCancellationException) throw error
             withCurrent(request) { display.value = display.value.copy(
@@ -365,6 +373,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
     fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default",
         restoredState: List<WinUIXamlStateRequest> = emptyList(),
+        skippedStateComponents: List<String> = emptyList(),
         launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true) {
         if (disposed || project.isDisposed) return
         require(theme in setOf("Default", "Light", "Dark"))
@@ -541,7 +550,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     project.service<WinUIXamlCatalogService>().refresh()
                     project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
                 }
-                if (restoredState.isNotEmpty()) restoreAfterRestart(request, restoredState)
+                if (restoredState.isNotEmpty() || skippedStateComponents.isNotEmpty()) restoreAfterRestart(request, restoredState, skippedStateComponents)
                 if (codeRevision.get() != launchCodeRevision) {
                     withCurrent(request) { display.value = display.value.copy(projectCodeChanged = true) }
                     scheduleCodeRebuild()
