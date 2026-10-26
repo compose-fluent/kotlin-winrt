@@ -75,6 +75,24 @@ class WinUIXamlReloadStateTest {
         transfer(saved.map { it.copy(kind = "ChangedType") })
         assertEquals("first", first.text)
     }
+    @Test fun named_component_identity_resolves_when_parent_connects_before_child_load_completes() {
+        // XAMLC Connect can precede the child's InitializeComponent completion;
+        // CsWinRT's generated connector owns the namescope edge in either order.
+        val registry = WinUIXamlHotReloadRegistry({ { task -> task(); true } }, { _, text -> text })
+        val window = Any(); val left = Any(); val right = Any(); val hash = "a".repeat(64)
+        registry.observe(window, "Window", "Window.xaml", hash, "Left", left)
+        registry.observe(window, "Window", "Window.xaml", hash, "Right", right)
+        registry.observe(window, "Window", "Window.xaml", hash, null, null)
+        registry.observe(right, "Control", "Control.xaml", hash, null, null)
+        registry.observe(left, "Control", "Control.xaml", hash, null, null)
+        val keys = registry.snapshot().roots.single { it.className == "Control" }.stateKeys
+        assertEquals(2, keys.size)
+        assertTrue(keys[0].endsWith("/5:Right"))
+        assertTrue(keys[1].endsWith("/4:Left"))
+        registry.observe(window, "Window", "Window.xaml", hash, "OtherLeft", left)
+        assertEquals("", registry.snapshot().roots.single { it.className == "Control" }.stateKeys[1])
+    }
+
     @Test fun named_component_state_survives_reordered_creation_and_rejects_ambiguous_aliases() {
         fun registry() = WinUIXamlHotReloadRegistry({ { task -> task(); true } }, { _, text -> text },
             stateAdapter = WinUIXamlStateAdapter({ value, _ -> (value as? Control)?.let {

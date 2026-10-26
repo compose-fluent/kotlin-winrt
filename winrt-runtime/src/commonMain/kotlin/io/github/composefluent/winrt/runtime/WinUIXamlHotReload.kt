@@ -80,6 +80,20 @@ internal class WinUIXamlHotReloadRegistry(
             }
         }
         if (name == null) {
+            // LoadComponent can connect the parent's field before the child has
+            // completed its own InitializeComponent. Resolve that earlier edge
+            // when the child becomes ready, still on the owning UI dispatcher.
+            val parents = lock.withLock {
+                pages.values.flatMap { it.roots }.filter { it !== root && it.thread == root.thread }
+                    .flatMap { parent -> parent.elements.mapNotNull { (name, reference) ->
+                        reference.get()?.let { Triple(parent, name, it) }
+                    } }
+            }
+            parents.forEach { (parent, element, value) ->
+                if (value === owner || inspector?.isSameObject(value, owner) == true) lock.withLock {
+                    if (parent.elements[element]?.get() === value) parent.namedComponents[element] = root
+                }
+            }
             if (lifetime != null) root.lifetime = PlatformManagedWeakReference(lifetime)
             val overrides = lock.withLock { page.overrides.values.toList() }
             val resources = lock.withLock { page.resourceOverrides.values.toList() }
