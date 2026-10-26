@@ -862,7 +862,12 @@ Further edits during a build are coalesced into another build before replacement
 The original IDE Run session remains active after its Gradle launch finishes and
 continues owning replacement processes, so Stop still terminates the current app.
 ASC desktop acceptance has verified Kotlin value changes, retained text input and
-Stop after an automatic unpackaged Native replacement, with preview still running. Debugger attachment
+Stop after an automatic unpackaged Native replacement, with preview still running.
+A second ASC run with two instances of the same dependency UserControl verified that
+a Kotlin change automatically rebuilds and replaces the application, preserves the
+uniquely owned main-window input, loads the new compiled binding value, and leaves
+both ambiguous component inputs at their initial values instead of transferring
+state between instances. No manual Run or Reconnect was needed. Debugger attachment
 pauses automatic replacement. External edits to loaded XAML files use the same
 live patch path as editor changes. Dictionaries, deleted XAML files and components
 without a loaded root request a build so their compiled resources are refreshed;
