@@ -74,8 +74,11 @@ fun Any.winrtAs(typeHandle: WinRTTypeHandle): Any {
         )
 
     objRef.use {
-        return ComWrappersSupport.createRcwForComObject(it.pointer.asRawAddress(), typeHandle)
-            ?: throw IllegalArgumentException(
+        // The dynamic handle overload must enforce the same native IID contract
+        // as winRTCast before a factory or cached RCW can satisfy the request.
+        return it.queryInterface(typeHandle.interfaceId).getOrThrow().use { typed ->
+            ComWrappersSupport.createRcwForComObject(typed.pointer.asRawAddress(), typeHandle)
+        } ?: throw IllegalArgumentException(
                 "Unable to create a WinRT wrapper for '${typeHandle.projectedTypeName}'.",
             )
     }

@@ -1935,6 +1935,7 @@ class ComWrappersSupportTest {
         )
         try {
             assertTrue(runCatching { projected.asWinRT<TargetProjectedInterface>() }.isFailure)
+            assertTrue(runCatching { projected.winrtAs(type) }.isFailure)
             assertEquals(0, factories)
             assertTrue(projected.nativeObject.queryInterface(IID.IInspectable).getOrThrow().use { true })
         } finally { projected.nativeObject.close() }
