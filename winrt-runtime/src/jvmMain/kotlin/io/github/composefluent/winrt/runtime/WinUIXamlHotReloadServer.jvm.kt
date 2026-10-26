@@ -68,11 +68,12 @@ internal class WinUIXamlHotReloadServer(private val registry: WinUIXamlHotReload
                     WinUIXamlHotReloadWire.writeReply(it.getOutputStream(), WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Invalid development session."))
                     return
                 }
-                val reply = if (patch == null && request.inspection == null) registry.snapshot() else {
+                val reply = if (patch == null && request.inspection == null && request.state == null) registry.snapshot() else {
                     val latch = CountDownLatch(1)
                     var response: WinUIXamlHotReloadReply? = null
                     val complete: (WinUIXamlHotReloadReply) -> Unit = { result -> response = result; latch.countDown() }
-                    if (request.inspection != null) registry.inspect(request.inspection, complete) else registry.submit(requireNotNull(patch), complete)
+                    if (request.state != null) registry.transferState(request.state, complete)
+                    else if (request.inspection != null) registry.inspect(request.inspection, complete) else registry.submit(requireNotNull(patch), complete)
                     if (latch.await(10, TimeUnit.SECONDS)) requireNotNull(response)
                     else WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The UI update is still pending. Reconnect before sending another version.")
                 }

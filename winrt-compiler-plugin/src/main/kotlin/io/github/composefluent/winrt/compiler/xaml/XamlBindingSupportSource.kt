@@ -19,6 +19,8 @@ fun xamlCompilerSupportTypeNames(framework: XamlFramework, previewHost: Boolean 
         "Markup.XamlBindingHelper", "Markup.XamlMarkupHelper", "Markup.XamlReader",
         "Media.VisualTreeHelper", "Media.Imaging.RenderTargetBitmap", "Media.Animation.Storyboard",
         "Controls.ContentControl", "Controls.ItemsControl",
+        "Controls.TextBox", "Controls.ToggleSwitch", "Controls.ScrollViewer",
+        "Controls.Primitives.ToggleButton", "Controls.Primitives.Selector", "Controls.Primitives.RangeBase",
     ).map(framework::xamlTypeName) + when (framework) {
         XamlFramework.UWP -> listOf("Windows.System.DispatcherQueue", "Windows.UI.ViewManagement.ApplicationView") +
             if (previewHost) listOf(framework.xamlTypeName("Controls.Grid")) else emptyList()

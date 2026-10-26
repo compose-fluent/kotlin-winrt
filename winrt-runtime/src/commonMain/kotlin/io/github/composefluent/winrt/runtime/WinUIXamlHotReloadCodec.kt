@@ -79,7 +79,24 @@ internal object WinUIXamlHotReloadCodec {
             }
         }
     }
-    internal data class Request(val token: String, val patch: WinUIXamlHotReloadPatch? = null, val inspection: WinUIXamlInspectionRequest? = null)
+    private fun Writer.savedState(state: List<WinUIXamlSavedElement>) {
+        validateWinUIXamlSavedState(state)
+        writeInt(state.size)
+        state.forEach { element ->
+            string(element.name); string(element.kind); writeInt(element.values.size)
+            element.values.forEach { string(it.name); string(it.value) }
+        }
+    }
+    private fun Reader.savedState(): List<WinUIXamlSavedElement> = List(count(512)) {
+        WinUIXamlSavedElement(string(), string(), List(count(16)) { WinUIXamlVisualProperty(string(), string()) })
+    }.also(::validateWinUIXamlSavedState)
+    internal data class Request(val token: String, val patch: WinUIXamlHotReloadPatch? = null,
+        val inspection: WinUIXamlInspectionRequest? = null, val state: WinUIXamlStateRequest? = null)
+    fun writeStateRequest(token: String, request: WinUIXamlStateRequest) = write {
+        require(request.instance in 0..1024)
+        string(token); writeByte(3); string(request.className); string(request.resourcePath); writeInt(request.instance)
+        writeBoolean(request.restore != null); request.restore?.let { savedState(it) }
+    }
     fun writeInspectionRequest(token: String, request: WinUIXamlInspectionRequest) = write() {
         string(token); writeByte(2); string(request.className); string(request.resourcePath); writeInt(request.instance)
         require(request.selectedPath.size <= 64 && request.selectedPath.all { it in 0..2048 })
@@ -91,11 +108,15 @@ internal object WinUIXamlHotReloadCodec {
         writeBoolean(request.readProperties)
     }
     fun readRequest(frame: ByteArray): Pair<String, WinUIXamlHotReloadPatch?> = readCommand(frame).let {
-        require(it.inspection == null) { "Use the visual inspection command reader." }; it.token to it.patch
+        require(it.inspection == null && it.state == null) { "Use the visual inspection command reader." }; it.token to it.patch
     }
     internal fun readCommand(frame: ByteArray): Request = read(frame) {
         val token = string()
         val operation = readUnsignedByte()
+        if (operation == 3) {
+            val name = string(); val path = string(); val instance = count(1024)
+            return@read Request(token, state = WinUIXamlStateRequest(name, path, instance, if (readBoolean()) savedState() else null))
+        }
         if (operation == 2) {
             val name = string(); val resource = string(); val instance = count(1024)
             val path = List(count(64)) { count(2048) }; val capture = readBoolean()
@@ -159,6 +180,7 @@ internal object WinUIXamlHotReloadCodec {
             writeBoolean(view.clock != null)
             view.clock?.let { require(it.positionMillis in 0..86_400_000); writeInt(it.positionMillis); writeBoolean(it.playing) }
         }
+        writeBoolean(reply.savedState != null); reply.savedState?.let { savedState(it) }
     }
     fun readReply(frame: ByteArray): WinUIXamlHotReloadReply = read(frame) {
         val status = readInt(); val message = string()
@@ -183,7 +205,7 @@ internal object WinUIXamlHotReloadCodec {
             }
             WinUIXamlVisualSnapshot(nodes, properties, image, if (readBoolean()) WinUIXamlPreviewClock(count(86_400_000), readBoolean()) else null)
         }
-        WinUIXamlHotReloadReply(status, message, roots, values, inspection)
+        WinUIXamlHotReloadReply(status, message, roots, values, inspection, if (readBoolean()) savedState() else null)
     }
 
     private class Writer {

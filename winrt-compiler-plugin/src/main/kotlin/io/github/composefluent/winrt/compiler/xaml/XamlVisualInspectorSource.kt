@@ -36,6 +36,7 @@ internal fun xamlDevelopmentConfigurationSource(inspector: String, framework: Xa
       // The generated collection adapter owns the actual item type boundary.
       loadElement = { markup -> requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(markup)) },
       inspector = $inspector(),
+      stateAdapter = ${inspector}State(),
     )
 """.trimIndent()
 }
@@ -149,6 +150,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
     val dispatching = if (framework == XamlFramework.UWP) "windows.system" else "microsoft.ui.dispatching"
     val suffix = assemblyName.orEmpty().replace(Regex("[^A-Za-z0-9_]"), "_")
     val name = "kotlinWinUIXamlVisualInspector_$suffix"
+    writeXamlStateAdapterSource(root, name, framework)
     val file = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_$suffix.kt")
     Files.createDirectories(file.parent)
     file.writeText("""

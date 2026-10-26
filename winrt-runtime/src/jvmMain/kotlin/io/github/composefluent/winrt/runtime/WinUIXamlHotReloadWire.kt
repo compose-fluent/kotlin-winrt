@@ -20,6 +20,8 @@ object WinUIXamlHotReloadWire {
         write(stream, WinUIXamlHotReloadCodec.writeRequest(token, patch))
     fun writeInspectionRequest(stream: OutputStream, token: String, request: WinUIXamlInspectionRequest) =
         write(stream, WinUIXamlHotReloadCodec.writeInspectionRequest(token, request))
+    fun writeStateRequest(stream: OutputStream, token: String, request: WinUIXamlStateRequest) =
+        write(stream, WinUIXamlHotReloadCodec.writeStateRequest(token, request))
     fun readRequest(stream: InputStream): Pair<String, WinUIXamlHotReloadPatch?> = WinUIXamlHotReloadCodec.readRequest(read(stream))
     internal fun readCommand(stream: InputStream): WinUIXamlHotReloadCodec.Request = WinUIXamlHotReloadCodec.readCommand(read(stream))
     fun writeReply(stream: OutputStream, reply: WinUIXamlHotReloadReply) = write(stream, WinUIXamlHotReloadCodec.writeReply(reply))

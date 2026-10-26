@@ -81,12 +81,13 @@ internal class NativeWinUIXamlHotReloadServer(
         }
         val reply = when {
             !authenticated -> WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Invalid development session.")
-            command.patch == null && command.inspection == null -> registry.snapshot()
+            command.patch == null && command.inspection == null && command.state == null -> registry.snapshot()
             else -> {
                 // A timed-out UI callback may still complete. Its Kotlin-owned result slot
                 // outlives the request; it never retains freed events or socket handles.
                 val response = PendingReply()
-                if (command.inspection != null) registry.inspect(command.inspection, response::complete)
+                if (command.state != null) registry.transferState(command.state, response::complete)
+                else if (command.inspection != null) registry.inspect(command.inspection, response::complete)
                 else registry.submit(requireNotNull(command.patch), response::complete)
                 timing?.let { println("XAML preview request queued: " + (GetTickCount64() - it) + "ms") }
                 val deadline = GetTickCount64() + 10_000uL

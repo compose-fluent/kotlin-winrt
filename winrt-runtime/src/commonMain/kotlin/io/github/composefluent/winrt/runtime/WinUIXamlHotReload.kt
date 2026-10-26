@@ -11,6 +11,7 @@ internal class WinUIXamlHotReloadRegistry(
     private val loadResources: (String) -> Map<Any?, Any?> = { error("Resource loading is not configured; rebuild.") },
     private val loadElement: (String) -> Any = { error("Element loading is not configured; rebuild.") },
     private val inspector: WinUIXamlVisualInspector? = null,
+    private val stateAdapter: WinUIXamlStateAdapter? = null,
 ) {
     private class Root(owner: Any, val thread: Long, val enqueue: (() -> Unit) -> Boolean) {
         val owner = PlatformManagedWeakReference(owner)
@@ -215,6 +216,57 @@ internal class WinUIXamlHotReloadRegistry(
             dispatchTiming?.let { println("XAML preview enqueue returned: " + it.elapsedNow().inWholeMilliseconds + "ms") }
             if (!enqueued) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The UI dispatcher rejected inspection."))
         } catch (error: Exception) { complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, error.message.orEmpty())) }
+    }
+
+    /** State is scoped to one compiled component instance and never enters the XAML
+     * patch history. A later component must not inherit an earlier user's input. */
+    fun transferState(request: WinUIXamlStateRequest, complete: (WinUIXamlHotReloadReply) -> Unit) {
+        val adapter = stateAdapter
+        val root = lock.withLock {
+            pages[request.className to request.resourcePath]?.roots
+                ?.filter { it.ready && it.owner.get() != null }?.getOrNull(request.instance)
+        }
+        if (root == null || adapter == null) {
+            complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "No component state adapter. Rebuild with the current toolchain."))
+            return
+        }
+        try {
+            val accepted = root.enqueue {
+                val result = runCatching {
+                    check(!lock.withLock { closed } && root.owner.get() != null) { "The component has closed." }
+                    check(platformCurrentThreadToken() == root.thread) { "State transfer requires the owning UI thread." }
+                    val elements = lock.withLock { root.elements.toMap() }.mapNotNull { (name, reference) ->
+                        reference.get()?.let { name to it }
+                    }.toMap()
+                    if (request.restore == null) {
+                        val state = elements.mapNotNull { (name, value) -> adapter.capture(value)?.takeIf { it.values.isNotEmpty() }?.copy(name = name) }
+                        validateWinUIXamlSavedState(state)
+                        snapshot().copy(message = "Captured ${state.size} controls for restart", savedState = state)
+                    } else {
+                        validateWinUIXamlSavedState(request.restore)
+                        val prepared = request.restore.mapNotNull { saved ->
+                            val value = elements[saved.name] ?: return@mapNotNull null
+                            val before = adapter.capture(value)?.copy(name = saved.name) ?: return@mapNotNull null
+                            if (before.kind != saved.kind) null else Triple(value, before, saved)
+                        }.sortedBy { (_, _, saved) -> saved.values.any { it.name == "Focus" && it.value != "Unfocused" } }
+                        val attempted = mutableListOf<Triple<Any, WinUIXamlSavedElement, WinUIXamlSavedElement>>()
+                        try {
+                            prepared.forEach { item -> attempted += item; adapter.restore(item.first, item.third) }
+                        } catch (failure: Exception) {
+                            attempted.asReversed().forEach { item ->
+                                runCatching { adapter.restore(item.first, item.second) }.exceptionOrNull()?.let(failure::addSuppressed)
+                            }
+                            throw failure
+                        }
+                        snapshot().copy(message = "Restored ${prepared.size} controls; ${request.restore.size - prepared.size} missing or changed controls skipped")
+                    }
+                }
+                complete(result.getOrElse { WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, it.message.orEmpty()) })
+            }
+            if (!accepted) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The UI dispatcher rejected state transfer."))
+        } catch (error: Exception) {
+            complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, error.message.orEmpty()))
+        }
     }
 
     private fun format(value: Any?): String = (inspector?.formatValue?.invoke(value) ?: value?.toString().orEmpty()).take(4096)
@@ -455,11 +507,11 @@ private object WinUIXamlHotReloadConfiguration {
 fun configureWinUIXamlHotReload(dispatcherFactory: () -> ((() -> Unit) -> Boolean), sdkConvert: (KClass<*>, String) -> Any?,
     loadResources: (String) -> Map<Any?, Any?> = { error("Resource loading is not configured; rebuild.") },
     loadElement: (String) -> Any = { error("Element loading is not configured; rebuild.") },
-    inspector: WinUIXamlVisualInspector? = null) {
+    inspector: WinUIXamlVisualInspector? = null, stateAdapter: WinUIXamlStateAdapter? = null) {
     WinUIXamlHotReloadConfiguration.lock.withLock {
         if (WinUIXamlHotReloadConfiguration.initialized) return
         WinUIXamlHotReloadConfiguration.initialized = true
-        val registry = WinUIXamlHotReloadRegistry(dispatcherFactory, sdkConvert, loadResources, loadElement, inspector)
+        val registry = WinUIXamlHotReloadRegistry(dispatcherFactory, sdkConvert, loadResources, loadElement, inspector, stateAdapter)
         platformStartWinUIXamlHotReload(registry)?.let { transport ->
             WinUIXamlHotReloadConfiguration.registry = registry
             WinUIXamlHotReloadConfiguration.transport = transport
