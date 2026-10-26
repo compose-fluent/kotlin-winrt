@@ -55,9 +55,12 @@ internal class WinUIXamlCollectionBaseline private constructor(private val slots
                     }
                     // Shared XAML graph roles; the content member comes from IXamlType metadata.
                     (listOfNotNull(WinUIAuthoredTypeMetadata.contentProperty(value)) +
+                        WinUIAuthoredTypeMetadata.collectionProperties(value) +
                         listOf("Resources", "MergedDictionaries", "ThemeDictionaries")).distinct().forEach { name ->
                         WinUIAuthoredTypeMetadata.memberDefinition(value, name)?.let { member ->
-                            val child = member.get(value)
+                            // A getter may be unavailable before template realization. Leave that
+                            // path uncaptured (and reject edits to it), not the entire component.
+                            val child = runCatching { member.get(value) }.getOrElse { return@let }
                             if (child is List<*> && child.size <= 4096 && slots.none {
                                 it.member.name == name && it.owner.matchesTarget(value)
                             }) {

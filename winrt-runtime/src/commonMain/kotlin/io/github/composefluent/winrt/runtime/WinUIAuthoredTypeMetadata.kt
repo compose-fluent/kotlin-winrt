@@ -119,6 +119,23 @@ internal object WinUIAuthoredTypeMetadata {
         return null
     }
 
+    /** Enumerate generated vector accessors, respecting derived member shadowing.
+     * Runtime2's generated custom-property provider owns access; collection shape
+     * comes from the same metadata closure as projection emission. */
+    internal fun collectionProperties(source: Any): List<String> {
+        val names = linkedSetOf<String>()
+        val collections = mutableListOf<String>()
+        var definition = definitionsByType[source::class]
+        val seen = mutableSetOf<String>()
+        while (definition != null && seen.add(definition.name)) {
+            definition.members.values.filterNot { it.isAttachable }.forEach {
+                if (names.add(it.name) && it.isCollection) collections += it.name
+            }
+            definition = definition.baseType?.let { definitionsByType[it] } ?: definitions[definition.baseName]
+        }
+        return collections
+    }
+
     fun customProperties(source: Any): List<microsoft.ui.xaml.data.ICustomProperty> {
         val names = linkedSetOf<String>()
         var definition = definitionsByType[source::class]

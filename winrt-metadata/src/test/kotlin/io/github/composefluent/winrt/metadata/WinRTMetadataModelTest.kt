@@ -10,6 +10,27 @@ import org.junit.Test
 
 class WinRTMetadataModelTest {
     @Test
+    fun mutable_vectors_follow_runtime_class_interfaces_and_inherited_contracts() {
+        // Runtime2 WindowsRuntimeList<T> projects IVector<T>, including classes
+        // whose default interface itself is not the collection contract.
+        val rows = WinRTTypeDefinition("Probe", "Rows", WinRTTypeKind.RuntimeClass,
+            implementedInterfaces = listOf(WinRTInterfaceImplementationDefinition(
+                "Windows.Foundation.Collections.IVector<Probe.Row>")))
+        val derived = WinRTTypeDefinition("Probe", "DerivedRows", WinRTTypeKind.RuntimeClass,
+            baseTypeName = rows.qualifiedName)
+        val model = WinRTMetadataModel(listOf(WinRTNamespace("Probe", listOf(rows, derived))))
+        val closure = model.closureResolver(); val special = model.specialTypeResolver()
+        fun element(name: String) = closure.mutableVectorElementType(
+            WinRTTypeRef.fromDisplayName(name), "Probe", special)?.qualifiedName
+        assertEquals("Probe.Row", element("Windows.Foundation.Collections.IVector<Probe.Row>"))
+        assertEquals("Probe.Row", element("Probe.Rows"))
+        assertEquals("Probe.Row", element("Probe.DerivedRows"))
+        assertEquals(null, element("Windows.Foundation.Collections.IVectorView<Probe.Row>"))
+        assertEquals(null, element("Windows.Foundation.Collections.IMap<String, Probe.Row>"))
+        assertEquals("Object", element("Microsoft.UI.Xaml.Interop.IBindableVector"))
+    }
+
+    @Test
     fun xaml_dependency_properties_follow_static_metadata_and_cycle_safe_bases() {
         // XAMLC XamlTypeExtensions.IsDependencyProperty + CsWinRT static interface projection.
         listOf("Microsoft.UI.Xaml", "Windows.UI.Xaml").forEach { ns ->

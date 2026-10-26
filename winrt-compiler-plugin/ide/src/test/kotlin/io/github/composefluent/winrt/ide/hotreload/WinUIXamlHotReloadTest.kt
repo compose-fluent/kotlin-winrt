@@ -403,6 +403,29 @@ class WinUIXamlHotReloadTest {
         }
     }
 
+    @Test fun real_native_host_updates_non_content_grid_definitions() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue("Supply the Native layout application session", directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "LayoutRoot" in it.elements }
+            val path = listOf(WinUIXamlHotReloadStep.Property("RowDefinitions"), WinUIXamlHotReloadStep.Index(0, 2))
+            val edit = WinUIXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash,
+                "9".repeat(64), root.version + 1, listOf(WinUIXamlHotReloadChange("LayoutRoot", "Height", "300", path)))
+            val applied = client.request(edit)
+            assertEquals(applied.message, WinUIXamlHotReloadProtocol.APPLIED, applied.status)
+            try {
+                assertTrue(applied.values.toString(), applied.values.single().value.contains("300"))
+                val rejected = client.request(edit.copy(expectedHash = edit.sourceHash, sourceHash = "8".repeat(64),
+                    version = edit.version + 1, changes = listOf(WinUIXamlHotReloadChange("LayoutRoot", "Height", "-1", path))))
+                assertEquals(rejected.message, WinUIXamlHotReloadProtocol.REJECTED, rejected.status)
+            } finally {
+                val restored = client.request(edit.copy(expectedHash = edit.sourceHash, sourceHash = root.sourceHash,
+                    version = edit.version + 1, changes = listOf(WinUIXamlHotReloadChange("LayoutRoot", "Height", "*", path))))
+                assertEquals(restored.message, WinUIXamlHotReloadProtocol.APPLIED, restored.status)
+            }
+        }
+    }
+
     @Test fun real_native_host_reports_dependency_control_type_identity() {
         val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
         assumeTrue(directory != null)

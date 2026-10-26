@@ -248,6 +248,40 @@ class WinUIXamlHotReloadTest {
         assertNull(lifetime.hotReloadBaseline)
     }
 
+    @Test fun non_content_vectors_reload_and_reject_application_replacements() {
+        // Runtime2 collection projection + generated custom-property accessors:
+        // Grid.RowDefinitions is a vector property, not Grid's content property.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        class Layout(val rows: MutableList<Element>)
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Layout::class,
+            "probe.Layout", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("RowDefinitions", "probe.Rows", MutableList::class,
+                    { (it as Layout).rows }, isCollection = true),
+                WinUIXamlMemberDefinition("Unavailable", "probe.Rows", MutableList::class,
+                    { error("template not realized") }, isCollection = true),
+                WinUIXamlMemberDefinition("Unrelated", "Object", Any::class,
+                    { error("unrelated getter must not run") }))))
+        val row = Element("row"); val owner = Layout(mutableListOf(row))
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        val path = listOf(WinUIXamlHotReloadStep.Property("RowDefinitions"), WinUIXamlHotReloadStep.Index(0, 1))
+        fun send(update: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var result: WinUIXamlHotReloadReply? = null
+            registry.submit(update) { result = it }; queue.removeAt(0).invoke()
+            return requireNotNull(result)
+        }
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED,
+            send(patch(WinUIXamlHotReloadChange("", "Size", "2", path))).status)
+        assertEquals(2, row.size)
+        owner.rows[0] = Element("replacement")
+        val edit = patch(WinUIXamlHotReloadChange("", "Size", "3", path))
+            .copy(expectedHash = next, sourceHash = "c".repeat(64), version = 2)
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(edit).status)
+        assertEquals(1, owner.rows[0].size)
+        owner.rows[0] = row
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(edit).status)
+        assertEquals(3, row.size)
+    }
+
     @Test fun property_side_effects_refresh_only_the_changed_owner_collection_baseline() {
         // TextBlock.Text can replace Inlines through the SDK setter. Refresh that
         // owner without accepting an unrelated application-owned child reorder.

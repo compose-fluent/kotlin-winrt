@@ -42,6 +42,10 @@ class WinUIXamlMemberDefinition(
     val targetType: KClass<*>? = null,
     val valueTypes: List<WinUIXamlValueTypeDefinition> = emptyList(),
     val localValue: ((Any) -> WinUIXamlLocalValue)? = null,
+    /** Generated vector shape; does not invoke unrelated application getters. */
+    val isCollection: Boolean = collection != null || valueTypes.any {
+        it.name == typeName && it.addToVector != null
+    },
 ) {
     init {
         require(name.isNotBlank() && typeName.isNotBlank())

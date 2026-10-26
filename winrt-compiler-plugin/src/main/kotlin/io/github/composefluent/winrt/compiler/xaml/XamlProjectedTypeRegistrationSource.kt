@@ -121,7 +121,8 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                 val kotlinType = xamlProjectedPropertySourceType(ref, specialTypes, semantics).let { if (nullable && !it.endsWith('?')) "$it?" else it }
                 appendLine(xamlPropertyRegistrationSource(owner, property, kotlinType, convert,
                     accessorName = member.propertyName.replaceFirstChar(Char::lowercase),
-                    localValueSource = localValueSource(member.propertyName)).prependIndent("      ") + ",")
+                    localValueSource = localValueSource(member.propertyName),
+                    isCollection = closure.mutableVectorElementType(ref, type.namespace, specialTypes) != null).prependIndent("      ") + ",")
             }
             if (development) {
                 val staticTypes = closure.resolveRuntimeClass(type).activation.staticInterfaces.mapNotNull { it.definitionType }

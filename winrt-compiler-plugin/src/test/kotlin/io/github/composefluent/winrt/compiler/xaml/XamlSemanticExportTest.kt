@@ -141,6 +141,32 @@ class XamlSemanticExportTest {
     }
 
     @Test
+    fun sdk_non_content_vectors_emit_collection_shape_for_both_frameworks() {
+        for (framework in listOf(io.github.composefluent.winrt.runtime.XamlFramework.WinUI,
+            io.github.composefluent.winrt.runtime.XamlFramework.UWP)) {
+            val ns = framework.xamlNamespace + ".Controls"
+            val rows = WinRTTypeDefinition(ns, "Rows", WinRTTypeKind.RuntimeClass,
+                implementedInterfaces = listOf(WinRTInterfaceImplementationDefinition(
+                    "Windows.Foundation.Collections.IVector<$ns.Row>")))
+            val contract = WinRTTypeDefinition(ns, "ILayout", WinRTTypeKind.Interface,
+                methods = listOf(WinRTMethodDefinition("get_RowDefinitions", "$ns.Rows")),
+                properties = listOf(WinRTPropertyDefinition("RowDefinitions", "$ns.Rows", getterMethodName = "get_RowDefinitions")))
+            val layout = WinRTTypeDefinition(ns, "Layout", WinRTTypeKind.RuntimeClass,
+                defaultInterfaceName = contract.qualifiedName,
+                implementedInterfaces = listOf(WinRTInterfaceImplementationDefinition(contract.qualifiedName, isDefault = true)))
+            val model = WinRTMetadataModel(listOf(WinRTNamespace(ns, listOf(rows, contract, layout))))
+            val root = Files.createTempDirectory("xaml-vector-accessors").toFile()
+            try {
+                assertNotNull(writeXamlProjectedTypeRegistrationSource(root.toPath(), model,
+                    setOf(layout.qualifiedName), "Vectors", framework))
+                val source = root.walkTopDown().single { it.extension == "kt" }.readText()
+                val member = source.substringAfter("name = \"RowDefinitions\"").substringBefore("    ),")
+                assertTrue(source, member.contains("isCollection = true"))
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test
     fun projected_attached_accessors_use_typed_static_calls_and_distinct_member_identity() {
         // CSharpTypeInfoPass2 attached getters/setters remain compiler-generated;
         // runtime lookup must not confuse ScrollViewer's same-named instance member.

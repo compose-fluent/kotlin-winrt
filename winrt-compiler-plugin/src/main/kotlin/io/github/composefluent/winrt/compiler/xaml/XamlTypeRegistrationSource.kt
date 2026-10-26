@@ -16,11 +16,13 @@ internal fun xamlPropertyRegistrationSource(
     convert: (String, String) -> String,
     accessorName: String = property.name,
     localValueSource: String? = null,
+    isCollection: Boolean = false,
 ): String = buildString {
     appendLine("${runtimePackage}WinUIXamlMemberDefinition(")
     appendLine("  name = ${literal(property.name)}, typeName = ${literal(property.type.xamlStandardTypeName())}, type = ${classLiteral(kotlinType)},")
     appendLine("  isDependencyProperty = ${property.isDependencyProperty}, get = { (it as $owner).`$accessorName` },")
     if (!property.isReadOnly) appendLine("  set = { instance, value -> (instance as $owner).`$accessorName` = ${convert("value", kotlinType)} },")
+    if (isCollection) appendLine("  isCollection = true,")
     localValueSource?.let { appendLine("  localValue = $it,") }
     val values = xamlValueTypeRegistrationSources(property.type, kotlinType, convert)
     if (values.isNotEmpty()) appendLine("  valueTypes = listOf(${values.joinToString(",\n")}),")

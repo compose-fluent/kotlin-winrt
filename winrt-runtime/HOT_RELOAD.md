@@ -332,7 +332,11 @@ The shared runtime still resolves each value through generated ICustomProperty
 metadata; omitted properties are not read and the transport limit is unchanged.
 
 Collection baselines are captured at component completion using generated content
-metadata and resource graph accessors. Indexed edits and child-collection updates
+metadata, resource graph accessors, and generated mutable-vector property metadata
+(including non-content collections such as Grid.RowDefinitions and ColumnDefinitions).
+The compiler and IDE share the WinMD interface-closure classifier; the runtime does
+not probe unrelated application getters. An unavailable collection getter leaves
+only that path uncaptured. Indexed edits and child-collection updates
 check object identities, not only Count. A same-size application reorder or
 replacement is rejected without advancing the source version. Successful writes
 refresh affected owners and collections, preserving unrelated baselines; rollback

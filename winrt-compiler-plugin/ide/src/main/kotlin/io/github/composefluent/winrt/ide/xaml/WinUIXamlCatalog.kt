@@ -49,14 +49,7 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
     fun propertyContent(type: WinRTTypeDefinition, name: String): WinUIXamlContentMember? {
         val member = members(type).firstOrNull { it.name == name && !it.isEvent } ?: return null
         val reference = WinRTTypeRef.fromDisplayName(member.typeName)
-        fun mutable(ref: WinRTTypeRef) = when (val shape = specialTypes.resolveType(ref, type.namespace)) {
-            is WinRTCollectionTypeDescriptor -> shape.kind == WinRTCollectionInterfaceKind.Vector
-            is WinRTBindableCollectionTypeDescriptor -> shape.kind == WinRTBindableCollectionKind.Vector
-            else -> false
-        }
-        val definition = types[reference.qualifiedName]
-        val collection = mutable(reference) || definition?.takeIf { it.kind == WinRTTypeKind.RuntimeClass }
-            ?.let { closure.resolveRuntimeClass(it).instanceInterfaceClosure.any { contract -> mutable(contract.interfaceType) } } == true
+        val collection = closure.mutableVectorElementType(reference, type.namespace, specialTypes) != null
         return WinUIXamlContentMember(name, collection)
     }
 
@@ -65,14 +58,9 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
         val content = contentMember(owner) ?: return false
         val member = members(owner).firstOrNull { it.name == content.name && !it.isEvent } ?: return false
         val reference = WinRTTypeRef.fromDisplayName(member.typeName)
-        fun element(ref: WinRTTypeRef): String? = when (val shape = specialTypes.resolveType(ref, owner.namespace)) {
-            is WinRTCollectionTypeDescriptor -> if (shape.kind == WinRTCollectionInterfaceKind.Vector) shape.elementType?.type?.qualifiedName else null
-            is WinRTBindableCollectionTypeDescriptor -> if (shape.kind == WinRTBindableCollectionKind.Vector) "Object" else null
-            else -> null
-        }
-        val expected = if (content.collection) element(reference) ?: types[reference.qualifiedName]?.let {
-            closure.resolveRuntimeClass(it).instanceInterfaceClosure.firstNotNullOfOrNull { contract -> element(contract.interfaceType) }
-        } ?: return false else if (member.isWritable) reference.qualifiedName else return false
+        val expected = if (content.collection)
+            closure.mutableVectorElementType(reference, owner.namespace, specialTypes)?.qualifiedName ?: return false
+        else if (member.isWritable) reference.qualifiedName else return false
         if (expected in setOf("Object", "System.Object")) return true
         val seen = hashSetOf<String>()
         var current: WinRTTypeDefinition? = child
