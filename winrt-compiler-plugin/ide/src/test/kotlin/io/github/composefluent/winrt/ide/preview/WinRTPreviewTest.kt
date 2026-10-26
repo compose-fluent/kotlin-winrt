@@ -41,6 +41,22 @@ class WinRTPreviewTest {
         assertTrue(document.markup.contains("Text=\"Design value\""))
         assertFalse(document.markup.contains("{x:Bind"))
     }
+    @Test fun project_popup_children_keep_source_provenance_when_opening_is_deferred() {
+        val text = """<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="sample.Page"><Grid><Popup IsOpen="False" d:IsOpen="True"><Border><TextBlock Text="Layer"/></Border></Popup><Border/></Grid></Page>"""
+        val document = WinUIXamlDesignDocument.prepare(text, projectBindings = true,
+            visualType = { _, name -> name in setOf("Page", "Grid", "Popup", "Border", "TextBlock") })
+        val dom = parse(document.markup)
+        val markers = dom.getElementsByTagNameNS("http://schemas.microsoft.com/winfx/2006/xaml", "String")
+        val sourceIds = (0 until markers.length).map { markers.item(it) as org.w3c.dom.Element }
+            .filter { it.getAttributeNS("http://schemas.microsoft.com/winfx/2006/xaml", "Key") == WinUIXamlHotReloadProtocol.PREVIEW_SOURCE_KEY }
+            .map { it.textContent }
+        assertEquals(6, sourceIds.size)
+        assertEquals(6, sourceIds.distinct().size)
+        assertTrue("Popup resources must not shift its child's original source path", sourceIds.any { it.endsWith(":0.0.0") })
+        assertTrue(sourceIds.any { it.endsWith(":0.0.0.0") })
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_POPUP_OPEN_KEY))
+    }
+
     @Test fun compiled_dictionary_bindings_keep_their_own_generated_owner() {
         val document = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="Data.xaml"/></Page.Resources><TextBlock/></Page>""",
             projectBindings = true, resource = { _, _ -> WinUIXamlDesignResource("""<ResourceDictionary $namespaces x:Class="sample.Data"><DataTemplate x:Key="Row"><TextBlock Text="{x:Bind Name}"/></DataTemplate></ResourceDictionary>""", "Styles/Data.xaml") })

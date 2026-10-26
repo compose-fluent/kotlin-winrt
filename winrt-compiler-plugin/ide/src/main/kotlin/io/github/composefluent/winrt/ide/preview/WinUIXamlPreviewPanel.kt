@@ -347,12 +347,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                         projectBindings = projectCode, bindingPage = bindingPage,
                         designData = documents::resolve,
                         sdkType = if (projectCode) null else { uri, type -> catalog?.resolve(uri, type) != null },
-                        visualType = if (projectCode) null else { uri, type -> catalog?.let { schema -> schema.resolve(uri, type)?.let(schema::isVisual) == true } == true }) { uri, type, attribute ->
+                        visualType = { uri, type -> catalog?.let { schema -> schema.resolve(uri, type)?.let(schema::isVisual) == true } == true }) { uri, type, attribute ->
                         if (catalog != null) catalog.resolve(uri, type)?.let {
                             catalog.members(it).any { member -> member.name == attribute && member.isEvent }
                         } == true else events!!.isEvent(uri, type, attribute)
                     }.also { document ->
-                        if (cacheKey != null) runCatching { cache?.write(cacheKey, document) }
+                        // The fast event-only preparation has no visual schema yet.
+                        // Do not persist its unmarked tree over the later source-aware copy.
+                        if (cacheKey != null && catalog != null) runCatching { cache?.write(cacheKey, document) }
                     }
                 }
                 prepared?.let { notes = it.notes }
