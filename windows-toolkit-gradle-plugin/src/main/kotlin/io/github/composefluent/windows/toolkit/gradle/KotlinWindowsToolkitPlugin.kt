@@ -2221,6 +2221,16 @@ private fun configureMingwApplicationEntry(
         if (!entryTask.flatMap { it.mainClass }.orNull.isNullOrBlank()) {
             executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
         }
+        if (executable.buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG &&
+            executable.freeCompilerArgs.none { it == "-Xbackend-threads" || it.startsWith("-Xbackend-threads=") }) {
+            // K/N's supported per-file codegen threads retain debug information and
+            // avoid the unsupported mingw compiler-cache path. Respect explicit flags.
+            val threads = project.providers.gradleProperty("kotlinWinRT.native.backendThreads").map { value ->
+                value.toIntOrNull()?.takeIf { it in 1..64 }
+                    ?: throw org.gradle.api.GradleException("kotlinWinRT.native.backendThreads must be between 1 and 64.")
+            }.orElse(project.gradle.startParameter.maxWorkerCount.coerceIn(1, 4)).get()
+            executable.freeCompilerArgs += "-Xbackend-threads=$threads"
+        }
         executable.linkerOpts(if (console.get()) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
         if (applicationModel.get() == WindowsApplicationModel.UWP) executable.linkerOpts("-Wl,/APPCONTAINER")
         if (launcherIconTask.get().launcherIcon.isPresent) {

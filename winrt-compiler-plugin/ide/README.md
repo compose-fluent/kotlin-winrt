@@ -929,3 +929,9 @@ Project previews prefer a validated cached Native deployment. When no reusable p
 The Toolbox supports search, drag-to-insert and select-then-place. Insertion uses the metadata content contract and never replaces existing content or bindings. Ctrl/Shift+click selects multiple source elements; dragging, nudging and shared properties apply in one undoable command. Align/match-size commands use the last selected sibling in Grid or Canvas. Edge/center snap guides can be toggled; hold Alt to bypass them. Template-generated visuals remain navigation-only when no exact source mapping exists.
 
 Reopening a static designer can display its previous successful image while the current host starts. This image is explicitly labelled **Previous render** and cannot provide editable objects or hot-reload state. The disposable module-build cache stores only bounded pixel buffers and artboard dimensions, isolates source files/themes/sizes, and retains at most eight images. Corrupt entries are ignored. It does not bypass launch validation or count as a new Native first frame; current rendering replaces it automatically.
+
+Native development builds use up to four compiler backend threads, bounded by the
+Gradle worker limit. `kotlinWinRT.native.backendThreads` can select 1–64 threads;
+an explicit binary `-Xbackend-threads` argument takes precedence. This retains debug
+information and does not enable unsupported mingw compiler caches. Release binaries
+keep their existing compiler settings.
