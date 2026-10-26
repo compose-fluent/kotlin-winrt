@@ -95,6 +95,8 @@ internal object WinUIXamlHotReloadCodec {
     fun writeStateRequest(token: String, request: WinUIXamlStateRequest) = write {
         require(request.instance in 0..1024)
         string(token); writeByte(3); string(request.className); string(request.resourcePath); writeInt(request.instance)
+        require(request.componentKey.length <= 4096)
+        string(request.componentKey)
         writeBoolean(request.restore != null); request.restore?.let { savedState(it) }
     }
     fun writeInspectionRequest(token: String, request: WinUIXamlInspectionRequest) = write() {
@@ -115,7 +117,8 @@ internal object WinUIXamlHotReloadCodec {
         val operation = readUnsignedByte()
         if (operation == 3) {
             val name = string(); val path = string(); val instance = count(1024)
-            return@read Request(token, state = WinUIXamlStateRequest(name, path, instance, if (readBoolean()) savedState() else null))
+            val key = string().also { require(it.length <= 4096) }
+            return@read Request(token, state = WinUIXamlStateRequest(name, path, instance, if (readBoolean()) savedState() else null, key))
         }
         if (operation == 2) {
             val name = string(); val resource = string(); val instance = count(1024)
@@ -155,7 +158,9 @@ internal object WinUIXamlHotReloadCodec {
         writeInt(reply.status); string(reply.message); writeInt(reply.roots.size)
         reply.roots.forEach { string(it.className); string(it.resourcePath); string(it.sourceHash); writeLong(it.version)
             writeInt(it.instances)
-            writeInt(it.elements.size); it.elements.forEach { name -> string(name) } }
+            writeInt(it.elements.size); it.elements.forEach { name -> string(name) }
+            require(it.stateKeys.isEmpty() || it.stateKeys.size == it.instances)
+            writeInt(it.stateKeys.size); it.stateKeys.forEach { key -> require(key.length <= 4096); string(key) } }
         writeInt(reply.values.size); reply.values.forEach { string(it.element); string(it.property); string(it.value); path(it.path) }
         writeBoolean(reply.inspection != null)
         reply.inspection?.let { view ->
@@ -186,7 +191,10 @@ internal object WinUIXamlHotReloadCodec {
         val status = readInt(); val message = string()
         val roots = List(count(1024)) { val name = string(); val path = string(); val hash = string(); val version = readLong()
             val instances = count(1024)
-            WinUIXamlHotReloadRoot(name, path, hash, version, List(count(4096)) { string() }, instances) }
+            val elements = List(count(4096)) { string() }
+            val keys = List(count(1024)) { string().also { require(it.length <= 4096) } }
+            require(keys.isEmpty() || keys.size == instances)
+            WinUIXamlHotReloadRoot(name, path, hash, version, elements, instances, keys) }
         val values = List(count(512)) { WinUIXamlHotReloadValue(string(), string(), string(), path()) }
         val inspection = if (!readBoolean()) null else {
             val nodes = List(count(2048)) {

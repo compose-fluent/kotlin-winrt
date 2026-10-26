@@ -55,8 +55,15 @@ internal data class WinRTRestartStatePlan(
     val requests: List<WinUIXamlStateRequest>, val skippedComponents: List<String>,
 )
 internal fun restartStatePlan(roots: List<WinUIXamlHotReloadRoot>) = WinRTRestartStatePlan(
-    roots.filter { it.instances == 1 }.map { WinUIXamlStateRequest(it.className, it.resourcePath) },
-    roots.filter { it.instances > 1 }.map { "${it.className} (${it.resourcePath})" },
+    roots.flatMap { root ->
+        if (root.stateKeys.isEmpty()) {
+            if (root.instances == 1) listOf(WinUIXamlStateRequest(root.className, root.resourcePath)) else emptyList()
+        } else root.stateKeys.filter { it.isNotEmpty() }.distinct().map { key ->
+            WinUIXamlStateRequest(root.className, root.resourcePath, componentKey = key)
+        }
+    },
+    roots.filter { it.instances > 1 && (it.stateKeys.size != it.instances || it.stateKeys.any(String::isEmpty)) }
+        .map { "${it.className} (${it.resourcePath})" },
 )
 
 open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
@@ -346,10 +353,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         val statePlan = restartStatePlan(matchingRoots)
                         skipped += statePlan.skippedComponents
                         pending.removeAll { saved -> matchingRoots.any {
-                            it.instances > 1 && it.className == saved.className && it.resourcePath == saved.resourcePath
+                            saved.componentKey.isEmpty() && it.instances > 1 && it.className == saved.className && it.resourcePath == saved.resourcePath
                         } }
                         val ready = pending.filter { saved -> statePlan.requests.any {
-                            it.className == saved.className && it.resourcePath == saved.resourcePath
+                            it.className == saved.className && it.resourcePath == saved.resourcePath && it.componentKey == saved.componentKey
                         } }
                         ready.forEach { saved ->
                             val reply = connection.transferState(saved)
@@ -362,7 +369,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             }
             withCurrent(request) { display.value = display.value.copy(message =
                 if (skipped.isEmpty()) "Code changes loaded; saved control state restored."
-                else "Code changes loaded; state skipped for components with multiple instances: ${skipped.joinToString()}. Other saved control state restored.") }
+                else "Code changes loaded; state skipped for components without a unique source identity: ${skipped.joinToString()}. Other saved control state restored.") }
         } catch (error: Exception) {
             if (error is CancellationException && error !is TimeoutCancellationException) throw error
             withCurrent(request) { display.value = display.value.copy(

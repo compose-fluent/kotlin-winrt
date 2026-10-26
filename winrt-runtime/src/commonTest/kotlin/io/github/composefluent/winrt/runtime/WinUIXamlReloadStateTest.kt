@@ -71,4 +71,48 @@ class WinUIXamlReloadStateTest {
         transfer(saved.map { it.copy(kind = "ChangedType") })
         assertEquals("first", first.text)
     }
+    @Test fun named_component_state_survives_reordered_creation_and_rejects_ambiguous_aliases() {
+        fun registry() = WinUIXamlHotReloadRegistry({ { task -> task(); true } }, { _, text -> text },
+            stateAdapter = WinUIXamlStateAdapter({ value, _ -> (value as? Control)?.let {
+                WinUIXamlSavedElement("", "Control", listOf(WinUIXamlVisualProperty("Text", it.text)))
+            } }, { value, state, _ -> (value as Control).text = state.values.single().value }))
+        val hash = "a".repeat(64)
+        fun connect(registry: WinUIXamlHotReloadRegistry, owner: Any, input: Control) {
+            registry.observe(owner, "Control", "Control.xaml", hash, "Input", input)
+            registry.observe(owner, "Control", "Control.xaml", hash, null, null)
+        }
+        val old = registry(); val window = Any(); val leftOwner = Any(); val rightOwner = Any()
+        val left = Control("left input"); val right = Control("right input")
+        connect(old, leftOwner, left); connect(old, rightOwner, right)
+        old.observe(window, "Window", "Window.xaml", hash, "Left", leftOwner)
+        old.observe(window, "Window", "Window.xaml", hash, "Right", rightOwner)
+        old.observe(window, "Window", "Window.xaml", hash, null, null)
+        val root = old.snapshot().roots.single { it.className == "Control" }
+        assertEquals(2, root.stateKeys.distinct().size)
+        assertTrue(root.stateKeys.all { it.isNotEmpty() })
+        val saved = root.stateKeys.map { key ->
+            var reply: WinUIXamlHotReloadReply? = null
+            old.transferState(WinUIXamlStateRequest("Control", "Control.xaml", componentKey = key)) { reply = it }
+            key to assertNotNull(reply?.savedState)
+        }
+        assertEquals(root, WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(old.snapshot())).roots.single { it.className == "Control" })
+        val replacement = registry(); val nextWindow = Any(); val nextLeftOwner = Any(); val nextRightOwner = Any()
+        val nextLeft = Control("initial left"); val nextRight = Control("initial right")
+        connect(replacement, nextRightOwner, nextRight); connect(replacement, nextLeftOwner, nextLeft)
+        replacement.observe(nextWindow, "Window", "Window.xaml", hash, "Right", nextRightOwner)
+        replacement.observe(nextWindow, "Window", "Window.xaml", hash, "Left", nextLeftOwner)
+        replacement.observe(nextWindow, "Window", "Window.xaml", hash, null, null)
+        saved.forEach { (key, state) ->
+            val request = WinUIXamlStateRequest("Control", "Control.xaml", restore = state, componentKey = key)
+            assertEquals(request, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeStateRequest("token", request)).state)
+            replacement.transferState(request) { assertEquals(WinUIXamlHotReloadProtocol.APPLIED, it.status) }
+        }
+        assertEquals("left input", nextLeft.text); assertEquals("right input", nextRight.text)
+        replacement.observe(nextWindow, "Window", "Window.xaml", hash, "AliasOfLeft", nextLeftOwner)
+        assertEquals("", replacement.snapshot().roots.single { it.className == "Control" }.stateKeys[1])
+        replacement.transferState(WinUIXamlStateRequest("Control", "Control.xaml", componentKey = saved[0].first, restore = saved[0].second)) {
+            assertEquals(WinUIXamlHotReloadProtocol.UNAVAILABLE, it.status)
+        }
+    }
+
 }

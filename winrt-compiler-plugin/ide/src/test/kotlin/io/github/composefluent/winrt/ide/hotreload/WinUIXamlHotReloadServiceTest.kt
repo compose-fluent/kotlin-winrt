@@ -44,6 +44,16 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(listOf("Second (Second.xaml)"), plan.skippedComponents)
     }
 
+    fun testRestartStateUsesUniqueCompiledNamesForRepeatedComponents() {
+        val root = WinUIXamlHotReloadRoot("Repeated", "Control.xaml", "hash", 0, emptyList(), 3,
+            listOf("Window/Left", "", "Window/Right"))
+        val plan = restartStatePlan(listOf(root))
+        assertEquals(listOf("Window/Left", "Window/Right"), plan.requests.map { it.componentKey })
+        assertTrue(plan.requests.all { it.instance == 0 })
+        assertEquals(listOf("Repeated (Control.xaml)"), plan.skippedComponents)
+        assertTrue(restartStatePlan(listOf(root.copy(instances = 2, stateKeys = listOf("Window/Right", "Window/Left")))).skippedComponents.isEmpty())
+    }
+
     fun testIdeLaunchAttachesWithoutAnEarlierToolWindowSessionAndAutomaticallyAppliesEditorChanges() = session { fixture ->
         val service = fixture.service(WinUIXamlHotReloadLaunchState())
         service.attach(fixture.module, fixture.module.hotReloadLaunches.single(), fixture.directory)

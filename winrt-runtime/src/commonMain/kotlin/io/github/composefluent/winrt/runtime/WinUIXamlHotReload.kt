@@ -16,6 +16,7 @@ internal class WinUIXamlHotReloadRegistry(
     private class Root(owner: Any, val thread: Long, val enqueue: (() -> Unit) -> Boolean) {
         val owner = PlatformManagedWeakReference(owner)
         val elements = mutableMapOf<String, PlatformManagedWeakReference<Any>>()
+        val namedComponents = mutableMapOf<String, Root>()
         val compiledBindings = mutableMapOf<String, Set<String>>()
         val eventRoutes = mutableMapOf<Pair<String, String>, PlatformManagedWeakReference<WinUIXamlEventRoute>>()
         var lifetime: PlatformManagedWeakReference<WinUIXamlConnectionState>? = null
@@ -66,6 +67,18 @@ internal class WinUIXamlHotReloadRegistry(
                 root.ready = true
             }
         }
+        if (name != null && target != null) {
+            // Connect records the compiler's namescope identity on its UI thread.
+            // CsWinRT IUnknown identity compares projections of the same COM object;
+            // no visual order or process-local instance number establishes a restart key.
+            val candidates = lock.withLock { pages.values.flatMap { it.roots }.filter { it !== root && it.thread == root.thread } }
+            val child = candidates.filter { candidate -> candidate.owner.get()?.let {
+                it === target || inspector?.isSameObject(it, target) == true
+            } == true }.singleOrNull()
+            lock.withLock {
+                if (child != null) root.namedComponents[name] = child else root.namedComponents.remove(name)
+            }
+        }
         if (name == null) {
             if (lifetime != null) root.lifetime = PlatformManagedWeakReference(lifetime)
             val overrides = lock.withLock { page.overrides.values.toList() }
@@ -96,12 +109,41 @@ internal class WinUIXamlHotReloadRegistry(
         }
     }
 
+    /** Called under lock. Only compiler-connected names below an unambiguous
+     * component anchor survive process replacement. Incomplete or cyclic paths
+     * have no key; user input must never move by an ordinal fallback. */
+    private fun componentKeys(): Map<Root, String> {
+        val live = pages.values.associateWith { page -> page.roots.filter { it.ready && it.owner.get() != null } }
+        val roots = live.values.flatten().toSet()
+        val anchors = live.flatMap { (page, instances) ->
+            if (instances.size == 1) listOf(instances.single() to "${page.className.length}:${page.className}${page.path.length}:${page.path}") else emptyList()
+        }.toMap()
+        val parents = mutableMapOf<Root, MutableList<Pair<Root, String>>>()
+        roots.forEach { parent -> parent.namedComponents.forEach { (name, child) ->
+            if (child in roots) parents.getOrPut(child) { mutableListOf() }.add(parent to name)
+        } }
+        val keys = mutableMapOf<Root, String>()
+        fun key(root: Root, visiting: Set<Root>): String {
+            keys[root]?.let { return it }
+            if (root in visiting || visiting.size >= 64) return ""
+            val value = anchors[root] ?: parents[root]?.singleOrNull()?.let { (parent, name) ->
+                key(parent, visiting + root).takeIf { it.isNotEmpty() }?.let { "$it/${name.length}:$name" }
+            }.orEmpty()
+            return value.takeIf { it.length <= 4096 }.orEmpty().also { keys[root] = it }
+        }
+        roots.forEach { key(it, emptySet()) }
+        val collisions = keys.values.filter { it.isNotEmpty() }.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        return keys.mapValues { (_, key) -> key.takeUnless { it in collisions }.orEmpty() }
+    }
+
     fun snapshot(): WinUIXamlHotReloadReply = lock.withLock {
         if (closed) return@withLock WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The development session is closed.")
         pages.values.forEach { page -> page.roots.removeAll { it.owner.get() == null } }
+        val keys = componentKeys()
         val roots = pages.values.filter { it.roots.any { root -> root.ready } }.map { page ->
             WinUIXamlHotReloadRoot(page.className, page.path, page.hash, page.version,
-                page.roots.filter { it.ready }.flatMap { it.elements.keys }.distinct().sorted(), page.roots.count { it.ready })
+                page.roots.filter { it.ready }.flatMap { it.elements.keys }.distinct().sorted(), page.roots.count { it.ready },
+                page.roots.filter { it.ready }.map { keys[it].orEmpty() })
         }
         val error = pages.values.firstNotNullOfOrNull { it.restart }
         val pending = pages.values.any { it.pending }
@@ -227,8 +269,12 @@ internal class WinUIXamlHotReloadRegistry(
     fun transferState(request: WinUIXamlStateRequest, complete: (WinUIXamlHotReloadReply) -> Unit) {
         val adapter = stateAdapter
         val root = lock.withLock {
-            pages[request.className to request.resourcePath]?.roots
-                ?.filter { it.ready && it.owner.get() != null }?.getOrNull(request.instance)
+            val roots = pages[request.className to request.resourcePath]?.roots?.filter { it.ready && it.owner.get() != null }
+            if (request.componentKey.isEmpty()) roots?.getOrNull(request.instance)
+            else {
+                val keys = componentKeys()
+                roots?.singleOrNull { keys[it] == request.componentKey }
+            }
         }
         if (root == null || adapter == null) {
             complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "No component state adapter. Rebuild with the current toolchain."))

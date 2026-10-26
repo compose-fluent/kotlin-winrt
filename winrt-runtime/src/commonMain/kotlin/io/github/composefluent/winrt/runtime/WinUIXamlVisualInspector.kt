@@ -19,6 +19,8 @@ class WinUIXamlVisualInspector(
     internal val formatValue: (Any?) -> String = { it?.toString().orEmpty() },
     private val animate: (Any, WinUIXamlPreviewAnimation) -> Unit = { _, _ -> error("Rebuild the preview host to inspect storyboards.") },
 ) {
+    internal fun isSameObject(first: Any, second: Any): Boolean = first === second || sameObject(first, second)
+
     fun inspect(owner: Any, request: WinUIXamlInspectionRequest, complete: (Result<WinUIXamlVisualSnapshot>) -> Unit) {
         val prepared = runCatching {
             request.animation?.let {

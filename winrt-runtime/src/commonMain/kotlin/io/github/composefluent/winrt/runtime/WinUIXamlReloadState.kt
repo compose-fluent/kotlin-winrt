@@ -6,7 +6,7 @@ package io.github.composefluent.winrt.runtime
 data class WinUIXamlSavedElement(val name: String, val kind: String, val values: List<WinUIXamlVisualProperty>)
 
 data class WinUIXamlStateRequest(val className: String, val resourcePath: String, val instance: Int = 0,
-    val restore: List<WinUIXamlSavedElement>? = null)
+    val restore: List<WinUIXamlSavedElement>? = null, val componentKey: String = "")
 
 class WinUIXamlStateAdapter(
     val capture: (Any, Set<String>) -> WinUIXamlSavedElement?,

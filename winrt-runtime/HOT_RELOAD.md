@@ -364,8 +364,13 @@ is not migrated. This does not enable arbitrary application template replacement
 
 ## Development restart state
 
-Protocol v11 adds authenticated capture/restore commands for a single compiled
-component instance. Transfers run on its owning UI dispatcher and match compiled
+Protocol v12 adds source identities to the authenticated capture/restore commands for a single compiled
+component instance. Compiler-connected names below an unambiguous root produce
+stable component keys, including nested repeated UserControls. Capture and restore
+resolve those keys rather than creation order; unnamed, cyclic or ambiguous component
+paths are skipped. COM object matching reuses the generated inspector's IUnknown
+identity comparison, following CsWinRT object ownership. No SDK access occurs while
+producing the connection snapshot. Transfers run on its owning UI dispatcher and match compiled
 names and control kinds. They never enter XAML replay history. Limits bound the
 number of controls, property names, and UTF-8 values; duplicate names are rejected.
 Restore prepares previous values first and attempts rollback on failure.
