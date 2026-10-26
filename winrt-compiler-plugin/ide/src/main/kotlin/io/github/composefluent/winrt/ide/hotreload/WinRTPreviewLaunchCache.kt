@@ -10,7 +10,7 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 
 /** IDE launch optimization only; Gradle remains the owner of compilation and deployment.
- * Reuse is limited to the desktop Native package path that already supports CreateProcess
+ * Reuse is limited to the isolated desktop Native deployment that already supports CreateProcess
  * in NativeDebugLauncher, plus the SDK designer with its staged JVM launcher.
  * UWP activation and ordinary JVM application environment setup still use Gradle.
  */
@@ -30,8 +30,10 @@ internal class WinRTPreviewLaunchCache(
         if (!executable.startsWith(Path.of(module.buildDirectory).toAbsolutePath().normalize()) || !Files.isRegularFile(executable)) return false
         if (sdk) return module.staticPreview?.metadataReferencesFile?.let { Files.isRegularFile(Path.of(it)) } == true
         return runCatching { io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.read(deployment.parent.resolve(
-            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME)) }.isSuccess && launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage") &&
-            runCatching { Files.readString(deployment.resolve("AppxManifest.xml")).contains("Windows.FullTrustApplication") }.getOrDefault(false)
+            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME)) }.isSuccess && launch.nativeCompilerHome.isNotBlank() && (
+            launch.taskName.startsWith("runWinAppNative") && launch.isDirectPreview ||
+            launch.taskName.startsWith("runWinAppPackage") &&
+                runCatching { Files.readString(deployment.resolve("AppxManifest.xml")).contains("Windows.FullTrustApplication") }.getOrDefault(false))
     }
 
     /** Content hashes catch edits with preserved timestamps and additions/deletions in dependencies.

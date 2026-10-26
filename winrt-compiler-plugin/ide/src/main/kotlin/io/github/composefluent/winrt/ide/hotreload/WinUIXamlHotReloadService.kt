@@ -410,7 +410,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (preview) log.info("XAML preview sources ready: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                     }
                 }
-                val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppPackage"))) WinRTPreviewLaunchCache(
+                val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.isDirectPreview)) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
                 val validation = cache?.let { runCatching {

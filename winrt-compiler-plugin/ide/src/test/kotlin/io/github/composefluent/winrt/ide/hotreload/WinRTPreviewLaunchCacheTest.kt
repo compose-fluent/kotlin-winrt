@@ -114,6 +114,29 @@ class WinRTPreviewLaunchCacheTest {
         }
     }
 
+    @Test fun unpackagedNativeCacheRequiresResolvedInputsAndAnIsolatedDirectLaunch() {
+        val root = Files.createTempDirectory("preview-unpackaged-cache")
+        try {
+            val build = Files.createDirectories(root.resolve("build"))
+            val deployed = Files.createDirectories(build.resolve("application-preview/variant/Unpackaged"))
+            val exe = Files.write(deployed.resolve("preview.exe"), byteArrayOf(1))
+            val dependency = Files.writeString(build.resolve("dependency.klib"), "library")
+            val launch = WinUIXamlHotReloadLaunchData("runWinAppNativeMingwX64MainDebugExecutable",
+                exe.toString(), deployed.toString(), exe.toString(), "native", isDirectPreview = true)
+            val module = WinRTModuleData(":app", root.toString(), build.toString(), "2.4", "sdk", emptyList(), emptyList(), emptyList(), emptyList())
+            val cache = WinRTPreviewLaunchCache(root, listOf(module), module, launch)
+            assertFalse(cache.supported())
+            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.write(
+                deployed.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME), listOf(dependency))
+            assertTrue(cache.supported())
+            cache.remember(cache.inputs())
+            assertTrue(checked(cache))
+            Files.writeString(dependency, "changed")
+            assertFalse(checked(cache))
+            assertFalse(WinRTPreviewLaunchCache(root, listOf(module), module, launch.copy(isDirectPreview = false)).supported())
+        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
+    }
+
     @Test fun overlappingRootsKeepExplicitGeneratedSourcesAndMissingInputs() {
         val root = Files.createTempDirectory("preview-overlap")
         try {

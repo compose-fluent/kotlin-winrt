@@ -1699,6 +1699,14 @@ private fun configureWinAppTasks(
         })
         task.workingDirectory.set(stageApplicationPackageTask.flatMap { it.outputDirectory })
         task.developmentBuildTask.set(stageApplicationPackageTask.name)
+        task.previewBuildInputs.from(selectedVariant.map { variant ->
+            if (variant.kind != WinAppVariantKind.MingwX64) emptyList<java.io.File>() else {
+                val target = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+                    .targets.getByName(variant.targetName) as KotlinNativeTarget
+                project.files(target.compilations.getByName(variant.compilationName).compileDependencyFiles,
+                    kotlinWinRTCompilerPluginClasspath(project), kotlinWinRTGeneratorWorkerClasspath(project))
+            }
+        })
         task.deploymentDirectory.set(project.layout.buildDirectory.dir(selectedVariant.zip(task.designPreview) { variant, preview ->
             "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.id.toSafeDirectoryName()}/Unpackaged"
         }))

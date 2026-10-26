@@ -24,7 +24,12 @@ class RunWinAppHostTaskTest {
         task.workingDirectory.set(source)
         task.deploymentDirectory.set(destination)
         task.noLaunch.set(true)
+        val dependency = project.file("dependency.klib").apply { writeText("resolved dependency") }
+        task.nativeCompilerHome.set("native")
+        task.previewBuildInputs.from(dependency)
         task.run()
+        assertEquals(listOf(dependency.toPath()), io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.read(
+            destination.parentFile.toPath().resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME)))
         assertEquals(destination.resolve("host.exe"), task.deployedExecutable.get().asFile)
         source.resolve("host.exe").writeText("new executable")
         source.resolve("asset.txt").delete()

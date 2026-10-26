@@ -86,6 +86,7 @@ abstract class RunWinAppHostTask @Inject constructor(
     /** Separate the running Native payload from linker/staging outputs. Rebuilds
      * may update staging while the previous development process remains alive. */
     @get:Internal abstract val deploymentDirectory: DirectoryProperty
+    @get:Internal abstract val previewBuildInputs: org.gradle.api.file.ConfigurableFileCollection
     @get:Internal abstract val developmentBuildTask: org.gradle.api.provider.Property<String>
     @get:Internal val deployedExecutable: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>
         get() = deploymentDirectory.zip(hostExecutable) { directory, executable -> directory.file(executable.asFile.name) }
@@ -109,6 +110,11 @@ abstract class RunWinAppHostTask @Inject constructor(
                 "The development deployment must be separate from the staging directory."
             }
             fileSystem.sync { it.from(source); it.into(target) }
+            if (nativeCompilerHome.orNull?.isNotBlank() == true && previewBuildInputs.files.isNotEmpty()) {
+                io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.write(
+                    target.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME),
+                    previewBuildInputs.files.map { it.toPath() })
+            }
         }
         if (noLaunch.get()) return
         if (detach.get() && nativeDebugDirectory.orNull.isNullOrBlank()) {
