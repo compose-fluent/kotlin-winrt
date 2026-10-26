@@ -33,6 +33,17 @@ import java.util.concurrent.atomic.AtomicReference
 class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
     private val markup = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><TextBlock x:Name="Greeting" Text="Hello"/></Window>"""
 
+    fun testRestartStateNeverUsesProcessLocalInstanceOrdinals() {
+        val first = WinUIXamlHotReloadRoot("First", "First.xaml", "hash", 0, emptyList())
+        val second = first.copy(className = "Second", resourcePath = "Second.xaml")
+        assertEquals(listOf(WinUIXamlStateRequest("First", "First.xaml"),
+            WinUIXamlStateRequest("Second", "Second.xaml")), restartStateRequests(listOf(first, second)))
+        assertTrue(restartStateRequests(listOf(first.copy(instances = 0))).isEmpty())
+        val failure = runCatching { restartStateRequests(listOf(first, second.copy(instances = 2))) }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
+        assertTrue(failure!!.message.orEmpty().contains("Second"))
+    }
+
     fun testIdeLaunchAttachesWithoutAnEarlierToolWindowSessionAndAutomaticallyAppliesEditorChanges() = session { fixture ->
         val service = fixture.service(WinUIXamlHotReloadLaunchState())
         service.attach(fixture.module, fixture.module.hotReloadLaunches.single(), fixture.directory)

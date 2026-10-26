@@ -49,6 +49,16 @@ data class WinUIXamlHotReloadState(val message: String = "Run an application wit
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
     var processId: Long = 0, var startedUtc: String = "", var previewTheme: String = "Default", var projectCodeChanged: Boolean = false)
 
+/** Instance ordinals identify live objects only within one process. They cannot
+ * establish object identity after a restart; never move input between such roots. */
+internal fun restartStateRequests(roots: List<WinUIXamlHotReloadRoot>): List<WinUIXamlStateRequest> {
+    val ambiguous = roots.firstOrNull { it.instances > 1 }
+    check(ambiguous == null) {
+        "${ambiguous!!.className} has multiple live instances; their state cannot be matched safely across restart."
+    }
+    return roots.filter { it.instances == 1 }.map { WinUIXamlStateRequest(it.className, it.resourcePath) }
+}
+
 open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
     private val isolatedPreview: Boolean = false) : Disposable, PersistentStateComponent<WinUIXamlHotReloadLaunchState> {
     private data class Source(val path: String, val markup: WinUIXamlHotReloadMarkup)
@@ -292,12 +302,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     // A designer re-renders its source after replacement; it must not
                     // replay the synthetic artboard's control state into application roots.
                     val roots = if (isolatedPreview) emptyList() else connection.request().roots
-                    val states = roots.flatMap { root -> (0 until root.instances).mapNotNull { instance ->
-                        val capture = WinUIXamlStateRequest(root.className, root.resourcePath, instance)
+                    val states = restartStateRequests(roots).mapNotNull { capture ->
                         val reply = connection.transferState(capture)
                         check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
                         reply.savedState?.takeIf { it.isNotEmpty() }?.let { capture.copy(restore = it) }
-                    } }
+                    }
                     withContext(Dispatchers.EDT) {
                         if (isCurrent(request) && builtRevision == codeRevision.get() && (automaticBuildEnabled || force) && !debuggerAttached()) {
                             // start cancels outstanding jobs; relinquish this completed build first.
@@ -329,8 +338,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     mutex.withLock {
                         val connection = client ?: error("The restarted application disconnected.")
                         val roots = connection.request().roots
-                        val ready = pending.filter { saved -> roots.any { it.className == saved.className &&
-                            it.resourcePath == saved.resourcePath && it.instances > saved.instance } }
+                        val matchingRoots = roots.filter { root -> pending.any {
+                            it.className == root.className && it.resourcePath == root.resourcePath
+                        } }
+                        val readyRoots = restartStateRequests(matchingRoots)
+                        val ready = pending.filter { saved -> readyRoots.any {
+                            it.className == saved.className && it.resourcePath == saved.resourcePath
+                        } }
                         ready.forEach { saved ->
                             val reply = connection.transferState(saved)
                             check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }

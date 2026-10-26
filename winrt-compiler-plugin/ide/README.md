@@ -853,8 +853,15 @@ and restarting. With Automatic enabled, packaged development launches and unpack
 Kotlin and XAML changes that cannot form an in-process patch into a separate staging
 layout. The current process remains alive during compilation and after build failure.
 A successful build captures compatible named-control state, replaces the process,
-and restores that state after the new component is ready. Further edits during a
-build are coalesced into another build before replacement. Debugger attachment
+and restores that state after the new component is ready. Component instance ordinals
+are process-local: if a component has multiple live instances, automatic replacement
+keeps the old application and reports that their state cannot be matched safely.
+Restoration also rejects a component that becomes ambiguous in the replacement.
+Further edits during a build are coalesced into another build before replacement.
+The original IDE Run session remains active after its Gradle launch finishes and
+continues owning replacement processes, so Stop still terminates the current app.
+ASC desktop acceptance has verified Kotlin value changes, retained text input and
+Stop after an automatic unpackaged Native replacement, with preview still running. Debugger attachment
 pauses automatic replacement. External edits to loaded XAML files use the same
 live patch path as editor changes. Dictionaries, deleted XAML files and components
 without a loaded root request a build so their compiled resources are refreshed;
