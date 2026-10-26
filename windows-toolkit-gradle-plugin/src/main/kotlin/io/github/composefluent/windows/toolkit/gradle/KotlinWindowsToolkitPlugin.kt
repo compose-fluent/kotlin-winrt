@@ -1714,6 +1714,7 @@ private fun configureWinAppTasks(
             task.dependencyLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
             task.dependencyPackageSpecs.set(project.provider { allNuGetPackageSpecs(extension.packageReferences) })
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+            task.developmentBuildTask.set(developmentPackageTask.name)
             task.packageDirectory.set(developmentPackageTask.flatMap { it.outputDirectory })
             task.deploymentDirectory.set(
                 project.layout.buildDirectory.dir(

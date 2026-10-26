@@ -70,6 +70,10 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Input
     abstract val applicationVariant: Property<String>
 
+    /** Builds staging inputs without replacing the running deployment. */
+    @get:Internal
+    abstract val developmentBuildTask: Property<String>
+
     @get:Internal
     abstract val nativeCompilerHome: Property<String>
 
@@ -145,7 +149,8 @@ abstract class RunWinAppPackageTask @Inject constructor(
         selfContained.convention(false)
         applicationVariant.convention("default")
         args.convention("")
-        detach.convention(false)
+        detach.convention(project.providers.environmentVariable("KOTLIN_WINRT_RELEASE_BUILD_LOCK")
+            .map { it == "1" }.orElse(false))
         debugOutput.convention(false)
         // Android Studio replaces BuildLauncher.forTasks after Gradle's task-option
         // setup. Carry registration intent through the session environment too.

@@ -106,6 +106,10 @@ class WinRTIdeModelBuilderTest {
         assertFalse(launch.isDirectPreview)
         assertTrue(launches.filter { it.taskName.startsWith("runWinAppPackageMingwX64") }.all { it.isDirectPreview })
         assertTrue(launches.filter { it.taskName.startsWith("runWinAppPackageMingwX64") }.all { it.nativeCompilerHome.isNotBlank() })
+        launches.filter { it.taskName.startsWith("runWinAppPackage") }.forEach { launch ->
+            val prepare = project.tasks.named(launch.developmentBuildTask, StageWinAppPackageTask::class.java).get()
+            assertFalse(prepare.outputDirectory.get().asFile.absolutePath == launch.workingDirectory)
+        }
         val runTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
         assertTrue(runTasks.toString(), runTasks.contains("runWinAppPackageDesktopMain"))
         assertTrue(runTasks.toString(), runTasks.any { it.startsWith("runWinAppPackageMingwX64") })

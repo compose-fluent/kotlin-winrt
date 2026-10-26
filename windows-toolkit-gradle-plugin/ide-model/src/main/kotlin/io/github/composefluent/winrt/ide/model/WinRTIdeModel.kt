@@ -43,6 +43,8 @@ interface WinRTIdeModel : Serializable {
         val nativeCompilerHome: String
         /** Desktop Native preview can be started by the IDE after package registration. */
         val isDirectPreview: Boolean
+        /** Empty when a launch cannot build safely while its process is running. */
+        val developmentBuildTask: String
     }
 
     /** Actual staging/restore outputs, which need not exist during synchronization. */
@@ -88,6 +90,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 10
+        const val SCHEMA_VERSION: Int = 11
     }
 }

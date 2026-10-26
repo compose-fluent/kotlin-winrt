@@ -38,6 +38,8 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
         val directory = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}").toAbsolutePath().normalize()
         val execution = clone() as WinRTApplicationRunConfiguration
         execution.settings.env = settings.env + (WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory.toString())
+        if (!nativeDebug && !launch.developmentBuildTask.isNullOrBlank())
+            execution.settings.env = execution.settings.env + ("KOTLIN_WINRT_RELEASE_BUILD_LOCK" to "1")
         if (nativeDebug) {
             if (launch.taskName.contains("ReleaseExecutable")) throw RuntimeConfigurationError("Select a Native Debug executable to use source breakpoints and stepping.")
             val lldb = WinRTAttachNativeDebuggerAction.findLldb(service<WinRTIdeSettings>().nativeDebuggerExecutable)

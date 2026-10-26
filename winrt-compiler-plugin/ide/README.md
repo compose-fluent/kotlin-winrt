@@ -841,7 +841,7 @@ Ordinary events on existing named, non-template elements can switch to an alread
 compiled compatible handler, including private Kotlin methods. Removing the event
 attribute disables dispatch; restoring it reuses the same native subscription.
 Source/version and expected-handler checks, rollback and future-instance replay
-use the normal transaction. Protocol v10 requires rebuilding older development hosts.
+use the normal transaction. Protocol v11 requires rebuilding older development hosts.
 
 Local dictionaries can add/remove keys when no surviving consumer references a
 removed key; dictionary keys and values roll back together after a failed update.
@@ -849,7 +849,14 @@ ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
 dictionaries, captures in other dictionaries/templates, connected-element removal,
 type/name/parent changes, new names or authored controls,
 new event slots, template events, compiled bindings, property expressions and Kotlin changes require rebuilding
-and restarting. There is no page-recreation path. See
+and restarting. With Automatic enabled, packaged development launches build changed
+Kotlin and XAML changes that cannot form an in-process patch into a separate staging
+layout. The current process remains alive during compilation and after build failure.
+A successful build captures compatible named-control state, replaces the process,
+and restores that state after the new component is ready. Further edits during a
+build are coalesced into another build before replacement. Debugger attachment
+pauses automatic replacement. Unpackaged launches still require explicit rebuild.
+There is no in-process page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 
 The optional graph-host test uses `-Pwinrt.ide.hotReloadGraphSession=<fresh session>`,

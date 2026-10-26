@@ -31,6 +31,9 @@ internal class WinUIXamlHotReloadClient private constructor(
     fun inspect(request: WinUIXamlInspectionRequest): WinUIXamlHotReloadReply = exchange { output ->
         WinUIXamlHotReloadWire.writeInspectionRequest(output, token, request)
     }
+    fun transferState(request: WinUIXamlStateRequest): WinUIXamlHotReloadReply = exchange { output ->
+        WinUIXamlHotReloadWire.writeStateRequest(output, token, request)
+    }
     private fun exchange(send: (OutputStream) -> Unit): WinUIXamlHotReloadReply {
         check(alive) { "The application has exited. Start a new development session." }
         if (pipeName != null) return exchangePipe(pipeName, send)

@@ -71,6 +71,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private val attempted = mutableMapOf<Pair<String, String>, Source>()
     private var worker: Job? = null
     private var edits: Job? = null
+    private var codeRebuild: Job? = null
+    private val codeRevision = AtomicLong()
+    @Volatile private var codeBuildProcess: com.intellij.execution.process.ProcessHandler? = null
     private var update: Job? = null
     private var inspection: Job? = null
     private var pendingInspection: WinUIXamlInspectionRequest? = null
@@ -121,7 +124,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     fun resumeAfterDebugger(pid: Long) {
         if (debuggerPid != pid) return
         debuggerPid = null
-        if (automatic.value) apply()
+        if (automatic.value) { apply(); scheduleCodeRebuild() }
     }
 
     private fun debuggerAttached() = client?.process?.pid()?.let { it == debuggerPid } == true
@@ -137,6 +140,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             override fun documentChanged(event: DocumentEvent) {
                 val file = FileDocumentManager.getInstance().getFile(event.document) ?: return
                 markProjectCodeChanged(file.path)
+                if (file.extension.equals("xaml", true) && codeRebuild?.isActive == true) codeRevision.incrementAndGet()
                 if (!disposed && file.extension.equals("xaml", true) && automatic.value && client != null) {
                     edits?.cancel()
                     edits = scope.launch { delay(450); apply() }
@@ -160,13 +164,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     /** Both the designer and live application run compiled Kotlin. XAML updates cannot
-     * certify a changed binary. Tracking this never restarts a user application. */
+     * certify a changed binary. Automatic restarts build first and preserve compatible control state. */
     internal fun markProjectCodeChanged(path: String) {
         if (disposed || !path.endsWith(".kt", true)) return
         synchronized(lifecycle) {
             val module = selectedModule ?: return
             val launch = selectedLaunch ?: return
-            if (launch == module.staticPreview?.launch() || display.value.projectCodeChanged ||
+            if (launch == module.staticPreview?.launch() ||
                 (!display.value.connected && !display.value.busy)) return
             val file = runCatching { Path.of(path).toAbsolutePath().normalize() }.getOrNull() ?: return
             val modules = project.service<WinRTProjectService>().modules.value
@@ -180,16 +184,124 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             }) {
                 display.value = display.value.copy(projectCodeChanged = true)
                 savedLaunch = savedLaunch.copy(projectCodeChanged = true)
+                codeRevision.incrementAndGet()
+                scheduleCodeRebuild()
             }
         }
     }
 
+    private fun requestAutomaticRebuild(reason: String): Boolean {
+        if (isolatedPreview || !automatic.value || selectedLaunch?.developmentBuildTask.isNullOrBlank()) return false
+        display.value = display.value.copy(projectCodeChanged = true, message = reason, busy = false)
+        savedLaunch = savedLaunch.copy(projectCodeChanged = true)
+        codeRevision.incrementAndGet()
+        scheduleCodeRebuild()
+        return true
+    }
+
+    /** Compile into staging while the old deployment remains alive. Failed builds
+     * never reach start(), whose restart boundary owns stopping the old process. */
+    private fun scheduleCodeRebuild() {
+        if (isolatedPreview || !automatic.value || debuggerAttached() || disposed ||
+            !display.value.projectCodeChanged || !display.value.connected || codeRebuild?.isActive == true) return
+        val module = selectedModule ?: return
+        val launch = selectedLaunch ?: return
+        val buildTask = launch.developmentBuildTask?.takeIf { it.isNotBlank() } ?: return
+        val request = generation.get()
+        codeRebuild = scope.launch(Dispatchers.IO) {
+            var lastAttempted = codeRevision.get()
+            try {
+                var builtRevision: Long
+                do {
+                    delay(900)
+                    if (!isCurrent(request) || !automatic.value || debuggerAttached()) return@launch
+                    withContext(Dispatchers.EDT) { writeIntentReadAction { FileDocumentManager.getInstance().saveAllDocuments() } }
+                    builtRevision = codeRevision.get()
+                    lastAttempted = builtRevision
+                    val finished = CompletableDeferred<Boolean>()
+                    withCurrent(request) { display.value = display.value.copy(
+                        message = "Building code changes; the current application stays running…") }
+                    withContext(Dispatchers.EDT) {
+                        if (isCurrent(request)) WinRTGradleTasks.run(project, module, listOf(buildTask), "Build Hot Reload changes",
+                            environment = mapOf("KOTLIN_WINRT_BUILD_REQUEST" to UUID.randomUUID().toString()),
+                            onProcessStarted = { handler ->
+                                if (!withCurrent(request) { codeBuildProcess = handler }) WinRTGradleTasks.cancel(project, handler)
+                            }, onSuccess = { finished.complete(true) }, onFailure = { finished.complete(false) })
+                        else finished.cancel()
+                    }
+                    val succeeded = finished.await()
+                    codeBuildProcess = null
+                    if (!succeeded) {
+                        withCurrent(request) { display.value = display.value.copy(
+                            message = "Code build failed. The current application is still running; see Gradle output.") }
+                        if (builtRevision == codeRevision.get()) return@launch
+                    }
+                } while (builtRevision != codeRevision.get())
+                if (!isCurrent(request) || !automatic.value || debuggerAttached()) return@launch
+                mutex.withLock {
+                    val connection = client ?: return@launch
+                    val roots = connection.request().roots
+                    val states = roots.flatMap { root -> (0 until root.instances).mapNotNull { instance ->
+                        val capture = WinUIXamlStateRequest(root.className, root.resourcePath, instance)
+                        val reply = connection.transferState(capture)
+                        check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
+                        reply.savedState?.takeIf { it.isNotEmpty() }?.let { capture.copy(restore = it) }
+                    } }
+                withContext(Dispatchers.EDT) {
+                    if (isCurrent(request) && builtRevision == codeRevision.get() && automatic.value && !debuggerAttached()) {
+                        // start cancels outstanding jobs; relinquish this completed build first.
+                        codeRebuild = null
+                        start(module, launch, restart = true, restoredState = states)
+                    }
+                }
+                }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) { withCurrent(request) { display.value = display.value.copy(
+                message = "Automatic restart was not performed: ${error.message}. The current application is still running.") } }
+            finally {
+                if (isCurrent(request)) {
+                    codeRebuild = null
+                    if (codeRevision.get() != lastAttempted) scheduleCodeRebuild()
+                }
+            }
+        }
+    }
+
+    private suspend fun restoreAfterRestart(request: Long, states: List<WinUIXamlStateRequest>) {
+        try {
+            val pending = states.toMutableList()
+            withTimeout(15_000) {
+                while (pending.isNotEmpty() && isCurrent(request)) {
+                    mutex.withLock {
+                        val connection = client ?: error("The restarted application disconnected.")
+                        val roots = connection.request().roots
+                        val ready = pending.filter { saved -> roots.any { it.className == saved.className &&
+                            it.resourcePath == saved.resourcePath && it.instances > saved.instance } }
+                        ready.forEach { saved ->
+                            val reply = connection.transferState(saved)
+                            check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
+                            pending.remove(saved)
+                        }
+                    }
+                    if (pending.isNotEmpty()) delay(150)
+                }
+            }
+            withCurrent(request) { display.value = display.value.copy(message = "Code changes loaded; saved control state restored.") }
+        } catch (error: Exception) {
+            if (error is CancellationException && error !is TimeoutCancellationException) throw error
+            withCurrent(request) { display.value = display.value.copy(
+                message = "Code changes loaded, but some control state could not be restored: ${error.message}") }
+        }
+    }
+
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
-    fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default") {
+    fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default",
+        restoredState: List<WinUIXamlStateRequest> = emptyList()) {
         if (disposed || project.isDisposed) return
         require(theme in setOf("Default", "Light", "Dark"))
         val sdkPreview = preview && launch == module.staticPreview?.launch()
         val startedAt = System.nanoTime()
+        val launchCodeRevision = codeRevision.get()
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
         if (display.value.busy) return
         val themeOnly = preview && !rebuild && display.value.connected && usesLaunch(module, launch) && !usesPreviewTheme(theme)
@@ -305,6 +417,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module,
                             listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
                             environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
+                                (if (!preview && !launch.developmentBuildTask.isNullOrBlank()) mapOf("KOTLIN_WINRT_RELEASE_BUILD_LOCK" to "1") else emptyMap()) +
                                 (if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1",
                                     WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT to theme) else emptyMap()) +
                                 if (detachedNative) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap(),
@@ -352,6 +465,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 if (preview && !reused && isCurrent(request)) {
                     project.service<WinUIXamlCatalogService>().refresh()
                     project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
+                }
+                if (restoredState.isNotEmpty()) restoreAfterRestart(request, restoredState)
+                if (codeRevision.get() != launchCodeRevision) {
+                    withCurrent(request) { display.value = display.value.copy(projectCodeChanged = true) }
+                    scheduleCodeRebuild()
                 }
                 watch(request)
             } catch (error: TimeoutCancellationException) {
@@ -600,7 +718,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         val after = before.copy(markup = WinUIXamlHotReloadMarkup.parse(documentText(before.path)))
                         if (after.markup.hash == root.sourceHash) continue
                         val catalog = project.service<WinUIXamlCatalogService>().forFile(before.path)
-                        val patch = after.markup.patch(before.markup, root, propertyProblem = { uri, type, property ->
+                        val patch = try { after.markup.patch(before.markup, root, propertyProblem = { uri, type, property ->
                             val member = catalog?.resolve(uri, type)?.let { catalog.members(it).firstOrNull { m -> m.name == property } }
                             if (member?.isEvent == true) "Changing event connections requires rebuilding and restarting." else null
                         }, contentMember = { uri, type, property ->
@@ -615,6 +733,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         }, isEvent = { uri, type, name ->
                             catalog?.resolve(uri, type)?.let { catalog.members(it).any { member -> member.name == name && member.isEvent } } == true
                         })
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                            if (requestAutomaticRebuild("XAML change requires rebuilding: ${error.message}")) return@withLock
+                            throw error
+                        }
                         val count = patch.changes.size + patch.resources.size + patch.children.size + patch.events.size
                         if (!withCurrent(request) {
                             attempted[key] = after
@@ -820,6 +943,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     private fun cancelRequests() {
+        codeRebuild?.cancel(); codeRebuild = null
+        codeBuildProcess?.let { WinRTGradleTasks.cancel(project, it) }; codeBuildProcess = null
         cachedFirstFrame?.complete(Unit); cachedFirstFrame = null
         worker?.cancel(); edits?.cancel(); update?.cancel(); inspection?.cancel()
         pendingInspection = null
