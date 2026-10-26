@@ -60,6 +60,7 @@ internal class WinRTNativeDebugProcess(
 ) : XDebugProcess(session) {
     private val ready = CompletableFuture<WinRTNativeDebuggerBackend>()
     private val stopped = AtomicBoolean()
+    private val restarting = AtomicBoolean()
     private val ownership = AtomicReference<AutoCloseable?>()
     private val breakpoints = ConcurrentHashMap<XLineBreakpoint<WinRTNativeBreakpointProperties>, Int>()
     private val registrations = ConcurrentHashMap<XLineBreakpoint<WinRTNativeBreakpointProperties>, Any>()
@@ -94,7 +95,7 @@ internal class WinRTNativeDebugProcess(
             var backend: WinRTNativeDebuggerBackend? = null
             try {
                 val application = target(stopped::get)
-                ownership.set(WinRTNativeDebugOwnership.acquire(application.pid, application.started))
+                ownership.set(WinRTNativeDebugOwnership.acquire(application.pid, application.started, restarter))
                 processTarget = application
                 if (stopped.get()) throw CancellationException("Debug session closed.")
                 val connected = WinRTNativeDebuggerBackend.start(lldb, ::onEvent) { text ->
@@ -120,25 +121,83 @@ internal class WinRTNativeDebugProcess(
 
     override fun getBreakpointHandlers(): Array<XBreakpointHandler<*>> = arrayOf(object : XBreakpointHandler<XLineBreakpoint<WinRTNativeBreakpointProperties>>(WinRTNativeLineBreakpointType::class.java) {
         override fun registerBreakpoint(breakpoint: XLineBreakpoint<WinRTNativeBreakpointProperties>) {
-            val file = breakpoint.sourcePosition?.file ?: return
+            if (breakpoint.sourcePosition?.file == null) return
             val registration = Any()
             registrations[breakpoint] = registration
-            breakpoints.remove(breakpoint)?.let { request("removeBreakpoint", "breakpoint" to it) }
-            request("breakpoint", "file" to file.path, "line" to breakpoint.line + 1).thenAccept { result ->
-                if (registrations[breakpoint] === registration && breakpoint.isEnabled) {
-                    breakpoints[breakpoint] = result["id"].asInt
-                    ui {
-                        if (result["locations"].asInt > 0) session.setBreakpointVerified(breakpoint)
-                        else session.setBreakpointInvalid(breakpoint, "No native code exists at this source line in the current executable.")
-                    }
-                } else request("removeBreakpoint", "breakpoint" to result["id"].asInt)
-            }
+            breakpoints.remove(breakpoint)?.let { if (!restarting.get()) request("removeBreakpoint", "breakpoint" to it) }
+            if (!restarting.get()) installBreakpoint(breakpoint, registration)
         }
         override fun unregisterBreakpoint(breakpoint: XLineBreakpoint<WinRTNativeBreakpointProperties>, temporary: Boolean) {
             registrations.remove(breakpoint)
-            breakpoints.remove(breakpoint)?.let { request("removeBreakpoint", "breakpoint" to it) }
+            breakpoints.remove(breakpoint)?.let { if (!restarting.get()) request("removeBreakpoint", "breakpoint" to it) }
         }
     })
+
+    private fun installBreakpoint(breakpoint: XLineBreakpoint<WinRTNativeBreakpointProperties>, registration: Any): CompletableFuture<*> {
+        val file = requireNotNull(breakpoint.sourcePosition?.file)
+        return request("breakpoint", "file" to file.path, "line" to breakpoint.line + 1).thenAccept { result ->
+            if (registrations[breakpoint] === registration && breakpoint.isEnabled) {
+                breakpoints[breakpoint] = result["id"].asInt
+                ui {
+                    if (result["locations"].asInt > 0) session.setBreakpointVerified(breakpoint)
+                    else session.setBreakpointInvalid(breakpoint, "No native code exists at this source line in the current executable.")
+                }
+            } else request("removeBreakpoint", "breakpoint" to result["id"].asInt)
+        }
+    }
+
+    private val restarter = object : WinRTNativeDebugRestarter {
+        override fun detachForRestart(): CompletableFuture<Unit> {
+            check(!stopped.get() && restarting.compareAndSet(false, true)) { "The debug session is no longer available for restart." }
+            val previous = pid
+            return ready.thenCompose { it.request("detachForRestart") }.thenApply {
+                releaseOwnership()
+                session.project.service<WinUIXamlHotReloadService>().resumeAfterDebugger(previous)
+                session.project.service<WinRTStaticPreviewService>().resumeAfterDebugger(previous)
+                Unit
+            }.whenComplete { _, error -> if (error != null) restartFailed(error) }
+        }
+        override fun attachAfterRestart(pid: Long, started: java.time.Instant, executable: Path): CompletableFuture<Unit> =
+            CompletableFuture.supplyAsync({
+                check(!stopped.get() && restarting.get()) { "The debug session was closed during restart." }
+                val backend = ready.join()
+                backend.request("configure", "konanHome" to konanHome.toString(), "executable" to executable.toString()).join()
+                ownership.set(WinRTNativeDebugOwnership.acquire(pid, started, this))
+                processTarget = WinRTNativeDebugTarget(pid, executable, started)
+                breakpoints.clear()
+                registrations.toMap().forEach { (breakpoint, registration) ->
+                    if (breakpoint.isEnabled) installBreakpoint(breakpoint, registration).join()
+                }
+                session.project.service<WinUIXamlHotReloadService>().suspendForDebugger(pid).join()
+                session.project.service<WinRTStaticPreviewService>().suspendForDebugger(pid).join()
+                suppressAttachStop = true
+                backend.request("attach", "pid" to pid).join()
+                backend.request("resumeStartup").join()
+                restarting.set(false)
+                debuggerRunning()
+                ui { session.consoleView.print("Native code rebuilt; debugger reattached and breakpoints restored.\n", ConsoleViewContentType.SYSTEM_OUTPUT) }
+                Unit
+            }, AppExecutorUtil.getAppExecutorService())
+        override fun restartFailed(error: Throwable) {
+            restarting.set(false)
+            failure(error)
+            // The replacement application can continue even when its debugger fails.
+            // Do not route this through stop(), which owns a Debug-launched process.
+            if (stopped.compareAndSet(false, true)) {
+                releaseOwnership()
+                ready.thenAccept { backend -> backend.request("detach").whenComplete { _, _ -> backend.close() } }
+                session.project.service<WinUIXamlHotReloadService>().resumeAfterDebugger(pid)
+                session.project.service<WinRTStaticPreviewService>().resumeAfterDebugger(pid)
+                ui { handler.finished() }
+            }
+        }
+    }
+
+    private fun debuggerRunning() {
+        session.project.service<WinUIXamlHotReloadService>().debuggerRunning(pid)
+        session.project.service<WinRTStaticPreviewService>().debuggerRunning(pid)
+        ui { if (!stopped.get()) session.sessionResumed() }
+    }
 
     private fun request(command: String, vararg fields: Pair<String, Any?>): CompletableFuture<JsonObject> =
         ready.thenCompose { it.request(command, *fields) }.whenComplete { _, error -> if (error != null && !stopped.get()) failure(error) }
@@ -183,6 +242,8 @@ internal class WinRTNativeDebugProcess(
     private fun onEvent(event: JsonObject) {
         when (event["event"].asString) {
             "stopped" -> {
+                session.project.service<WinUIXamlHotReloadService>().debuggerPaused(pid)
+                session.project.service<WinRTStaticPreviewService>().debuggerPaused(pid)
                 if (suppressAttachStop) { suppressAttachStop = false; return }
                 activeThread = event["thread"].asLong
                 val generation = event["generation"].asInt
@@ -200,10 +261,11 @@ internal class WinRTNativeDebugProcess(
                     }
                 }
             }
-            "running" -> ui { if (!stopped.get()) session.sessionResumed() }
+            "running" -> if (!restarting.get()) debuggerRunning()
             "output" -> ui { session.consoleView.print(event["text"].asString, if (event["stream"].asString == "stderr") ConsoleViewContentType.ERROR_OUTPUT else ConsoleViewContentType.NORMAL_OUTPUT) }
             "error" -> failure(IllegalStateException(event["message"].asString))
             "terminated", "closed" -> {
+                if (restarting.get() && event["event"].asString == "terminated") return
                 stopped.set(true)
                 releaseOwnership()
                 ui {

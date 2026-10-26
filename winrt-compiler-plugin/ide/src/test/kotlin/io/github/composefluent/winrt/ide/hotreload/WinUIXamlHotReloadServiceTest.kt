@@ -277,6 +277,31 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals("Edited while debugging", fixture.lastPatch.get()!!.changes.single().literal)
     }
 
+    fun testRunningDebuggerAppliesXamlAndPausedDebuggerRetainsLatestInspection() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        val pid = ProcessHandle.current().pid()
+        val drain = service.suspendForDebugger(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Debugger drain", { drain.isDone }, 10)
+        drain.get(1, TimeUnit.SECONDS)
+        val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(fixture.source)!!
+        val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)!!
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            document.setText(markup.replace("Hello", "Running with debugger"))
+        }
+        service.debuggerRunning(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Apply while debugger is running", { fixture.patches.get() == 1 }, 10)
+        service.debuggerPaused(pid)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(1)))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(2)))
+        assertTrue(fixture.inspections.isEmpty())
+        service.debuggerRunning(pid + 1)
+        assertTrue(fixture.inspections.isEmpty())
+        service.debuggerRunning(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Inspect latest selection after Resume", { fixture.inspections.size == 1 }, 10)
+        assertEquals(listOf(2), fixture.inspections.single().selectedPath)
+    }
+
     fun testInspectionCoalescesNewSelectionsAndKeepsThePendingDesignDocument() = session { fixture ->
         val service = fixture.service()
         service.reconnect(); fixture.connected(service)

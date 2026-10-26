@@ -759,8 +759,13 @@ paths resolve against imported modules when unambiguous. This does not provide a
 Kotlin expression evaluator. **Run → Attach Kotlin WinRT Native Debugger** attaches
 to the authenticated development process; closing an attach session resumes and
 detaches from that app. Stopping a Debug launch terminates its owned application.
-XAML updates and preview inspection pause while a debugger is attached and resume
-after detaching, preventing UI-thread transactions from blocking on breakpoints.
+XAML updates and preview inspection continue while the Native debugger is running.
+At a breakpoint they queue until Resume; background code compilation can continue.
+After a successful build the IDE saves compatible state, detaches from the old
+process, restarts the application, restores state and reattaches the same debug
+session with freshly resolved source breakpoints. Failed builds keep the current
+application and debugger. The pause boundary prevents UI-thread transactions from
+blocking on a suspended process.
 
 Windows integration tests exercise Kotlin object fields, arrays larger than 100
 items, all three step operations and continuation after detach. Actual UWP and

@@ -18,6 +18,8 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import io.github.composefluent.winrt.ide.gradle.*
+import io.github.composefluent.winrt.ide.debug.WinRTNativeDebugOwnership
+import io.github.composefluent.winrt.ide.debug.WinRTNativeDebugRestarter
 import io.github.composefluent.winrt.ide.project.*
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalogService
 import io.github.composefluent.winrt.metadata.WinUIXamlDeclarations
@@ -114,6 +116,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     @Volatile private var gradleProcess: com.intellij.execution.process.ProcessHandler? = null
     private var savedLaunch = WinUIXamlHotReloadLaunchState()
     @Volatile private var debuggerPid: Long? = null
+    @Volatile private var debuggerSuspended = false
     private var directPreview: Process? = null
     @Volatile private var connectedPreviewDeployment: String? = null
     @Volatile private var connectedDeploymentReady: CompletableDeferred<Unit>? = null
@@ -138,12 +141,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     fun suspendForDebugger(pid: Long): java.util.concurrent.CompletableFuture<Unit> {
         val result = java.util.concurrent.CompletableFuture<Unit>()
         debuggerPid = pid
+        debuggerSuspended = true
         if (client?.process?.pid() != pid) { result.complete(Unit); return result }
         val drain = scope.launch(Dispatchers.IO) {
             try {
                 mutex.withLock {
                     if (client?.process?.pid() == pid) display.value = display.value.copy(
-                        message = "XAML updates are paused while the Native debugger is attached.", inspecting = false)
+                        message = "XAML updates are queued while the Native debugger is paused. Resume to apply them.", inspecting = false)
                 }
                 result.complete(Unit)
             } catch (error: Throwable) { result.completeExceptionally(error) }
@@ -155,10 +159,30 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     fun resumeAfterDebugger(pid: Long) {
         if (debuggerPid != pid) return
         debuggerPid = null
-        if (automatic.value) { apply(); scheduleCodeRebuild() }
+        debuggerSuspended = false
+        resumeDebuggerWork()
     }
 
-    private fun debuggerAttached() = client?.process?.pid()?.let { it == debuggerPid } == true
+    fun debuggerPaused(pid: Long) {
+        if (debuggerPid != pid) return
+        debuggerSuspended = true
+        if (client?.process?.pid() == pid) display.value = display.value.copy(
+            message = "XAML updates are queued at the Native breakpoint. Resume to apply them.")
+    }
+
+    fun debuggerRunning(pid: Long) {
+        if (debuggerPid != pid) return
+        debuggerSuspended = false
+        resumeDebuggerWork()
+    }
+
+    private fun resumeDebuggerWork() {
+        if (automatic.value) apply()
+        scheduleCodeRebuild()
+        synchronized(lifecycle) { pendingInspection }?.let(::inspect)
+    }
+
+    private fun debuggerPaused() = debuggerSuspended && client?.process?.pid()?.let { it == debuggerPid } == true
 
     override fun getState(): WinUIXamlHotReloadLaunchState = synchronized(lifecycle) { savedLaunch.copy(projectCodeChanged = display.value.projectCodeChanged || savedLaunch.projectCodeChanged) }
     override fun loadState(state: WinUIXamlHotReloadLaunchState) = synchronized(lifecycle) {
@@ -279,7 +303,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     private fun scheduleCodeRebuild(force: Boolean = false) {
-        if ((!automaticBuildEnabled && !force) || debuggerAttached() || disposed ||
+        if ((!automaticBuildEnabled && !force) || disposed ||
             !display.value.projectCodeChanged || !display.value.connected || codeRebuild?.isActive == true) return
         val module = selectedModule ?: return
         val launch = selectedLaunch ?: return
@@ -291,7 +315,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 var builtRevision: Long
                 do {
                     delay(900)
-                    if (!isCurrent(request) || (!automaticBuildEnabled && !force) || debuggerAttached()) return@launch
+                    if (!isCurrent(request) || (!automaticBuildEnabled && !force)) return@launch
                     withContext(Dispatchers.EDT) { writeIntentReadAction { FileDocumentManager.getInstance().saveAllDocuments() } }
                     builtRevision = codeRevision.get()
                     lastAttempted = builtRevision
@@ -314,8 +338,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             message = "Code build failed; the existing application was not replaced. See Gradle output.") }
                         if (builtRevision == codeRevision.get()) return@launch
                     }
+                    while (succeeded && debuggerPaused() && isCurrent(request)) {
+                        withCurrent(request) { display.value = display.value.copy(message = "Code build complete; resume the Native debugger to restore state and restart.") }
+                        delay(150)
+                    }
                 } while (builtRevision != codeRevision.get())
-                if (!isCurrent(request) || (!automaticBuildEnabled && !force) || debuggerAttached()) return@launch
+                if (!isCurrent(request) || (!automaticBuildEnabled && !force) || debuggerPaused()) return@launch
                 mutex.withLock {
                     val connection = client ?: return@launch
                     // A designer re-renders its source after replacement; it must not
@@ -327,14 +355,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
                         reply.savedState?.takeIf { it.isNotEmpty() }?.let { capture.copy(restore = it) }
                     }
+                    val debugRestart = WinRTNativeDebugOwnership.restarter(connection.process.pid(), connection.started)
+                    debugRestart?.detachForRestart()?.let { future -> runInterruptible { future.get(25, TimeUnit.SECONDS) } }
                     withContext(Dispatchers.EDT) {
-                        if (isCurrent(request) && builtRevision == codeRevision.get() && (automaticBuildEnabled || force) && !debuggerAttached()) {
+                        if (isCurrent(request) && builtRevision == codeRevision.get() && (automaticBuildEnabled || force) && !debuggerPaused()) {
                             // start cancels outstanding jobs; relinquish this completed build first.
                             codeRebuild = null
                             start(module, launch, restart = true, preview = isolatedPreview,
                                 theme = previewTheme, restoredState = states, skippedStateComponents = statePlan.skippedComponents,
-                                launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment)
-                        }
+                                launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment,
+                                debugRestart = debugRestart)
+                        } else debugRestart?.restartFailed(IllegalStateException("Sources changed while preparing the Native restart."))
                     }
                 }
             } catch (error: CancellationException) { throw error }
@@ -404,10 +435,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
-    fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default",
+    internal fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default",
         restoredState: List<WinUIXamlStateRequest> = emptyList(),
         skippedStateComponents: List<String> = emptyList(),
-        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true) {
+        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true, debugRestart: WinRTNativeDebugRestarter? = null) {
         if (disposed || project.isDisposed) return
         require(theme in setOf("Default", "Light", "Dark"))
         val sdkPreview = preview && launch == module.staticPreview?.launch()
@@ -608,15 +639,25 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
                 }
                 if (restoredState.isNotEmpty() || skippedStateComponents.isNotEmpty()) restoreAfterRestart(request, restoredState, skippedStateComponents)
+                debugRestart?.let { debugger ->
+                    try {
+                        val connection = requireNotNull(client)
+                        runInterruptible { debugger.attachAfterRestart(connection.process.pid(), connection.started, Path.of(launch.executable)).get(45, TimeUnit.SECONDS) }
+                    } catch (error: Exception) {
+                        debugger.restartFailed(error)
+                        withCurrent(request) { display.value = display.value.copy(message = "Application restarted, but the Native debugger could not reattach: ${error.message}") }
+                    }
+                }
                 if (codeRevision.get() != launchCodeRevision) {
                     withCurrent(request) { display.value = display.value.copy(projectCodeChanged = true) }
                     scheduleCodeRebuild()
                 }
                 watch(request)
             } catch (error: TimeoutCancellationException) {
+                debugRestart?.restartFailed(error)
                 withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output."); runProcess?.complete(1) }
-            } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { withCurrent(request) {
+            } catch (error: CancellationException) { debugRestart?.restartFailed(error); throw error }
+            catch (error: Exception) { debugRestart?.restartFailed(error); withCurrent(request) {
                 val surviving = owned?.process?.takeIf { it.isAlive }
                 if (surviving != null) runProcess?.bindProcess(surviving) else runProcess?.complete(1)
                 display.value = WinUIXamlHotReloadState(error.message.orEmpty(), pid = surviving?.pid())
@@ -817,7 +858,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     private fun refresh(connection: WinUIXamlHotReloadClient, request: Long) {
-        if (connection.process.pid() == debuggerPid) return
+        if (debuggerPaused()) return
         val reply = connection.request()
         if (!isCurrent(request) || client !== connection) return
         val pages = project.service<io.github.composefluent.winrt.ide.analysis.WinUIXamlSnapshotService>()
@@ -863,13 +904,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     fun apply() {
         // The static designer replaces its loose design document and reconnects
         // generated bindings. Its wrapper is not the compiled page's patch graph.
-        if (isolatedPreview || disposed || project.isDisposed || update?.isActive == true || debuggerAttached()) return
+        if (isolatedPreview || disposed || project.isDisposed || update?.isActive == true || debuggerPaused()) return
         val request = generation.get()
         update = scope.launch(Dispatchers.IO) {
             mutex.withLock {
                 if (!isCurrent(request)) return@withLock
                 val connection = client ?: return@withLock
-                if (debuggerAttached()) return@withLock
+                if (debuggerPaused()) return@withLock
                 if (uncertain || !display.value.connected) return@withLock
                 try {
                     val results = mutableListOf<WinUIXamlHotReloadValue>()
@@ -945,7 +986,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     fun inspect(request: WinUIXamlInspectionRequest) {
         synchronized(lifecycle) {
-            if (debuggerAttached()) return
+            if (debuggerPaused()) { pendingInspection = request; return }
             val connection = client ?: return
             val epoch = generation.get()
             if (!isCurrent(epoch)) return
@@ -971,7 +1012,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         activeRequest = next
                         val renderStarted = System.nanoTime()
                         val reply = mutex.withLock {
-                            if (debuggerAttached()) null else runInterruptible { connection.inspect(next) }
+                            if (debuggerPaused()) { synchronized(lifecycle) { pendingInspection = next }; null } else runInterruptible { connection.inspect(next) }
                         } ?: break
                         if (client === connection) withCurrent(epoch) {
                             if (next.previewMarkup.isNotEmpty() && reply.status == WinUIXamlHotReloadProtocol.RESTART_REQUIRED &&

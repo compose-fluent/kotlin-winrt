@@ -82,8 +82,19 @@ class WinRTNativeDebuggerBackendTest {
                 val returned = stopped()
                 val caller = request("stack", "thread" to returned["thread"].asLong)
                 assertTrue(caller.toString(), caller.getAsJsonArray("frames")[0].asJsonObject["name"].asString.contains("main"))
-                request("detach")
+                request("detachForRestart")
                 process.onExit().get(15, TimeUnit.SECONDS)
+                events.clear()
+                // The same debug session replaces its target and resolves source
+                // breakpoints again, as an incremental Native restart does.
+                request("configure", "konanHome" to konan.toString(), "executable" to executable.toString())
+                assertTrue(request("breakpoint", "file" to source.toString(), "line" to breakpointLine)["locations"].asInt > 0)
+                val replacement = request("launch", "directory" to directory.toString())
+                val resumedStop = stopped()
+                val replacementStack = request("stack", "thread" to resumedStop["thread"].asLong)
+                assertEquals(breakpointLine, replacementStack.getAsJsonArray("frames")[0].asJsonObject["line"].asInt)
+                request("detach")
+                ProcessHandle.of(replacement["pid"].asLong).orElseThrow().onExit().get(15, TimeUnit.SECONDS)
             }
         } finally {
             // Only the fresh test-owned directory is traversed.

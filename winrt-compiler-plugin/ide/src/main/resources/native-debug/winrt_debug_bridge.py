@@ -79,9 +79,12 @@ class Session:
     def dispatch(self, request):
         command = request["command"]
         if command == "configure":
+            if self.process:
+                raise RuntimeError("Detach the current native process before replacing its executable.")
             if self.target:
-                raise RuntimeError("The native debugger is already configured.")
-            load_kotlin_formatters(self.debugger, request["konanHome"])
+                self.debugger.DeleteTarget(self.target)
+            else:
+                load_kotlin_formatters(self.debugger, request["konanHome"])
             self.target = self.debugger.CreateTarget(request["executable"])
             if not self.target.IsValid():
                 raise RuntimeError("LLDB could not load the native executable.")
@@ -115,6 +118,16 @@ class Session:
             self.process = self.target.Launch(info, error)
             self.checked(error)
             return {"pid": self.process.GetProcessID()}
+        if command == "detachForRestart":
+            self.detach()
+            self.process = None
+            self.values.clear()
+            self.last_state = None
+            self.last_stop = None
+            self.pending_attach_stop = False
+            self.startup_loader_break = False
+            self.generation += 1
+            return {}
         if command == "detach":
             self.detach()
             return {}
