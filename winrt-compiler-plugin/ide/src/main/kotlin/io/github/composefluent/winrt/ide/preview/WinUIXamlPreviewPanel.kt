@@ -713,7 +713,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             else -> "$renderedHost · project preview is not running"
         }
     } else if (view != null && static) when {
-        state.busy -> state.message
+        state.busy || state.rebuildingCode -> state.message
         !state.connected -> "Last successful render · ${state.message}"
         failure != null || state.inspectionError != null -> "Out of date · last successful render"
         !state.connected || prepared == null || state.inspecting -> "Updating preview…"
@@ -722,7 +722,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val codeOutdated = static && projectCode && state.projectCodeChanged
     // A rebuild keeps the stale-code guard until the new host is ready, but its
     // in-progress status must not be presented as a failed preview.
-    val error = if (state.busy) null else failure ?: state.inspectionError ?: if (codeOutdated)
+    val error = if (state.busy || state.rebuildingCode) null else failure ?: state.inspectionError ?: if (codeOutdated)
         "Kotlin source changed · rebuild project code to update this preview" else null
     val missingModule = staticFile != null && (module == null || designLaunch == null)
     fun startPreview() {
@@ -731,7 +731,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     fun rebuildProjectPreview() {
         showSession = false; basicFallback = false; startupCancelled = false
-        design.start(launchModule!!, launch!!, restart = true, preview = true, theme = theme)
+        if (projectState.connected && design.usesLaunch(launchModule!!, launch!!)) {
+            design.rebuild(launchModule, launch)
+        } else design.start(launchModule!!, launch!!, restart = true, preview = true, theme = theme)
     }
     fun stopPreview() {
         startupCancelled = true
@@ -1029,18 +1031,18 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }
             Divider(Orientation.Horizontal)
             Row(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (state.busy || state.inspecting || (static && state.connected && prepared == null)) {
+                if (state.busy || state.rebuildingCode || state.inspecting || (static && state.connected && prepared == null)) {
                     CircularProgressIndicator(Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                 }
                 Tooltip(tooltip = { Text(error ?: status) }, modifier = Modifier.weight(1f)) {
-                    Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: editFeedback ?: status,
+                    Text(error?.let { (if (view != null) "Out of date · " else "Preview error · ") + it } ?: (if (state.rebuildingCode) status else editFeedback ?: status),
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
                 if (projectPreparing && projectState.busy) Link("Cancel project build", onClick = { startupCancelled = true; design.stop(); editFeedback = "Project build cancellation requested" })
                 else if (state.busy) Link("Cancel", onClick = ::stopPreview)
                 else {
-                    if (codeOutdated) Link("Rebuild project code", onClick = ::rebuildProjectPreview)
+                    if (codeOutdated && !state.rebuildingCode) Link("Rebuild project code", onClick = ::rebuildProjectPreview)
                     else if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)
                     else if (error != null && state.connected) Link("Retry", enabled = !state.inspecting, onClick = { manualRefresh++ })
                     if (error != null) { Spacer(Modifier.width(8.dp)); Link("Details", onClick = { showDiagnostics = true }) }
@@ -1150,7 +1152,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             }, enabled = launches.isNotEmpty())
             if (!state.connected) Link(if (static) "Retry preview" else "Start application", enabled = canStart, onClick = { showSession = false; startPreview() })
             Link("Refresh", enabled = state.connected && !state.inspecting, onClick = { manualRefresh++; showSession = false })
-            if (static && wantsProjectCode) Link("Rebuild project code", enabled = !projectState.busy, onClick = ::rebuildProjectPreview)
+            if (static && wantsProjectCode) Link("Rebuild project code", enabled = !projectState.busy && !projectState.rebuildingCode, onClick = ::rebuildProjectPreview)
             Link("Reconnect", enabled = !state.busy, onClick = { showSession = false; session.reconnect() })
             Link(if (state.busy) "Cancel build" else "Stop preview", enabled = state.pid != null || state.busy,
                 onClick = { showSession = false; stopPreview() })
