@@ -383,10 +383,13 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     if (previous != null && previous.second == pid && previous.third == key.third &&
                         previous.first.previewMarkup == request.previewMarkup && previous.first.animation == request.animation &&
                         previous.first.renderScale != request.renderScale) delay(150)
-                    val clockOnly = previous != null && previous.second == pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
-                        previous.first.copy(animation = request.animation, readProperties = request.readProperties) == request
+                    // Capture density and the SDK animation clock do not change
+                    // the source tree. Keep realized controls and template state
+                    // when zooming; explicit refresh and asset edits still reload.
+                    val captureOnly = previous != null && previous.second == pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
+                        previous.first.copy(animation = request.animation, renderScale = request.renderScale, readProperties = request.readProperties) == request
                     currentCoroutineContext().ensureActive()
-                    session.inspect(if (clockOnly) request.copy(previewMarkup = "", selectedPath = selectedPath) else request)
+                    session.inspect(if (captureOnly) request.copy(previewMarkup = "", selectedPath = selectedPath) else request)
                     submitted = key
                 }
             }

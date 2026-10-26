@@ -351,6 +351,12 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               ${if (framework == XamlFramework.WinUI) """requireNotNull(window.appWindow).resizeClient(windows.graphics.SizeInt32(
                 (request.width * dpi).toInt(), (request.height * dpi).toInt()))""" else """windows.ui.viewmanagement.ApplicationView.getForCurrentView()?.tryResizeView(
                 windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))"""}
+              ${if (framework == XamlFramework.WinUI) """// Establish the requested glyph density before the first layout.
+              // Changing it only in RenderAsync would lay out text at one density
+              // and immediately discard those realizations for the first bitmap.
+              val (captureWidth, captureHeight) = winUIXamlCaptureSize(request.width.toDouble(), request.height.toDouble(), dpi, request.renderScale)
+              element.rasterizationScale = maxOf(element.rasterizationScale,
+                captureWidth.toDouble() / request.width, captureHeight.toDouble() / request.height)""" else ""}
               stage = "lay out the visual tree"
               // UWP defers the first Window content layout until rendering. Establish
               // the requested artboard before capture chooses its bounded pixel size.

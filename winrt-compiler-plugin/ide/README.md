@@ -935,3 +935,7 @@ Gradle worker limit. `kotlinWinRT.native.backendThreads` can select 1–64 threa
 an explicit binary `-Xbackend-threads` argument takes precedence. This retains debug
 information and does not enable unsupported mingw compiler caches. Release binaries
 keep their existing compiler settings.
+
+Zoom-only captures reuse the current designer tree, preserving realized controls
+and template state; explicit refresh reloads source. WinUI establishes glyph density
+before the initial layout to avoid discarding its first text realizations.
