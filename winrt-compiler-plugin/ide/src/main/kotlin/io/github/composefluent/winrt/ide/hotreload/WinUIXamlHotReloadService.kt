@@ -43,7 +43,7 @@ data class WinUIXamlHotReloadState(val message: String = "Run an application wit
     val startupMillis: Long? = null, val renderMillis: Long? = null, val reusedBuild: Boolean = false,
     val inspectionPath: List<Int>? = null, val animationError: String? = null, val inspectionPropertiesRead: Boolean = false,
     val projectCodeChanged: Boolean = false, val rebuildingCode: Boolean = false,
-    val inspectionDocument: WinUIXamlInspectionRequest? = null)
+    val inspectionDocument: WinUIXamlInspectionRequest? = null, val restartOutcome: String? = null)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
@@ -252,6 +252,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     /** Compile into staging while the old deployment remains alive. Failed builds
      * never reach start(), whose restart boundary owns stopping the old process. */
+    fun dismissRestartOutcome() {
+        synchronized(lifecycle) { display.value = display.value.copy(restartOutcome = null) }
+    }
+
     fun setAutomatic(enabled: Boolean) {
         automatic.value = enabled
         if (enabled) { apply(); scheduleCodeRebuild() }
@@ -285,7 +289,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     lastAttempted = builtRevision
                     val finished = CompletableDeferred<Boolean>()
                     withCurrent(request) { display.value = display.value.copy(
-                        message = "Building code changes; the current application stays running…", rebuildingCode = true) }
+                        message = "Building code changes; the current application stays running…", rebuildingCode = true, restartOutcome = null) }
                     withContext(Dispatchers.EDT) {
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module, listOf(buildTask), "Build Hot Reload changes",
                             environment = launchEnvironment + mapOf("KOTLIN_WINRT_BUILD_REQUEST" to UUID.randomUUID().toString()),
@@ -367,13 +371,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     if (pending.isNotEmpty()) delay(150)
                 }
             }
-            withCurrent(request) { display.value = display.value.copy(message =
-                if (skipped.isEmpty()) "Code changes loaded; saved control state restored."
-                else "Code changes loaded; state skipped for components without a unique source identity: ${skipped.joinToString()}. Other saved control state restored.") }
+            withCurrent(request) {
+                val outcome = if (skipped.isEmpty()) "Code changes loaded; saved control state restored."
+                else "Code changes loaded; state skipped for components without a unique source identity: ${skipped.joinToString()}. Other saved control state restored."
+                display.value = display.value.copy(message = outcome, restartOutcome = outcome)
+            }
         } catch (error: Exception) {
             if (error is CancellationException && error !is TimeoutCancellationException) throw error
-            withCurrent(request) { display.value = display.value.copy(
-                message = "Code changes loaded, but some control state could not be restored: ${error.message}") }
+            withCurrent(request) {
+                val outcome = "Code changes loaded, but some control state could not be restored: ${error.message}"
+                display.value = display.value.copy(message = outcome, restartOutcome = outcome)
+            }
         }
     }
 

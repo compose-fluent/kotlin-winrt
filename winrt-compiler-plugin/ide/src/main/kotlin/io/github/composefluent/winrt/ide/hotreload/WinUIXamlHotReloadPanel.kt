@@ -45,6 +45,10 @@ fun WinUIXamlHotReloadPanel(project: Project) {
             CheckboxRow("Apply changes automatically (rebuild when needed)", automatic, service::setAutomatic)
         }
         if (state.connected) item { Text("Connected · ${state.roots.size} loaded XAML roots") }
+        state.restartOutcome?.let { outcome -> item {
+            Text(outcome)
+            Link("Dismiss restart result", onClick = service::dismissRestartOutcome)
+        } }
         item {
             WinRTDetails("connection details") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -73,7 +77,7 @@ fun WinUIXamlHotReloadPanel(project: Project) {
                 Text("Existing named-element events can switch to already compiled compatible handlers, or be disabled and restored without restarting.")
                 Text("New event handlers or slots, names, bindings, templates and parent changes require rebuilding. Moving controls preserves their objects; focus and Loaded/Unloaded state may change.")
                 Text("Theme expressions, implicit styles and external dictionaries require rebuilding.")
-                Text("Packaged applications build code changes before restarting. A failed build keeps the current app; compatible named-control state is restored after a successful restart.")
+                Text("Packaged applications and unpackaged toolkit hosts build code changes before restarting. A failed build keeps the current app; compatible named-control state is restored after a successful restart.")
             }
         }
     }
