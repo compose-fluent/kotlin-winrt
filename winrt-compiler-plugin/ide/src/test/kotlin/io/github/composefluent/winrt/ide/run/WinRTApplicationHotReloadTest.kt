@@ -98,6 +98,22 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
         assertEquals("--args=example", nativeSettings.scriptParameters)
     }
 
+    fun testPlatformGradleRunnerExecutesTheDevelopmentRunState() {
+        val (configuration, environment, _) = execution("runDebugExecutableMingwX64")
+        var executed = false
+        val wrapper = WinRTDevelopmentRunState(com.intellij.execution.configurations.RunProfileState { _, _ ->
+            executed = true
+            null // No external build is needed to validate the platform runner's dispatch contract.
+        }, configuration.settings, project, configuration, environment)
+        val runner = Class.forName("com.intellij.openapi.externalSystem.service.execution.ExternalSystemTaskRunner")
+            .getDeclaredConstructor().newInstance()
+        val execute = runner.javaClass.getDeclaredMethod("doExecute",
+            com.intellij.execution.configurations.RunProfileState::class.java,
+            com.intellij.execution.runners.ExecutionEnvironment::class.java).apply { isAccessible = true }
+        assertNull(execute.invoke(runner, wrapper, environment))
+        assertTrue("ASC's Gradle runner must not silently ignore the development session", executed)
+    }
+
     fun testNativeReleaseAliasesDiscoverTheReleaseExecutable() {
         listOf("runReleaseExecutableMingwX64", "runWinAppNativeMingwX64ReleaseExecutable").forEach { task ->
             val (_, environment, _) = execution(task)

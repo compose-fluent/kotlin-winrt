@@ -56,8 +56,8 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
         val state = execution.gradleState(if (nativeDebug) DefaultRunExecutor.getRunExecutorInstance() else executor, environment)
         if (state != null) environment.putUserData(WinRTApplicationHotReload.KEY, WinRTApplicationHotReload(module, launch, directory,
             settings.env.toMap(), settings.scriptParameters.orEmpty(), settings.isPassParentEnvs))
-        if (state == null || nativeDebug || launch.developmentBuildTask.isNullOrBlank()) return state
-        return WinRTDevelopmentRunState(state)
+        if (state == null || executor.id != DefaultRunExecutor.EXECUTOR_ID || launch.developmentBuildTask.isNullOrBlank()) return state
+        return WinRTDevelopmentRunState(state, execution.settings, project, execution, environment)
     }
 
     internal fun developmentLaunch(): Pair<WinRTModuleData, WinUIXamlHotReloadLaunchData>? {
@@ -85,7 +85,17 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
 }
 
 /** Preserve Gradle console/actions while keeping the standard Stop action alive. */
-internal class WinRTDevelopmentRunState(val delegate: RunProfileState) : RunProfileState {
+internal class WinRTDevelopmentRunState(
+    val delegate: RunProfileState,
+    settings: com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings,
+    project: Project,
+    configuration: ExternalSystemRunConfiguration,
+    environment: ExecutionEnvironment,
+) : com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunnableState(settings, project, false, configuration, environment) {
+    override fun setContentDescriptor(descriptor: com.intellij.execution.ui.RunContentDescriptor?) {
+        super.setContentDescriptor(descriptor)
+        (delegate as? com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunnableState)?.setContentDescriptor(descriptor)
+    }
     override fun execute(executor: Executor, runner: com.intellij.execution.runners.ProgramRunner<*>): com.intellij.execution.ExecutionResult? {
         val result = delegate.execute(executor, runner) ?: return null
         val build = result.processHandler ?: return result
