@@ -301,7 +301,8 @@ Source-only navigation does not choose between repeated realizations. Template
 selectors and ContentPresenter-only containers
 are not inferred; they remain source-only
 until an exact SDK-to-source ownership mapping is available. This selection
-contract does not add live application template replacement or Kotlin reload.
+contract does not itself add live application template replacement or Kotlin reload;
+the separate resource transaction supports the limited template case described below.
 
 The isolated designer restores the previous Window.Content when attaching or
 laying out new markup fails after attachment. Deferred DataTemplate failures
@@ -351,3 +352,11 @@ fail closed with a rebuild diagnostic. This does not preserve Loaded/Unloaded si
 ASC Native acceptance covers an ordinary unnamed text update, a same-count
 application reorder rejected without mutating either text control, and successful
 retry after restoring the order in the same running process without reconnecting.
+
+Explicitly keyed local presentation templates can use the resource replacement
+transaction when their markup contains no compiled names, events, bindings, or
+external/theme resource expressions. Generated SDK glue uses
+`XamlReader.LoadWithInitialTemplateValidation` before dictionary mutation; exact
+`StaticResource` consumers receive the replacement through their generated property
+accessors. The existing control instance remains, but template-created child state
+is not migrated. This does not enable arbitrary application template replacement.

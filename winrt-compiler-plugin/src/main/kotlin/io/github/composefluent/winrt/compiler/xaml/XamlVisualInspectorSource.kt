@@ -30,7 +30,7 @@ internal fun xamlDevelopmentConfigurationSource(inspector: String, framework: Xa
         enqueue
       },
       sdkConvert = { type, text -> ${framework.xamlKotlinNamespace}.markup.XamlBindingHelper.convertValue(type, text) },
-      loadResources = { markup -> requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(markup))
+      loadResources = { markup -> requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.loadWithInitialTemplateValidation(markup))
         .asWinRT<${framework.xamlKotlinNamespace}.ResourceDictionary>() },
       loadElement = { markup -> requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(markup))
         .asWinRT<${framework.xamlKotlinNamespace}.UIElement>() },

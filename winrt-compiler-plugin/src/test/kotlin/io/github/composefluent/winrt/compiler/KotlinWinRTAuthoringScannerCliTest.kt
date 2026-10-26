@@ -90,6 +90,7 @@ class KotlinWinRTAuthoringScannerCliTest {
         for ((framework, namespace) in listOf(XamlFramework.WinUI to "microsoft.ui.dispatching", XamlFramework.UWP to "windows.system")) {
             val source = io.github.composefluent.winrt.compiler.xaml.xamlDevelopmentConfigurationSource("inspector", framework)
             assertTrue(source.contains("isWinUIXamlPreviewHost()"))
+            assertTrue(source.contains("XamlReader.loadWithInitialTemplateValidation(markup)"))
             assertTrue(source.contains("$namespace.DispatcherQueuePriority.High else $namespace.DispatcherQueuePriority.Normal"))
             assertTrue(source.contains("queue.tryEnqueue(priority, $namespace.DispatcherQueueHandler"))
         }

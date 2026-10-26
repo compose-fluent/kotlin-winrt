@@ -157,9 +157,9 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 }
             }
         }
-        fun styleChanged(old: XamlElement, next: XamlElement): Boolean = !old.matches(next) &&
-            (old.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") || next.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") ||
-                old.content.filterIsInstance<XamlElement>().zip(next.content.filterIsInstance<XamlElement>()).any { (a, b) -> styleChanged(a, b) })
+        fun sealedResourceChanged(old: XamlElement, next: XamlElement): Boolean = !old.matches(next) &&
+            (old.template || next.template || old.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") || next.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") ||
+                old.content.filterIsInstance<XamlElement>().zip(next.content.filterIsInstance<XamlElement>()).any { (a, b) -> sealedResourceChanged(a, b) })
         fun validateFragment(element: XamlElement, keys: Set<String>) {
             require(element.elementName.isEmpty()) { "Named resources require rebuilding to reconnect generated fields." }
             element.attributes.forEach { (name, value) ->
@@ -344,7 +344,7 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                         val nextEntries = resourceEntries(b)
                         val oldByKey = oldEntries.associateBy(::key)
                         val nextByKey = nextEntries.associateBy(::key)
-                        if (oldByKey.keys != nextByKey.keys || nextEntries.any { styleChanged(oldByKey.getValue(key(it)), it) }) {
+                        if (oldByKey.keys != nextByKey.keys || nextEntries.any { sealedResourceChanged(oldByKey.getValue(key(it)), it) }) {
                             nextEntries.forEach { validateFragment(it, nextByKey.keys) }
                             val consumers = references(next, b, target, oldByKey.keys + nextByKey.keys)
                             require(consumers.all { it.key in nextByKey }) { "A removed resource still has live consumers; update those references before removing its key." }
