@@ -33,6 +33,7 @@ class WinRTApplicationRestartIntegrationTest : BasePlatformTestCase() {
         require(original.contains("JVM component state ready"))
         VfsRootAccess.allowRootAccess(testRootDisposable, root.toString(), System.getProperty("winrt.ide.toolchain"), System.getProperty("java.home"))
         System.getenv("GRADLE_USER_HOME")?.let { VfsRootAccess.allowRootAccess(testRootDisposable, Path.of(it).parent.toString()) }
+        val restoreMetadata = preserveWinRTIntegrationProjectMetadata(root)
         val previousSdks = ProjectJdkTable.getInstance().allJdks.toSet()
         val sdk = JavaSdk.getInstance().createJdk("WinRT restart validation", System.getProperty("java.home"), false)
         val manager = ProjectManagerEx.getInstanceEx()
@@ -110,7 +111,7 @@ class WinRTApplicationRestartIntegrationTest : BasePlatformTestCase() {
         } finally {
             EdtTestUtil.runInEdtAndWait<Exception> { service.stop() }
             Files.writeString(code, original)
-            EdtTestUtil.runInEdtAndWait<Exception> {
+            try { EdtTestUtil.runInEdtAndWait<Exception> {
                 manager.forceCloseProject(opened)
                 ApplicationManager.getApplication().runWriteAction {
                     // Gradle execution may register its JBR and the Kotlin SDK.
@@ -118,7 +119,7 @@ class WinRTApplicationRestartIntegrationTest : BasePlatformTestCase() {
                     val table = ProjectJdkTable.getInstance()
                     table.allJdks.filterNot(previousSdks::contains).forEach(table::removeJdk)
                 }
-            }
+            } } finally { restoreMetadata() }
         }
     }
 }
