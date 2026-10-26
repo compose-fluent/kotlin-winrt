@@ -189,6 +189,9 @@ val bundleWinRTToolchain by tasks.registering(Zip::class) {
         }
     }
 }
+// The tooling publisher also builds this physical model module. Finish its
+// output cleanup before the IDE variant's producer checks/reuses its classes.
+project(":ide-model").tasks.configureEach { mustRunAfter(bundleWinRTToolchain) }
 tasks.processResources { from(bundleWinRTToolchain.map { it.destinationDirectory.dir("..") }) }
 
 // Maven publication timestamps and ZIP headers do not change the compiler/runtime.
