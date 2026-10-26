@@ -47,7 +47,7 @@ internal object XamlLibraryOptions {
         val output = configuration.get(keys.getValue("xamlLibraryOutput")) ?: return null
         val root = Path.of(output)
         // Frontend errors must not leave a usable schema from an earlier build.
-        Files.deleteIfExists(root.resolve("KotlinXaml.winmd"))
+        WinRTMetadataFiles.deleteGenerated(root.resolve("KotlinXaml.winmd"))
         Files.deleteIfExists(root.resolve("kotlin-winrt-support/compiler-support.tsv"))
         return XamlLibrarySchema(root,
             requireNotNull(configuration.get(keys.getValue("xamlLibraryAssembly"))),
