@@ -16,6 +16,7 @@ class WinUIXamlVisualInspector(
     private val template: (Any) -> WinUIXamlTemplateReference? = { null },
     private val sameObject: (Any, Any) -> Boolean = { first, second -> first === second },
     private val clock: () -> WinUIXamlPreviewClock? = { null },
+    internal val formatValue: (Any?) -> String = { it?.toString().orEmpty() },
     private val animate: (Any, WinUIXamlPreviewAnimation) -> Unit = { _, _ -> error("Rebuild the preview host to inspect storyboards.") },
 ) {
     fun inspect(owner: Any, request: WinUIXamlInspectionRequest, complete: (Result<WinUIXamlVisualSnapshot>) -> Unit) {

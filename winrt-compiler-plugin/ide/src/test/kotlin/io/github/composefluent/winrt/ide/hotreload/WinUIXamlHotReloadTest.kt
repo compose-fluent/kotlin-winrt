@@ -403,6 +403,22 @@ class WinUIXamlHotReloadTest {
         }
     }
 
+    @Test fun grid_definition_insertions_use_the_property_vector() {
+        val text = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><Grid x:Name="Greeting"><Grid.RowDefinitions><RowDefinition Height="*"/></Grid.RowDefinitions></Grid></Window>"""
+        val changed = text.replace("</Grid.RowDefinitions>", "<RowDefinition Height=\"Auto\"/></Grid.RowDefinitions>")
+        val update = WinUIXamlHotReloadMarkup.parse(changed).patch(WinUIXamlHotReloadMarkup.parse(text), root(text),
+            contentMember = { _, type, property -> when {
+                type == "Window" -> WinUIXamlContentMember("Content", false)
+                type == "Grid" && property == "RowDefinitions" -> WinUIXamlContentMember(property, true)
+                type == "RowDefinition" && property == "Height" -> WinUIXamlContentMember(property, false)
+                else -> null
+            } })
+        val vector = update.children.single()
+        assertEquals(WinUIXamlHotReloadTarget("Greeting", listOf(WinUIXamlHotReloadStep.Property("RowDefinitions"))), vector.target)
+        assertEquals(WinUIXamlHotReloadItem.Existing(0), vector.items[0])
+        assertTrue((vector.items[1] as WinUIXamlHotReloadItem.Markup).xaml.contains("RowDefinition"))
+    }
+
     @Test fun keyed_presentation_templates_replace_through_resource_transactions() {
         val text = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><Grid><Grid.Resources><DataTemplate x:Key="Card"><TextBlock Text="Before"/></DataTemplate></Grid.Resources><ContentControl x:Name="Greeting" ContentTemplate="{StaticResource Card}"/></Grid></Window>"""
         fun patch(old: String, next: String) = WinUIXamlHotReloadMarkup.parse(next).patch(

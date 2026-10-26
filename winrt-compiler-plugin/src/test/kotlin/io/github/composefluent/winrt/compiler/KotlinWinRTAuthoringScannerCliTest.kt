@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWri
 import io.github.composefluent.winrt.runtime.XamlFramework
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -91,6 +92,7 @@ class KotlinWinRTAuthoringScannerCliTest {
             val source = io.github.composefluent.winrt.compiler.xaml.xamlDevelopmentConfigurationSource("inspector", framework)
             assertTrue(source.contains("isWinUIXamlPreviewHost()"))
             assertTrue(source.contains("XamlReader.loadWithInitialTemplateValidation(markup)"))
+            assertFalse(source.substringAfter("loadElement =").substringBefore("inspector =").contains("asWinRT"))
             assertTrue(source.contains("$namespace.DispatcherQueuePriority.High else $namespace.DispatcherQueuePriority.Normal"))
             assertTrue(source.contains("queue.tryEnqueue(priority, $namespace.DispatcherQueueHandler"))
         }

@@ -95,8 +95,8 @@ property from WinMD ContentPropertyAttribute, and mutable-vector shape from the
 metadata owner's existing collection descriptor and interface closure. It does not
 maintain a list of container controls. A collection update carries its expected live
 size and a new sequence of original indices or bounded SDK markup fragments. Each
-original child may occur only once. Generated SDK glue loads new UIElements through
-XamlReader.Load; common code uses the existing projected MutableList contract.
+original child may occur only once. Generated SDK glue loads new SDK objects through
+XamlReader.Load, including nonvisual collection items such as RowDefinition; common code uses the existing projected MutableList contract.
 IndexOf, RemoveAt and indexed insertion correspond to CsWinRT's IList.net5.cs and
 retain native instances rather than recreating controls. Native IndexOf supplies
 identity comparison even when Kotlin wrappers differ. Overlapping collection paths

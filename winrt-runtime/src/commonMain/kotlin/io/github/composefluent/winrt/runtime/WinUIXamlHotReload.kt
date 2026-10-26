@@ -217,6 +217,8 @@ internal class WinUIXamlHotReloadRegistry(
         } catch (error: Exception) { complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, error.message.orEmpty())) }
     }
 
+    private fun format(value: Any?): String = (inspector?.formatValue?.invoke(value) ?: value?.toString().orEmpty()).take(4096)
+
     private class Prepared(val commit: () -> Unit, val rollback: () -> Unit, val result: () -> WinUIXamlHotReloadValue)
 
     private fun storedSize(patch: WinUIXamlHotReloadPatch) = 2 * (
@@ -279,7 +281,7 @@ internal class WinUIXamlHotReloadRegistry(
         val previous = member.getValue(target)
         val local = WinUIAuthoredTypeMetadata.memberDefinition(target, member.name)?.localValue?.invoke(target)
         return Prepared({ member.setValue(target, value) }, { if (local != null) local.restore() else member.setValue(target, previous) }, {
-            WinUIXamlHotReloadValue(address.element, member.name, member.getValue(target)?.toString().orEmpty(), address.path)
+            WinUIXamlHotReloadValue(address.element, member.name, format(member.getValue(target)), address.path)
         })
     }
 
@@ -375,7 +377,7 @@ internal class WinUIXamlHotReloadRegistry(
                         "${change.property} has no compiled dependency-property reset accessor; rebuild."
                     }.invoke(target)
                     add(Prepared(local.clear, local.restore, {
-                        WinUIXamlHotReloadValue(address.element, member.name, member.getValue(target)?.toString().orEmpty(), address.path)
+                        WinUIXamlHotReloadValue(address.element, member.name, format(member.getValue(target)), address.path)
                     }))
                 } else {
                     val type = requireNotNull(member.type) { "${change.property} has no compiled value type." }
@@ -399,7 +401,7 @@ internal class WinUIXamlHotReloadRegistry(
             }
             require(member.canRead) { "${request.property} is not readable." }
             return WinUIXamlHotReloadValue(request.target.element, request.property,
-                member.getValue(instance)?.toString().orEmpty(), request.target.path)
+                format(member.getValue(instance)), request.target.path)
         }
         // Validate requested readbacks too; a late failure rolls back the entire update.
         roots.forEach { root -> reads.forEach { read(root, it, overlays.getValue(root)) } }

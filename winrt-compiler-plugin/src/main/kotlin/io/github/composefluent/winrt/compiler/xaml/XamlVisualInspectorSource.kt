@@ -32,8 +32,9 @@ internal fun xamlDevelopmentConfigurationSource(inspector: String, framework: Xa
       sdkConvert = { type, text -> ${framework.xamlKotlinNamespace}.markup.XamlBindingHelper.convertValue(type, text) },
       loadResources = { markup -> requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.loadWithInitialTemplateValidation(markup))
         .asWinRT<${framework.xamlKotlinNamespace}.ResourceDictionary>() },
-      loadElement = { markup -> requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(markup))
-        .asWinRT<${framework.xamlKotlinNamespace}.UIElement>() },
+      // Collection items include nonvisual SDK objects such as RowDefinition.
+      // The generated collection adapter owns the actual item type boundary.
+      loadElement = { markup -> requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(markup)) },
       inspector = $inspector(),
     )
 """.trimIndent()
@@ -201,6 +202,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           var tracedPreview = false
           var traceCapture = false
           return WinUIXamlVisualInspector(
+          formatValue = ::display,
           visualRoot = { owner -> if (owner is Window) owner.content else owner },
           children = { value ->
             val element = value.asWinRT<DependencyObject>()

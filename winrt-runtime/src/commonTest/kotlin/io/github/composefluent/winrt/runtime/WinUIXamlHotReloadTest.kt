@@ -248,6 +248,25 @@ class WinUIXamlHotReloadTest {
         assertNull(lifetime.hotReloadBaseline)
     }
 
+    @Test fun transactional_readbacks_share_the_generated_sdk_formatter() {
+        // SDK structs (GridLength, Thickness, etc.) use the inspector adapter's
+        // invariant formatter rather than the Kotlin wrapper's object identity.
+        val queue = mutableListOf<() -> Unit>(); registry(queue)
+        val inspector = WinUIXamlVisualInspector({ it }, { emptyList() },
+            { _, _ -> error("not inspecting") }, { emptyList() }, { _, _, _ -> }, { _, _ -> },
+            formatValue = { "sdk:$it" })
+        val registry = WinUIXamlHotReloadRegistry({ { task -> queue += task; true } }, { _, text -> text }, inspector = inspector)
+        val owner = Any(); val element = Element()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Greeting", element)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        var result: WinUIXamlHotReloadReply? = null
+        registry.submit(patch(WinUIXamlHotReloadChange("Greeting", "Text", "new")).copy(
+            reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("Greeting"), "Text")))) { result = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, result?.status)
+        assertEquals(listOf("sdk:new", "sdk:new"), result?.values?.map { it.value })
+    }
+
     @Test fun non_content_vectors_reload_and_reject_application_replacements() {
         // Runtime2 collection projection + generated custom-property accessors:
         // Grid.RowDefinitions is a vector property, not Grid's content property.
@@ -280,6 +299,16 @@ class WinUIXamlHotReloadTest {
         owner.rows[0] = row
         assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(edit).status)
         assertEquals(3, row.size)
+        val insert = patch().copy(expectedHash = "c".repeat(64), sourceHash = "d".repeat(64), version = 3,
+            children = listOf(WinUIXamlHotReloadChildren(WinUIXamlHotReloadTarget(path = path.take(1)), 1,
+                listOf(WinUIXamlHotReloadItem.Existing(0), WinUIXamlHotReloadItem.Markup("new row")))))
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(insert).status)
+        assertSame(row, owner.rows[0]); assertEquals("new row", owner.rows[1].text)
+        val resize = patch(WinUIXamlHotReloadChange("", "Size", "5",
+            path.take(1) + WinUIXamlHotReloadStep.Index(1, 2)))
+            .copy(expectedHash = "d".repeat(64), sourceHash = "e".repeat(64), version = 4)
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(resize).status)
+        assertEquals(5, owner.rows[1].size)
     }
 
     @Test fun property_side_effects_refresh_only_the_changed_owner_collection_baseline() {
