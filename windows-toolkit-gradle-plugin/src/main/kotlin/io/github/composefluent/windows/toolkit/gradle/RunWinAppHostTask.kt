@@ -53,6 +53,11 @@ abstract class RunWinAppHostTask @Inject constructor(
     @get:Input
     abstract val args: ListProperty<String>
 
+    @org.gradle.api.tasks.options.Option(option = "args", description = "Application arguments")
+    fun applicationArgs(value: String) {
+        args.set(org.apache.tools.ant.types.Commandline.translateCommandline(value).toList())
+    }
+
     @get:Input
     abstract val jvmArgs: ListProperty<String>
 

@@ -83,6 +83,20 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
         }
     }
 
+    fun testStagedNativeRunAliasUsesIsolatedLauncherWithoutChangingSavedConfiguration() {
+        val models = project.service<WinRTProjectService>()
+        val module = models.modules.value.single()
+        models.replaceBuildModels(root, listOf(module.copy(hotReloadLaunches = module.hotReloadLaunches.map {
+            if (it.taskName == "runWinAppNativeMingwX64DebugExecutable") it.copy(developmentBuildTask = "stageNative") else it
+        })))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        val (configuration, _, nativeSettings) = execution("runDebugExecutableMingwX64")
+        assertEquals(listOf(":app:runWinAppNativeMingwX64DebugExecutable"), nativeSettings.taskNames)
+        assertEquals("1", nativeSettings.env["KOTLIN_WINRT_RELEASE_BUILD_LOCK"])
+        assertEquals(listOf(":app:runDebugExecutableMingwX64"), configuration.settings.taskNames)
+        assertEquals("--args=example", nativeSettings.scriptParameters)
+    }
+
     fun testNativeReleaseAliasesDiscoverTheReleaseExecutable() {
         listOf("runReleaseExecutableMingwX64", "runWinAppNativeMingwX64ReleaseExecutable").forEach { task ->
             val (_, environment, _) = execution(task)
