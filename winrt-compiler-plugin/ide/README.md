@@ -720,7 +720,7 @@ density, then restore the original value without changing DIP layout. Windows.UI
 has no matching public setter, so UWP uses RenderAsync output scaling only. Large
 artboards can reach the capture cap before the maximum zoom. RenderTargetBitmap's
 limitations still apply, including content outside the captured visual such as popups.
-The protocol is version 12: rebuild applications using an older development host
+The protocol is version 13: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
 adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches
@@ -841,7 +841,7 @@ Ordinary events on existing named, non-template elements can switch to an alread
 compiled compatible handler, including private Kotlin methods. Removing the event
 attribute disables dispatch; restoring it reuses the same native subscription.
 Source/version and expected-handler checks, rollback and future-instance replay
-use the normal transaction. Protocol v12 requires rebuilding older development hosts.
+use the normal transaction. Protocol v13 requires rebuilding older development hosts.
 
 Local dictionaries can add/remove keys when no surviving consumer references a
 removed key; dictionary keys and values roll back together after a failed update.

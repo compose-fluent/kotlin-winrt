@@ -297,10 +297,16 @@ undo command, and the property panel identifies that shared scope. Nested templa
 are resolved through a bounded source closure, including external dictionaries;
 cyclic references are rejected instead of guessing an owner.
 
-Source-only navigation does not choose between repeated realizations. Template
-selectors and ContentPresenter-only containers
-are not inferred; they remain source-only
-until an exact SDK-to-source ownership mapping is available. This selection
+Source-only navigation does not choose between repeated realizations. Protocol v13
+also carries design-copy provenance: source preparation puts a content fingerprint
+and original element path into a reserved local string resource on each template
+root. The generated SDK inspector reads that resource only in an isolated designer.
+This maps actual selector and ContentPresenter realizations without invoking the
+selector again, changing names or Tag values, or assuming visual child positions.
+The IDE requires the current source fingerprint and the clicked realization; stale
+or ambiguous provenance cannot enable editing. Referenced dictionary sources and
+application templates participate in the same bounded source closure. Live
+applications and templates whose source is unavailable keep SDK ownership mapping. This selection
 contract does not itself add live application template replacement or Kotlin reload;
 the separate resource transaction supports the limited template case described below.
 

@@ -175,6 +175,7 @@ internal object WinUIXamlHotReloadCodec {
                     require(owner.size < node.path.size && node.path.take(owner.size) == owner && node.templateProperty in listOf("ContentTemplate", "ItemTemplate"))
                     writeInt(owner.size); owner.forEach { writeInt(it) }; string(node.templateProperty)
                 }
+                require(node.sourceId.length <= 4096); string(node.sourceId)
             }
             writeInt(view.properties.size); view.properties.forEach { string(it.name); string(it.value) }
             writeBoolean(view.image != null)
@@ -204,7 +205,7 @@ internal object WinUIXamlHotReloadCodec {
                 val owner = if (readBoolean()) List(count(64)) { count(2048) } else null
                 val property = if (owner != null) string() else ""
                 require(owner == null || owner.size < path.size && path.take(owner.size) == owner && property in listOf("ContentTemplate", "ItemTemplate"))
-                WinUIXamlVisualNode(path, type, name, bounds, owner, property)
+                WinUIXamlVisualNode(path, type, name, bounds, owner, property, string().also { require(it.length <= 4096) })
             }
             val properties = List(count(64)) { WinUIXamlVisualProperty(string(), string()) }
             val image = if (!readBoolean()) null else {

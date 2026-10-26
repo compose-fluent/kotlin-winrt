@@ -29,7 +29,7 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                 setFeature("http://xml.org/sax/features/external-general-entities", false)
                 setFeature("http://xml.org/sax/features/external-parameter-entities", false)
             }
-            fun parse(value: String) = factory.newDocumentBuilder().parse(InputSource(StringReader(value)))
+            fun parse(value: String) = factory.newDocumentBuilder().parse(InputSource(StringReader(value))).also { WinUIXamlDesignIdentity.mark(it, value) }
             val document = parse(text)
             var root = document.documentElement
             require(root.localName !in listOf("Application", "ResourceDictionary")) { "Select a visual Window, Page or UserControl to preview." }
@@ -202,6 +202,7 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                         sanitize(replacement, sourcePath, stack)
                     } else sanitize(child, sourcePath, stack)
                 }
+                WinUIXamlDesignIdentity.materialize(tag)
                 // Loose XAML loads merged dictionaries immediately, unlike
                 // compiled resource dictionaries' deferred materialization.
                 // Establish this dictionary's theme keys before merged styles

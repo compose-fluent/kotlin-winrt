@@ -14,6 +14,10 @@ class WinUIXamlReloadStateTest {
         assertNull(command.patch)
         val reply = WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "saved", savedState = state)
         assertEquals(reply, WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(reply)))
+        val marked = WinUIXamlVisualNode(emptyList(), "Grid", "", WinUIXamlVisualBounds(0.0, 0.0, 1.0, 1.0), sourceId = "d1:source:0.1")
+        val inspected = reply.copy(inspection = WinUIXamlVisualSnapshot(listOf(marked), emptyList()))
+        assertEquals(inspected, WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(inspected)))
+
         assertFailsWith<IllegalArgumentException> { WinUIXamlHotReloadCodec.writeStateRequest("token", request.copy(restore = state + state)) }
         assertFailsWith<IllegalArgumentException> { validateWinUIXamlSavedState(listOf(state.single().copy(values = listOf(WinUIXamlVisualProperty("Text", "x".repeat(131073)))))) }
     }

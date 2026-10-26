@@ -14,6 +14,35 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
     private fun xml(body: String) = myFixture.configureByText("Selection.xaml",
         """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">$body</Grid>""") as XmlFile
 
+    fun testDesignProvenanceMapsPresenterAndSelectorTemplatesWithoutReinvokingSelection() {
+        val file = xml("""<Grid.Resources><DataTemplate x:Key="Selected"><Border Tag="User tag"><TextBlock x:Name="Label"/></Border></DataTemplate></Grid.Resources><ContentPresenter Content="item" ContentTemplateSelector="{Binding Selector}"/>""")
+        val tags = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java)
+        val root = tags.single { it.localName == "Border" }
+        val label = tags.single { it.localName == "TextBlock" }
+        val id = WinUIXamlDesignIdentity.source(root)
+        val prepared = WinUIXamlDesignDocument.prepare(file.text)
+        assertTrue(prepared.markup.contains(id))
+        assertTrue(prepared.markup.contains("Tag=\"User tag\""))
+        assertFalse(prepared.markup.contains("urn:kotlin-winrt:design-source"))
+        val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "ContentPresenter"),
+            node(listOf(0, 0), "Border").copy(sourceId = id), node(listOf(0, 0, 0), "TextBlock", "Label"),
+            node(listOf(1), "ContentPresenter"), node(listOf(1, 0), "Border").copy(sourceId = id), node(listOf(1, 0, 0), "TextBlock", "Label"))
+        assertNull(WinUIXamlSourceSelection.node(label, nodes))
+        assertEquals(nodes.last(), WinUIXamlSourceSelection.node(label, nodes, nodes.last().path))
+        assertSame(label, WinUIXamlSourceSelection.tag(file, nodes.last(), nodes, emptyList()))
+        val stale = nodes.map { it.copy(sourceId = if (it.sourceId.isEmpty()) "" else "old source") }
+        assertNull(WinUIXamlSourceSelection.node(label, stale, nodes.last().path))
+    }
+
+    fun testDesignProvenanceRetainsTemplateResourcesAndUsesOriginalNestedPaths() {
+        val file = xml("""<ContentPresenter><ContentPresenter.ContentTemplate><DataTemplate><Grid><Grid.Resources><ResourceDictionary><SolidColorBrush x:Key="UserBrush" Color="Red"/></ResourceDictionary></Grid.Resources><ContentPresenter><ContentPresenter.ContentTemplate><DataTemplate><TextBlock Text="Nested"/></DataTemplate></ContentPresenter.ContentTemplate></ContentPresenter></Grid></DataTemplate></ContentPresenter.ContentTemplate></ContentPresenter>""")
+        val roots = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).filter { it.parentTag?.localName == "DataTemplate" }
+        val prepared = WinUIXamlDesignDocument.prepare(file.text)
+        roots.forEach { assertTrue(prepared.markup.contains(WinUIXamlDesignIdentity.source(it))) }
+        assertTrue(prepared.markup.contains("UserBrush"))
+        assertTrue(prepared.markup.contains("Nested"))
+    }
+
     fun testRepeatedDataTemplateUsesSdkRealizationInsteadOfRepeatedNames() {
         val file = xml("""<ListView x:Name="Items"><ListView.ItemTemplate><DataTemplate><Border><TextBlock x:Name="Label"/></Border></DataTemplate></ListView.ItemTemplate></ListView>""")
         val nodes = listOf(node(emptyList(), "Grid"), node(listOf(0), "ListView", "Items"),

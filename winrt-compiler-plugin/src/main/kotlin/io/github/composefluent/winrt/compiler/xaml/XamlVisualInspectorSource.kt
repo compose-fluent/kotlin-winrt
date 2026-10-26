@@ -222,7 +222,13 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               WinUIXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
             }.getOrNull() } ?: WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0)
             val type = winUIXamlInspectionTypeName(value) ?: (value as IWinRTObject).nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
-            WinUIXamlVisualNode(emptyList(), type, element?.name.orEmpty(), bounds)
+            val sourceId = if (isWinUIXamlPreviewHost() && element != null) runCatching {
+              element.resources?.let { resources ->
+                if (resources.containsKey(WinUIXamlHotReloadProtocol.PREVIEW_SOURCE_KEY))
+                  resources[WinUIXamlHotReloadProtocol.PREVIEW_SOURCE_KEY] as? String else null
+              }
+            }.getOrNull().orEmpty() else ""
+            WinUIXamlVisualNode(emptyList(), type, element?.name.orEmpty(), bounds, sourceId = sourceId)
           },
           // SDK ContentTemplateRoot is the realization boundary. Match the actual
           // DataTemplate COM identity before attributing an item container to a list.
