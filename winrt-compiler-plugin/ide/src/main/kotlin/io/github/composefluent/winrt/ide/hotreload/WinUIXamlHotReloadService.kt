@@ -405,15 +405,22 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             if (ambiguous != null) skipped += "${ambiguous.className} (${ambiguous.resourcePath})"
                             ambiguous != null
                         }
-                        val ready = pending.filter { saved -> statePlan.requests.any {
+                        // Restoring a Frame can unload/recreate another pending root.
+                        // Re-read identities after every component instead of consuming
+                        // a ready list captured before navigation changed the tree.
+                        val ready = pending.firstOrNull { saved -> statePlan.requests.any {
                             it.className == saved.className && it.resourcePath == saved.resourcePath && it.componentKey == saved.componentKey
                         } }
-                        ready.forEach { saved ->
+                        ready?.let { saved ->
                             val reply = connection.transferState(saved)
-                            check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
-                            if (Regex("; [1-9][0-9]* missing or changed controls skipped").containsMatchIn(reply.message))
-                                skippedValues += "${saved.className}: ${reply.message}"
-                            pending.remove(saved)
+                            // Loaded/Unloaded can race the server's identity lookup;
+                            // a transient unavailable root is retried within this deadline.
+                            if (reply.status != WinUIXamlHotReloadProtocol.UNAVAILABLE) {
+                                check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
+                                if (Regex("; [1-9][0-9]* missing or changed controls skipped").containsMatchIn(reply.message))
+                                    skippedValues += "${saved.className}: ${reply.message}"
+                                pending.remove(saved)
+                            }
                         }
                     }
                     if (pending.isNotEmpty()) delay(150)

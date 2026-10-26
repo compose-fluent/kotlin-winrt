@@ -287,12 +287,14 @@ tasks.withType<Test>().configureEach {
     systemProperty("winrt.ide.pluginJar", pluginJar.flatMap { it.archiveFile }.get().asFile.absolutePath)
     // Native import indexes the real SDK and included toolchain alongside the
     // distribution's own plugins; a light fixture's 2 GiB budget is insufficient.
-    if (providers.gradleProperty("winrt.ide.importProject").isPresent || providers.gradleProperty("winrt.ide.sdkPreviewProject").isPresent || providers.gradleProperty("winrt.ide.restartProject").isPresent) maxHeapSize = "4g"
+    if (providers.gradleProperty("winrt.ide.importProject").isPresent || providers.gradleProperty("winrt.ide.sdkPreviewProject").isPresent || providers.gradleProperty("winrt.ide.restartProject").isPresent || providers.gradleProperty("winrt.ide.nativeRestartProject").isPresent) maxHeapSize = "4g"
     // BasePlatformTestCase is JUnit 3; its runner reports JUnit 4 assumptions
     // as failures. Keep optional real-toolchain fixtures out until configured.
     if (!providers.gradleProperty("winrt.ide.importProject").isPresent) exclude("**/WinRTGradleImportTest.class")
     if (!providers.gradleProperty("winrt.ide.sdkPreviewProject").isPresent) exclude("**/WinRTPreviewLaunchIntegrationTest.class")
     if (!providers.gradleProperty("winrt.ide.restartProject").isPresent) exclude("**/WinRTApplicationRestartIntegrationTest.class")
+    if (!providers.gradleProperty("winrt.ide.nativeRestartProject").isPresent) exclude("**/WinRTNativeRestartIntegrationTest.class")
+    providers.gradleProperty("winrt.ide.nativeRestartProject").orNull?.let { systemProperty("winrt.ide.nativeRestartProject", it) }
     providers.gradleProperty("winrt.ide.restartProject").orNull?.let { systemProperty("winrt.ide.restartProject", it) }
     if (!providers.gradleProperty("winrt.ide.templateOutput").isPresent) exclude("**/WinRTTemplateGenerationTest.class")
     if (!providers.gradleProperty("winrt.ide.xamlInput").isPresent || !providers.gradleProperty("winrt.ide.xamlCompiler").isPresent)

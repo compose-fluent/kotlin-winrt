@@ -980,6 +980,9 @@ saving the new coordinates and restoring the exact original XAML with Ctrl+Z.
 
 The shared JVM/Native runtime captures `Frame` navigation through the SDK's
 `GetNavigationState` / `SetNavigationState` methods before restoring child inputs.
+SDK `Loaded`/`Unloaded` delegates keep detached cached pages out of restart
+identity and inspection while preserving their XAML patch registrations. Recovery
+rechecks component identity after each navigation or checkpoint restoration.
 Give dynamically created controls a unique `AutomationProperties.AutomationId` to
 include them in recovery; ambiguous IDs are excluded rather than matched by index.
 The SDK navigation serializer supports basic navigation parameters. Applications

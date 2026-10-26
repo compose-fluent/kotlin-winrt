@@ -12,6 +12,9 @@ class WinUIXamlStateAdapter(
     val capture: (Any, Set<String>) -> WinUIXamlSavedElement?,
     val restore: (Any, WinUIXamlSavedElement, Set<String>) -> Unit,
     val discover: (Any) -> Map<String, Any> = { emptyMap() },
+    // Generated SDK Loaded/Unloaded delegates report attachment on the UI thread.
+    // Cached pages stay registered for XAML patches but are not restart targets.
+    val observeLifetime: (Any, (Boolean) -> Unit) -> Unit = { _, _ -> },
 )
 
 internal fun validateWinUIXamlSavedState(state: List<WinUIXamlSavedElement>) {

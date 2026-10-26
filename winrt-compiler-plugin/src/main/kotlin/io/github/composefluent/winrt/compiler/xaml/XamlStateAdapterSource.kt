@@ -159,6 +159,21 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
               }
             }
             candidates.groupBy { it.first }.filterValues { it.size == 1 }.mapValues { it.value.single().second }
+          }, observeLifetime = { owner, attached ->
+            // CsWinRT-generated event delegates supply the SDK lifecycle boundary.
+            // Frame.SetNavigationState can retain an unloaded page until GC. Its
+            // replacement alone participates in state identity and inspection.
+            val element = runCatching { owner.asWinRT<Window>().content?.asWinRT<FrameworkElement>() }.getOrNull()
+              ?: runCatching { owner.asWinRT<FrameworkElement>() }.getOrNull()
+            if (element != null) {
+              attached(element.isLoaded)
+              fun loaded(sender: Any?, args: RoutedEventArgs?) { attached(true) }
+              fun unloaded(sender: Any?, args: RoutedEventArgs?) { attached(false) }
+              // The handlers retain only the registry callback, never the owner.
+              // The SDK element owns and releases its delegates with its lifetime.
+              element.loaded.add(::loaded)
+              element.unloaded.add(::unloaded)
+            }
           })
         }
     """.trimIndent())

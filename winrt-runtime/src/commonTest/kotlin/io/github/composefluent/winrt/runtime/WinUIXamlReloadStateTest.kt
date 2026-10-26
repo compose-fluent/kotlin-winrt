@@ -206,4 +206,38 @@ class WinUIXamlReloadStateTest {
         assertEquals("page2", frame.route); assertEquals("saved input", input.text)
     }
 
+    @Test fun navigation_state_identity_ignores_unloaded_pages_without_waiting_for_gc() {
+        // The SDK Loaded/Unloaded lifecycle is independent of CsWinRT-style weak
+        // object identity: a cached old page can remain alive after navigation.
+        val attachment = mutableMapOf<Any, (Boolean) -> Unit>()
+        val adapter = WinUIXamlStateAdapter({ value, _ -> (value as? Control)?.let {
+            WinUIXamlSavedElement("", "Control", listOf(WinUIXamlVisualProperty("Text", it.text)))
+        } }, { value, saved, _ -> (value as Control).text = saved.values.single().value },
+            observeLifetime = { owner, changed -> attachment[owner] = changed; changed(false) })
+        val registry = WinUIXamlHotReloadRegistry({ { task -> task(); true } }, { _, value -> value }, stateAdapter = adapter)
+        val hash = "a".repeat(64)
+        val old = Any(); val next = Any(); val oldInput = Control("old page"); val nextInput = Control("new page")
+        fun connect(owner: Any, input: Control) {
+            registry.observe(owner, "Page", "Page.xaml", hash, "Input", input)
+            registry.observe(owner, "Page", "Page.xaml", hash, null, null)
+        }
+        connect(old, oldInput)
+        assertTrue(registry.snapshot().roots.isEmpty())
+        attachment.getValue(old)(true)
+        val key = registry.snapshot().roots.single().stateKeys.single()
+        connect(next, nextInput)
+        attachment.getValue(old)(false); attachment.getValue(next)(true)
+        assertEquals(1, registry.snapshot().roots.single().instances)
+        assertEquals(key, registry.snapshot().roots.single().stateKeys.single())
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml", componentKey = key,
+            restore = listOf(WinUIXamlSavedElement("Input", "Control", listOf(WinUIXamlVisualProperty("Text", "recovered")))))) {
+            assertEquals(WinUIXamlHotReloadProtocol.APPLIED, it.status)
+        }
+        assertEquals("recovered", nextInput.text); assertEquals("old page", oldInput.text)
+        attachment.getValue(next)(false); attachment.getValue(old)(true)
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml", componentKey = key)) {
+            assertEquals("old page", it.savedState!!.single().values.single().value)
+        }
+    }
+
 }
