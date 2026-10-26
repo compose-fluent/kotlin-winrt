@@ -806,6 +806,14 @@ private fun Project.registerWinAppHostRunTask(
             task.description = "Runs the native Kotlin/WinRT JVM application host."
             task.hostExecutable.set(applicationHostExecutable)
             task.workingDirectory.set(applicationHostTask.flatMap { it.outputDirectory })
+            task.developmentBuildTask.set(applicationHostTask.name)
+            task.deploymentDirectory.set(layout.buildDirectory.dir(applicationHostTask.flatMap { it.applicationVariant }
+                .zip(task.designPreview) { variant, preview ->
+                    "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.toSafeDirectoryName()}/Unpackaged"
+                }))
+            task.previewHostExecutable.set(layout.buildDirectory.dir(applicationHostTask.flatMap { it.applicationVariant }
+                .map { "kotlin-winrt/application-preview/${it.toSafeDirectoryName()}/Unpackaged" })
+                .zip(applicationHostExecutable) { directory, executable -> directory.file(executable.asFile.name) })
             task.supportsXamlHotReload.set(applicationHostTask.flatMap { it.packageType }.map { it == WindowsPackageType.None.name })
             task.dependsOn(applicationHostTask)
             task.onlyIf {

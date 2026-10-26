@@ -4074,6 +4074,11 @@ class WindowsToolkitPluginTest {
         val runHostTask = project.tasks.named("runWinAppHostJvmMain").get()
         val runHostDependencies = taskDependencyNames(runHostTask)
         val javaRunDependencies = taskDependencyNames(javaRunTask)
+        val developmentRun = runHostTask as RunWinAppHostTask
+        assertEquals("buildWinAppHostJvmMain", developmentRun.developmentBuildTask.get())
+        assertTrue(developmentRun.deploymentDirectory.get().asFile.invariantSeparatorsPath.contains("application-run/"))
+        assertTrue(developmentRun.previewHostExecutable.get().asFile.invariantSeparatorsPath.contains("application-preview/"))
+        assertTrue(developmentRun.workingDirectory.get().asFile != developmentRun.deploymentDirectory.get().asFile)
 
         assertTrue("runWinAppHost dependencies: $runHostDependencies", "buildWinAppHostJvmMain" in runHostDependencies)
         assertTrue("runSample dependencies: $javaRunDependencies", "stageWinAppPackageJvmMain" in javaRunDependencies)
