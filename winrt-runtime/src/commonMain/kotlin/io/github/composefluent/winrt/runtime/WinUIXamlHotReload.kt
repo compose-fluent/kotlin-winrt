@@ -16,6 +16,7 @@ internal class WinUIXamlHotReloadRegistry(
     private class Root(owner: Any, val thread: Long, val enqueue: (() -> Unit) -> Boolean) {
         val owner = PlatformManagedWeakReference(owner)
         val elements = mutableMapOf<String, PlatformManagedWeakReference<Any>>()
+        val compiledBindings = mutableMapOf<String, Set<String>>()
         val eventRoutes = mutableMapOf<Pair<String, String>, PlatformManagedWeakReference<WinUIXamlEventRoute>>()
         var lifetime: PlatformManagedWeakReference<WinUIXamlConnectionState>? = null
         private var legacyBaseline: WinUIXamlCollectionBaseline? = null
@@ -43,7 +44,7 @@ internal class WinUIXamlHotReloadRegistry(
     private var tracedInspectionDispatch = false
 
     fun observe(owner: Any, className: String, path: String, hash: String, name: String?, target: Any?,
-        lifetime: WinUIXamlConnectionState? = null) {
+        lifetime: WinUIXamlConnectionState? = null, compiledBindings: Set<String>? = null) {
         if (lock.withLock { closed }) return
         val page = lock.withLock {
             pages.getOrPut(className to path) { Page(className, path, hash) }.also {
@@ -56,7 +57,10 @@ internal class WinUIXamlHotReloadRegistry(
         } ?: Root(owner, platformCurrentThreadToken(), dispatcherFactory()).also { lock.withLock { page.roots += it } }
         lock.withLock {
             check(root.thread == platformCurrentThreadToken()) { "A XAML component must connect on its owning UI thread." }
-            if (name != null && target != null) root.elements[name] = PlatformManagedWeakReference(target)
+            if (name != null && target != null) {
+                root.elements[name] = PlatformManagedWeakReference(target)
+                if (compiledBindings != null) root.compiledBindings[name] = compiledBindings
+            }
             if (name == null) {
                 if (page.pending) page.restart = "A component was created during an update. Restart to restore a consistent page state."
                 root.ready = true
@@ -238,23 +242,24 @@ internal class WinUIXamlHotReloadRegistry(
                     val elements = lock.withLock { root.elements.toMap() }.mapNotNull { (name, reference) ->
                         reference.get()?.let { name to it }
                     }.toMap()
+                    fun bindings(name: String) = root.compiledBindings[name].orEmpty()
                     if (request.restore == null) {
-                        val state = elements.mapNotNull { (name, value) -> adapter.capture(value)?.takeIf { it.values.isNotEmpty() }?.copy(name = name) }
+                        val state = elements.mapNotNull { (name, value) -> adapter.capture(value, bindings(name))?.takeIf { it.values.isNotEmpty() }?.copy(name = name) }
                         validateWinUIXamlSavedState(state)
                         snapshot().copy(message = "Captured ${state.size} controls for restart", savedState = state)
                     } else {
                         validateWinUIXamlSavedState(request.restore)
                         val prepared = request.restore.mapNotNull { saved ->
                             val value = elements[saved.name] ?: return@mapNotNull null
-                            val before = adapter.capture(value)?.copy(name = saved.name) ?: return@mapNotNull null
+                            val before = adapter.capture(value, bindings(saved.name))?.copy(name = saved.name) ?: return@mapNotNull null
                             if (before.kind != saved.kind) null else Triple(value, before, saved)
                         }.sortedBy { (_, _, saved) -> saved.values.any { it.name == "Focus" && it.value != "Unfocused" } }
                         val attempted = mutableListOf<Triple<Any, WinUIXamlSavedElement, WinUIXamlSavedElement>>()
                         try {
-                            prepared.forEach { item -> attempted += item; adapter.restore(item.first, item.third) }
+                            prepared.forEach { item -> attempted += item; adapter.restore(item.first, item.third, bindings(item.third.name)) }
                         } catch (failure: Exception) {
                             attempted.asReversed().forEach { item ->
-                                runCatching { adapter.restore(item.first, item.second) }.exceptionOrNull()?.let(failure::addSuppressed)
+                                runCatching { adapter.restore(item.first, item.second, bindings(item.second.name)) }.exceptionOrNull()?.let(failure::addSuppressed)
                             }
                             throw failure
                         }
@@ -520,9 +525,9 @@ fun configureWinUIXamlHotReload(dispatcherFactory: () -> ((() -> Unit) -> Boolea
     }
 }
 
-fun registerWinUIXamlHotReloadElement(owner: Any, className: String, path: String, sourceHash: String, name: String, target: Any) {
+fun registerWinUIXamlHotReloadElement(owner: Any, className: String, path: String, sourceHash: String, name: String, target: Any, compiledBindings: String = "") {
     WinUIXamlHotReloadConfiguration.lock.withLock { WinUIXamlHotReloadConfiguration.registry }
-        ?.observe(owner, className, path, sourceHash, name, target)
+        ?.observe(owner, className, path, sourceHash, name, target, compiledBindings = compiledBindings.split('\n').filter { it.isNotEmpty() }.toSet())
 }
 
 /** Compiler-generated SDK getters/setters supplement the existing member registry in development only. */

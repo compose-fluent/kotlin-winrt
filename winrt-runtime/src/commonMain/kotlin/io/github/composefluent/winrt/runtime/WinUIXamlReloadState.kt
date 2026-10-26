@@ -9,8 +9,8 @@ data class WinUIXamlStateRequest(val className: String, val resourcePath: String
     val restore: List<WinUIXamlSavedElement>? = null)
 
 class WinUIXamlStateAdapter(
-    val capture: (Any) -> WinUIXamlSavedElement?,
-    val restore: (Any, WinUIXamlSavedElement) -> Unit,
+    val capture: (Any, Set<String>) -> WinUIXamlSavedElement?,
+    val restore: (Any, WinUIXamlSavedElement, Set<String>) -> Unit,
 )
 
 internal fun validateWinUIXamlSavedState(state: List<WinUIXamlSavedElement>) {

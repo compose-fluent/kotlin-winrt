@@ -360,3 +360,20 @@ external/theme resource expressions. Generated SDK glue uses
 `StaticResource` consumers receive the replacement through their generated property
 accessors. The existing control instance remains, but template-created child state
 is not migrated. This does not enable arbitrary application template replacement.
+
+
+## Development restart state
+
+Protocol v11 adds authenticated capture/restore commands for a single compiled
+component instance. Transfers run on its owning UI dispatcher and match compiled
+names and control kinds. They never enter XAML replay history. Limits bound the
+number of controls, property names, and UTF-8 values; duplicate names are rejected.
+Restore prepares previous values first and attempts rollback on failure.
+
+Generated WinUI/UWP adapters use projection casts and SDK accessors to preserve
+unbound TextBox text and selection, toggle state, selector index when the item count
+still matches, range values clamped to the new bounds, ScrollViewer offsets/zoom,
+and focus. New bindings retain ownership of their values. Missing controls and
+changed control kinds are skipped. Unnamed controls, password contents, application
+fields, arbitrary view models, navigation history, and business state are not
+serialized. This is ephemeral development recovery, not application persistence.

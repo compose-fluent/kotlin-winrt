@@ -267,6 +267,7 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                                             arguments[3] = irString(page.sourceHash)
                                             arguments[4] = irString(name)
                                             arguments[5] = irGet(target)
+                                            arguments[6] = irString(connection.bindings.map { it.name }.distinct().joinToString("\n"))
                                         }
                                     }
                                 }

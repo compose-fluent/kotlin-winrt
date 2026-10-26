@@ -100,6 +100,21 @@ class KotlinWinRTAuthoringScannerCliTest {
     }
 
     @Test
+    fun restart_state_uses_projection_casts_and_respects_binding_ownership() {
+        // CsWinRT wrapper adaptation uses WinRT identity/QI, not CLR/Kotlin class identity.
+        for (framework in XamlFramework.entries) {
+            val root = Files.createTempDirectory("xaml-state-")
+            io.github.composefluent.winrt.compiler.xaml.writeXamlStateAdapterSource(root, "Probe", framework)
+            val source = root.resolve("io/github/composefluent/winrt/generated/xaml/ProbeState.kt").readText()
+            assertTrue(source.contains("value.tryAsWinRT<TextBox>()"))
+            assertTrue(source.contains("value.asWinRT<TextBox>()"))
+            assertFalse(source.contains("is TextBox"))
+            assertTrue(source.contains("target.getBindingExpression(property) == null"))
+            assertFalse(source.contains("Password"))
+        }
+    }
+
+    @Test
     fun uwp_development_sources_use_core_window_and_the_system_dispatcher() {
         val root = Files.createTempDirectory("kotlin-winrt-uwp-inspector-")
         io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.UWP)

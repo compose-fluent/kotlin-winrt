@@ -17,11 +17,30 @@ class WinUIXamlReloadStateTest {
         assertFailsWith<IllegalArgumentException> { WinUIXamlHotReloadCodec.writeStateRequest("token", request.copy(restore = state + state)) }
         assertFailsWith<IllegalArgumentException> { validateWinUIXamlSavedState(listOf(state.single().copy(values = listOf(WinUIXamlVisualProperty("Text", "x".repeat(131073)))))) }
     }
+    @Test fun compiled_binding_ownership_is_supplied_for_both_capture_and_restore() {
+        val queue = mutableListOf<() -> Unit>()
+        val calls = mutableListOf<Set<String>>()
+        val registry = WinUIXamlHotReloadRegistry({ { task -> queue += task; true } }, { _, text -> text },
+            stateAdapter = WinUIXamlStateAdapter({ _, protectedProperties ->
+                calls += protectedProperties
+                WinUIXamlSavedElement("", "TextBox", listOf(WinUIXamlVisualProperty("SelectionStart", "0")))
+            }, { _, _, protectedProperties -> calls += protectedProperties }))
+        val owner = Any(); val control = Control("bound")
+        registry.observe(owner, "Page", "Page.xaml", "a".repeat(64), "Input", control, compiledBindings = setOf("Text"))
+        registry.observeEvent(owner, "Page", "Page.xaml", "a".repeat(64), "Input", control, "Changed", WinUIXamlEventRoute("Handler", arrayOf("Handler")))
+        registry.observe(owner, "Page", "Page.xaml", "a".repeat(64), null, null)
+        var state: List<WinUIXamlSavedElement>? = null
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml")) { state = it.savedState }
+        queue.removeAt(0).invoke()
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml", restore = assertNotNull(state))) {}
+        queue.removeAt(0).invoke()
+        assertEquals(listOf(setOf("Text"), setOf("Text"), setOf("Text")), calls)
+    }
     @Test fun restores_only_selected_instance_and_rolls_back_without_replay() {
         val queue = mutableListOf<() -> Unit>()
-        val adapter = WinUIXamlStateAdapter({ value -> (value as? Control)?.let {
+        val adapter = WinUIXamlStateAdapter({ value, _ -> (value as? Control)?.let {
             WinUIXamlSavedElement("", "Control", listOf(WinUIXamlVisualProperty("Text", it.text)))
-        } }, { value, state ->
+        } }, { value, state, _ ->
             (value as Control).text = state.values.single().value
             check(value.text != "reject")
         })
