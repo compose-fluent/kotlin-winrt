@@ -23,13 +23,13 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
           fun unbound(target: FrameworkElement, property: DependencyProperty?, name: String, protectedProperties: Set<String>): Boolean =
             name !in protectedProperties && property != null && target.getBindingExpression(property) == null
           return WinUIXamlStateAdapter(capture = capture@ { value, protectedProperties ->
-            val control = value.tryAsWinRT<Control>() ?: return@capture null
-            val textBox = value.tryAsWinRT<TextBox>()
-            val toggleSwitch = value.tryAsWinRT<ToggleSwitch>()
-            val toggleButton = value.tryAsWinRT<ToggleButton>()
-            val selector = value.tryAsWinRT<Selector>()
-            val range = value.tryAsWinRT<RangeBase>()
-            val scroll = value.tryAsWinRT<ScrollViewer>()
+            val control = runCatching { value.asWinRT<Control>() }.getOrNull() ?: return@capture null
+            val textBox = runCatching { value.asWinRT<TextBox>() }.getOrNull()
+            val toggleSwitch = runCatching { value.asWinRT<ToggleSwitch>() }.getOrNull()
+            val toggleButton = runCatching { value.asWinRT<ToggleButton>() }.getOrNull()
+            val selector = runCatching { value.asWinRT<Selector>() }.getOrNull()
+            val range = runCatching { value.asWinRT<RangeBase>() }.getOrNull()
+            val scroll = runCatching { value.asWinRT<ScrollViewer>() }.getOrNull()
             var type = "Control"
             val values = buildList {
               fun put(name: String, data: Any?) { add(WinUIXamlVisualProperty(name, data?.toString() ?: "null")) }

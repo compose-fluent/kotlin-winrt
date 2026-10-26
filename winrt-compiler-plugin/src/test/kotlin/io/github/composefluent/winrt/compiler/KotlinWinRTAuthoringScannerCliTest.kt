@@ -106,7 +106,7 @@ class KotlinWinRTAuthoringScannerCliTest {
             val root = Files.createTempDirectory("xaml-state-")
             io.github.composefluent.winrt.compiler.xaml.writeXamlStateAdapterSource(root, "Probe", framework)
             val source = root.resolve("io/github/composefluent/winrt/generated/xaml/ProbeState.kt").readText()
-            assertTrue(source.contains("value.tryAsWinRT<TextBox>()"))
+            assertTrue(source.contains("runCatching { value.asWinRT<TextBox>() }.getOrNull()"))
             assertTrue(source.contains("value.asWinRT<TextBox>()"))
             assertFalse(source.contains("is TextBox"))
             assertTrue(source.contains("target.getBindingExpression(property) == null"))

@@ -440,6 +440,48 @@ class WinUIXamlHotReloadTest {
         assertTrue(runCatching { patch(themed, themed.replace("Before", "After")) }.isFailure)
     }
 
+    @Test fun real_native_host_restores_control_state_without_overwriting_compiled_binding() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue("Supply the Native restart-state fixture session", directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "ReloadInput" in it.elements }
+            val request = WinUIXamlStateRequest(root.className, root.resourcePath)
+            fun capture(): List<WinUIXamlSavedElement> {
+                val reply = client.transferState(request)
+                assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+                return requireNotNull(reply.savedState)
+            }
+            val original = capture()
+            assertTrue(original.single { it.name == "BoundInput" }.values.none { it.name == "Text" })
+            fun text(name: String): String {
+                val view = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, capture = false)).inspection!!
+                val node = view.nodes.single { it.name == name }
+                return client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
+                    selectedPath = node.path, capture = false)).inspection!!.properties.single { it.name == "Text" }.value
+            }
+            val bound = text("BoundInput")
+            val replacements = mapOf("ReloadInput" to ("Text" to "Recovered input"),
+                "ReloadToggle" to ("IsOn" to "true"), "ReloadSlider" to ("Value" to "75.0"),
+                "ReloadChoice" to ("SelectedIndex" to "1"), "BoundInput" to ("Text" to "Must not overwrite binding"))
+            try {
+                val changed = original.map { entry -> replacements[entry.name]?.let { (property, value) ->
+                    entry.copy(values = entry.values.filterNot { it.name == property } + WinUIXamlVisualProperty(property, value))
+                } ?: entry }
+                val restored = client.transferState(request.copy(restore = changed))
+                assertEquals(restored.message, WinUIXamlHotReloadProtocol.APPLIED, restored.status)
+                val actual = capture().associateBy { it.name }
+                replacements.filterKeys { it != "BoundInput" }.forEach { (name, property) ->
+                    assertEquals(name, property.second, actual.getValue(name).values.single { it.name == property.first }.value)
+                }
+                assertEquals(bound, text("BoundInput"))
+                assertEquals(root.sourceHash, client.request().roots.single { it.className == root.className }.sourceHash)
+            } finally {
+                val restored = client.transferState(request.copy(restore = original))
+                assertEquals(restored.message, WinUIXamlHotReloadProtocol.APPLIED, restored.status)
+            }
+        }
+    }
+
     @Test fun real_native_host_replaces_and_validates_keyed_presentation_templates() {
         val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
         assumeTrue("Supply the Native layout application session", directory != null)
