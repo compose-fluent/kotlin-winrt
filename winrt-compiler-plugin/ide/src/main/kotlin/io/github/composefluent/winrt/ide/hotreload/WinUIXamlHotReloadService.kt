@@ -425,6 +425,15 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         if (preview && !sdkPreview && !rebuild) cachedFirstFrame = firstFrame
         gradleProcess = null
         worker = scope.launch(Dispatchers.IO) {
+            var warmingPreview: Process? = null
+            fun discardWarmingPreview() {
+                warmingPreview?.let { process ->
+                    warmingPreview = null
+                    synchronized(lifecycle) { if (directPreview === process) directPreview = null }
+                    process.destroy()
+                    if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly()
+                }
+            }
             try {
                 // Compose effects and clicks run on EDT without the platform's
                 // write-intent lock. Only app-derived launches need saved files;
@@ -451,6 +460,14 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     Files.createDirectories(directory!!)
                     withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString(), previewTheme = theme) }
                 }
+                val launchDirectory = requireNotNull(directory)
+                fun startCachedPreview(cache: WinRTPreviewLaunchCache): Process =
+                    ProcessBuilder(launch.previewExecutable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
+                        .directory(cache.deployment.toFile())
+                        .redirectErrorStream(true).redirectOutput(launchDirectory.resolve("preview-host.log").toFile())
+                        .apply { environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = launchDirectory.toString()
+                            environment()[WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT] = theme
+                            environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
                 // Source parsing and cache content validation have no data dependency.
                 // Both must finish before a host can connect or inspect source mappings.
                 val sourcePreparation = async(Dispatchers.IO) {
@@ -461,9 +478,20 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.isDirectPreview)) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
-                val validation = cache?.let { runCatching {
-                    if (priorDeployment != null && it.connectedDeploymentIdentity() == priorDeployment) null to true
-                    else if (rebuild) it.inputs() to false else it.checkedInputs()
+                val validation = cache?.let { candidate -> runCatching {
+                    if (priorDeployment != null && candidate.connectedDeploymentIdentity() == priorDeployment) null to true
+                    else if (rebuild) candidate.inputs() to false else candidate.checkedInputs(onCandidateReady = if (sdkPreview) null else {
+                        {
+                            if (isCurrent(request)) runCatching { startCachedPreview(candidate) }.onSuccess { process ->
+                                warmingPreview = process
+                                // Disposal must own this child immediately, even
+                                // before validation permits a client connection.
+                                if (withCurrent(request) { directPreview = process })
+                                    log.info("XAML preview host warming: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
+                                else process.destroy()
+                            }.onFailure { log.debug("Preview candidate could not initialize early", it) }
+                        }
+                    })
                 }.getOrNull() }
                 val inputs = validation?.first
                 // The SDK designer stages project assets after the host connects.
@@ -472,7 +500,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     pendingPreviewCache = cache to inputs
                 }
                 val reusable = validation?.second == true
-                if (!reusable) firstFrame.complete(Unit)
+                if (!reusable) { discardWarmingPreview(); firstFrame.complete(Unit) }
                 if (preview && reusable) log.info("XAML preview cache validated: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                 val preparedSources = sourcePreparation.await()
                 mutex.withLock {
@@ -482,12 +510,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 var reused = false
                 if (reusable && cache != null) {
                     try {
-                        val process = ProcessBuilder(launch.previewExecutable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
-                            .directory(cache.deployment.toFile())
-                            .redirectErrorStream(true).redirectOutput(directory!!.resolve("preview-host.log").toFile())
-                            .apply { environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = directory!!.toString()
-                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT] = theme
-                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
+                        // Only now can the fully checked candidate enter a session.
+                        val process = warmingPreview?.also { warmingPreview = null } ?: startCachedPreview(cache)
                         if (!withCurrent(request) {
                             directPreview = process
                             display.value = display.value.copy(message = "Starting the built preview host…")
@@ -586,7 +610,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 if (surviving != null) runProcess?.bindProcess(surviving) else runProcess?.complete(1)
                 display.value = WinUIXamlHotReloadState(error.message.orEmpty(), pid = surviving?.pid())
             } }
-            finally { deploymentReady.complete(Unit); if (!display.value.connected || !isCurrent(request)) firstFrame.complete(Unit) }
+            finally {
+                // Cancellation, validation and source-preparation failures must
+                // not leave a candidate outside normal session ownership.
+                discardWarmingPreview()
+                deploymentReady.complete(Unit)
+                if (!display.value.connected || !isCurrent(request)) firstFrame.complete(Unit)
+            }
         }
     }
 

@@ -75,6 +75,10 @@ class WinRTPreviewLaunchCacheTest {
             cache.remember(initial)
             assertTrue(cache.hasCandidate())
             assertTrue(checked(cache))
+            var warmed = 0
+            fun warmingCheck() = kotlinx.coroutines.runBlocking { cache.checkedInputs { warmed++ }.second }
+            assertTrue(warmingCheck())
+            assertEquals("A matching Native deployment can initialize during validation", 1, warmed)
             val deploymentIdentity = cache.connectedDeploymentIdentity()
             assertNotNull(deploymentIdentity)
             assertEquals(deploymentIdentity, cache.validatedDeploymentIdentity)
@@ -83,6 +87,9 @@ class WinRTPreviewLaunchCacheTest {
             Files.setLastModifiedTime(external, externalTime)
             assertEquals("External artifact is not part of the project source scan", initial, cache.inputs())
             assertTrue("Routing hint must never authorize reuse", cache.hasCandidate())
+            warmed = 0
+            assertFalse("A warm candidate must not authorize changed dependency contents", warmingCheck())
+            assertEquals("Routing is independent from final dependency-content validation", 1, warmed)
             assertFalse("Changed resolved artifact invalidates even with preserved size/time", checked(cache))
             assertNull(cache.validatedDeploymentIdentity)
             assertNotEquals(deploymentIdentity, cache.connectedDeploymentIdentity())
@@ -91,6 +98,9 @@ class WinRTPreviewLaunchCacheTest {
             val timestamp = Files.getLastModifiedTime(source)
             Files.writeString(source, "class Changed!")
             Files.setLastModifiedTime(source, timestamp)
+            warmed = 0
+            assertFalse("A warm candidate must not authorize changed source contents", warmingCheck())
+            assertEquals(1, warmed)
             assertFalse("Dependency source edits with preserved timestamps invalidate", checked(cache))
             assertEquals("Theme switches retain the connected compiled baseline", deploymentIdentity, cache.connectedDeploymentIdentity())
             Files.writeString(source, "class Greeting")
@@ -103,6 +113,9 @@ class WinRTPreviewLaunchCacheTest {
             cache.remember(cache.inputs())
             val currentDeployment = cache.connectedDeploymentIdentity()
             Files.write(exe, byteArrayOf(1, 2))
+            warmed = 0
+            assertFalse(warmingCheck())
+            assertEquals("Changed deployed files cannot even initialize speculatively", 0, warmed)
             assertFalse("Changed deployment requires Gradle validation", checked(cache))
             assertNotEquals(currentDeployment, cache.connectedDeploymentIdentity())
             cache.remember(cache.inputs())

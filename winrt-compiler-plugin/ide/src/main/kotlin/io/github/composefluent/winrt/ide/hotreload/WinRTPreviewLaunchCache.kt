@@ -63,13 +63,20 @@ internal class WinRTPreviewLaunchCache(
     /** Routing hint only. start() must still validate all contents before reuse. */
     fun hasCandidate(): Boolean = supported() && Files.isRegularFile(receipt)
 
-    /** Independent file sets are read concurrently, but neither authorizes launch
-     * until the full receipt matches. Every file is still content-hashed before reuse. */
-    suspend fun checkedInputs(): Pair<String, Boolean> = coroutineScope {
+    /** Content validation runs alongside optional initialization of an isolated
+     * Native candidate. The callback is only a deployment routing hint: callers
+     * must discard that process on failure and never connect/render before true.
+     * Every project and dependency file remains content-hashed before reuse. */
+    suspend fun checkedInputs(onCandidateReady: (() -> Unit)? = null): Pair<String, Boolean> = coroutineScope {
         if (!hasCandidate()) return@coroutineScope inputs() to false
-        val environment = async(Dispatchers.IO) { runCatching { environment() } }
-        val inputs = inputs()
-        val prepared = environment.await()
+        val preparedEnvironment = async(Dispatchers.IO) { runCatching { environment() } }
+        val preparedInputs = async(Dispatchers.IO) { inputs() }
+        if (!sdk && onCandidateReady != null && runCatching {
+            fun deployment(lines: List<String>) = lines.filterNot { it.startsWith("inputs=") || it.startsWith("dependencies=") }
+            deployment(Files.readAllLines(receipt)) == deployment(record("", environment(includeDependencies = false)).lines())
+        }.getOrDefault(false)) onCandidateReady()
+        val inputs = preparedInputs.await()
+        val prepared = preparedEnvironment.await()
         inputs to reusable(inputs, { prepared.getOrThrow() })
     }
 
@@ -83,7 +90,7 @@ internal class WinRTPreviewLaunchCache(
     var validatedDeploymentIdentity: String? = null
         private set
 
-    fun reusable(inputs: String): Boolean = reusable(inputs, ::environment)
+    fun reusable(inputs: String): Boolean = reusable(inputs) { environment() }
 
     private fun reusable(inputs: String, environment: () -> Map<String, String>): Boolean = supported() && runCatching {
         val stored = Files.readAllLines(receipt)
@@ -127,13 +134,13 @@ internal class WinRTPreviewLaunchCache(
 
     fun invalidate() { Files.deleteIfExists(receipt) }
 
-    private fun environment(): Map<String, String> = linkedMapOf(
+    private fun environment(includeDependencies: Boolean = true): Map<String, String> = linkedMapOf(
         "format" to if (sdk) "sdk-desktop-preview-v2" else "native-desktop-preview-v4",
         "launch" to launch.toString(),
         "model" to modules.toString(),
         "inputs" to "",
         "outputs" to outputs(),
-        "dependencies" to if (sdk) "" else fingerprint(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.read(
+        "dependencies" to if (sdk || !includeDependencies) "" else fingerprint(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.read(
             deployment.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME)), content = true, excludeBuild = false),
         "plugin" to if (!sdk) "native-protocol-${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.VERSION}:$bundledToolchainIdentity" else javaClass.protectionDomain.codeSource?.location?.let { url ->
             runCatching { Files.getLastModifiedTime(Path.of(url.toURI())).toString() }.getOrDefault(url.toString())

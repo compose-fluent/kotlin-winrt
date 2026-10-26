@@ -934,6 +934,9 @@ acceptance in each distribution.
 
 A selected XAML split/preview editor starts the existing Native session before initializing its Compose canvas when the imported module model is available. During restoration it waits for the source file's own module instead of temporarily borrowing the tool-window selection. Hiding or closing the editor cancels that wait. Cache validation and host initialization can then overlap the editor UI setup. Background tabs and code-only views do not request this work; restoring a code-only Canary editor was verified without a preview process, followed by first-host startup when switching to Split.
 
+An unchanged isolated Native deployment can initialize while its source and dependency
+contents are checked. The IDE connects and submits XAML only after the full receipt
+matches; invalidated or cancelled candidates are terminated before rebuilding.
 Project previews prefer a validated cached Native deployment. When no reusable project deployment exists, the independent SDK artboard can render while project controls compile. Changing Light/Dark restarts the preview host with Application.RequestedTheme set before initialization, so implicit theme styles match the rendered application. A connected deployment can be reused for this theme-only restart after XAML edits; changes to its binaries, dependencies or toolchain still require build validation.
 
 The Toolbox supports search, drag-to-insert and select-then-place. Insertion uses the metadata content contract and never replaces existing content or bindings. Ctrl/Shift+click selects multiple source elements; dragging, nudging and shared properties apply in one undoable command. Align/match-size commands use the last selected sibling in Grid or Canvas. Edge/center snap guides can be toggled; hold Alt to bypass them. Template-generated visuals remain navigation-only when no exact source mapping exists.
