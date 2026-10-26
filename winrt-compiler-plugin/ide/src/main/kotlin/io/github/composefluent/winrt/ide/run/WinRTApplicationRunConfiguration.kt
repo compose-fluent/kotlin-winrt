@@ -49,7 +49,11 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
             val lldb = WinRTAttachNativeDebuggerAction.findLldb(service<WinRTIdeSettings>().nativeDebuggerExecutable)
                 ?: throw RuntimeConfigurationError("Set the Windows LLDB executable in Settings | Tools | Kotlin WinRT.")
             val debugDirectory = directory.resolve("debug")
-            execution.settings.env = execution.settings.env + ("KOTLIN_WINRT_DEBUG_DIRECTORY" to debugDirectory.toString())
+            // The XDebugProcess owns the debuggee after the startup handoff.
+            // Release Gradle's project lock so incremental rebuilds can run
+            // while this process remains attached to LLDB.
+            execution.settings.env = execution.settings.env + mapOf("KOTLIN_WINRT_DEBUG_DIRECTORY" to debugDirectory.toString(),
+                "KOTLIN_WINRT_RELEASE_BUILD_LOCK" to "1")
             execution.settings.taskNames = listOf(if (module.projectPath == ":") launch.taskName else "${module.projectPath}:${launch.taskName}")
             environment.putUserData(WinRTNativeDebugLaunch.KEY, WinRTNativeDebugLaunch(debugDirectory, Path.of(launch.executable), Path.of(launch.nativeCompilerHome), lldb, Path.of(module.projectDirectory)))
         }
