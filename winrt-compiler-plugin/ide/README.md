@@ -501,7 +501,7 @@ document's imported module. Saved mode choices still survive reopening. The
 preview pane is active only while visible in the selected editor. The static
 image initially fits the available area. The fixed bottom-left toolbar provides
 zoom out/in, a zoom menu, Fit all, settings, inspector, refresh and session actions.
-Drag the canvas to pan. Fit all recenters it; the zoom menu reports the actual
+Use Hand or Space+drag to pan. Fit all recenters it; the zoom menu reports the actual
 DIP scale and distinguishes Fit and Selection modes. Choose Fit all, Fit selection,
 a preset from 12.5% to 800%, or Custom zoom. Custom values are validated before
 applying; zoom buttons move to the adjacent preset and disable at the limits.
@@ -865,11 +865,13 @@ The original IDE Run session remains active after its Gradle launch finishes and
 continues owning replacement processes, so Stop still terminates the current app.
 ASC desktop acceptance has verified Kotlin value changes, retained text input and
 Stop after an automatic unpackaged Native replacement, with preview still running.
-A second ASC run with two instances of the same dependency UserControl verified that
-a Kotlin change automatically rebuilds and replaces the application, preserves the
-uniquely owned main-window input, loads the new compiled binding value, and leaves
-both ambiguous component inputs at their initial values instead of transferring
-state between instances. No manual Run or Reconnect was needed. Debugger attachment
+ASC acceptance with two named instances of the same dependency UserControl also
+verified that a Kotlin change automatically rebuilds and replaces the application,
+loads the new compiled binding value, and restores three distinct text inputs in
+the window and both dependency instances. No manual Run or Reconnect was needed.
+State without a unique compiled namescope path is still skipped instead of being
+transferred by creation order. The persistent recovery result waits for the new
+parent connector before reporting keyed components as restored. Debugger attachment
 pauses automatic replacement. External edits to loaded XAML files use the same
 live patch path as editor changes. Dictionaries, deleted XAML files and components
 without a loaded root request a build so their compiled resources are refreshed;
@@ -905,6 +907,11 @@ to `WinRTGradleImportTest` to save through the real project component store, clo
 and reopen its imported project, recover the session and apply an unsaved Text edit
 to an existing WinUI application. This uses the native project lifecycle inside
 the platform host; full desktop IDE restart remains separate interactive acceptance.
+`WinRTApplicationRestartIntegrationTest` opts into a prepared unpackaged JVM host
+fixture with `-Pwinrt.ide.restartProject=<project under .gradle>`. It drives the real
+IDE Gradle runner, changes Kotlin source, checks process replacement, and verifies
+independent recovery of the window and two named dependency components.
+
 The runtime engine and development wire codec are shared by JVM and `mingwX64`.
 Native desktop launches expose the same authenticated session, property updates and
 visual inspection channel. The independent SDK preview uses JVM for desktop WinUI
@@ -917,10 +924,6 @@ packaged development runs expose this capability. Rebuild the designer after Kot
 class changes; markup-only edits reuse the running host. The compatibility matrix records
 backend validation for installed SDKs; desktop interaction still requires
 acceptance in each distribution.
-
-The implementation queue remains in the local, uncommitted
-`IDE_SUPPORT_LOCAL_PLAN.md`; this README records module boundaries and supported
-behavior rather than revising root `PLAN.md`.
 
 A selected XAML split/preview editor starts the existing Native session before initializing its Compose canvas when the imported module model is available. During restoration it waits for the source file's own module instead of temporarily borrowing the tool-window selection. Hiding or closing the editor cancels that wait. Cache validation and host initialization can then overlap the editor UI setup. Background tabs and code-only views do not request this work; restoring a code-only Canary editor was verified without a preview process, followed by first-host startup when switching to Split.
 
@@ -936,6 +939,16 @@ an explicit binary `-Xbackend-threads` argument takes precedence. This retains d
 information and does not enable unsupported mingw compiler caches. Release binaries
 keep their existing compiler settings.
 
+WinUI JVM project templates allow an 8 GiB in-process compiler heap for the full
+SDK implementation; Native-only and smaller WinRT projects retain a 4 GiB budget.
+Framework-dependent unpackaged JVM hosts obtain SDK components from the initialized
+package graph. App-local SDK payloads and base-directory redirection belong to
+self-contained deployment.
+
 Zoom-only captures reuse the current designer tree, preserving realized controls
 and template state; explicit refresh reloads source. WinUI establishes glyph density
 before the initial layout to avoid discarding its first text realizations.
+ASC desktop acceptance covers 100%, 150% and 200% zoom and Light/Dark styles
+from a dependency control's theme dictionaries. Reopening the IDE with a validated
+Native deployment reuses the host build and replaces the labelled previous image
+with a current native capture.
