@@ -95,8 +95,11 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                 project.tasks.withType(RestoreWinAppDependenciesTask::class.java).map { it.winmdLockFile.get().asFile.absolutePath }.distinct().sorted(),
             hotReloadLaunches = if (windows == null) emptyList() else (
                 hostRuns.filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
-                    IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath,
-                        if (it.supportsXamlPreview.get()) it.hostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty())
+                    IdeHotReloadLaunch(it.name, it.deployedExecutable.get().asFile.absolutePath,
+                        (it.deploymentDirectory.orNull ?: it.workingDirectory.get()).asFile.absolutePath,
+                        if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty(),
+                        it.deploymentDirectory.isPresent && it.nativeCompilerHome.orNull?.isNotBlank() == true,
+                        it.developmentBuildTask.orNull.orEmpty())
                 } + packageRuns.filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath,
                         if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty(),

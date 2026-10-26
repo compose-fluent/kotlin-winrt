@@ -27,6 +27,7 @@ import javax.inject.Inject
 @DisableCachingByDefault(because = "Runs an application against the local Windows environment")
 abstract class RunWinAppHostTask @Inject constructor(
     private val execOperations: ExecOperations,
+    private val fileSystem: org.gradle.api.file.FileSystemOperations,
 ) : DefaultTask() {
     init {
         args.convention(emptyList())
@@ -35,6 +36,9 @@ abstract class RunWinAppHostTask @Inject constructor(
         supportsXamlHotReload.convention(false)
         supportsXamlPreview.convention(supportsXamlHotReload)
         sdkPreview.convention(false)
+        detach.convention(project.providers.environmentVariable("KOTLIN_WINRT_RELEASE_BUILD_LOCK").map { it == "1" }.orElse(false))
+        noLaunch.convention(project.providers.environmentVariable("KOTLIN_WINRT_REGISTER_ONLY").map { it == "1" }.orElse(false))
+        previewHostExecutable.convention(deployedExecutable)
         designPreview.convention(project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
     }
 
@@ -74,12 +78,43 @@ abstract class RunWinAppHostTask @Inject constructor(
     @get:Internal
     abstract val designPreview: org.gradle.api.provider.Property<Boolean>
 
+    /** Separate the running Native payload from linker/staging outputs. Rebuilds
+     * may update staging while the previous development process remains alive. */
+    @get:Internal abstract val deploymentDirectory: DirectoryProperty
+    @get:Internal abstract val developmentBuildTask: org.gradle.api.provider.Property<String>
+    @get:Internal val deployedExecutable: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>
+        get() = deploymentDirectory.zip(hostExecutable) { directory, executable -> directory.file(executable.asFile.name) }
+            .orElse(hostExecutable)
+    @get:Internal abstract val previewHostExecutable: RegularFileProperty
+    @get:Input abstract val detach: org.gradle.api.provider.Property<Boolean>
+    @get:Input
+    @get:org.gradle.api.tasks.options.Option(option = "no-launch", description = "Prepare the isolated development payload without launching it")
+    abstract val noLaunch: org.gradle.api.provider.Property<Boolean>
+
     @get:Optional
     @get:OutputFile
     abstract val outputLog: RegularFileProperty
 
     @TaskAction
     fun run() {
+        deploymentDirectory.orNull?.asFile?.let { destination ->
+            val source = workingDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+            val target = destination.toPath().toAbsolutePath().normalize()
+            require(!target.startsWith(source) && !source.startsWith(target)) {
+                "The development deployment must be separate from the staging directory."
+            }
+            fileSystem.sync { it.from(source); it.into(target) }
+        }
+        if (noLaunch.get()) return
+        if (detach.get() && nativeDebugDirectory.orNull.isNullOrBlank()) {
+            val log = outputLog.orNull?.asFile ?: temporaryDir.resolve("application.log")
+            log.parentFile.mkdirs()
+            ProcessBuilder(listOf(deployedExecutable.get().asFile.absolutePath) + applicationArguments())
+                .directory(runtimeDirectory()).redirectErrorStream(true).redirectOutput(log)
+                .apply { configureEnvironment(environment()) }.start().outputStream.close()
+            logger.lifecycle("Development application started; output: ${log.absolutePath}")
+            return
+        }
         val logFile = outputLog.orNull?.asFile
         if (logFile != null) {
             logFile.parentFile.mkdirs()
@@ -94,36 +129,47 @@ abstract class RunWinAppHostTask @Inject constructor(
         }
     }
 
-    private fun execHost(configureOutput: org.gradle.process.ExecSpec.() -> Unit = {}) {
+    private fun runtimeDirectory() = deploymentDirectory.orNull?.asFile ?: workingDirectory.get().asFile
+
+    private fun applicationArguments(): List<String> {
         val applicationArguments = args.get().toMutableList()
         if (designPreview.get()) {
             check(supportsXamlPreview.get()) { "The XAML preview host requires a supported WinUI development launch." }
             applicationArguments += io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT
         }
+        return applicationArguments
+    }
+
+    private fun configureEnvironment(environment: MutableMap<String, String>) {
+        val configured = environmentVariables.get()
+        environment.putAll(configured)
+        if (deploymentDirectory.isPresent) environment["KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"] = runtimeDirectory().absolutePath
+        val options = jvmArgs.get()
+        if (options.isNotEmpty()) environment["KOTLIN_WINRT_JVM_OPTIONS"] = options.joinToString(";")
+        else if (!configured.containsKey("KOTLIN_WINRT_JVM_OPTIONS")) environment.remove("KOTLIN_WINRT_JVM_OPTIONS")
+    }
+
+    private fun execHost(configureOutput: org.gradle.process.ExecSpec.() -> Unit = {}) {
+        val applicationArguments = applicationArguments()
         val debugDirectory = nativeDebugDirectory.orNull?.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true }
         val debugScript = if (debugDirectory == null) null else temporaryDir.toPath().resolve("native-debug.ps1").also { script ->
             Files.writeString(script, nativeDebugLauncherScript)
             Files.writeString(temporaryDir.toPath().resolve("native-debug.json"), buildJsonObject {
-                put("executable", hostExecutable.get().asFile.absolutePath)
-                put("directory", workingDirectory.get().asFile.absolutePath)
+                put("executable", deployedExecutable.get().asFile.absolutePath)
+                put("directory", runtimeDirectory().absolutePath)
                 put("debugDirectory", debugDirectory)
                 put("arguments", JsonArray(applicationArguments.map(::JsonPrimitive)))
             }.toString())
         }
         execOperations.exec { spec ->
-            spec.executable = if (debugScript == null) hostExecutable.get().asFile.absolutePath else "powershell.exe"
-            spec.workingDir = workingDirectory.get().asFile
+            spec.executable = if (debugScript == null) deployedExecutable.get().asFile.absolutePath else "powershell.exe"
+            spec.workingDir = runtimeDirectory()
             if (debugScript == null) spec.args(applicationArguments)
             else spec.args("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", debugScript.toString(),
                 "-Configuration", temporaryDir.toPath().resolve("native-debug.json").toString())
-            val configuredEnvironment = environmentVariables.get()
-            spec.environment(configuredEnvironment)
-            val configuredJvmArgs = jvmArgs.get()
-            if (configuredJvmArgs.isNotEmpty()) {
-                spec.environment("KOTLIN_WINRT_JVM_OPTIONS", configuredJvmArgs.joinToString(";"))
-            } else if (!configuredEnvironment.containsKey("KOTLIN_WINRT_JVM_OPTIONS")) {
-                spec.environment.remove("KOTLIN_WINRT_JVM_OPTIONS")
-            }
+            val environment = spec.environment.mapValues { it.value.toString() }.toMutableMap()
+            configureEnvironment(environment)
+            spec.setEnvironment(environment)
             spec.configureOutput()
         }
     }

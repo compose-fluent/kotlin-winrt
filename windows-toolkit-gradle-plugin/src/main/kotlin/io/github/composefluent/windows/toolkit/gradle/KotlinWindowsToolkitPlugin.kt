@@ -1698,6 +1698,13 @@ private fun configureWinAppTasks(
             stage.outputDirectory.file(executableBaseName.map { "$it.exe" })
         })
         task.workingDirectory.set(stageApplicationPackageTask.flatMap { it.outputDirectory })
+        task.developmentBuildTask.set(stageApplicationPackageTask.name)
+        task.deploymentDirectory.set(project.layout.buildDirectory.dir(selectedVariant.zip(task.designPreview) { variant, preview ->
+            "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.id.toSafeDirectoryName()}/Unpackaged"
+        }))
+        task.previewHostExecutable.set(project.layout.buildDirectory.dir(selectedVariant.map {
+            "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/Unpackaged"
+        }).flatMap { directory -> executableBaseName.map { directory.file("$it.exe") } })
         task.environmentVariables.put("KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
             stageApplicationPackageTask.flatMap { it.outputDirectory }.map { it.asFile.absolutePath })
         task.dependsOn(stageApplicationPackageTask)

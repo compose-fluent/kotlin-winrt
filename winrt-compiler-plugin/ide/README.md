@@ -849,7 +849,7 @@ ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
 dictionaries, captures in other dictionaries/templates, connected-element removal,
 type/name/parent changes, new names or authored controls,
 new event slots, template events, compiled bindings, property expressions and Kotlin changes require rebuilding
-and restarting. With Automatic enabled, packaged development launches build changed
+and restarting. With Automatic enabled, packaged development launches and unpackaged Native launches build changed
 Kotlin and XAML changes that cannot form an in-process patch into a separate staging
 layout. The current process remains alive during compilation and after build failure.
 A successful build captures compatible named-control state, replaces the process,
@@ -861,7 +861,9 @@ without a loaded root request a build so their compiled resources are refreshed;
 manual mode retains the pending-change indication without starting a build.
 Project-code preview uses the same preparation boundary for Kotlin changes, keeping
 the old artboard available during compilation and rendering source again after its
-isolated host restarts. Unpackaged launches still require explicit rebuild.
+isolated host restarts. Unpackaged Native runs use separate run and preview deployment
+copies, so the linker and staging tasks never write into the running payload.
+Unpackaged JVM launches still require explicit rebuild.
 There is no in-process page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 
