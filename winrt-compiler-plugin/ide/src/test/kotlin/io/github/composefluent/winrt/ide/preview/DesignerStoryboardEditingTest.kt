@@ -114,6 +114,32 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
         DesignerStoryboardEditing.write(project, refreshed, refreshed.frames.single(), 1000, "", "Discrete", true)
         assertTrue(DesignerStoryboardEditing.tracks(file, "Paint").single().frames.isEmpty())
     }
+    fun testTimingCurveEditAndUndoPreserveFrameValueTimeAndUnrelatedSource() {
+        val xml = source()
+        val before = xml.text
+        val track = DesignerStoryboardEditing.tracks(xml, "Fade").single()
+        DesignerStoryboardEditing.writeSpline(project, track, track.frames.single(), DesignerSpline(.42f, 0f, .58f, 1f))
+        val updated = DesignerStoryboardEditing.tracks(xml, "Fade").single().frames.single()
+        assertEquals("0.4", updated.value)
+        assertEquals("0:0:1", updated.time)
+        assertEquals(DesignerSpline(.42f, 0f, .58f, 1f), updated.spline)
+        assertTrue(xml.text.contains("Opacity=\"0.8\""))
+        assertTrue(runCatching { DesignerStoryboardEditing.writeSpline(project, track, track.frames.single(), DesignerSpline.Linear) }.isFailure)
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertEquals(before, xml.text)
+    }
+    fun testTimingCurveReadsPropertySyntaxAndRejectsOutOfRangePoints() {
+        val original = source().text
+        val xml = myFixture.configureByText("Curve.xaml", original.replace("KeySpline=\"0,0 1,1\"/>",
+            """> <SplineDoubleKeyFrame.KeySpline><KeySpline ControlPoint1="0.2,0.3" ControlPoint2="0.7,0.8"/></SplineDoubleKeyFrame.KeySpline></SplineDoubleKeyFrame>""")) as XmlFile
+        val track = DesignerStoryboardEditing.tracks(xml, "Fade").single()
+        assertEquals(DesignerSpline(.2f, .3f, .7f, .8f), track.frames.single().spline)
+        DesignerStoryboardEditing.writeSpline(project, track, track.frames.single(), DesignerSpline.Linear)
+        assertFalse(xml.text.contains("SplineDoubleKeyFrame.KeySpline"))
+        assertEquals(DesignerSpline.Linear, DesignerStoryboardEditing.tracks(xml, "Fade").single().frames.single().spline)
+        for (text in listOf("NaN,0 1,1", "0,0 1,Infinity", "-0.1,0 1,1", "0,0 1,1.1", "0,1")) assertNull(DesignerSpline.parse(text))
+    }
     fun testDuplicateResourceIdentityIsNotGuessed() {
         assertTrue(DesignerStoryboardEditing.tracks(source(true), "Fade").isEmpty())
     }

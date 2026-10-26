@@ -11,7 +11,7 @@ import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
 internal data class DesignerAnimationTrack(val pointer: SmartPsiElementPointer<XmlTag>, val source: String,
     val label: String, val kind: String, val frames: List<DesignerAnimationFrame>)
 internal data class DesignerAnimationFrame(val pointer: SmartPsiElementPointer<XmlTag>, val type: String,
-    val time: String, val value: String?, val complex: Boolean)
+    val time: String, val value: String?, val complex: Boolean, val spline: DesignerSpline? = null)
 
 /** Source editing of SDK keyframes. Interpolation stays in the generated SDK projection.
  * https://learn.microsoft.com/windows/apps/develop/motion/key-frame-and-easing-function-animations */
@@ -52,12 +52,38 @@ internal object DesignerStoryboardEditing {
                 val frames = entries.filter { it.namespace == WinUIXamlCatalog.PRESENTATION && it.localName.endsWith("${kind}KeyFrame") }.map {
                     DesignerAnimationFrame(pointers.createSmartPsiElementPointer(it), it.localName,
                         it.getAttributeValue("KeyTime").orEmpty(), it.getAttributeValue("Value") ?: it.subTags.singleOrNull { child -> child.localName.endsWith(".Value") }?.subTags?.joinToString("\n") { child -> child.text },
-                        it.subTags.any { child -> child.localName.endsWith(".Value") })
+                        it.subTags.any { child -> child.localName.endsWith(".Value") }, DesignerSpline.read(it))
                 }
                 DesignerAnimationTrack(pointers.createSmartPsiElementPointer(track), xml.text,
                     "${track.getAttributeValue("Storyboard.TargetName").orEmpty()} · ${track.getAttributeValue("Storyboard.TargetProperty").orEmpty()}", kind, frames)
             }
     }
+    /** Explicitly replace the timing function; ordinary value/time edits preserve it. */
+    fun writeSpline(project: Project, track: DesignerAnimationTrack, frame: DesignerAnimationFrame, curve: DesignerSpline) {
+        require(track.kind != "Object") { "Object keyframes use discrete interpolation." }
+        WriteCommandAction.writeCommandAction(project).withName("Edit XAML timing curve").run<RuntimeException> {
+            val documents = PsiDocumentManager.getInstance(project)
+            documents.commitAllDocuments()
+            val animation = track.pointer.element ?: error("The animation no longer exists.")
+            val original = frame.pointer.element ?: error("Select the keyframe again.")
+            check(animation.isValid && animation.containingFile.isWritable && animation.containingFile.text == track.source) { "XAML changed. Select the animation again." }
+            val owner = original.parentTag
+            check(owner == animation || owner?.parentTag == animation && sdk(owner, "${animation.localName}.KeyFrames")) { "The keyframe no longer belongs to this animation." }
+            check(original.namespace == WinUIXamlCatalog.PRESENTATION && original.localName.endsWith("${track.kind}KeyFrame")) { "The keyframe type changed." }
+            val replacement = original.copy() as XmlTag
+            val oldName = replacement.localName
+            replacement.setName("Spline${track.kind}KeyFrame")
+            replacement.setAttribute("KeySpline", curve.toString())
+            replacement.subTags.forEach { child ->
+                if (child.localName == "$oldName.KeySpline" || child.localName == "$oldName.EasingFunction") child.delete()
+                else if (child.namespace == replacement.namespace && child.localName.startsWith("$oldName."))
+                    child.setName(replacement.localName + child.localName.removePrefix(oldName))
+            }
+            original.replace(replacement)
+            documents.getDocument(animation.containingFile)?.let(documents::doPostponedOperationsAndUnblockDocument)
+        }
+    }
+
     fun createTrack(project: Project, selection: DesignerSelection, key: String, propertyName: String,
         millis: Int, value: String, dependent: Boolean) {
         require(key.isNotBlank() && key.length <= 256) { "Enter a storyboard resource key (up to 256 characters)." }

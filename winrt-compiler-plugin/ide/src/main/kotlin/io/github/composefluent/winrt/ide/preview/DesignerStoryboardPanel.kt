@@ -71,6 +71,15 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
             }
             if (frame != null && validFrameTime == null) Text("Enter a whole-millisecond time from 0 to 86400000; the source KeyTime is ${frame.time}.")
             Text(if (frame == null) "Adds a source keyframe at $position ms." else "Edits this frame at its specified time. Existing easing and spline settings are preserved.")
+            if (frame != null && track != null && track.kind != "Object") key(trackIndex, frameIndex, frame.spline) {
+                DesignerSplinePanel(frame.spline) { curve ->
+                    ApplicationManager.getApplication().invokeLater {
+                        if (!project.isDisposed) runCatching { DesignerStoryboardEditing.writeSpline(project, track, frame, curve) }
+                            .onSuccess { feedback = "Saved timing curve · Ctrl+Z to undo"; refresh++ }
+                            .onFailure { feedback = it.message ?: "Could not edit timing curve" }
+                    }
+                }
+            }
         }
         feedback?.let { Text(it) }
     }
