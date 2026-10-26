@@ -79,7 +79,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
             runBlocking { restored.await() }
             assertTrue(reads.get() >= 2)
             assertEquals(saved, fixture.states.toList())
-            assertEquals("Code changes loaded; saved control state restored.", service.state.value.restartOutcome)
+            assertEquals("Code changes loaded; saved UI and application checkpoints restored.", service.state.value.restartOutcome)
             val outcome = service.state.value.restartOutcome
             service.apply()
             PlatformTestUtil.waitWithEventsDispatching("Ordinary polling keeps the result", { !service.state.value.busy }, 10)

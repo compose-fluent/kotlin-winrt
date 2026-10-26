@@ -965,3 +965,36 @@ with a current native capture.
 ASC acceptance also verifies editing a realized ContentPresenter template's FontSize,
 reading its effective Native value and undoing it, plus dragging a Canvas child,
 saving the new coordinates and restoring the exact original XAML with Ctrl+Z.
+
+
+### Application checkpoints across development rebuilds
+
+The shared JVM/Native runtime captures `Frame` navigation through the SDK's
+`GetNavigationState` / `SetNavigationState` methods before restoring child inputs.
+Give dynamically created controls a unique `AutomationProperties.AutomationId` to
+include them in recovery; ambiguous IDs are excluded rather than matched by index.
+The SDK navigation serializer supports basic navigation parameters. Applications
+with richer navigation models should save their durable route IDs in a checkpoint.
+
+A component or its DataContext can implement `WinUIXamlRestartParticipant` to save
+business state and task checkpoints on its owning UI thread:
+
+```kotlin
+class SearchViewModel : WinUIXamlRestartParticipant {
+    override val restartStateSchema = "Search/v1"
+    var query = ""
+    var nextPage = 0
+    override fun saveRestartState() = mapOf("query" to query, "nextPage" to nextPage.toString())
+    override fun restoreRestartState(values: Map<String, String>) {
+        query = values.getValue("query")
+        nextPage = values.getValue("nextPage").toInt()
+        // Resume application-owned work from nextPage using the new process lifetime.
+    }
+}
+```
+
+Checkpoint schemas must match across the replacement. Normal control state and
+business checkpoints have separate identities, and a failed restoration rolls back
+the values already applied. Snapshots are bounded to 4,096 entries, 128 values per
+entry, 128 KiB per value and 8 MiB of value data per component. Checkpoints contain
+data: native stacks, sockets and coroutine continuations are recreated by the app.

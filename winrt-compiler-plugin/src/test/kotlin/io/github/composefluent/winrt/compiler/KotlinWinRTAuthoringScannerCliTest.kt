@@ -110,6 +110,11 @@ class KotlinWinRTAuthoringScannerCliTest {
             assertTrue(source.contains("value.asWinRT<TextBox>()"))
             assertFalse(source.contains("is TextBox"))
             assertTrue(source.contains("target.getBindingExpression(property) == null"))
+            assertTrue(source.contains("frame.getNavigationState()"))
+            assertTrue(source.contains("value.asWinRT<Frame>().setNavigationState(it)"))
+            assertTrue(source.contains("AutomationProperties.getAutomationId(item)"))
+            assertTrue(source.contains("context is WinUIXamlRestartParticipant"))
+            assertTrue(source.contains("filterValues { it.size == 1 }"))
             assertFalse(source.contains("Password"))
         }
     }

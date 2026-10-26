@@ -105,7 +105,7 @@ class WinRTApplicationRestartIntegrationTest : BasePlatformTestCase() {
                 assertEquals(read.message, WinUIXamlHotReloadProtocol.APPLIED, read.status)
                 assertEquals("JVM rebuilt without manual Run", read.values.single().value)
             }
-            assertEquals("Code changes loaded; saved control state restored.", service.state.value.restartOutcome)
+            assertEquals("Code changes loaded; saved UI and application checkpoints restored.", service.state.value.restartOutcome)
             println("Actual JVM automatic restart restored three component inputs: $before -> ${service.state.value.pid}")
         } finally {
             EdtTestUtil.runInEdtAndWait<Exception> { service.stop() }

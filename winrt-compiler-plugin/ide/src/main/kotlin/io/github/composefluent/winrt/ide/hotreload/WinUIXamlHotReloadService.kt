@@ -345,7 +345,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     private suspend fun restoreAfterRestart(request: Long, states: List<WinUIXamlStateRequest>, skippedComponents: List<String>) {
         try {
-            val pending = states.toMutableList()
+            val pending = states.sortedBy { it.componentKey.count { char -> char == '/' } }.toMutableList()
+            val skippedValues = mutableListOf<String>()
             val skipped = skippedComponents.toMutableSet()
             withTimeout(15_000) {
                 while (pending.isNotEmpty() && isCurrent(request)) {
@@ -372,6 +373,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         ready.forEach { saved ->
                             val reply = connection.transferState(saved)
                             check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
+                            if (Regex("; [1-9][0-9]* missing or changed controls skipped").containsMatchIn(reply.message))
+                                skippedValues += "${saved.className}: ${reply.message}"
                             pending.remove(saved)
                         }
                     }
@@ -379,7 +382,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 }
             }
             withCurrent(request) {
-                val outcome = if (skipped.isEmpty()) "Code changes loaded; saved control state restored."
+                val outcome = if (skippedValues.isNotEmpty()) "Code changes loaded; some saved state was skipped: ${skippedValues.joinToString()}."
+                else if (skipped.isEmpty()) "Code changes loaded; saved UI and application checkpoints restored."
                 else "Code changes loaded; state skipped for components without a unique source identity: ${skipped.joinToString()}. Other saved control state restored."
                 display.value = display.value.copy(message = outcome, restartOutcome = outcome)
             }

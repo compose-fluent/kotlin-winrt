@@ -137,4 +137,73 @@ class WinUIXamlReloadStateTest {
         }
     }
 
+    @Test fun dynamic_controls_and_versioned_business_checkpoints_restore_transactionally() {
+        // CsWinRT generated custom-property delegates remain the typed UI boundary;
+        // application checkpoints contain data rather than serialized continuations.
+        class Model : WinUIXamlRestartParticipant {
+            override var restartStateSchema = "Search/v1"
+            var query = "old query"
+            var resumes = 0
+            override fun saveRestartState() = mapOf("Query" to query, "ResumeFrom" to "42")
+            override fun restoreRestartState(values: Map<String, String>) {
+                query = values.getValue("Query"); resumes++
+            }
+        }
+        val model = Model(); val dynamic = Control("dynamic input"); val owner = Any()
+        val registry = WinUIXamlHotReloadRegistry({ { task -> task(); true } }, { _, text -> text },
+            stateAdapter = WinUIXamlStateAdapter({ value, _ -> (value as? Control)?.let {
+                WinUIXamlSavedElement("", "Control", listOf(WinUIXamlVisualProperty("Text", it.text)))
+            } }, { value, state, _ -> (value as Control).text = state.values.single().value },
+                discover = { mapOf("\$id/Search" to dynamic, "\$context/root" to model) }))
+        registry.observe(owner, "Page", "Page.xaml", "a".repeat(64), null, null)
+        var saved: List<WinUIXamlSavedElement>? = null
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml")) { saved = it.savedState }
+        val checkpoint = assertNotNull(saved)
+        assertEquals(2, checkpoint.size)
+        assertTrue(checkpoint.any { it.kind == "Participant:Search/v1" })
+        dynamic.text = "reset"; model.query = "reset"
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml", restore = checkpoint)) {
+            assertEquals(WinUIXamlHotReloadProtocol.APPLIED, it.status)
+        }
+        assertEquals("dynamic input", dynamic.text); assertEquals("old query", model.query)
+        assertEquals(1, model.resumes)
+        model.restartStateSchema = "Search/v2"; model.query = "new schema"
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml", restore = checkpoint)) {}
+        assertEquals("new schema", model.query)
+        assertEquals(1, model.resumes)
+    }
+
+    @Test fun business_checkpoint_limits_are_shared_by_wire_and_runtime() {
+        val many = (0 until 17).map { WinUIXamlVisualProperty("key$it", "value$it") }
+        val saved = listOf(WinUIXamlSavedElement("\$participant/\$context/root", "Participant:Model/v1", many))
+        val reply = WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "saved", savedState = saved)
+        assertEquals(reply, WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(reply)))
+        assertFailsWith<IllegalArgumentException> {
+            validateWinUIXamlSavedState(saved.map { it.copy(values = List(129) { n -> WinUIXamlVisualProperty("key$n", "v") }) })
+        }
+    }
+
+    @Test fun navigation_recreates_the_target_before_restoring_dynamic_inputs() {
+        class Frame(var route: String)
+        val frame = Frame("page2"); var input = Control("saved input")
+        val owner = Any()
+        val adapter = WinUIXamlStateAdapter({ value, _ -> when (value) {
+            is Frame -> WinUIXamlSavedElement("", "Frame", listOf(WinUIXamlVisualProperty("NavigationState", value.route)))
+            is Control -> WinUIXamlSavedElement("", "Control", listOf(WinUIXamlVisualProperty("Text", value.text)))
+            else -> null
+        } }, { value, saved, _ -> when (value) {
+            is Frame -> { value.route = saved.values.single().value; input = Control("freshly navigated") }
+            is Control -> value.text = saved.values.single().value
+        } }, discover = { mapOf("\$id/input" to input, "\$id/frame" to frame) })
+        val registry = WinUIXamlHotReloadRegistry({ { task -> task(); true } }, { _, value -> value }, stateAdapter = adapter)
+        registry.observe(owner, "Page", "Page.xaml", "a".repeat(64), null, null)
+        var state: List<WinUIXamlSavedElement>? = null
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml")) { state = it.savedState }
+        frame.route = "page1"; input.text = "reset"
+        registry.transferState(WinUIXamlStateRequest("Page", "Page.xaml", restore = assertNotNull(state))) {
+            assertEquals(WinUIXamlHotReloadProtocol.APPLIED, it.status)
+        }
+        assertEquals("page2", frame.route); assertEquals("saved input", input.text)
+    }
+
 }

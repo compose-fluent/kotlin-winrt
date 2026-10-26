@@ -24,6 +24,7 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
             name !in protectedProperties && property != null && target.getBindingExpression(property) == null
           return WinUIXamlStateAdapter(capture = capture@ { value, protectedProperties ->
             val control = runCatching { value.asWinRT<Control>() }.getOrNull() ?: return@capture null
+            val frame = runCatching { value.asWinRT<Frame>() }.getOrNull()
             val textBox = runCatching { value.asWinRT<TextBox>() }.getOrNull()
             val toggleSwitch = runCatching { value.asWinRT<ToggleSwitch>() }.getOrNull()
             val toggleButton = runCatching { value.asWinRT<ToggleButton>() }.getOrNull()
@@ -34,6 +35,10 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
             val values = buildList {
               fun put(name: String, data: Any?) { add(WinUIXamlVisualProperty(name, data?.toString() ?: "null")) }
               when {
+                frame != null -> {
+                  type = "Frame"
+                  put("NavigationState", frame.getNavigationState())
+                }
                 textBox != null -> {
                   type = "TextBox"
                   if (unbound(textBox, TextBox.textProperty, "Text", protectedProperties)) put("Text", textBox.text)
@@ -76,6 +81,7 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
             val values = state.values.associate { it.name to it.value }
             fun finite(name: String): Double? = values[name]?.toDouble()?.also { require(it.isFinite()) }
             when (state.kind) {
+              "Frame" -> values["NavigationState"]?.let { value.asWinRT<Frame>().setNavigationState(it) }
               "TextBox" -> {
                 val target = value.asWinRT<TextBox>()
                 if (unbound(target, TextBox.textProperty, "Text", protectedProperties)) values["Text"]?.let { target.text = it }
@@ -120,6 +126,39 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
               "Programmatic" -> FocusState.Programmatic
               else -> error("Invalid saved focus state.")
             }) }
+          }, discover = { owner ->
+            // Automation IDs are an explicit stable identity for dynamic content.
+            // Repeated/ambiguous IDs are omitted; visual indices never become keys.
+            val root = runCatching { owner.asWinRT<Window>().content }.getOrNull()
+              ?: runCatching { owner.asWinRT<DependencyObject>() }.getOrNull()
+            val candidates = mutableListOf<Pair<String, Any>>()
+            val pending = mutableListOf<Pair<DependencyObject, Int>>()
+            root?.let { pending += it.asWinRT<DependencyObject>() to 0 }
+            var visited = 0
+            while (pending.isNotEmpty()) {
+              val (item, depth) = pending.removeAt(pending.lastIndex)
+              require(++visited <= 65536 && depth <= 128) { "The state tree exceeds its traversal budget." }
+              val element = runCatching { item.asWinRT<FrameworkElement>() }.getOrNull()
+              val id = runCatching { $sdk.automation.AutomationProperties.getAutomationId(item) }.getOrNull().orEmpty()
+              if (id.isNotBlank() && id.length <= 256) candidates += ("\${'$'}id/" + id) to item
+              if (element != null) {
+                val context = runCatching { element.dataContext }.getOrNull()
+                val identity = when {
+                  visited == 1 -> "root"
+                  id.isNotBlank() -> "id/" + id
+                  element.name.isNotBlank() -> "name/" + element.name
+                  else -> ""
+                }
+                if (identity.isNotEmpty() && context is WinUIXamlRestartParticipant)
+                  candidates += ("\${'$'}context/" + identity) to context
+              }
+              val count = $sdk.media.VisualTreeHelper.getChildrenCount(item)
+              require(count in 0..65536) { "The state child collection exceeds its traversal budget." }
+              for (index in count - 1 downTo 0) $sdk.media.VisualTreeHelper.getChild(item, index)?.let {
+                pending += it to depth + 1
+              }
+            }
+            candidates.groupBy { it.first }.filterValues { it.size == 1 }.mapValues { it.value.single().second }
           })
         }
     """.trimIndent())

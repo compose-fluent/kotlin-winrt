@@ -299,31 +299,65 @@ internal class WinUIXamlHotReloadRegistry(
                 val result = runCatching {
                     check(!lock.withLock { closed } && root.owner.get() != null) { "The component has closed." }
                     check(platformCurrentThreadToken() == root.thread) { "State transfer requires the owning UI thread." }
-                    val elements = lock.withLock { root.elements.toMap() }.mapNotNull { (name, reference) ->
-                        reference.get()?.let { name to it }
-                    }.toMap()
+                    val owner = requireNotNull(root.owner.get())
+                    fun currentElements() = buildMap {
+                        putAll(adapter.discover(owner))
+                        putAll(lock.withLock { root.elements.toMap() }.mapNotNull { (name, reference) -> reference.get()?.let { name to it } }.toMap())
+                        if (owner is WinUIXamlRestartParticipant) put("\$owner", owner)
+                    }.toMutableMap().apply {
+                        // A model shared by several controls is checkpointed once,
+                        // using its first stable lexical identity rather than visual order.
+                        val seen = mutableListOf<Any>()
+                        toMap().entries.sortedBy { it.key }.forEach { (key, value) ->
+                            if (value is WinUIXamlRestartParticipant && seen.none { it === value }) {
+                                seen += value
+                                this["\$participant/$key"] = value
+                            }
+                        }
+                    }
+                    val elements = currentElements()
                     fun bindings(name: String) = root.compiledBindings[name].orEmpty()
+                    fun capture(name: String, value: Any) =
+                        (if (name.startsWith("\$participant/")) captureWinUIXamlParticipant(value)
+                        else adapter.capture(value, bindings(name)))?.copy(name = name)
+                    fun restore(value: Any, saved: WinUIXamlSavedElement) {
+                        if (saved.name.startsWith("\$participant/"))
+                            (value as WinUIXamlRestartParticipant).restoreRestartState(saved.values.associate { it.name to it.value })
+                        else adapter.restore(value, saved, bindings(saved.name))
+                    }
                     if (request.restore == null) {
-                        val state = elements.mapNotNull { (name, value) -> adapter.capture(value, bindings(name))?.takeIf { it.values.isNotEmpty() }?.copy(name = name) }
+                        val state = elements.mapNotNull { (name, value) -> capture(name, value)?.takeIf { it.values.isNotEmpty() } }
                         validateWinUIXamlSavedState(state)
                         snapshot().copy(message = "Captured ${state.size} controls for restart", savedState = state)
                     } else {
                         validateWinUIXamlSavedState(request.restore)
-                        val prepared = request.restore.mapNotNull { saved ->
-                            val value = elements[saved.name] ?: return@mapNotNull null
-                            val before = adapter.capture(value, bindings(saved.name))?.copy(name = saved.name) ?: return@mapNotNull null
-                            if (before.kind != saved.kind) null else Triple(value, before, saved)
-                        }.sortedBy { (_, _, saved) -> saved.values.any { it.name == "Focus" && it.value != "Unfocused" } }
+                        val ordered = request.restore.sortedBy { saved -> when {
+                            saved.kind == "Frame" -> 0
+                            saved.kind.startsWith("Participant:") -> 1
+                            saved.values.any { it.name == "Focus" && it.value != "Unfocused" } -> 3
+                            else -> 2
+                        } }
                         val attempted = mutableListOf<Triple<Any, WinUIXamlSavedElement, WinUIXamlSavedElement>>()
                         try {
-                            prepared.forEach { item -> attempted += item; adapter.restore(item.first, item.third, bindings(item.third.name)) }
+                            var targets = elements
+                            ordered.forEach { saved ->
+                                val value = targets[saved.name] ?: return@forEach
+                                val before = capture(saved.name, value) ?: return@forEach
+                                if (before.kind != saved.kind) return@forEach
+                                val item = Triple(value, before, saved)
+                                attempted += item
+                                restore(value, saved)
+                                // Navigation and application checkpoints may create
+                                // new pages/contexts; ordinary inputs reuse one traversal.
+                                if (saved.kind == "Frame" || saved.kind.startsWith("Participant:")) targets = currentElements()
+                            }
                         } catch (failure: Exception) {
                             attempted.asReversed().forEach { item ->
-                                runCatching { adapter.restore(item.first, item.second, bindings(item.second.name)) }.exceptionOrNull()?.let(failure::addSuppressed)
+                                runCatching { restore(item.first, item.second) }.exceptionOrNull()?.let(failure::addSuppressed)
                             }
                             throw failure
                         }
-                        snapshot().copy(message = "Restored ${prepared.size} controls; ${request.restore.size - prepared.size} missing or changed controls skipped")
+                        snapshot().copy(message = "Restored ${attempted.size} controls; ${request.restore.size - attempted.size} missing or changed controls skipped")
                     }
                 }
                 complete(result.getOrElse { WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, it.message.orEmpty()) })

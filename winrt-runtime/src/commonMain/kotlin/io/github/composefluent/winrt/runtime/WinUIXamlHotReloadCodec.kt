@@ -87,8 +87,8 @@ internal object WinUIXamlHotReloadCodec {
             element.values.forEach { string(it.name); string(it.value) }
         }
     }
-    private fun Reader.savedState(): List<WinUIXamlSavedElement> = List(count(512)) {
-        WinUIXamlSavedElement(string(), string(), List(count(16)) { WinUIXamlVisualProperty(string(), string()) })
+    private fun Reader.savedState(): List<WinUIXamlSavedElement> = List(count(4096)) {
+        WinUIXamlSavedElement(string(), string(), List(count(128)) { WinUIXamlVisualProperty(string(), string()) })
     }.also(::validateWinUIXamlSavedState)
     internal data class Request(val token: String, val patch: WinUIXamlHotReloadPatch? = null,
         val inspection: WinUIXamlInspectionRequest? = null, val state: WinUIXamlStateRequest? = null)

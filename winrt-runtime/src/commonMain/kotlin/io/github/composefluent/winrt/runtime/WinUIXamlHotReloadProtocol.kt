@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 14
+    const val VERSION = 15
     const val MAX_IMAGE_DIMENSION = 4096
     const val PREVIEW_SOURCE_KEY = "__KotlinWinRT_DesignSource_86220cb49a98480ca48340ca11d02704"
     const val MAGIC = 0x4B585248
