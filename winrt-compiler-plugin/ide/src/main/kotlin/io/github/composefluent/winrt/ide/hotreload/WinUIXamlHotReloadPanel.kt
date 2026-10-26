@@ -31,18 +31,18 @@ fun WinUIXamlHotReloadPanel(project: Project) {
                     it.taskName }, launch?.taskName) { task = it }
             }
             Text(state.message)
-            if (state.projectCodeChanged && state.pid != null) Text("Kotlin source changed. The application still runs the previous compiled code. Rebuild and restart to apply code changes.")
+            if (state.projectCodeChanged && state.pid != null) Text("The application is running the previous compiled code. Source changes are not loaded yet.")
         }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!state.connected) DefaultButton(enabled = launch != null && !state.busy && state.pid == null,
                     onClick = { service.start(module!!, launch!!) }) { Text("Start application") }
                 else DefaultButton(enabled = !state.busy, onClick = service::apply) { Text("Apply changes") }
-                DefaultButton(enabled = launch != null && !state.busy,
-                    onClick = { service.start(module!!, launch!!, restart = true) }) { Text("Rebuild and restart") }
+                DefaultButton(enabled = launch != null && !state.busy && !state.rebuildingCode,
+                    onClick = { service.rebuild(module!!, launch!!) }) { Text("Rebuild and restart") }
                 if (state.pid != null) DefaultButton(onClick = service::stop) { Text("Stop") }
             }
-            CheckboxRow("Apply XAML edits automatically", automatic, { service.automatic.value = it })
+            CheckboxRow("Apply changes automatically (rebuild when needed)", automatic, service::setAutomatic)
         }
         if (state.connected) item { Text("Connected · ${state.roots.size} loaded XAML roots") }
         item {
@@ -73,6 +73,7 @@ fun WinUIXamlHotReloadPanel(project: Project) {
                 Text("Existing named-element events can switch to already compiled compatible handlers, or be disabled and restored without restarting.")
                 Text("New event handlers or slots, names, bindings, templates and parent changes require rebuilding. Moving controls preserves their objects; focus and Loaded/Unloaded state may change.")
                 Text("Theme expressions, implicit styles and external dictionaries require rebuilding.")
+                Text("Packaged applications build code changes before restarting. A failed build keeps the current app; compatible named-control state is restored after a successful restart.")
             }
         }
     }

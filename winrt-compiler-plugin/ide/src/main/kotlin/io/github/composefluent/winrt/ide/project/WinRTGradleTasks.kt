@@ -36,7 +36,7 @@ object WinRTGradleTasks {
     }
 
     fun run(project: Project, module: WinRTModuleData, tasks: List<String>, title: String,
-        environment: Map<String, String> = emptyMap(), arguments: String = "", onFailure: () -> Unit = {},
+        environment: Map<String, String> = emptyMap(), arguments: String = "", passParentEnvironment: Boolean = true, onFailure: () -> Unit = {},
         onProcessStarted: ((ProcessHandler) -> Unit)? = null, onSuccess: () -> Unit = {}) {
         val settings = ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(
@@ -44,7 +44,7 @@ object WinRTGradleTasks {
             externalSystemIdString = GradleConstants.SYSTEM_ID.id
             executionName = title
             env = environment
-            isPassParentEnvs = true
+            isPassParentEnvs = passParentEnvironment
             scriptParameters = arguments
             val prefix = module.projectPath.trimEnd(':')
             taskNames = tasks.map { "$prefix:$it" }

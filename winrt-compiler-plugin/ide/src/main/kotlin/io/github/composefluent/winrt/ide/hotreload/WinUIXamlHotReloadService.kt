@@ -42,7 +42,7 @@ data class WinUIXamlHotReloadState(val message: String = "Start a JVM applicatio
     val inspectionRoots: List<WinUIXamlHotReloadRoot> = emptyList(),
     val startupMillis: Long? = null, val renderMillis: Long? = null, val reusedBuild: Boolean = false,
     val inspectionPath: List<Int>? = null, val animationError: String? = null, val inspectionPropertiesRead: Boolean = false,
-    val projectCodeChanged: Boolean = false,
+    val projectCodeChanged: Boolean = false, val rebuildingCode: Boolean = false,
     val inspectionDocument: WinUIXamlInspectionRequest? = null)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
@@ -66,6 +66,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     @Volatile private var previewTheme = "Default"
     fun usesPreviewTheme(theme: String): Boolean = previewTheme == theme
     private var selectedLaunch: WinUIXamlHotReloadLaunchData? = null
+    // Execution-only user options. Never persisted with workspace metadata.
+    private var launchEnvironment: Map<String, String> = emptyMap()
+    private var launchArguments = ""
+    private var passParentEnvironment = true
     private var sources = emptyList<Source>()
     private val baselines = mutableMapOf<Pair<String, String>, Source>()
     private val attempted = mutableMapOf<Pair<String, String>, Source>()
@@ -201,8 +205,22 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     /** Compile into staging while the old deployment remains alive. Failed builds
      * never reach start(), whose restart boundary owns stopping the old process. */
-    private fun scheduleCodeRebuild() {
-        if (isolatedPreview || !automatic.value || debuggerAttached() || disposed ||
+    fun setAutomatic(enabled: Boolean) {
+        automatic.value = enabled
+        if (enabled) { apply(); scheduleCodeRebuild() }
+    }
+
+    fun rebuild(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData) {
+        if (display.value.connected && usesLaunch(module, launch) && !launch.developmentBuildTask.isNullOrBlank()) {
+            if (codeRebuild?.isActive == true) return
+            display.value = display.value.copy(projectCodeChanged = true)
+            codeRevision.incrementAndGet()
+            scheduleCodeRebuild(force = true)
+        } else start(module, launch, restart = true)
+    }
+
+    private fun scheduleCodeRebuild(force: Boolean = false) {
+        if (isolatedPreview || (!automatic.value && !force) || debuggerAttached() || disposed ||
             !display.value.projectCodeChanged || !display.value.connected || codeRebuild?.isActive == true) return
         val module = selectedModule ?: return
         val launch = selectedLaunch ?: return
@@ -214,16 +232,17 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 var builtRevision: Long
                 do {
                     delay(900)
-                    if (!isCurrent(request) || !automatic.value || debuggerAttached()) return@launch
+                    if (!isCurrent(request) || (!automatic.value && !force) || debuggerAttached()) return@launch
                     withContext(Dispatchers.EDT) { writeIntentReadAction { FileDocumentManager.getInstance().saveAllDocuments() } }
                     builtRevision = codeRevision.get()
                     lastAttempted = builtRevision
                     val finished = CompletableDeferred<Boolean>()
                     withCurrent(request) { display.value = display.value.copy(
-                        message = "Building code changes; the current application stays running…") }
+                        message = "Building code changes; the current application stays running…", rebuildingCode = true) }
                     withContext(Dispatchers.EDT) {
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module, listOf(buildTask), "Build Hot Reload changes",
-                            environment = mapOf("KOTLIN_WINRT_BUILD_REQUEST" to UUID.randomUUID().toString()),
+                            environment = launchEnvironment + mapOf("KOTLIN_WINRT_BUILD_REQUEST" to UUID.randomUUID().toString()),
+                            passParentEnvironment = passParentEnvironment,
                             onProcessStarted = { handler ->
                                 if (!withCurrent(request) { codeBuildProcess = handler }) WinRTGradleTasks.cancel(project, handler)
                             }, onSuccess = { finished.complete(true) }, onFailure = { finished.complete(false) })
@@ -237,7 +256,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (builtRevision == codeRevision.get()) return@launch
                     }
                 } while (builtRevision != codeRevision.get())
-                if (!isCurrent(request) || !automatic.value || debuggerAttached()) return@launch
+                if (!isCurrent(request) || (!automatic.value && !force) || debuggerAttached()) return@launch
                 mutex.withLock {
                     val connection = client ?: return@launch
                     val roots = connection.request().roots
@@ -247,13 +266,14 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
                         reply.savedState?.takeIf { it.isNotEmpty() }?.let { capture.copy(restore = it) }
                     } }
-                withContext(Dispatchers.EDT) {
-                    if (isCurrent(request) && builtRevision == codeRevision.get() && automatic.value && !debuggerAttached()) {
-                        // start cancels outstanding jobs; relinquish this completed build first.
-                        codeRebuild = null
-                        start(module, launch, restart = true, restoredState = states)
+                    withContext(Dispatchers.EDT) {
+                        if (isCurrent(request) && builtRevision == codeRevision.get() && (automatic.value || force) && !debuggerAttached()) {
+                            // start cancels outstanding jobs; relinquish this completed build first.
+                            codeRebuild = null
+                            start(module, launch, restart = true, restoredState = states,
+                                launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment)
+                        }
                     }
-                }
                 }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { withCurrent(request) { display.value = display.value.copy(
@@ -261,7 +281,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             finally {
                 if (isCurrent(request)) {
                     codeRebuild = null
-                    if (codeRevision.get() != lastAttempted) scheduleCodeRebuild()
+                    display.value = display.value.copy(rebuildingCode = false)
+                    if (codeRevision.get() != lastAttempted) scheduleCodeRebuild(force)
                 }
             }
         }
@@ -296,7 +317,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     /** Native Gradle owns build, launch, logs and cancellation; Compose only requests the operation. */
     fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default",
-        restoredState: List<WinUIXamlStateRequest> = emptyList()) {
+        restoredState: List<WinUIXamlStateRequest> = emptyList(),
+        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true) {
         if (disposed || project.isDisposed) return
         require(theme in setOf("Default", "Light", "Dark"))
         val sdkPreview = preview && launch == module.staticPreview?.launch()
@@ -312,6 +334,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         connectedDeploymentReady = deploymentReady
         val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true,
             projectCodeChanged = retainedCodeChange))
+        this.launchEnvironment = launchEnvironment.toMap()
+        this.launchArguments = launchArguments
+        this.passParentEnvironment = passParentEnvironment
         previewTheme = theme
         launchStartedNanos = startedAt; firstFrameReported = false
         val firstFrame = CompletableDeferred<Unit>()
@@ -416,12 +441,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     ApplicationManager.getApplication().invokeLater {
                         if (isCurrent(request)) WinRTGradleTasks.run(project, module,
                             listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
-                            environment = mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
+                            environment = launchEnvironment + mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
                                 (if (!preview && !launch.developmentBuildTask.isNullOrBlank()) mapOf("KOTLIN_WINRT_RELEASE_BUILD_LOCK" to "1") else emptyMap()) +
                                 (if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1",
                                     WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT to theme) else emptyMap()) +
                                 if (detachedNative) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap(),
-                            arguments = if (detachedNative) "--no-launch" else "",
+                            arguments = if (detachedNative) "--no-launch" else launchArguments,
+                            passParentEnvironment = passParentEnvironment,
                             onProcessStarted = { handler ->
                                 if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
                             },
@@ -483,9 +509,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     /** Observe an application already being launched by the IDE's native
      * runner. This must not schedule another Gradle execution or stop an
      * application from an earlier Run window. */
-    fun attach(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, sessionDirectory: Path, building: () -> Boolean = { false }) {
+    fun attach(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, sessionDirectory: Path, building: () -> Boolean = { false },
+        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true) {
         if (disposed || project.isDisposed) return
         require(launch in module.hotReloadLaunches) { "Synchronize Gradle before selecting this application." }
+        this.launchEnvironment = launchEnvironment.toMap()
+        this.launchArguments = launchArguments
+        this.passParentEnvironment = passParentEnvironment
         val folder = sessionDirectory.toAbsolutePath().normalize()
         val expected = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload").toAbsolutePath().normalize()
         require(folder.parent == expected && runCatching { UUID.fromString(folder.fileName.toString()) }.isSuccess) {
@@ -938,7 +968,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private fun beginRequest(next: WinUIXamlHotReloadState): Long = synchronized(lifecycle) {
         val request = generation.incrementAndGet()
         cancelRequests()
-        display.value = next.copy(inspecting = false)
+        display.value = next.copy(inspecting = false, rebuildingCode = false)
         request
     }
 

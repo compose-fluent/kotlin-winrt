@@ -49,6 +49,7 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
             taskNames = listOf(":app:$task")
             env = mapOf("USER_OPTION" to "preserved")
             isPassParentEnvs = false
+            scriptParameters = "--args=example"
         }).let { saved ->
             val configuration = saved.configuration as WinRTApplicationRunConfiguration
             val environment = ExecutionEnvironmentBuilder.create(executor, saved).build()
@@ -68,6 +69,9 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
                 val launch = environment.getUserData(WinRTApplicationHotReload.KEY)!!
                 assertEquals(Path.of(root, "app/build/kotlin-winrt/ide-hot-reload"), launch.directory.parent)
                 assertTrue(directories.add(launch.directory))
+                assertEquals(mapOf("USER_OPTION" to "preserved"), launch.launchEnvironment)
+                assertEquals("--args=example", launch.launchArguments)
+                assertFalse(launch.passParentEnvironment)
                 assertFalse(Files.exists(launch.directory)) // State preparation does not launch or create files.
                 assertEquals(launch.directory.toString(), nativeSettings.env[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY])
                 assertEquals("preserved", nativeSettings.env["USER_OPTION"])

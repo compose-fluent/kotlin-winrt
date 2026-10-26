@@ -50,7 +50,8 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
             environment.putUserData(WinRTNativeDebugLaunch.KEY, WinRTNativeDebugLaunch(debugDirectory, Path.of(launch.executable), Path.of(launch.nativeCompilerHome), lldb, Path.of(module.projectDirectory)))
         }
         val state = execution.gradleState(if (nativeDebug) DefaultRunExecutor.getRunExecutorInstance() else executor, environment)
-        if (state != null) environment.putUserData(WinRTApplicationHotReload.KEY, WinRTApplicationHotReload(module, launch, directory))
+        if (state != null) environment.putUserData(WinRTApplicationHotReload.KEY, WinRTApplicationHotReload(module, launch, directory,
+            settings.env.toMap(), settings.scriptParameters.orEmpty(), settings.isPassParentEnvs))
         return state
     }
 
