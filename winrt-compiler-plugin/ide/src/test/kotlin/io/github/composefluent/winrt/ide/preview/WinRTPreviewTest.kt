@@ -11,6 +11,44 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 
 class WinRTPreviewTest {
     private val namespaces = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
+
+    @Test fun binding_source_fingerprint_uses_captured_text_and_keeps_the_package_path() {
+        val directory = java.nio.file.Files.createTempDirectory("xaml-binding-source")
+        val original = directory.resolve("Page.xaml").toString()
+        val input = kotlinx.serialization.json.buildJsonObject {
+            put("XamlPages", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.buildJsonObject {
+                put("FullPath", kotlinx.serialization.json.JsonPrimitive(original)); put("MSBuild_Link", kotlinx.serialization.json.JsonPrimitive("UI/Page.xaml"))
+            }) })
+        }
+        val text = "<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>"
+        val page = io.github.composefluent.winrt.metadata.WinUIXamlPageDeclaration("sample.Page", "UI/Page.xaml", "Microsoft.UI.Xaml.Controls.Page", false, emptyList(), emptyList())
+        val index = io.github.composefluent.winrt.metadata.WinUIXamlDeclarationIndex(3, listOf(page), emptyList())
+        val stamped = io.github.composefluent.winrt.ide.analysis.WinUIXamlDocumentCompiler.stampSourceHashes(index, input, listOf(io.github.composefluent.winrt.ide.analysis.WinUIXamlDocument(original, text, 1)))
+        assertEquals(io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.sourceFingerprint(text), stamped.pages.single().sourceHash)
+    }
+    @Test fun project_binding_markers_preserve_compiled_identity_and_design_overrides() {
+        val text = """<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="sample.Page"><TextBox x:Name="Input" Text="{x:Bind Value}" d:Text="Design value"/></Page>"""
+        val location = io.github.composefluent.winrt.metadata.WinUIXamlSourceLocation(1, text.indexOf("<TextBox") + 2)
+        val connection = io.github.composefluent.winrt.metadata.WinUIXamlConnectionDeclaration(7, "Microsoft.UI.Xaml.Controls.TextBox", "Input", location,
+            emptyList(), elementName = "Input", bindings = listOf(io.github.composefluent.winrt.metadata.WinUIXamlBindingDeclaration(
+                "Text", "Microsoft.UI.Xaml.Controls.TextBox", "String", "OneTime",
+                io.github.composefluent.winrt.metadata.WinUIXamlBindingExpression("member", "Value", receiver = io.github.composefluent.winrt.metadata.WinUIXamlBindingExpression("root")), location)))
+        val page = io.github.composefluent.winrt.metadata.WinUIXamlPageDeclaration("sample.Page", "Page.xaml", "Microsoft.UI.Xaml.Controls.Page", false, listOf("compiled-bindings"), listOf(connection))
+        val document = WinUIXamlDesignDocument.prepare(text, projectBindings = true, bindingPage = page)
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_COMPONENT_KEY))
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_CONNECTION_KEY))
+        assertTrue(document.markup.contains("7:${io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.designConnectionSignature(connection)}:Text"))
+        assertTrue(document.markup.contains("Text=\"Design value\""))
+        assertFalse(document.markup.contains("{x:Bind"))
+    }
+    @Test fun compiled_dictionary_bindings_keep_their_own_generated_owner() {
+        val document = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="Data.xaml"/></Page.Resources><TextBlock/></Page>""",
+            projectBindings = true, resource = { _, _ -> WinUIXamlDesignResource("""<ResourceDictionary $namespaces x:Class="sample.Data"><DataTemplate x:Key="Row"><TextBlock Text="{x:Bind Name}"/></DataTemplate></ResourceDictionary>""", "Styles/Data.xaml") })
+        assertTrue(document.markup.contains("ms-appx:///Styles/Data.xaml"))
+        assertFalse(document.markup.contains("<DataTemplate"))
+        assertTrue(document.notes.any { it.contains("retain their generated bindings") })
+    }
+
     @Test fun projectResourcesExpandEditableSourcesAndRetainUnavailableCompiledDictionaries() {
         val document = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
             <ResourceDictionary Source="Editable.xaml"/><ResourceDictionary Source="Binary.xaml"/>

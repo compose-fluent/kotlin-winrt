@@ -4,6 +4,8 @@ package io.github.composefluent.winrt.runtime
 object WinUIXamlHotReloadProtocol {
     const val VERSION = 15
     const val MAX_IMAGE_DIMENSION = 4096
+    const val PREVIEW_COMPONENT_KEY = "__KotlinWinRT_DesignComponent_86220cb49a98480ca48340ca11d02704"
+    const val PREVIEW_CONNECTION_KEY = "__KotlinWinRT_DesignConnection_86220cb49a98480ca48340ca11d02704"
     const val PREVIEW_SOURCE_KEY = "__KotlinWinRT_DesignSource_86220cb49a98480ca48340ca11d02704"
     const val MAGIC = 0x4B585248
     const val SESSION_DIRECTORY = "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"

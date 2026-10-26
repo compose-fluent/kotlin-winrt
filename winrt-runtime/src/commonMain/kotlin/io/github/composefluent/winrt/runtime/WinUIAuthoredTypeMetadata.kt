@@ -30,6 +30,8 @@ internal object WinUIAuthoredTypeMetadata {
     fun literalParser(type: KClass<*>): ((String) -> Any)? =
         definitionsByType[type]?.createFromString ?: enumTypes.values.firstOrNull { it.type == type }?.parse
 
+    internal fun designDefinition(name: String): WinUIXamlTypeDefinition? = definitions[name]
+
     fun registerDefinition(definition: WinUIXamlTypeDefinition) {
         definitions.putIfAbsent(definition.name, definition)
         definitionsByType.putIfAbsent(definition.type, definition)

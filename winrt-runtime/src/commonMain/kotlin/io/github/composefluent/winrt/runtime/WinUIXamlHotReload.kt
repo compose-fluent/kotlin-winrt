@@ -14,6 +14,7 @@ internal class WinUIXamlHotReloadRegistry(
     private val stateAdapter: WinUIXamlStateAdapter? = null,
 ) {
     private class Root(owner: Any, val thread: Long, val enqueue: (() -> Unit) -> Boolean) {
+        var designContextOnly = isConstructingWinUIXamlDesignSource()
         val owner = PlatformManagedWeakReference(owner)
         val elements = mutableMapOf<String, PlatformManagedWeakReference<Any>>()
         val namedComponents = mutableMapOf<String, Root>()
@@ -127,7 +128,7 @@ internal class WinUIXamlHotReloadRegistry(
      * component anchor survive process replacement. Incomplete or cyclic paths
      * have no key; user input must never move by an ordinal fallback. */
     private fun componentKeys(): Map<Root, String> {
-        val live = pages.values.associateWith { page -> page.roots.filter { it.ready && it.owner.get() != null } }
+        val live = pages.values.associateWith { page -> page.roots.filter { !it.designContextOnly && it.ready && it.owner.get() != null } }
         val roots = live.values.flatten().toSet()
         val anchors = live.flatMap { (page, instances) ->
             if (instances.size == 1) listOf(instances.single() to "${page.className.length}:${page.className}${page.path.length}:${page.path}") else emptyList()
@@ -150,14 +151,18 @@ internal class WinUIXamlHotReloadRegistry(
         return keys.mapValues { (_, key) -> key.takeUnless { it in collisions }.orEmpty() }
     }
 
+    internal fun promoteDesignSource(owner: Any) = lock.withLock {
+        pages.values.flatMap { it.roots }.singleOrNull { it.owner.get() === owner }?.designContextOnly = false
+    }
+
     fun snapshot(): WinUIXamlHotReloadReply = lock.withLock {
         if (closed) return@withLock WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The development session is closed.")
         pages.values.forEach { page -> page.roots.removeAll { it.owner.get() == null } }
         val keys = componentKeys()
-        val roots = pages.values.filter { it.roots.any { root -> root.ready } }.map { page ->
+        val roots = pages.values.filter { it.roots.any { root -> root.ready && !root.designContextOnly } }.map { page ->
             WinUIXamlHotReloadRoot(page.className, page.path, page.hash, page.version,
-                page.roots.filter { it.ready }.flatMap { it.elements.keys }.distinct().sorted(), page.roots.count { it.ready },
-                page.roots.filter { it.ready }.map { keys[it].orEmpty() })
+                page.roots.filter { it.ready && !it.designContextOnly }.flatMap { it.elements.keys }.distinct().sorted(), page.roots.count { it.ready && !it.designContextOnly },
+                page.roots.filter { it.ready && !it.designContextOnly }.map { keys[it].orEmpty() })
         }
         val error = pages.values.firstNotNullOfOrNull { it.restart }
         val pending = pages.values.any { it.pending }
@@ -171,7 +176,7 @@ internal class WinUIXamlHotReloadRegistry(
     fun submit(patch: WinUIXamlHotReloadPatch, complete: (WinUIXamlHotReloadReply) -> Unit) {
         val selection = lock.withLock {
             val page = pages[patch.className to patch.resourcePath]
-            val roots = page?.roots?.filter { it.ready && it.owner.get() != null }.orEmpty()
+            val roots = page?.roots?.filter { !it.designContextOnly && it.ready && it.owner.get() != null }.orEmpty()
             val error = when {
                 page == null || roots.isEmpty() -> "This XAML class has no live component."
                 page.restart != null -> page.restart
@@ -202,7 +207,7 @@ internal class WinUIXamlHotReloadRegistry(
                 val result = runCatching {
                     check(!lock.withLock { closed }) { "The development session is closed." }
                     check(platformCurrentThreadToken() == root.thread) { "The dispatcher did not reach the component's UI thread." }
-                    val roots = lock.withLock { page.roots.filter { it.ready && it.owner.get() != null } }
+                    val roots = lock.withLock { page.roots.filter { !it.designContextOnly && it.ready && it.owner.get() != null } }
                     check(roots.isNotEmpty() && roots.all { it.thread == root.thread }) { "The component lifetime changed. Reconnect." }
                     val values = apply(roots, patch.changes, patch.resources, patch.reads, patch.children, patch.events)
                     lock.withLock {
@@ -252,7 +257,7 @@ internal class WinUIXamlHotReloadRegistry(
             complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Static preview must use the isolated design host.")); return
         }
         val selection = lock.withLock {
-            pages[request.className to request.resourcePath]?.roots?.filter { it.ready && it.owner.get() != null }?.getOrNull(request.instance)
+            pages[request.className to request.resourcePath]?.roots?.filter { !it.designContextOnly && it.ready && it.owner.get() != null }?.getOrNull(request.instance)
         }
         if (selection == null || inspector == null) {
             complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "No live visual inspector. Rebuild with the current toolchain and select a loaded component.")); return
@@ -271,7 +276,8 @@ internal class WinUIXamlHotReloadRegistry(
                 else if (platformCurrentThreadToken() != selection.thread) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Visual inspection must run on the owning UI thread."))
                 else inspector.inspect(owner, request) { result -> complete(result.fold(
                     { view -> snapshot().copy(message = "${view.nodes.size} visual nodes", inspection = view) },
-                    { error -> WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, error.message.orEmpty()) })) }
+                    { error -> WinUIXamlHotReloadReply(if (generateSequence(error) { it.cause }.take(16).any { it is WinUIXamlDesignRebuildRequired })
+                        WinUIXamlHotReloadProtocol.RESTART_REQUIRED else WinUIXamlHotReloadProtocol.REJECTED, error.message.orEmpty()) })) }
             }
             dispatchTiming?.let { println("XAML preview enqueue returned: " + it.elapsedNow().inWholeMilliseconds + "ms") }
             if (!enqueued) complete(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.UNAVAILABLE, "The UI dispatcher rejected inspection."))
@@ -283,7 +289,7 @@ internal class WinUIXamlHotReloadRegistry(
     fun transferState(request: WinUIXamlStateRequest, complete: (WinUIXamlHotReloadReply) -> Unit) {
         val adapter = stateAdapter
         val root = lock.withLock {
-            val roots = pages[request.className to request.resourcePath]?.roots?.filter { it.ready && it.owner.get() != null }
+            val roots = pages[request.className to request.resourcePath]?.roots?.filter { !it.designContextOnly && it.ready && it.owner.get() != null }
             if (request.componentKey.isEmpty()) roots?.getOrNull(request.instance)
             else {
                 val keys = componentKeys()
@@ -600,6 +606,33 @@ private object WinUIXamlHotReloadConfiguration {
     var initialized = false
     var registry: WinUIXamlHotReloadRegistry? = null
     var transport: AutoCloseable? = null
+    val designConstruction = mutableMapOf<Long, Int>()
+}
+
+internal fun isConstructingWinUIXamlDesignSource(): Boolean = WinUIXamlHotReloadConfiguration.lock.withLock {
+    WinUIXamlHotReloadConfiguration.designConstruction[platformCurrentThreadToken()]?.let { it > 0 } == true
+}
+
+/** Context-only constructor trees must not masquerade as displayed components.
+ * Promotion preserves the original component's business owner; its visible
+ * children are connected separately by the generated design connector. */
+internal fun <T> constructWinUIXamlDesignSource(activate: () -> T): T {
+    val thread = platformCurrentThreadToken()
+    WinUIXamlHotReloadConfiguration.lock.withLock {
+        val depths = WinUIXamlHotReloadConfiguration.designConstruction
+        depths[thread] = (depths[thread] ?: 0) + 1
+    }
+    try { return activate() } finally {
+        WinUIXamlHotReloadConfiguration.lock.withLock {
+            val depths = WinUIXamlHotReloadConfiguration.designConstruction
+            val depth = requireNotNull(depths[thread]) - 1
+            if (depth == 0) depths.remove(thread) else depths[thread] = depth
+        }
+    }
+}
+
+internal fun promoteWinUIXamlDesignSource(owner: Any) {
+    WinUIXamlHotReloadConfiguration.lock.withLock { WinUIXamlHotReloadConfiguration.registry }?.promoteDesignSource(owner)
 }
 
 /** Generated application metadata supplies typed SDK conversion and an owning-thread dispatcher. */

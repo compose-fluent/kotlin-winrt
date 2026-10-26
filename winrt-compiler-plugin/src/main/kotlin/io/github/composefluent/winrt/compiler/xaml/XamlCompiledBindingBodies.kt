@@ -124,9 +124,24 @@ internal class XamlCompiledBindingBodies(
             val pathAvailable = irTemporary(irBoolean(true), "pathAvailable", isMutable = true)
             val source = irTemporary(evaluate(binding.expression, this, klass, root, targetType, namedTargets, pathAvailable))
             fun IrBuilderWithScope.assignment(value: IrValueDeclaration): IrExpression {
-                fun IrBuilderWithScope.setValue(): IrExpression = if (binding.isLoad)
-                    requireNotNull(loadAssignment)(this, irGet(value)) else targetAssignment(this, binding,
-                        requireNotNull(setter), target(), convert(irGet(value), targetType, this, location))
+                fun IrBuilderWithScope.setValue(): IrExpression {
+                    val assignment = if (binding.isLoad) requireNotNull(loadAssignment)(this, irGet(value))
+                        else targetAssignment(this, binding, requireNotNull(setter), target(), convert(irGet(value), targetType, this, location))
+                    // A Page/UserControl file root is also the business owner.
+                    // Keep its generated assignment and mirror SDK properties to
+                    // the loose design root using the same typed setter.
+                    if (binding.isLoad || !connection.isScopeRoot || connection.isTemplateChild || binding.declaringTypeName in classes) return assignment
+                    return irBlock {
+                        +assignment
+                        val copy = irTemporary(irCall(stateClass.functions.single { it.name.asString() == "designTarget" }).apply {
+                            dispatchReceiver = state(); arguments[1] = irInt(connection.id)
+                        })
+                        +irIfThen(pluginContext.irBuiltIns.unitType, irNotEquals(irGet(copy), irNull(copy.type)),
+                            targetAssignment(this, binding, requireNotNull(setter),
+                                convert(irImplicitCast(irGet(copy), pluginContext.irBuiltIns.anyType), owner.defaultType, this, location),
+                                convert(irGet(value), targetType, this, location)))
+                    }
+                }
                 return if (targetPresent == null || binding.isLoad) setValue() else irIfThenElse(
                     pluginContext.irBuiltIns.unitType, targetPresent(this), setValue(),
                     irCall(stateClass.functions.single { it.name.asString() == "defer" }).apply {
@@ -211,7 +226,11 @@ internal class XamlCompiledBindingBodies(
             }
             +irUnit()
         }
-        if (binding.mode == "OneTime") +irIfThen(pluginContext.irBuiltIns.unitType, initial, body) else +body
+        val enabled = irCall(requireNotNull(pluginContext.referenceClass(xamlBindingStateId)).owner.functions.single {
+            it.name.asString() == "isDesignBindingEnabled"
+        }).apply { dispatchReceiver = state(); arguments[1] = irInt(connection.id); arguments[2] = irString(binding.name) }
+        +irIfThen(pluginContext.irBuiltIns.unitType, enabled,
+            if (binding.mode == "OneTime") irIfThen(pluginContext.irBuiltIns.unitType, initial, body) else body)
     }
 
     private fun generateTemplateScopes(klass: IrClass, page: WinUIXamlPageDeclaration) {
@@ -409,7 +428,7 @@ internal class XamlCompiledBindingBodies(
                 +irCall(stateClass.functions.single { it.name.asString() == stateMethod }).apply {
                     val receiver = requireNotNull(function.dispatchReceiverParameter)
                     dispatchReceiver = irGetField(irGet(receiver), state)
-                    if (stateMethod != "stopTracking") arguments[1] = xamlFunctionReference(pluginContext, update, irGet(receiver))
+                    if (stateMethod !in setOf("stopTracking", "stopDesignBindings")) arguments[1] = xamlFunctionReference(pluginContext, update, irGet(receiver))
                 }
             }
         }
@@ -417,6 +436,16 @@ internal class XamlCompiledBindingBodies(
         lifecycle(xamlBindingsChangedName, "update")
         lifecycle(xamlBindingsUnloadedName, "stopTracking")
         lifecycle(xamlRefreshBindingsName, "updateAll")
+        lifecycle(xamlStopDesignBindingsName, "stopDesignBindings")
+        val design = method(klass, xamlDesignBindingsName)
+        design.body = DeclarationIrBuilder(pluginContext, design.symbol).irBlockBody {
+            val receiver = requireNotNull(design.dispatchReceiverParameter)
+            +irCall(stateClass.functions.single { it.name.asString() == "configureDesignBindings" }).apply {
+                dispatchReceiver = irGetField(irGet(receiver), state)
+                arguments[1] = irGet(design.parameters.single { it.kind == IrParameterKind.Regular })
+            }
+            +irCall(method(klass, xamlRefreshBindingsName).symbol).apply { dispatchReceiver = irGet(receiver) }
+        }
         for (connection in bindings) for (binding in connection.bindings.filter { it.mode == "TwoWay" }) {
             val callback = method(klass, binding.bindBackName(connection))
             callback.body = DeclarationIrBuilder(pluginContext, callback.symbol).irBlockBody {

@@ -704,13 +704,17 @@ theme. Ordinary `d:` properties override their runtime values, including relativ
 image sources, and design collection properties replace runtime items and bindings.
 `d:DesignData` files and inline `d:DataContext` provide inherited scalar sample values
 for plain `Binding` paths without constructing project types. Nested contexts shadow
-their parents, and template item contexts remain separate. Compiled `x:Bind` uses
-explicit design values or control defaults. Event handlers
-and compiler-only directives are removed from the design copy with a visible
-notice. Regular Binding still needs an available design DataContext. With project
-code disabled, custom controls retain layout as visible placeholders and custom
-resource objects are excluded. Enabling project code permits their normal
-constructors. There is no simulation of Kotlin code or binding execution. The shared
+their parents, and template item contexts remain separate. With project code enabled,
+the designer constructs the real Kotlin component and reconnects its generated
+`Connect`/`Update`/`StopTracking` bodies to the design tree. Ordinary `Binding`
+inherits the component's actual DataContext; page and template `x:Bind` execute
+the generated Kotlin code. Explicit `d:` values suppress the corresponding
+generated assignments and tracking. A changed connection contract automatically
+rebuilds the project host before reconnecting. Event handlers and compiler-only
+directives are removed from the loose XAML copy; generated connectors retain
+their typed responsibilities. With project code disabled, compiled bindings use
+explicit design values or control defaults, custom controls retain layout as visible
+placeholders, and custom resource objects are excluded. The shared
 canvas provides the source layout and property edits described above for both frameworks.
 
 The first capture returns real pixels and root bounds before traversing the complete
@@ -981,10 +985,10 @@ business state and task checkpoints on its owning UI thread:
 
 ```kotlin
 class SearchViewModel : WinUIXamlRestartParticipant {
-    override val restartStateSchema = "Search/v1"
+    override val restartStateSchema: String = "Search/v1"
     var query = ""
     var nextPage = 0
-    override fun saveRestartState() = mapOf("query" to query, "nextPage" to nextPage.toString())
+    override fun saveRestartState(): Map<String, String> = mapOf("query" to query, "nextPage" to nextPage.toString())
     override fun restoreRestartState(values: Map<String, String>) {
         query = values.getValue("query")
         nextPage = values.getValue("nextPage").toInt()

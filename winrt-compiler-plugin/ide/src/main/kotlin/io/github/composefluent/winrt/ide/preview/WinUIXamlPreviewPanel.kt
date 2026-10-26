@@ -324,6 +324,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     val documents = WinUIXamlPreviewSources(project, module, files, source, if (projectCode) launchModule ?: module else module)
                     val cache = if (projectCode) WinUIXamlDesignDocumentCache(
                         Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-design-documents"), source) else null
+                    val sourceText = documents.read(source)
+                    val sourceClass = if (projectCode) runCatching { io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadMarkup.parse(sourceText).className }.getOrNull() else null
+                    val sourceHash = io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.sourceFingerprint(sourceText)
+                    val bindingPage = if (projectCode) declarations.values.flatMap { it.declarations.pages }
+                        .filter { it.className == sourceClass && it.sourceHash == sourceHash }.distinct().singleOrNull() else null
                     val cacheKey = if (projectCode) documents.projectDocumentKey() else null
                     cacheKey?.let { cache?.read(it) }?.let { return@withContext it }
                     val catalog = (if (projectCode) catalogService.forFile(source) else catalogService.forDesigner(module))
@@ -331,11 +336,14 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     if (catalog == null && events == null) return@withContext null
 
                     val application = documents.application()
+                    if (projectCode && bindingPage == null && io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadMarkup.parse(sourceText).containsCompiledBindings())
+                        error("Updating compiled binding metadata…")
                     if (!projectCode) documents.stageAssets()
                     WinUIXamlDesignDocument.prepare(documents.read(source), application?.let(documents::read),
                         documents.target(source), application?.let(documents::target).orEmpty(),
                         resource = documents::resolve,
                         compiledResourceFallback = projectCode,
+                        projectBindings = projectCode, bindingPage = bindingPage,
                         designData = documents::resolve,
                         sdkType = if (projectCode) null else { uri, type -> catalog?.resolve(uri, type) != null },
                         visualType = if (projectCode) null else { uri, type -> catalog?.let { schema -> schema.resolve(uri, type)?.let(schema::isVisual) == true } == true }) { uri, type, attribute ->

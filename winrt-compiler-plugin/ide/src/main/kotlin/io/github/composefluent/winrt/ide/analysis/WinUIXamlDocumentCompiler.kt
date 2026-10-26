@@ -47,7 +47,7 @@ internal object WinUIXamlDocumentCompiler {
                 Files.createDirectories(target.parent)
                 Files.writeString(target, edit.text)
                 sourceMapping[target.toString()] = source
-                JsonObject(data + mapOf("FullPath" to JsonPrimitive(target.toString()), "ItemSpec" to JsonPrimitive(target.toString())))
+                JsonObject(data + mapOf("FullPath" to JsonPrimitive(target.toString()), "ItemSpec" to JsonPrimitive(target.toString()), "MSBuild_Link" to JsonPrimitive(resource)))
             })
         }
         require(edits.keys.all { it in preparedPaths }) { "New XAML files require Gradle synchronization and Prepare XAML analysis." }
@@ -56,6 +56,23 @@ internal object WinUIXamlDocumentCompiler {
             "OutputPath" to JsonPrimitive(directory.resolve("compiled").toString()),
             "SavedStateFile" to JsonPrimitive(directory.resolve("state.xml").toString()),
         ))
+    }
+
+    /** Source identities belong to the exact immutable texts passed to XAMLC. */
+    fun stampSourceHashes(index: io.github.composefluent.winrt.metadata.WinUIXamlDeclarationIndex, input: JsonObject,
+        documents: List<WinUIXamlDocument>): io.github.composefluent.winrt.metadata.WinUIXamlDeclarationIndex {
+        val texts = documents.associateBy { WinUIXamlSnapshotService.key(it.path) }
+        val hashes = listOf("XamlPages", "XamlApplications").flatMap { input[it]?.jsonArray.orEmpty() }.mapNotNull { item ->
+            val data = item.jsonObject
+            val path = (data["FullPath"] ?: data["ItemSpec"])?.jsonPrimitive?.content ?: return@mapNotNull null
+            val document = texts[WinUIXamlSnapshotService.key(path)] ?: return@mapNotNull null
+            val resource = (data["MSBuild_Link"]?.jsonPrimitive?.content ?: Path.of(path).fileName.toString()).replace('\\', '/').trimStart('/').lowercase()
+            resource to WinUIXamlDeclarations.sourceFingerprint(document.text)
+        }.toMap()
+        return index.copy(pages = index.pages.map { page ->
+            page.copy(sourceHash = hashes[page.resourcePath.replace('\\', '/').trimStart('/').lowercase()]
+                ?: error("XAML analysis cannot associate ${page.resourcePath} with its captured source."))
+        })
     }
 
     /** .NET Framework XAMLC still requires short working/output paths on Windows.
@@ -89,7 +106,14 @@ internal object WinUIXamlDocumentCompiler {
             var process: OSProcessHandler? = null
             val sourceMapping = mutableMapOf<String, String>()
             try {
-                val snapshotInput = snapshotInput(input, documents, directory, sourceMapping)
+                val edits = documents.associateBy { WinUIXamlSnapshotService.key(it.path) }
+                val captured = listOf("XamlPages", "XamlApplications").flatMap { input[it]?.jsonArray.orEmpty() }.mapNotNull { item ->
+                    val data = item.jsonObject
+                    val path = (data["FullPath"] ?: data["ItemSpec"])?.jsonPrimitive?.content ?: return@mapNotNull null
+                    if (!Files.isRegularFile(Path.of(path))) return@mapNotNull null
+                    edits[WinUIXamlSnapshotService.key(path)] ?: WinUIXamlDocument(path, Files.readString(Path.of(path)), -1)
+                }.distinctBy { WinUIXamlSnapshotService.key(it.path) }
+                val snapshotInput = snapshotInput(input, captured, directory, sourceMapping)
                 val inputFile = directory.resolve("input.json")
                 val outputFile = directory.resolve("output.json")
                 Files.writeString(inputFile, snapshotInput.toString())
@@ -116,7 +140,7 @@ internal object WinUIXamlDocumentCompiler {
                     throw IllegalArgumentException(message, failure)
                 }
                 check(exit == 0) { "XamlCompiler exited with $exit: $output" }
-                WinUIXamlDeclarations.canonicalText(index)
+                WinUIXamlDeclarations.canonicalText(stampSourceHashes(index, input, captured))
             } finally {
                 withContext(NonCancellable + Dispatchers.IO) {
                     process?.takeUnless { it.isProcessTerminated }?.let { it.destroyProcess(); it.waitFor(5000) }

@@ -25,6 +25,13 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
     val isApplication: Boolean = root.type == Name(WinUIXamlCatalog.PRESENTATION, "Application")
     val isResourceDictionary: Boolean = root.type == Name(WinUIXamlCatalog.PRESENTATION, "ResourceDictionary")
     val hash: String = WinUIXamlDeclarations.sourceFingerprint(text)
+    fun containsCompiledBindings(): Boolean {
+        val all = listOf(root.node) + (0 until root.node.getElementsByTagName("*").length).map { root.node.getElementsByTagName("*").item(it) as Element }
+        return all.any { tag -> (0 until tag.attributes.length).any { index ->
+            io.github.composefluent.winrt.ide.xaml.isCompiledXamlBinding(tag.attributes.item(index).nodeValue) { tag.lookupNamespaceURI(it) }
+        } }
+    }
+
 
     fun isWindow(catalog: WinUIXamlCatalog?, baseTypeName: String? = null): Boolean {
         if (root.type == Name(WinUIXamlCatalog.PRESENTATION, "Window")) return true

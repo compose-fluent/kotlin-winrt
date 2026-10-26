@@ -56,10 +56,10 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                     }
                 }
             }
-            val functions = (listOf(xamlInitializeName, xamlConstructionName, xamlLoadName, xamlConnectName, xamlBindingName) +
+            val functions = (listOf(xamlInitializeName, xamlConstructionName, xamlLoadName, xamlDesignConnectionsName, xamlDesignConnectName, xamlConnectName, xamlBindingName) +
                 page.properties.flatMap { it.eventFunctions() } +
                 if (page.hasCompiledBindings()) listOf(xamlUpdateBindingsName, xamlBindingsChangedName, xamlBindingsLoadingName,
-                    xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlPageBindingConnectName) + page.bindBackNames() +
+                    xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlDesignBindingsName, xamlStopDesignBindingsName, xamlPageBindingConnectName) + page.bindBackNames() +
                     (if (page.hasTemplateScopes()) xamlScopeNames else emptySet()) else emptyList()).map(::function)
             if (semanticOnly) {
                 val error = pluginContext.referenceFunctions(CallableId(FqName("kotlin"), Name.identifier("error"))).single()
@@ -77,6 +77,32 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                 "XAML requires generated projection $name"
             }.owner
             val requireElement = runtime("requireXamlNamedElement")
+            val designConnections = function(xamlDesignConnectionsName)
+            designConnections.body = DeclarationIrBuilder(pluginContext, designConnections.symbol).irBlockBody {
+                val contract = io.github.composefluent.winrt.metadata.WinUIXamlDesignConnections.connections(page).joinToString("\n") { item ->
+                    listOf(item.id, io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.designConnectionSignature(item), item.scopeId,
+                        if (item.isTemplateChild) 1 else 0, if (item.isScopeRoot) 1 else 0, if (item.isControlTemplateScope()) 1 else 0).joinToString("|")
+                }
+                +irReturn(irString(contract))
+            }
+            val designConnect = function(xamlDesignConnectName)
+            designConnect.body = DeclarationIrBuilder(pluginContext, designConnect.symbol).irBlockBody {
+                val arguments = designConnect.parameters.filter { it.kind == IrParameterKind.Regular }
+                if (page.hasCompiledBindings()) {
+                    val stateGetter = requireNotNull(properties.getValue(xamlBindingStateName.asString()).getter)
+                    val stateClass = requireNotNull(pluginContext.referenceClass(xamlBindingStateId)).owner
+                    +irCall(stateClass.functions.single { it.name.asString() == "registerDesignTarget" }).apply {
+                        dispatchReceiver = irCall(stateGetter.symbol).apply { dispatchReceiver = irGet(requireNotNull(designConnect.dispatchReceiverParameter)) }
+                        this.arguments[1] = irGet(arguments[0]); this.arguments[2] = irGet(arguments[1])
+                    }
+                }
+                for (name in listOf(xamlConnectName) + if (page.hasCompiledBindings()) listOf(xamlPageBindingConnectName) else emptyList()) {
+                    +irCall(function(name).symbol).apply {
+                        dispatchReceiver = irGet(requireNotNull(designConnect.dispatchReceiverParameter))
+                        this.arguments[1] = irGet(arguments[0]); this.arguments[2] = irGet(arguments[1])
+                    }
+                }
+            }
             val connectionState = requireNotNull(properties.getValue(xamlConnectionStateName.asString()).backingField)
             val connectionStateClass = requireNotNull(pluginContext.referenceClass(xamlConnectionStateId)).owner
             connectionState.initializer = DeclarationIrBuilder(pluginContext, connectionState.symbol).run {

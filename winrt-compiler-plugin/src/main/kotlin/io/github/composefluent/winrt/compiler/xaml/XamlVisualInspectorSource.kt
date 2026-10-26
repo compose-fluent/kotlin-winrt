@@ -203,6 +203,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           // or animation frames. The IDE owns the redirected preview-host log.
           var tracedPreview = false
           var traceCapture = false
+          ${xamlDesignBindingHelpers()}
           return WinUIXamlVisualInspector(
           formatValue = ::display,
           visualRoot = { owner -> if (owner is Window) owner.content else owner },
@@ -290,6 +291,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               var stage = "render the visual tree"
               timing?.let { println("XAML preview capture queued: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               try {
+                bindDesignTree(element)
                 val bitmap = RenderTargetBitmap()
                 // RenderAsync's requested size is in view pixels. PixelWidth and
                 // the BGRA buffer include XamlRoot's physical DPI scale.
@@ -338,6 +340,8 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             try {
               val element = requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(request.previewMarkup)).asWinRT<FrameworkElement>()
               timing?.let { println("XAML preview markup loaded: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+              beginDesignBindings(element)
+              bindDesignTree(element)
               element.width = request.width.toDouble(); element.height = request.height.toDouble()
               element.requestedTheme = when (request.theme) { "Dark" -> ElementTheme.Dark; "Light" -> ElementTheme.Light; else -> ElementTheme.Default }
               stage = "attach the visual tree"
@@ -363,6 +367,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               element.measure(windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))
               element.arrange(windows.foundation.Rect(0f, 0f, request.width.toFloat(), request.height.toFloat()))
               element.updateLayout()
+              bindDesignTree(element)
               timing?.let { println("XAML preview layout completed: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               traceCapture = !tracedPreview
               tracedPreview = true

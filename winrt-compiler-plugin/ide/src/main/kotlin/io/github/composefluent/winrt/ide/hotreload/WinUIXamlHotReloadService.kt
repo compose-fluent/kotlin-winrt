@@ -20,6 +20,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import io.github.composefluent.winrt.ide.gradle.*
 import io.github.composefluent.winrt.ide.project.*
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalogService
+import io.github.composefluent.winrt.metadata.WinUIXamlDeclarations
 import io.github.composefluent.winrt.runtime.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +102,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var edits: Job? = null
     private var codeRebuild: Job? = null
     private val codeRevision = AtomicLong()
+    private val designRebuildDocuments = linkedSetOf<String>()
     @Volatile private var codeBuildProcess: com.intellij.execution.process.ProcessHandler? = null
     private var update: Job? = null
     private var inspection: Job? = null
@@ -203,7 +205,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val source = sources.singleOrNull { Path.of(it.path).toAbsolutePath().normalize() == file }
         val loaded = source != null && Files.exists(file) &&
             display.value.inspectionRoots.any { it.className == source.markup.className }
-        if (!loaded && !isolatedPreview) {
+        if (isolatedPreview && source?.markup?.isResourceDictionary == true && runCatching {
+            WinUIXamlHotReloadMarkup.parse(documentText(source.path)).containsCompiledBindings()
+        }.getOrDefault(false)) {
+            requestAutomaticRebuild("Compiled resource bindings changed; rebuilding the preview in the background.")
+        } else if (!loaded && !isolatedPreview) {
             display.value = display.value.copy(projectCodeChanged = true,
                 message = "XAML resources changed; a build is needed to update compiled resources.")
             savedLaunch = savedLaunch.copy(projectCodeChanged = true)
@@ -234,6 +240,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 val base = Path.of(root).toAbsolutePath().normalize()
                 file.startsWith(base) && base.relativize(file).none { it.toString() in ignored }
             }) {
+                designRebuildDocuments.clear()
                 display.value = display.value.copy(projectCodeChanged = true)
                 savedLaunch = savedLaunch.copy(projectCodeChanged = true)
                 codeRevision.incrementAndGet()
@@ -243,7 +250,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     private fun requestAutomaticRebuild(reason: String): Boolean {
-        if (isolatedPreview || !automatic.value || selectedLaunch?.developmentBuildTask.isNullOrBlank()) return false
+        if (!automaticBuildEnabled || selectedLaunch?.developmentBuildTask.isNullOrBlank() || selectedLaunch == selectedModule?.staticPreview?.launch()) return false
         display.value = display.value.copy(projectCodeChanged = true, message = reason, busy = false)
         savedLaunch = savedLaunch.copy(projectCodeChanged = true)
         codeRevision.incrementAndGet()
@@ -313,7 +320,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     val connection = client ?: return@launch
                     // A designer re-renders its source after replacement; it must not
                     // replay the synthetic artboard's control state into application roots.
-                    val roots = if (isolatedPreview) emptyList() else connection.request().roots
+                    val roots = connection.request().roots.filterNot { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }
                     val statePlan = restartStatePlan(roots)
                     val states = statePlan.requests.mapNotNull { capture ->
                         val reply = connection.transferState(capture)
@@ -849,12 +856,14 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             } else
                 "Source does not match ${missing.joinToString { it.className }}. Rebuild and restart before updating.",
                 connected = reply.status == WinUIXamlHotReloadProtocol.APPLIED, busy = reply.status == WinUIXamlHotReloadProtocol.UNAVAILABLE,
-                pid = connection.process.pid(), roots = reply.roots, inspectionRoots = windows.ifEmpty { visualRoots })
+                pid = connection.process.pid(), roots = reply.roots, inspectionRoots = if (isolatedPreview) visualRoots.filter { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS } else windows.ifEmpty { visualRoots })
         }
     }
 
     fun apply() {
-        if (disposed || project.isDisposed || update?.isActive == true || debuggerAttached()) return
+        // The static designer replaces its loose design document and reconnects
+        // generated bindings. Its wrapper is not the compiled page's patch graph.
+        if (isolatedPreview || disposed || project.isDisposed || update?.isActive == true || debuggerAttached()) return
         val request = generation.get()
         update = scope.launch(Dispatchers.IO) {
             mutex.withLock {
@@ -965,6 +974,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             if (debuggerAttached()) null else runInterruptible { connection.inspect(next) }
                         } ?: break
                         if (client === connection) withCurrent(epoch) {
+                            if (next.previewMarkup.isNotEmpty() && reply.status == WinUIXamlHotReloadProtocol.RESTART_REQUIRED &&
+                                designRebuildDocuments.add(WinUIXamlDeclarations.sourceFingerprint(next.previewMarkup))) {
+                                if (designRebuildDocuments.size > 64) designRebuildDocuments.remove(designRebuildDocuments.first())
+                                requestAutomaticRebuild(reply.message)
+                            }
                             if (next.previewMarkup.isNotEmpty() && reply.status != WinUIXamlHotReloadProtocol.APPLIED) {
                                 cachedFirstFrame?.complete(Unit)
                                 display.value = display.value.copy(inspection = null, inspectionError = reply.message, message = reply.message, inspectionTreeRead = false)
