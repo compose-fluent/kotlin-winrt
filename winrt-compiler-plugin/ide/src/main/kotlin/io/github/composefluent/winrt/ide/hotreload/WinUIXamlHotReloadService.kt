@@ -355,10 +355,16 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             it.className == root.className && it.resourcePath == root.resourcePath
                         } }
                         val statePlan = restartStatePlan(matchingRoots)
-                        skipped += statePlan.skippedComponents
-                        pending.removeAll { saved -> matchingRoots.any {
-                            saved.componentKey.isEmpty() && it.instances > 1 && it.className == saved.className && it.resourcePath == saved.resourcePath
-                        } }
+                        // Repeated children can finish loading before their parent's
+                        // connector supplies their names. Keep waiting for keyed
+                        // requests; a transient missing key is not a skipped restore.
+                        pending.removeAll { saved ->
+                            val ambiguous = matchingRoots.firstOrNull {
+                                saved.componentKey.isEmpty() && it.instances > 1 && it.className == saved.className && it.resourcePath == saved.resourcePath
+                            }
+                            if (ambiguous != null) skipped += "${ambiguous.className} (${ambiguous.resourcePath})"
+                            ambiguous != null
+                        }
                         val ready = pending.filter { saved -> statePlan.requests.any {
                             it.className == saved.className && it.resourcePath == saved.resourcePath && it.componentKey == saved.componentKey
                         } }

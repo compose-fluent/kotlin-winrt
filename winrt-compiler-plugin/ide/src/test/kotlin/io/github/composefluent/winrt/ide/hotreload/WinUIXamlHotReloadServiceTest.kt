@@ -54,6 +54,39 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertTrue(restartStatePlan(listOf(root.copy(instances = 2, stateKeys = listOf("Window/Right", "Window/Left")))).skippedComponents.isEmpty())
     }
 
+    fun testRestartWaitsForParentNamesWithoutRetainingATransientSkippedWarning() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val reads = AtomicInteger()
+        val root = service.state.value.roots.single().copy(instances = 2)
+        fixture.beforeHandshake.set {
+            fixture.rootsReply.set(listOf(root.copy(stateKeys = if (reads.incrementAndGet() == 1) listOf("", "") else listOf("Window/Left", "Window/Right"))))
+        }
+        val saved = listOf("Window/Left", "Window/Right").map { key ->
+            WinUIXamlStateRequest(root.className, root.resourcePath, componentKey = key,
+                restore = listOf(WinUIXamlSavedElement("Input", "TextBox", listOf(WinUIXamlVisualProperty("Text", key)))))
+        }
+        val generation = (WinRTDevelopmentSession::class.java.getDeclaredField("generation").apply { isAccessible = true }
+            .get(service) as java.util.concurrent.atomic.AtomicLong).get()
+        val method = WinRTDevelopmentSession::class.java.declaredMethods.single { it.name == "restoreAfterRestart" }.apply { isAccessible = true }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val restored = scope.async {
+                kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+                    method.invoke(service, generation, saved, emptyList<String>(), continuation)
+                }
+            }
+            PlatformTestUtil.waitWithEventsDispatching("Named components become ready", { restored.isCompleted }, 10)
+            runBlocking { restored.await() }
+            assertTrue(reads.get() >= 2)
+            assertEquals(saved, fixture.states.toList())
+            assertEquals("Code changes loaded; saved control state restored.", service.state.value.restartOutcome)
+            val outcome = service.state.value.restartOutcome
+            service.apply()
+            PlatformTestUtil.waitWithEventsDispatching("Ordinary polling keeps the result", { !service.state.value.busy }, 10)
+            assertEquals(outcome, service.state.value.restartOutcome)
+        } finally { scope.cancel() }
+    }
+
     fun testIdeLaunchAttachesWithoutAnEarlierToolWindowSessionAndAutomaticallyAppliesEditorChanges() = session { fixture ->
         val service = fixture.service(WinUIXamlHotReloadLaunchState())
         service.attach(fixture.module, fixture.module.hotReloadLaunches.single(), fixture.directory)
@@ -559,6 +592,8 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         val beforeInspection = AtomicReference<((java.net.Socket) -> Unit)?>()
         val inspections = java.util.concurrent.CopyOnWriteArrayList<WinUIXamlInspectionRequest>()
         val inspectionReply = AtomicReference<WinUIXamlHotReloadReply?>()
+        val rootsReply = AtomicReference<List<WinUIXamlHotReloadRoot>?>()
+        val states = java.util.concurrent.CopyOnWriteArrayList<WinUIXamlStateRequest>()
         private val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
         private val executor = Executors.newCachedThreadPool()
         private val services = linkedMapOf<WinRTDevelopmentSession, CoroutineScope>()
@@ -594,7 +629,8 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
                             if (command.inspection != null) {
                                 inspections += command.inspection
                                 beforeInspection.get()?.invoke(socket)
-                            } else if (patch == null) beforeHandshake.get()?.invoke(socket)
+                            } else if (command.state != null) states += command.state
+                            else if (patch == null) beforeHandshake.get()?.invoke(socket)
                             else {
                                 val before = liveRoot.get()
                                 assertEquals(before.sourceHash, patch.expectedHash)
@@ -604,7 +640,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
                                 afterPatch.get()?.invoke(socket)
                             }
                             runCatching { WinUIXamlHotReloadWire.writeReply(socket.getOutputStream(),
-                                (if (command.inspection != null) inspectionReply.get() else null) ?: WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "connected", listOf(liveRoot.get()),
+                                (if (command.inspection != null) inspectionReply.get() else null) ?: WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "connected", rootsReply.get() ?: listOf(liveRoot.get()),
                                     inspection = command.inspection?.let { WinUIXamlVisualSnapshot(emptyList(), listOf(WinUIXamlVisualProperty("Name", "Greeting")),
                                         if (it.capture) WinUIXamlVisualImage(1, 1, byteArrayOf(0, 0, 0, -1)) else null) })) }
                         } } catch (error: Throwable) { failure.compareAndSet(null, error) }
