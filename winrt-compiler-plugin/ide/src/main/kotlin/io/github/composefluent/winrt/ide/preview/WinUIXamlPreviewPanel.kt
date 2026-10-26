@@ -164,6 +164,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
     }
     var automatic by remember { mutableStateOf(true) }
+    LaunchedEffect(session, static, automatic) {
+        if (static) session.setPreviewAutomatic(automatic)
+    }
     var revision by remember { mutableLongStateOf(0) }
     var source by remember(module?.projectDirectory, staticFile) { mutableStateOf(staticFile ?: FileEditorManager.getInstance(project).selectedTextEditor
         ?.document?.let { FileDocumentManager.getInstance().getFile(it) }?.takeIf { it.extension.equals("xaml", true) }?.path.orEmpty()) }
@@ -1117,7 +1120,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     selection.instance.value = it.toInt(); selection.path.value = emptyList()
                 }
             }
-            CheckboxRow(if (static) "Update after XAML edits" else "Refresh automatically", automatic, { automatic = it })
+            CheckboxRow(if (static) "Update after source edits" else "Refresh automatically", automatic, { automatic = it })
             Text("Drag blank canvas to marquee-select. Ctrl/Shift adds to selection; Ctrl/Shift+click toggles elements. Align uses the last selection. Alt temporarily disables snapping. Toolbox controls can be dragged into the canvas.")
             Text("Canvas: drag a selected element or its handles to edit layout. Arrows nudge (Shift: 10 DIP). Ctrl+wheel zooms; wheel, hand mode arrows or Space+drag pan.")
             Text("With canvas focus: +/− zoom, 0 shows 100%, F fits all, Escape selects the parent, Enter opens XAML.")

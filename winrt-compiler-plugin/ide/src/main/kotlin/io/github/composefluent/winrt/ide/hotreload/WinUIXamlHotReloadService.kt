@@ -56,6 +56,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         WinUIXamlHotReloadState("Start the design host to render the XAML document.") else WinUIXamlHotReloadState())
     val state: StateFlow<WinUIXamlHotReloadState> = display
     val automatic = MutableStateFlow(!isolatedPreview)
+    private var previewAutomatic = true
+    private val automaticBuildEnabled get() = if (isolatedPreview) previewAutomatic else automatic.value
+    fun setPreviewAutomatic(enabled: Boolean) {
+        previewAutomatic = enabled
+        if (enabled) scheduleCodeRebuild()
+    }
     private val mutex = Mutex()
     @Volatile private var client: WinUIXamlHotReloadClient? = null
     private val generation = AtomicLong()
@@ -144,11 +150,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             override fun documentChanged(event: DocumentEvent) {
                 val file = FileDocumentManager.getInstance().getFile(event.document) ?: return
                 markProjectCodeChanged(file.path)
-                if (file.extension.equals("xaml", true) && codeRebuild?.isActive == true) codeRevision.incrementAndGet()
-                if (!disposed && file.extension.equals("xaml", true) && automatic.value && client != null) {
-                    edits?.cancel()
-                    edits = scope.launch { delay(450); apply() }
-                }
+                markXamlChanged(file.path)
             }
         }, this)
         project.messageBus.connect(this).subscribe(com.intellij.openapi.vfs.VirtualFileManager.VFS_CHANGES,
@@ -157,13 +159,40 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     events.filterNot { it.isFromSave }.forEach { markProjectCodeChanged(it.path) }
                 }
                 override fun after(events: List<com.intellij.openapi.vfs.newvfs.events.VFileEvent>) {
-                    events.filterNot { it.isFromSave }.forEach { markProjectCodeChanged(it.path) }
+                    events.filterNot { it.isFromSave }.forEach {
+                        markProjectCodeChanged(it.path)
+                        markXamlChanged(it.path)
+                    }
                 }
             })
         scope.launch {
             project.service<WinRTProjectService>().modules.collect { modules ->
                 if (selectedModule != null && modules.none { it.projectDirectory == selectedModule?.projectDirectory }) disconnect()
             }
+        }
+    }
+
+    /** Dictionaries and unloaded components have no live root to patch. Keep their
+     * compiled resources current through the same build-before-restart boundary. */
+    internal fun markXamlChanged(path: String) {
+        if (disposed || !path.endsWith(".xaml", true) || !display.value.connected) return
+        val file = runCatching { Path.of(path).toAbsolutePath().normalize() }.getOrNull() ?: return
+        val roots = project.service<WinRTProjectService>().modules.value
+            .flatMap { it.xamlCompilations }.flatMap { it.sourceRoots }
+        if (roots.none { file.startsWith(Path.of(it).toAbsolutePath().normalize()) }) return
+        if (codeRebuild?.isActive == true) codeRevision.incrementAndGet()
+        val source = sources.singleOrNull { Path.of(it.path).toAbsolutePath().normalize() == file }
+        val loaded = source != null && Files.exists(file) &&
+            display.value.inspectionRoots.any { it.className == source.markup.className }
+        if (!loaded && !isolatedPreview) {
+            display.value = display.value.copy(projectCodeChanged = true,
+                message = "XAML resources changed; a build is needed to update compiled resources.")
+            savedLaunch = savedLaunch.copy(projectCodeChanged = true)
+            codeRevision.incrementAndGet()
+            scheduleCodeRebuild()
+        } else if (automatic.value && client != null) {
+            edits?.cancel()
+            edits = scope.launch { delay(450); apply() }
         }
     }
 
@@ -220,7 +249,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     }
 
     private fun scheduleCodeRebuild(force: Boolean = false) {
-        if (isolatedPreview || (!automatic.value && !force) || debuggerAttached() || disposed ||
+        if ((!automaticBuildEnabled && !force) || debuggerAttached() || disposed ||
             !display.value.projectCodeChanged || !display.value.connected || codeRebuild?.isActive == true) return
         val module = selectedModule ?: return
         val launch = selectedLaunch ?: return
@@ -232,7 +261,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 var builtRevision: Long
                 do {
                     delay(900)
-                    if (!isCurrent(request) || (!automatic.value && !force) || debuggerAttached()) return@launch
+                    if (!isCurrent(request) || (!automaticBuildEnabled && !force) || debuggerAttached()) return@launch
                     withContext(Dispatchers.EDT) { writeIntentReadAction { FileDocumentManager.getInstance().saveAllDocuments() } }
                     builtRevision = codeRevision.get()
                     lastAttempted = builtRevision
@@ -252,14 +281,16 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     codeBuildProcess = null
                     if (!succeeded) {
                         withCurrent(request) { display.value = display.value.copy(
-                            message = "Code build failed. The current application is still running; see Gradle output.") }
+                            message = "Code build failed; the existing application was not replaced. See Gradle output.") }
                         if (builtRevision == codeRevision.get()) return@launch
                     }
                 } while (builtRevision != codeRevision.get())
-                if (!isCurrent(request) || (!automatic.value && !force) || debuggerAttached()) return@launch
+                if (!isCurrent(request) || (!automaticBuildEnabled && !force) || debuggerAttached()) return@launch
                 mutex.withLock {
                     val connection = client ?: return@launch
-                    val roots = connection.request().roots
+                    // A designer re-renders its source after replacement; it must not
+                    // replay the synthetic artboard's control state into application roots.
+                    val roots = if (isolatedPreview) emptyList() else connection.request().roots
                     val states = roots.flatMap { root -> (0 until root.instances).mapNotNull { instance ->
                         val capture = WinUIXamlStateRequest(root.className, root.resourcePath, instance)
                         val reply = connection.transferState(capture)
@@ -267,17 +298,18 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         reply.savedState?.takeIf { it.isNotEmpty() }?.let { capture.copy(restore = it) }
                     } }
                     withContext(Dispatchers.EDT) {
-                        if (isCurrent(request) && builtRevision == codeRevision.get() && (automatic.value || force) && !debuggerAttached()) {
+                        if (isCurrent(request) && builtRevision == codeRevision.get() && (automaticBuildEnabled || force) && !debuggerAttached()) {
                             // start cancels outstanding jobs; relinquish this completed build first.
                             codeRebuild = null
-                            start(module, launch, restart = true, restoredState = states,
+                            start(module, launch, restart = true, preview = isolatedPreview,
+                                theme = previewTheme, restoredState = states,
                                 launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment)
                         }
                     }
                 }
             } catch (error: CancellationException) { throw error }
             catch (error: Exception) { withCurrent(request) { display.value = display.value.copy(
-                message = "Automatic restart was not performed: ${error.message}. The current application is still running.") } }
+                message = "Automatic restart failed: ${error.message}. See Gradle output and the connection status.") } }
             finally {
                 if (isCurrent(request)) {
                     codeRebuild = null

@@ -691,7 +691,7 @@ hosts use a separate `.preview` identity and deployment folder and can run besid
 the application's `.dev` package. The SDK designer is independent of the
 application's packaging mode. Static and live sessions have independent
 connections and process ownership; closing the project stops its design host.
-Synchronize Gradle after updating the toolkit to import version 9 of the IDE model.
+Synchronize Gradle after updating the toolkit to import version 11 of the IDE model.
 
 Static rendering preserves StaticResource, ThemeResource, local dictionaries,
 application resources and their original package-relative Source paths. In the
@@ -720,7 +720,7 @@ density, then restore the original value without changing DIP layout. Windows.UI
 has no matching public setter, so UWP uses RenderAsync output scaling only. Large
 artboards can reach the capture cap before the maximum zoom. RenderTargetBitmap's
 limitations still apply, including content outside the captured visual such as popups.
-The protocol is version 6: rebuild applications using an older development host
+The protocol is version 11: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
 adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches
@@ -855,7 +855,13 @@ layout. The current process remains alive during compilation and after build fai
 A successful build captures compatible named-control state, replaces the process,
 and restores that state after the new component is ready. Further edits during a
 build are coalesced into another build before replacement. Debugger attachment
-pauses automatic replacement. Unpackaged launches still require explicit rebuild.
+pauses automatic replacement. External edits to loaded XAML files use the same
+live patch path as editor changes. Dictionaries, deleted XAML files and components
+without a loaded root request a build so their compiled resources are refreshed;
+manual mode retains the pending-change indication without starting a build.
+Project-code preview uses the same preparation boundary for Kotlin changes, keeping
+the old artboard available during compilation and rendering source again after its
+isolated host restarts. Unpackaged launches still require explicit rebuild.
 There is no in-process page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 

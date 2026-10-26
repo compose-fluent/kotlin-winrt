@@ -52,6 +52,30 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(1, fixture.patches.get())
     }
 
+    fun testExternalLoadedXamlChangesApplyWithoutAnOpenEditor() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        Files.writeString(fixture.source, markup.replace("Hello", "External edit"))
+        service.markXamlChanged(fixture.source.toString())
+        PlatformTestUtil.waitWithEventsDispatching("External XAML edit reaches the live root", {
+            fixture.lastPatch.get()?.changes?.singleOrNull()?.literal == "External edit"
+        }, 10)
+        assertFalse(service.state.value.projectCodeChanged)
+    }
+
+    fun testDictionaryChangesRequireBuildAndRespectManualMode() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        service.setAutomatic(false)
+        val dictionary = fixture.source.parent.resolve("Resources.xaml")
+        Files.writeString(dictionary, """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"/>""")
+        service.markXamlChanged(dictionary.toString())
+        assertTrue(service.state.value.projectCodeChanged)
+        assertTrue(service.state.value.connected)
+        assertFalse(service.state.value.rebuildingCode)
+        assertEquals(0, fixture.patches.get())
+    }
+
     fun testCompiledPreviewBecomesOutdatedAfterDependencyKotlinEditAndStaysOutdatedAfterRender() = session { fixture ->
         val dependency = fixture.root.resolve("controls")
         val generated = dependency.resolve("generated")
