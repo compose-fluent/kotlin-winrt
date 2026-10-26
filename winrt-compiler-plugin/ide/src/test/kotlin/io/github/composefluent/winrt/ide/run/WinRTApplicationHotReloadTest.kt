@@ -53,7 +53,8 @@ class WinRTApplicationHotReloadTest : BasePlatformTestCase() {
         }).let { saved ->
             val configuration = saved.configuration as WinRTApplicationRunConfiguration
             val environment = ExecutionEnvironmentBuilder.create(executor, saved).build()
-            val state = configuration.getState(executor, environment)!!
+            val prepared = configuration.getState(executor, environment)!!
+            val state = (prepared as? WinRTDevelopmentRunState)?.delegate ?: prepared
             assertEquals("ExternalSystemRunnableState", state.javaClass.simpleName)
             val nativeSettings = state.javaClass.getDeclaredField("mySettings").apply { isAccessible = true }.get(state)
                 as ExternalSystemTaskExecutionSettings

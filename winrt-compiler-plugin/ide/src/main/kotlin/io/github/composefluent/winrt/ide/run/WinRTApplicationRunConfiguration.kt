@@ -56,7 +56,8 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
         val state = execution.gradleState(if (nativeDebug) DefaultRunExecutor.getRunExecutorInstance() else executor, environment)
         if (state != null) environment.putUserData(WinRTApplicationHotReload.KEY, WinRTApplicationHotReload(module, launch, directory,
             settings.env.toMap(), settings.scriptParameters.orEmpty(), settings.isPassParentEnvs))
-        return state
+        if (state == null || nativeDebug || launch.developmentBuildTask.isNullOrBlank()) return state
+        return WinRTDevelopmentRunState(state)
     }
 
     internal fun developmentLaunch(): Pair<WinRTModuleData, WinUIXamlHotReloadLaunchData>? {
@@ -80,5 +81,17 @@ class WinRTApplicationRunConfiguration(project: Project, factory: ConfigurationF
         super.checkConfiguration()
         if (settings.externalProjectPath.isNullOrBlank() || settings.taskNames.size != 1)
             throw RuntimeConfigurationError("Select a Kotlin WinRT application. Sync Gradle to load the available applications.")
+    }
+}
+
+/** Preserve Gradle console/actions while keeping the standard Stop action alive. */
+internal class WinRTDevelopmentRunState(val delegate: RunProfileState) : RunProfileState {
+    override fun execute(executor: Executor, runner: com.intellij.execution.runners.ProgramRunner<*>): com.intellij.execution.ExecutionResult? {
+        val result = delegate.execute(executor, runner) ?: return null
+        val build = result.processHandler ?: return result
+        return com.intellij.execution.DefaultExecutionResult(result.executionConsole,
+            WinRTDevelopmentProcessHandler(build), *result.actions).also {
+            if (result is com.intellij.execution.DefaultExecutionResult) it.setRestartActions(*result.restartActions)
+        }
     }
 }

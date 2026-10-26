@@ -31,7 +31,8 @@ class WinRTApplicationExecutionListener : ExecutionListener {
         if (project.isDisposed) return
         project.service<WinRTProjectService>().selectedModuleDirectory.value = launch.module.projectDirectory
         project.service<WinUIXamlVisualInspectionSelection>().reset()
-        project.service<WinUIXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory, building = { !handler.isProcessTerminated },
+        project.service<WinUIXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory, building = { !((handler as? WinRTDevelopmentProcessHandler)?.build ?: handler).isProcessTerminated },
+            runProcess = handler as? WinRTDevelopmentProcessHandler,
             launchEnvironment = launch.launchEnvironment, launchArguments = launch.launchArguments,
             passParentEnvironment = launch.passParentEnvironment)
     }

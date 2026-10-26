@@ -35,7 +35,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-data class WinUIXamlHotReloadState(val message: String = "Start a JVM application with XAML Hot Reload to update its properties.",
+data class WinUIXamlHotReloadState(val message: String = "Run an application with XAML Hot Reload to update its properties.",
     val connected: Boolean = false, val busy: Boolean = false, val pid: Long? = null,
     val roots: List<WinUIXamlHotReloadRoot> = emptyList(), val values: List<WinUIXamlHotReloadValue> = emptyList(),
     val inspection: WinUIXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
@@ -67,6 +67,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private val generation = AtomicLong()
     private val lifecycle = Any()
     @Volatile private var disposed = false
+    private var runProcess: io.github.composefluent.winrt.ide.run.WinRTDevelopmentProcessHandler? = null
     private var directory: Path? = null
     private var selectedModule: WinRTModuleData? = null
     @Volatile private var previewTheme = "Default"
@@ -364,6 +365,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         connectedPreviewDeployment = null
         val deploymentReady = CompletableDeferred<Unit>()
         connectedDeploymentReady = deploymentReady
+        if (!restart) runProcess = null
+        if (!isolatedPreview && restart) runProcess?.prepareRestart()
         val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true,
             projectCodeChanged = retainedCodeChange))
         this.launchEnvironment = launchEnvironment.toMap()
@@ -485,7 +488,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             },
                             onSuccess = { buildFinished.complete(Unit) },
                             onFailure = { withCurrent(request) { if (client == null) {
-                                worker?.cancel(); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
+                                worker?.cancel(); runProcess?.complete(1); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
                             } } })
                     }
                     if (!withCurrent(request) {
@@ -531,9 +534,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 }
                 watch(request)
             } catch (error: TimeoutCancellationException) {
-                withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output.") }
+                withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output."); runProcess?.complete(1) }
             } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { withCurrent(request) { display.value = WinUIXamlHotReloadState(error.message.orEmpty(), pid = owned?.process?.takeIf { it.isAlive }?.pid()) } }
+            catch (error: Exception) { withCurrent(request) {
+                val surviving = owned?.process?.takeIf { it.isAlive }
+                if (surviving != null) runProcess?.bindProcess(surviving) else runProcess?.complete(1)
+                display.value = WinUIXamlHotReloadState(error.message.orEmpty(), pid = surviving?.pid())
+            } }
             finally { deploymentReady.complete(Unit); if (!display.value.connected || !isCurrent(request)) firstFrame.complete(Unit) }
         }
     }
@@ -542,6 +549,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
      * runner. This must not schedule another Gradle execution or stop an
      * application from an earlier Run window. */
     fun attach(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, sessionDirectory: Path, building: () -> Boolean = { false },
+        runProcess: io.github.composefluent.winrt.ide.run.WinRTDevelopmentProcessHandler? = null,
         launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true) {
         if (disposed || project.isDisposed) return
         require(launch in module.hotReloadLaunches) { "Synchronize Gradle before selecting this application." }
@@ -552,6 +560,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val expected = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload").toAbsolutePath().normalize()
         require(folder.parent == expected && runCatching { UUID.fromString(folder.fileName.toString()) }.isSuccess) {
             "The development session does not belong to this module."
+        }
+        this.runProcess = runProcess
+        runProcess?.stopSession = {
+            if (this.runProcess === runProcess) stop() else runProcess.stopApplication()
         }
         val request = beginRequest(WinUIXamlHotReloadState("Building and waiting for the application. See Gradle Run output.", busy = true))
         withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, folder.toString()) }
@@ -569,9 +581,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 awaitConnection(request, folder, launch.executable, building = building)
                 watch(request)
             } catch (error: TimeoutCancellationException) {
-                withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output.") }
+                withCurrent(request) { display.value = WinUIXamlHotReloadState("The application did not publish a development session in time. See Gradle Run output."); runProcess?.complete(1) }
             } catch (error: CancellationException) { throw error }
-            catch (error: Exception) { withCurrent(request) { display.value = WinUIXamlHotReloadState(error.message.orEmpty()) } }
+            catch (error: Exception) { withCurrent(request) { display.value = WinUIXamlHotReloadState(error.message.orEmpty()); runProcess?.complete(1) } }
         }
     }
 
@@ -600,6 +612,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     candidate.close(); return@withTimeout
                 }
                 refresh(candidate, request)
+                runProcess?.bindProcess(candidate.process)
             }
             while (isolatedPreview && isCurrent(request) && display.value.inspectionRoots.none {
                     it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }) {
@@ -955,7 +968,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         if (buildProcess != null) WinRTGradleTasks.cancel(project, buildProcess)
         worker = scope.launch(Dispatchers.IO) { mutex.withLock {
             if (!isCurrent(request)) return@withLock
-            runCatching { stopOwned() }.fold({ withCurrent(request) { display.value = WinUIXamlHotReloadState("Development application stopped.") } },
+            runCatching { stopOwned() }.fold({ withCurrent(request) { runProcess?.complete(0); display.value = WinUIXamlHotReloadState("Development application stopped.") } },
                 { error -> withCurrent(request) { display.value = WinUIXamlHotReloadState(error.message.orEmpty(), pid = owned?.process?.takeIf { it.isAlive }?.pid()) } })
         } }
     }
