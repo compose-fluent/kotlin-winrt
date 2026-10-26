@@ -26,6 +26,48 @@ class WinUIXamlVisualInspectorTest {
         assertEquals("current", snapshot!!.properties.single().value)
         assertNull(snapshot!!.image)
     }
+    @Test fun first_bitmap_and_selected_properties_skip_unrelated_visuals_and_template_getters() {
+        // CsWinRT's generated ICustomProperty.GetValue remains demand-driven;
+        // SDK visual traversal belongs to the adapter and is unnecessary to paint.
+        val target = Visual("Target")
+        val branch = Visual("Branch", listOf(target))
+        val root = Visual("Root", listOf(Visual("Unrelated"), branch))
+        val traversed = mutableListOf<String>()
+        var descriptions = 0
+        var reads = 0
+        val inspector = WinUIXamlVisualInspector({ it }, {
+            val visual = it as Visual
+            check(visual === root || visual === branch) { "Unrelated subtrees must not be walked" }
+            traversed += visual.name
+            visual.children
+        }, { value, _ ->
+            assertTrue(value === root || value === target); descriptions++
+            WinUIXamlVisualNode(emptyList(), "Grid", (value as Visual).name, WinUIXamlVisualBounds(0.0, 0.0, 800.0, 600.0))
+        }, { value ->
+            assertSame(target, value); reads++
+            listOf(WinUIXamlVisualProperty("Text", "Selected value"))
+        }, { _, _, done -> done(Result.success(WinUIXamlVisualImage(1, 1, ByteArray(4)))) },
+            { _, _ -> }, template = { error("Template getters must wait for a tree request") })
+        val request = WinUIXamlInspectionRequest("probe.Page", "", readProperties = false, readTree = false)
+        assertEquals(request, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", request)).inspection)
+        var result: Result<WinUIXamlVisualSnapshot>? = null
+        inspector.inspect(root, request) { result = it }
+        assertNotNull(result!!.getOrThrow().image)
+        assertEquals(1, result!!.getOrThrow().nodes.size)
+        assertEquals(1, descriptions)
+        assertEquals(0, reads)
+        assertTrue(traversed.isEmpty())
+        inspector.inspect(root, request.copy(capture = false, selectedPath = listOf(1, 0), readProperties = true)) { result = it }
+        assertEquals(listOf("Root", "Branch"), traversed)
+        assertEquals(1, reads)
+        assertEquals("Selected value", result!!.getOrThrow().properties.single().value)
+        assertEquals("Target", result!!.getOrThrow().nodes.single { it.path == listOf(1, 0) }.name)
+        assertNull(result!!.getOrThrow().image)
+        inspector.inspect(root, request.copy(capture = false, selectedPath = listOf(2), readProperties = true)) { result = it }
+        assertTrue(result!!.isFailure)
+        inspector.inspect(root, request.copy(capture = false, selectedPath = List(65) { 0 })) { result = it }
+        assertTrue(result!!.isFailure)
+    }
     @Test fun capture_density_preserves_layout_and_bounds_physical_memory() {
         assertEquals(800 to 600, winUIXamlCaptureSize(800.0, 600.0, 1.0, 1.0))
         assertEquals(1600 to 1200, winUIXamlCaptureSize(800.0, 600.0, 1.0, 2.0))

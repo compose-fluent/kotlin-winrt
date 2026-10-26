@@ -389,16 +389,23 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     val captureOnly = previous != null && previous.second == pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
                         previous.first.copy(animation = request.animation, renderScale = request.renderScale, readProperties = request.readProperties) == request
                     currentCoroutineContext().ensureActive()
-                    session.inspect(if (captureOnly) request.copy(previewMarkup = "", selectedPath = selectedPath) else request)
+                    val imageFirst = !captureOnly && (previous == null || previous.second != pid)
+                    // The session schedules the complete tree after publishing
+                    // the image, even if catalog preparation recomposes this view.
+                    session.inspect(when {
+                        captureOnly -> request.copy(previewMarkup = "", selectedPath = selectedPath)
+                        imageFirst -> request.copy(readTree = false)
+                        else -> request
+                    })
                     submitted = key
                 }
             }
         }
     }
-    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes, captureScale, showInspector, state.inspectionPropertiesRead) {
-        if (root != null && state.connected && (!static || prepared != null && state.inspection != null && (state.inspectionPath != selectedPath || (showInspector || treeOnly) && !state.inspectionPropertiesRead))) {
+    LaunchedEffect(root, selectedPath, state.connected, static, manualRefresh, instance, state.inspectionPath, state.inspection?.nodes, captureScale, showInspector, state.inspectionPropertiesRead, state.inspectionTreeRead) {
+        if (root != null && state.connected && (!static || prepared != null && state.inspection != null && state.inspectionTreeRead && (state.inspectionPath != selectedPath || (showInspector || treeOnly) && !state.inspectionPropertiesRead))) {
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
-                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static, renderScale = captureScale, readProperties = !static || showInspector || treeOnly))
+                if (static) 0 else instance.coerceIn(0, (root.instances - 1).coerceAtLeast(0)), selectedPath, !treeOnly && !static, renderScale = captureScale, readProperties = !static || showInspector || treeOnly, readTree = !static))
         }
     }
     LaunchedEffect(root, state.connected, static, automatic, selectedPath, instance, treeOnly, captureScale) {
@@ -440,7 +447,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         val image = state.inspection?.image
         // Correlate the response with this file's prepared document. A previous
         // tab/theme, selected state or animation must never overwrite its image.
-        if (static && image != null && document != null && document == submitted?.first && document.previewMarkup == prepared?.markup &&
+        if (static && image != null && document != null && document.copy(readTree = true) == submitted?.first && document.previewMarkup == prepared?.markup &&
             document.theme == theme && document.width == viewport.first && document.height == viewport.second &&
             document.animation == null && selectedStates.isEmpty() && !animationPlaying &&
             state.connected && state.inspectionError == null) {
@@ -452,7 +459,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
 
     var pendingStructureSelection by remember(source) { mutableStateOf<com.intellij.psi.SmartPsiElementPointer<com.intellij.psi.xml.XmlTag>?>(null) }
     var structureNodesBefore by remember(source) { mutableStateOf(view?.nodes) }
-    LaunchedEffect(view?.nodes) {
+    LaunchedEffect(view?.nodes, state.inspectionTreeRead) {
+        if (static && !state.inspectionTreeRead) return@LaunchedEffect
         if (static && view != null && view.nodes != structureNodesBefore && pendingStructureSelection != null) {
             val pointer = pendingStructureSelection
             val path = withContext(Dispatchers.IO) { ReadAction.compute<List<Int>?, RuntimeException> {
@@ -471,8 +479,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
     }
     // Picking includes template parts only when they resolve to editable source for this instance.
-    val authoredPaths by produceState<Set<List<Int>>?>(null, static, source, view?.nodes, revision, theme, previewApplication, catalogRevision, resourceRevision) {
+    val authoredPaths by produceState<Set<List<Int>>?>(null, static, source, view?.nodes, revision, theme, previewApplication, catalogRevision, resourceRevision, state.inspectionTreeRead) {
         if (!static) { value = null; return@produceState }
+        if (!state.inspectionTreeRead) { value = emptySet(); return@produceState }
         val nodes = view?.nodes ?: return@produceState
         value = withContext(Dispatchers.IO) { ReadAction.compute<Set<List<Int>>, RuntimeException> {
             val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(source.replace('\\', '/'))
@@ -487,10 +496,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     // A new selection/revision must lose edit capabilities in this composition,
     // before the asynchronous resolver starts. produceState keys alone retain
     // the previous value until its new coroutine runs, exposing stale commands.
-    val editableResult by key(selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, failure, state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
+    val editableResult by key(selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, state.inspectionTreeRead, failure, state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
       produceState<List<DesignerSelection>?>(null) {
         val snapshot = view
-        if (snapshot == null || !static || !state.connected || state.inspection == null || failure != null || state.inspectionError != null || state.projectCodeChanged) { value = emptyList(); return@produceState }
+        if (snapshot == null || !static || !state.connected || state.inspection == null || !state.inspectionTreeRead || failure != null || state.inspectionError != null || state.projectCodeChanged) { value = emptyList(); return@produceState }
         value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerSelection>, RuntimeException> {
             selectedPaths.mapNotNull { path ->
                 val node = snapshot.nodes.firstOrNull { it.path == path } ?: return@mapNotNull null
@@ -679,9 +688,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         val file = owner?.first ?: if (static) source else root?.let { session.sourcePath(it) }
         if (file != null) scope.launch(Dispatchers.IO) { navigate(project, file, node, snapshot.nodes, owner?.second.orEmpty(), theme, previewApplication) }
     }
-    DisposableEffect(project, source, static, view?.nodes) {
+    DisposableEffect(project, source, static, view?.nodes, state.inspectionTreeRead) {
         val disposable = Disposer.newDisposable("WinRT preview caret selection")
-        if (static && view != null) {
+        if (static && view != null && state.inspectionTreeRead) {
             val nodes = view.nodes
             EditorFactory.getInstance().eventMulticaster.addCaretListener(object : CaretListener {
                 override fun caretPositionChanged(event: CaretEvent) {
@@ -719,7 +728,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         state.busy || state.rebuildingCode -> state.message
         !state.connected -> "Last successful render · ${state.message}"
         failure != null || state.inspectionError != null -> "Out of date · last successful render"
-        !state.connected || prepared == null || state.inspecting -> "Updating preview…"
+        !state.inspectionTreeRead -> "Preview visible · preparing selection and properties…"
+        prepared == null || state.inspecting -> "Updating preview…"
         else -> state.message
     } else state.message
     val codeOutdated = static && projectCode && state.projectCodeChanged

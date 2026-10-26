@@ -23,6 +23,7 @@ class WinUIXamlVisualInspector(
 
     fun inspect(owner: Any, request: WinUIXamlInspectionRequest, complete: (Result<WinUIXamlVisualSnapshot>) -> Unit) {
         val prepared = runCatching {
+            require(request.selectedPath.size <= 64 && request.selectedPath.all { it in 0..2048 }) { "Invalid visual selection path." }
             request.animation?.let {
                 it.validate()
                 require(request.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS) { "Storyboard commands require an isolated preview host." }
@@ -58,9 +59,26 @@ class WinUIXamlVisualInspector(
                 items.forEachIndexed { index, child -> visit(child, path + index, active) }
                 ancestors.removeAt(ancestors.lastIndex)
             }
-            visit(root, emptyList(), emptyList())
-            val values = requireNotNull(selected) { "The selected visual no longer exists. Refresh the tree." }
-            WinUIXamlVisualSnapshot(nodes, if (request.readProperties) properties(values).take(64).map { it.copy(value = it.value.take(4096)) } else emptyList(), image, clock())
+            if (request.readTree) {
+                visit(root, emptyList(), emptyList())
+                requireNotNull(selected) { "The selected visual no longer exists. Refresh the tree." }
+            } else {
+                // The first bitmap needs only the root's DIP bounds. Keep SDK
+                // template realization and full-tree traversal off that response.
+                nodes += describe(root, root).copy(path = emptyList())
+                if (request.readProperties) {
+                    var value = root
+                    for (index in request.selectedPath) {
+                        val items = children(value)
+                        require(items.size <= 2048) { "The visual child collection exceeds the inspection limit." }
+                        value = requireNotNull(items.getOrNull(index)) { "The selected visual no longer exists. Refresh the tree." }
+                    }
+                    selected = value
+                    if (request.selectedPath.isNotEmpty()) nodes += describe(value, root).copy(path = request.selectedPath)
+                }
+            }
+            WinUIXamlVisualSnapshot(nodes, if (request.readProperties) properties(requireNotNull(selected)).take(64)
+                .map { it.copy(value = it.value.take(4096)) } else emptyList(), image, clock())
         }
         prepared.fold({ root ->
             // RenderTargetBitmap completes on the owner's UI dispatcher after layout.

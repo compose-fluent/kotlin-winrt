@@ -41,7 +41,7 @@ data class WinUIXamlHotReloadState(val message: String = "Run an application wit
     val inspection: WinUIXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
     val inspectionRoots: List<WinUIXamlHotReloadRoot> = emptyList(),
     val startupMillis: Long? = null, val renderMillis: Long? = null, val reusedBuild: Boolean = false,
-    val inspectionPath: List<Int>? = null, val animationError: String? = null, val inspectionPropertiesRead: Boolean = false,
+    val inspectionPath: List<Int>? = null, val animationError: String? = null, val inspectionPropertiesRead: Boolean = false, val inspectionTreeRead: Boolean = false,
     val projectCodeChanged: Boolean = false, val rebuildingCode: Boolean = false,
     val inspectionDocument: WinUIXamlInspectionRequest? = null, val restartOutcome: String? = null)
 
@@ -118,6 +118,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var pendingPreviewCache: Pair<WinRTPreviewLaunchCache, String>? = null
     private var launchStartedNanos = 0L
     private var firstFrameReported = false
+    private var firstTreeReported = false
     @Volatile private var cachedFirstFrame: CompletableDeferred<Unit>? = null
 
     /** Only the full catalog yields; cached event indexes already allow document
@@ -417,7 +418,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         this.launchArguments = launchArguments
         this.passParentEnvironment = passParentEnvironment
         previewTheme = theme
-        launchStartedNanos = startedAt; firstFrameReported = false
+        launchStartedNanos = startedAt; firstFrameReported = false; firstTreeReported = false
         val firstFrame = CompletableDeferred<Unit>()
         // Publish before scheduling IO: catalog loading must not race the cache
         // decision. A cache miss completes this gate before any Gradle build.
@@ -907,9 +908,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             if (!isCurrent(epoch)) return
             // Coalesce rapid edits/selections, but keep an unrendered design document.
             val previous = pendingInspection
-            pendingInspection = if (request.previewMarkup.isEmpty() && previous != null && (previous.previewMarkup.isNotEmpty() || previous.animation != null) &&
-                previous.className == request.className && previous.resourcePath == request.resourcePath) request.copy(
-                    capture = request.capture || previous.capture,
+            pendingInspection = if (request.previewMarkup.isEmpty() && previous != null && (previous.previewMarkup.isNotEmpty() || previous.animation != null || previous.readTree && !request.readTree) &&
+                previous.className == request.className && previous.resourcePath == request.resourcePath && previous.instance == request.instance) request.copy(
+                    capture = request.capture || previous.capture, readTree = request.readTree || previous.readTree,
                     previewMarkup = previous.previewMarkup, width = previous.width, height = previous.height, theme = previous.theme, renderScale = previous.renderScale, animation = request.animation ?: previous.animation)
                 else request
             if (display.value.inspecting) return
@@ -932,7 +933,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (client === connection) withCurrent(epoch) {
                             if (next.previewMarkup.isNotEmpty() && reply.status != WinUIXamlHotReloadProtocol.APPLIED) {
                                 cachedFirstFrame?.complete(Unit)
-                                display.value = display.value.copy(inspection = null, inspectionError = reply.message, message = reply.message)
+                                display.value = display.value.copy(inspection = null, inspectionError = reply.message, message = reply.message, inspectionTreeRead = false)
                                 inspectionOwner = null
                                 rejectedPreviewDocument = true
                                 return@withCurrent
@@ -951,13 +952,26 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             if (rejectedPreviewDocument && next.previewMarkup.isEmpty()) return@withCurrent
                             if (next.previewMarkup.isNotEmpty()) rejectedPreviewDocument = false
                             val owner = Triple(next.className, next.resourcePath, next.instance)
-                            val image = display.value.inspection?.image.takeIf { inspectionOwner == owner }
-                            display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(image = it.image ?: image) } ?: display.value.inspection,
-                                message = reply.message, roots = reply.roots.ifEmpty { display.value.roots }, inspectionError = null,
+                            val retained = display.value.inspection.takeIf { inspectionOwner == owner && next.previewMarkup.isEmpty() }
+                            val observed = reply.inspection?.nodes?.singleOrNull { it.path == next.selectedPath }
+                            val expected = retained?.nodes?.singleOrNull { it.path == next.selectedPath }
+                            // SDK code can realize a different template at the same
+                            // path. Retain provenance only for the same source node.
+                            val sameSelection = observed != null && expected != null && observed.typeName == expected.typeName &&
+                                observed.name == expected.name && observed.sourceId == expected.sourceId
+                            val retainTree = !next.readTree && retained != null && display.value.inspectionTreeRead &&
+                                (!next.readProperties || sameSelection)
+                            display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(
+                                nodes = if (retainTree) retained!!.nodes.map { node ->
+                                    if (node.path == next.selectedPath && observed != null) node.copy(bounds = observed.bounds) else node
+                                } else it.nodes, image = it.image ?: retained?.image) } ?: display.value.inspection,
+                                message = if (retainTree) "${retained!!.nodes.size} visual nodes" else reply.message,
+                                roots = reply.roots.ifEmpty { display.value.roots }, inspectionError = null,
                                 animationError = if (next.previewMarkup.isNotEmpty()) null else display.value.animationError,
                                 inspectionDocument = if (next.previewMarkup.isNotEmpty() && reply.inspection?.image != null) next
                                     else display.value.inspectionDocument.takeIf { inspectionOwner == owner },
                                 inspectionPath = next.selectedPath, inspectionPropertiesRead = next.readProperties,
+                                inspectionTreeRead = reply.inspection != null && (next.readTree || retainTree),
                                 renderMillis = (System.nanoTime() - renderStarted) / 1_000_000)
                             if (next.previewMarkup.isNotEmpty()) {
                                 log.info("XAML preview rendered: ${display.value.renderMillis}ms")
@@ -967,7 +981,22 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                     log.info("XAML preview first frame: ${(System.nanoTime() - launchStartedNanos) / 1_000_000}ms")
                                 }
                             }
+                            if (isolatedPreview && !firstTreeReported && firstFrameReported && next.readTree && reply.inspection != null) {
+                                firstTreeReported = true
+                                log.info("XAML preview visual tree ready: ${(System.nanoTime() - launchStartedNanos) / 1_000_000}ms")
+                            }
                             if (reply.inspection != null) inspectionOwner = owner
+                            if (!next.readTree && (next.previewMarkup.isNotEmpty() && reply.inspection?.image != null ||
+                                next.readProperties && !retainTree && reply.inspection != null)) {
+                                // Own this continuation in the session, so editor
+                                // recomposition cannot leave the picture uneditable.
+                                // A newer source document always takes precedence.
+                                val queued = pendingInspection
+                                if (queued == null) pendingInspection = next.copy(previewMarkup = "", capture = false,
+                                    animation = null, readTree = true)
+                                else if (queued.previewMarkup.isEmpty() && Triple(queued.className, queued.resourcePath, queued.instance) == owner)
+                                    pendingInspection = queued.copy(readTree = true)
+                            }
                         }
                         if (next.previewMarkup.isNotEmpty() && reply.status == WinUIXamlHotReloadProtocol.APPLIED &&
                             reply.inspection?.image != null && client === connection) {
@@ -991,7 +1020,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }
                     display.value = display.value.copy(message = message, inspectionError = message,
                         inspection = display.value.inspection.takeUnless { rejectedPreviewDocument },
-                        inspectionPropertiesRead = false)
+                        inspectionTreeRead = display.value.inspectionTreeRead && !rejectedPreviewDocument, inspectionPropertiesRead = false)
                 } }
                 finally { withCurrent(epoch) { if (inspection === coroutineContext[Job]) {
                     inspection = null; display.value = display.value.copy(inspecting = false)

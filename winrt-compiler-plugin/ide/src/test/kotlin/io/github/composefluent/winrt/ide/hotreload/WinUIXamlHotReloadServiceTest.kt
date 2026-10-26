@@ -298,6 +298,98 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(0, fixture.patches.get())
     }
 
+    fun testFirstImagePrecedesTreeAndDirectPropertyReadsKeepTheCompleteTree() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val root = WinUIXamlVisualNode(emptyList(), "Grid", "Root", WinUIXamlVisualBounds(0.0, 0.0, 800.0, 600.0))
+        val child = root.copy(path = listOf(0), typeName = "TextBlock", name = "Greeting")
+        val sibling = child.copy(path = listOf(1), name = "Sibling")
+        fun inspect(request: WinUIXamlInspectionRequest, snapshot: WinUIXamlVisualSnapshot) {
+            fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "ready", inspection = snapshot))
+            val count = fixture.inspections.size
+            service.inspect(request)
+            PlatformTestUtil.waitWithEventsDispatching("Inspection response is published", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        val picture = WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", readProperties = false, readTree = false)
+        fun firstImageThenTree(request: WinUIXamlInspectionRequest): WinUIXamlVisualImage {
+            val entered = CountDownLatch(1); val release = CountDownLatch(1)
+            val count = fixture.inspections.size
+            fixture.beforeInspection.set {
+                if (fixture.inspections.last().readTree) {
+                    entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS))
+                    fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "tree", inspection =
+                        WinUIXamlVisualSnapshot(listOf(root, child, sibling), emptyList())))
+                } else fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "picture", inspection =
+                    WinUIXamlVisualSnapshot(listOf(root), emptyList(), WinUIXamlVisualImage(1, 1, ByteArray(4)))))
+            }
+            service.inspect(request)
+            fixture.await("The session requests a complete tree after the image", entered)
+            val image = service.state.value.inspection!!.image!!
+            assertFalse("The picture is already available while traversal is pending", service.state.value.inspectionTreeRead)
+            assertEquals("Previous source editing bounds are discarded", listOf(root), service.state.value.inspection!!.nodes)
+            fixture.beforeInspection.set(null); release.countDown()
+            PlatformTestUtil.waitWithEventsDispatching("Complete tree becomes ready", {
+                fixture.inspections.size == count + 2 && !service.state.value.inspecting
+            }, 10)
+            assertTrue(service.state.value.inspectionTreeRead)
+            assertSame(image, service.state.value.inspection!!.image)
+            assertEquals(listOf(root, child, sibling), service.state.value.inspection!!.nodes)
+            val treeRequest = fixture.inspections.last()
+            assertFalse(treeRequest.capture); assertFalse(treeRequest.readProperties)
+            assertEquals("", treeRequest.previewMarkup)
+            return image
+        }
+        val image = firstImageThenTree(picture)
+        val properties = listOf(WinUIXamlVisualProperty("Text", "Selected value"))
+        inspect(picture.copy(previewMarkup = "", capture = false, readProperties = true, selectedPath = listOf(0)),
+            WinUIXamlVisualSnapshot(listOf(root, child), properties))
+        assertTrue(service.state.value.inspectionTreeRead)
+        assertTrue(service.state.value.inspectionPropertiesRead)
+        assertEquals(listOf(root, child, sibling), service.state.value.inspection!!.nodes)
+        assertSame(image, service.state.value.inspection!!.image)
+        assertEquals(properties, service.state.value.inspection!!.properties)
+        assertEquals("The counter describes the retained complete tree", "3 visual nodes", service.state.value.message)
+        val replacement = child.copy(name = "Replacement", sourceId = "new-template")
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set {
+            if (fixture.inspections.last().readTree) {
+                entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS))
+            }
+            fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "replacement", inspection =
+                WinUIXamlVisualSnapshot(listOf(root, replacement), properties)))
+        }
+        service.inspect(picture.copy(previewMarkup = "", capture = false, readProperties = true, selectedPath = listOf(0)))
+        fixture.await("Changed template provenance requests a new tree", entered)
+        assertFalse("Old template provenance cannot authorize editing", service.state.value.inspectionTreeRead)
+        fixture.beforeInspection.set(null); release.countDown()
+        PlatformTestUtil.waitWithEventsDispatching("Replacement template tree completes", { !service.state.value.inspecting }, 10)
+        assertTrue(service.state.value.inspectionTreeRead)
+        assertEquals(replacement, service.state.value.inspection!!.nodes.last())
+        assertSame(image, service.state.value.inspection!!.image)
+        firstImageThenTree(picture.copy(previewMarkup = "<Border/>"))
+        inspect(picture.copy(className = "Other", previewMarkup = "", capture = false), WinUIXamlVisualSnapshot(listOf(root), emptyList()))
+        assertFalse(service.state.value.inspectionTreeRead)
+        assertNull("A different component must not inherit another image", service.state.value.inspection!!.image)
+    }
+
+    fun testSelectionKeepsAPendingCompleteTreeRequest() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", readProperties = false, readTree = false))
+        fixture.await("First image reaches peer", entered)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", capture = false, readProperties = false))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0), capture = false, readTree = false))
+        fixture.beforeInspection.set(null); release.countDown()
+        PlatformTestUtil.waitWithEventsDispatching("Tree and current selection complete together", {
+            fixture.inspections.size == 2 && !service.state.value.inspecting
+        }, 10)
+        assertTrue(fixture.inspections.last().readTree)
+        assertEquals(listOf(0), fixture.inspections.last().selectedPath)
+        assertTrue(service.state.value.inspectionTreeRead)
+    }
+
     fun testSelectionCannotDiscardPendingClockCommandAndClockFailureKeepsTheCanvas() = session { fixture ->
         val service = fixture.service(); service.reconnect(); fixture.connected(service)
         val entered = CountDownLatch(1); val release = CountDownLatch(1)

@@ -713,6 +713,13 @@ resource objects are excluded. Enabling project code permits their normal
 constructors. There is no simulation of Kotlin code or binding execution. The shared
 canvas provides the source layout and property edits described above for both frameworks.
 
+The first capture returns real pixels and root bounds before traversing the complete
+visual tree. Selection and layout editing become available after the separate tree
+response; the footer reports that preparation while the picture is already visible.
+Effective-property reads follow only the selected visual path and retain the complete
+tree and image when the reported type, name and source identity match. A changed
+realized template requests a complete tree before editing becomes available again. Startup diagnostics distinguish first frame from visual-tree readiness.
+
 WinUI owns layout/rendering. Premultiplied BGRA8 captures follow zoom and display
 density, bounded to 4096 pixels per side and 2048 visual nodes. WinUI captures temporarily
 raise the root UIElement.RasterizationScale to rasterize its subtree at the requested
@@ -720,7 +727,7 @@ density, then restore the original value without changing DIP layout. Windows.UI
 has no matching public setter, so UWP uses RenderAsync output scaling only. Large
 artboards can reach the capture cap before the maximum zoom. RenderTargetBitmap's
 limitations still apply, including content outside the captured visual such as popups.
-The protocol is version 13: rebuild applications using an older development host
+The protocol is version 14: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
 adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches
@@ -841,7 +848,7 @@ Ordinary events on existing named, non-template elements can switch to an alread
 compiled compatible handler, including private Kotlin methods. Removing the event
 attribute disables dispatch; restoring it reuses the same native subscription.
 Source/version and expected-handler checks, rollback and future-instance replay
-use the normal transaction. Protocol v13 requires rebuilding older development hosts.
+use the normal transaction. Protocol v14 requires rebuilding older development hosts.
 
 Local dictionaries can add/remove keys when no surviving consumer references a
 removed key; dictionary keys and values roll back together after a failed update.
@@ -952,3 +959,6 @@ ASC desktop acceptance covers 100%, 150% and 200% zoom and Light/Dark styles
 from a dependency control's theme dictionaries. Reopening the IDE with a validated
 Native deployment reuses the host build and replaces the labelled previous image
 with a current native capture.
+ASC acceptance also verifies editing a realized ContentPresenter template's FontSize,
+reading its effective Native value and undoing it, plus dragging a Canvas child,
+saving the new coordinates and restoring the exact original XAML with Ctrl+Z.
