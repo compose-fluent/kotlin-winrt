@@ -2,8 +2,13 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 15
+    const val VERSION = 16
     const val MAX_IMAGE_DIMENSION = 4096
+    const val MAX_ARTBOARD_DIMENSION = 16384
+    const val MAX_VISUAL_NODES = 65536
+    const val VISUAL_PAGE_SIZE = 2048
+    const val MAX_VISUAL_DEPTH = 128
+    const val PREVIEW_POPUP_OPEN_KEY = "__KotlinWinRT_DesignPopupOpen_86220cb49a98480ca48340ca11d02704"
     const val PREVIEW_COMPONENT_KEY = "__KotlinWinRT_DesignComponent_86220cb49a98480ca48340ca11d02704"
     const val PREVIEW_CONNECTION_KEY = "__KotlinWinRT_DesignConnection_86220cb49a98480ca48340ca11d02704"
     const val PREVIEW_SOURCE_KEY = "__KotlinWinRT_DesignSource_86220cb49a98480ca48340ca11d02704"
@@ -65,7 +70,8 @@ data class WinUIXamlHotReloadReply(val status: Int, val message: String, val roo
  * the caller retains its last complete tree until explicitly requesting a new one. */
 data class WinUIXamlInspectionRequest(val className: String, val resourcePath: String, val instance: Int = 0,
     val selectedPath: List<Int> = emptyList(), val capture: Boolean = true,
-    val previewMarkup: String = "", val width: Int = 800, val height: Int = 600, val theme: String = "Default", val renderScale: Double = 1.0, val animation: WinUIXamlPreviewAnimation? = null, val readProperties: Boolean = true, val readTree: Boolean = true)
+    val previewMarkup: String = "", val width: Int = 800, val height: Int = 600, val theme: String = "Default", val renderScale: Double = 1.0, val animation: WinUIXamlPreviewAnimation? = null, val readProperties: Boolean = true, val readTree: Boolean = true,
+    val treeToken: Long = 0, val treeOffset: Int = 0, val captureBounds: WinUIXamlVisualBounds? = null)
 /** Preview-only SDK clock command. Resource owner is an exact name in the root namescope. */
 data class WinUIXamlPreviewAnimation(val owner: String, val key: String, val positionMillis: Int = 0, val action: String = "Seek") {
     fun validate() {
@@ -75,13 +81,13 @@ data class WinUIXamlPreviewAnimation(val owner: String, val key: String, val pos
 }
 data class WinUIXamlVisualBounds(val x: Double, val y: Double, val width: Double, val height: Double)
 data class WinUIXamlVisualNode(val path: List<Int>, val typeName: String, val name: String, val bounds: WinUIXamlVisualBounds,
-    val templateOwner: List<Int>? = null, val templateProperty: String = "", val sourceId: String = "")
+    val templateOwner: List<Int>? = null, val templateProperty: String = "", val sourceId: String = "", val layer: Int = 0)
 data class WinUIXamlVisualProperty(val name: String, val value: String)
 /** BGRA8 premultiplied pixels, as returned by WinUI RenderTargetBitmap.GetPixelsAsync. */
-data class WinUIXamlVisualImage(val width: Int, val height: Int, val pixels: ByteArray)
+data class WinUIXamlVisualImage(val width: Int, val height: Int, val pixels: ByteArray, val bounds: WinUIXamlVisualBounds? = null)
 data class WinUIXamlPreviewClock(val positionMillis: Int, val playing: Boolean)
 data class WinUIXamlVisualSnapshot(val nodes: List<WinUIXamlVisualNode>, val properties: List<WinUIXamlVisualProperty>,
-    val image: WinUIXamlVisualImage? = null, val clock: WinUIXamlPreviewClock? = null)
+    val image: WinUIXamlVisualImage? = null, val clock: WinUIXamlPreviewClock? = null, val treeToken: Long = 0, val nextOffset: Int = 0, val totalNodes: Int = nodes.size)
 
 /** Application.RequestedTheme must be chosen during construction, before OnLaunched.
  * The generated SDK adaptation maps this option to its framework's enum. */

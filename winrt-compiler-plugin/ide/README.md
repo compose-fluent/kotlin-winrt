@@ -725,13 +725,18 @@ tree and image when the reported type, name and source identity match. A changed
 realized template requests a complete tree before editing becomes available again. Startup diagnostics distinguish first frame from visual-tree readiness.
 
 WinUI owns layout/rendering. Premultiplied BGRA8 captures follow zoom and display
-density, bounded to 4096 pixels per side and 2048 visual nodes. WinUI captures temporarily
-raise the root UIElement.RasterizationScale to rasterize its subtree at the requested
+density. Each texture remains bounded to 4096 pixels per side. Logical artboards
+support up to 16384 DIP; zoom/pan requests recapture the visible region at the
+current density without changing the source layout. The complete realized tree
+supports 65536 nodes and 128 levels, delivered in immutable 2048-node pages.
+WinUI captures temporarily raise the root UIElement.RasterizationScale to rasterize its subtree at the requested
 density, then restore the original value without changing DIP layout. Windows.UI.Xaml
-has no matching public setter, so UWP uses RenderAsync output scaling only. Large
-artboards can reach the capture cap before the maximum zoom. RenderTargetBitmap's
-limitations still apply, including content outside the captured visual such as popups.
-The protocol is version 14: rebuild applications using an older development host
+has no matching public setter, so UWP uses RenderAsync output scaling only.
+Up to 64 open Popup and Flyout layers are enumerated from their XamlRoot, captured
+separately and composited with premultiplied alpha in SDK stacking order; their
+visual-tree entries retain that order for picking. Other RenderTargetBitmap
+limitations, such as native swap-chain content, still apply.
+The protocol is version 16: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
 adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches

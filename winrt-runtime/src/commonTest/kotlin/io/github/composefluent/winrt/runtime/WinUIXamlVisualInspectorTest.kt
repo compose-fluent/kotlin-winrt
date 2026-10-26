@@ -65,7 +65,7 @@ class WinUIXamlVisualInspectorTest {
         assertNull(result!!.getOrThrow().image)
         inspector.inspect(root, request.copy(capture = false, selectedPath = listOf(2), readProperties = true)) { result = it }
         assertTrue(result!!.isFailure)
-        inspector.inspect(root, request.copy(capture = false, selectedPath = List(65) { 0 })) { result = it }
+        inspector.inspect(root, request.copy(capture = false, selectedPath = List(129) { 0 })) { result = it }
         assertTrue(result!!.isFailure)
     }
     @Test fun capture_density_preserves_layout_and_bounds_physical_memory() {
@@ -112,6 +112,56 @@ class WinUIXamlVisualInspectorTest {
         inspector.inspect(Any(), request.copy(className = "live.Page")) { result = it }
         assertTrue(result!!.isFailure)
         assertTrue(calls.isEmpty())
+    }
+    @Test fun large_trees_are_paged_from_one_immutable_generation_and_popup_paths_select_the_overlay() {
+        val root = Visual("Root", (0 until 5000).map { Visual("Item$it") })
+        val popup = Visual("Popup", listOf(Visual("Popup input")))
+        var walks = 0
+        val inspector = WinUIXamlVisualInspector({ it }, { walks++; (it as Visual).children }, { value, _ ->
+            WinUIXamlVisualNode(emptyList(), "Grid", (value as Visual).name, WinUIXamlVisualBounds(0.0, 0.0, 100.0, 100.0))
+        }, { listOf(WinUIXamlVisualProperty("Name", (it as Visual).name)) }, { _, _, done -> done(Result.success(WinUIXamlVisualImage(1, 1, ByteArray(4)))) },
+            { _, _ -> }, overlays = { listOf(popup) })
+        var result: Result<WinUIXamlVisualSnapshot>? = null
+        val request = WinUIXamlInspectionRequest("probe.Page", "", capture = false, readProperties = false)
+        inspector.inspect(root, request) { result = it }
+        val first = result!!.getOrThrow()
+        assertEquals(2048, first.nodes.size)
+        assertEquals(5004, first.totalNodes)
+        val all = first.nodes.toMutableList()
+        var next = first.nextOffset
+        val initialWalks = walks
+        while (next != 0) {
+            val pageRequest = request.copy(treeToken = first.treeToken, treeOffset = next)
+            assertEquals(pageRequest, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", pageRequest)).inspection)
+            inspector.inspect(root, pageRequest) { result = it }
+            val page = result!!.getOrThrow()
+            val decoded = WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(WinUIXamlHotReloadReply(0, "", inspection = page))).inspection!!
+            assertEquals(first.treeToken, decoded.treeToken)
+            all += decoded.nodes
+            next = page.nextOffset
+        }
+        assertEquals(initialWalks, walks)
+        assertEquals(5004, all.size)
+        val popupNode = all.last()
+        assertEquals(1, popupNode.layer)
+        assertEquals(listOf(65536, 0, 0), popupNode.path)
+        inspector.inspect(root, request.copy(selectedPath = popupNode.path, readProperties = true, readTree = false)) { result = it }
+        assertEquals("Popup input", result!!.getOrThrow().properties.single().value)
+        inspector.inspect(Visual("Other"), request.copy(treeToken = first.treeToken, treeOffset = 2048)) { result = it }
+        assertTrue(result!!.isFailure)
+    }
+    @Test fun viewport_pixels_roundtrip_and_popup_alpha_blends_at_the_logical_offset() {
+        val region = WinUIXamlVisualBounds(5000.0, 6000.0, 2.0, 1.0)
+        val request = WinUIXamlInspectionRequest("probe.Page", "", width = 12000, height = 10000, captureBounds = region)
+        assertEquals(request, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", request)).inspection)
+        val base = WinUIXamlVisualImage(2, 1, byteArrayOf(0, 0, 0, -1, 0, 0, 0, -1), region)
+        val layer = WinUIXamlVisualImage(1, 1, byteArrayOf(0, 0, -128, -128))
+        compositeWinUIXamlOverlay(base, region, layer, WinUIXamlVisualBounds(5001.0, 6000.0, 1.0, 1.0))
+        assertContentEquals(byteArrayOf(0, 0, 0, -1, 0, 0, -128, -1), base.pixels)
+        val roundtrip = WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(WinUIXamlHotReloadReply(0, "", inspection = WinUIXamlVisualSnapshot(emptyList(), emptyList(), base)))).inspection!!.image!!
+        assertEquals(region, roundtrip.bounds)
+        assertContentEquals(base.pixels, roundtrip.pixels)
+        assertFailsWith<IllegalArgumentException> { validateWinUIXamlCaptureBounds(region.copy(width = Double.NaN)) }
     }
     private class Visual(val name: String, val children: List<Visual> = emptyList())
     private open class PropertyBase

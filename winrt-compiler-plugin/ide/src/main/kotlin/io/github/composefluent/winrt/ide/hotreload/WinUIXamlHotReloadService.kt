@@ -1002,7 +1002,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             pendingInspection = if (request.previewMarkup.isEmpty() && previous != null && (previous.previewMarkup.isNotEmpty() || previous.animation != null || previous.readTree && !request.readTree) &&
                 previous.className == request.className && previous.resourcePath == request.resourcePath && previous.instance == request.instance) request.copy(
                     capture = request.capture || previous.capture, readTree = request.readTree || previous.readTree,
-                    previewMarkup = previous.previewMarkup, width = previous.width, height = previous.height, theme = previous.theme, renderScale = previous.renderScale, animation = request.animation ?: previous.animation)
+                    previewMarkup = previous.previewMarkup, width = previous.width, height = previous.height, theme = previous.theme, renderScale = previous.renderScale, captureBounds = previous.captureBounds, animation = request.animation ?: previous.animation)
                 else request
             if (display.value.inspecting) return
             display.value = display.value.copy(inspecting = true)

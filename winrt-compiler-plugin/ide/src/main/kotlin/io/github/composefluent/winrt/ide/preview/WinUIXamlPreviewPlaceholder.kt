@@ -40,7 +40,8 @@ internal class WinUIXamlPreviewPlaceholder(private val directory: Path, source: 
     }.getOrNull()
 
     fun write(theme: String, width: Int, height: Int, image: WinUIXamlVisualImage) {
-        require(width in 64..4096 && height in 64..4096)
+        if (image.bounds != null) return
+        require(width in 64..WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION && height in 64..WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION)
         require(image.pixels.size == pixelBytes(image.width, image.height))
         Files.createDirectories(directory)
         val temporary = Files.createTempFile(directory, "frame-", ".tmp")

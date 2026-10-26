@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.compiler.xaml
 
 /** SDK-only tree/DataContext adaptation for the common generated-connector session. */
-internal fun xamlDesignBindingHelpers(): String = """
+internal fun xamlDesignBindingHelpers(framework: io.github.composefluent.winrt.runtime.XamlFramework): String = """
           var designBindings: WinUIXamlDesignBindingSession? = null
           var stopModelContext: (() -> Unit)? = null
           data class DesignTarget(val value: DependencyObject, val scope: WinUIXamlBindingScope?)
@@ -41,7 +41,7 @@ internal fun xamlDesignBindingHelpers(): String = """
             }
           }
           fun bindDesignTree(root: FrameworkElement) {
-            val session = designBindings ?: return
+            val session = designBindings
             var previous = -1
             repeat(4) {
               var visited = 0
@@ -51,8 +51,13 @@ internal fun xamlDesignBindingHelpers(): String = """
                 val element = runCatching { value.asWinRT<FrameworkElement>() }.getOrNull()
                 var scope = inherited
                 if (element != null) {
+                  if (root.xamlRoot != null && designMarker(element, WinUIXamlHotReloadProtocol.PREVIEW_POPUP_OPEN_KEY) == "True") {
+                    val popup = element.asWinRT<${if (framework == io.github.composefluent.winrt.runtime.XamlFramework.WinUI) "microsoft.ui.xaml" else "windows.ui.xaml"}.controls.primitives.Popup>()
+                    popup.xamlRoot = root.xamlRoot
+                    if (!popup.isOpen) popup.isOpen = true
+                  }
                   val markers = designMarker(element, WinUIXamlHotReloadProtocol.PREVIEW_CONNECTION_KEY)
-                  for (marker in markers.split(';').filter { it.isNotBlank() }) {
+                  if (session != null) for (marker in markers.split(';').filter { it.isNotBlank() }) {
                     val id = marker.substringBefore(':').toInt()
                     val targets = designTargets.getOrPut(id) { mutableListOf() }
                     val connected = targets.firstOrNull { sameDesignObject(it.value, value) }
@@ -80,9 +85,14 @@ internal fun xamlDesignBindingHelpers(): String = """
                 val count = VisualTreeHelper.getChildrenCount(value)
                 require(count in 0..65536) { "The design binding collection exceeds its traversal budget." }
                 for (index in 0 until count) VisualTreeHelper.getChild(value, index)?.let { visit(it, scope, depth + 1) }
+                // Popup.Child is outside VisualTreeHelper's ordinary children.
+                val reference = (value as? IWinRTObject)?.nativeObject
+                if (reference?.tryQueryInterface(${if (framework == io.github.composefluent.winrt.runtime.XamlFramework.WinUI) "microsoft.ui.xaml" else "windows.ui.xaml"}.controls.primitives.Popup.DEFAULT_INTERFACE_IID)?.use { true } == true) {
+                  value.asWinRT<${if (framework == io.github.composefluent.winrt.runtime.XamlFramework.WinUI) "microsoft.ui.xaml" else "windows.ui.xaml"}.controls.primitives.Popup>().child?.let { visit(it, scope, depth + 1) }
+                }
               }
               visit(root, null, 0)
-              if (pageChanged) session.updatePage()
+              if (pageChanged) session?.updatePage()
               designScopes.forEach { (scope, data) ->
                 if (scope.dataRoot !== data()) {
                   var phase = 0

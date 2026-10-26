@@ -28,8 +28,26 @@ internal class WinUIXamlHotReloadClient private constructor(
     fun request(patch: WinUIXamlHotReloadPatch? = null): WinUIXamlHotReloadReply {
         return exchange { output -> WinUIXamlHotReloadWire.writeRequest(output, token, patch) }
     }
-    fun inspect(request: WinUIXamlInspectionRequest): WinUIXamlHotReloadReply = exchange { output ->
-        WinUIXamlHotReloadWire.writeInspectionRequest(output, token, request)
+    fun inspect(request: WinUIXamlInspectionRequest): WinUIXamlHotReloadReply {
+        fun fetch(value: WinUIXamlInspectionRequest) = exchange { output -> WinUIXamlHotReloadWire.writeInspectionRequest(output, token, value) }
+        val first = fetch(request)
+        val initial = first.inspection ?: return first
+        if (initial.nextOffset == 0 || first.status != WinUIXamlHotReloadProtocol.APPLIED) return first
+        val nodes = initial.nodes.toMutableList()
+        var offset = initial.nextOffset
+        while (offset != 0) {
+            check(nodes.size == offset && offset < initial.totalNodes && initial.totalNodes <= WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) { "Invalid visual tree continuation." }
+            val reply = fetch(request.copy(capture = false, previewMarkup = "", animation = null, readProperties = false,
+                readTree = true, treeToken = initial.treeToken, treeOffset = offset))
+            check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
+            val page = requireNotNull(reply.inspection)
+            check(page.treeToken == initial.treeToken && page.totalNodes == initial.totalNodes && page.nodes.isNotEmpty() &&
+                (page.nextOffset == 0 || page.nextOffset > offset)) { "The visual tree generation changed while reading pages." }
+            nodes += page.nodes
+            offset = page.nextOffset
+        }
+        check(nodes.size == initial.totalNodes) { "Incomplete visual tree snapshot." }
+        return first.copy(inspection = initial.copy(nodes = nodes, nextOffset = 0), message = "${nodes.size} visual nodes")
     }
     fun transferState(request: WinUIXamlStateRequest): WinUIXamlHotReloadReply = exchange { output ->
         WinUIXamlHotReloadWire.writeStateRequest(output, token, request)

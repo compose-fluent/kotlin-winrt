@@ -186,8 +186,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         } }
     }
     val width = remember { TextFieldState("800") }; val height = remember { TextFieldState("600") }
-    val validWidth = width.text.toString().toIntOrNull()?.takeIf { it in 64..4096 }
-    val validHeight = height.text.toString().toIntOrNull()?.takeIf { it in 64..4096 }
+    val validWidth = width.text.toString().toIntOrNull()?.takeIf { it in 64..WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION }
+    val validHeight = height.text.toString().toIntOrNull()?.takeIf { it in 64..WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION }
     var viewport by remember { mutableStateOf(800 to 600) }
     LaunchedEffect(validWidth, validHeight) {
         if (validWidth != null && validHeight != null) {
@@ -273,6 +273,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     var resetViewport by remember(source) { mutableIntStateOf(0) }
     // Tool panes move the canvas between composition branches. Keep its pan in
     // the editor so opening Properties does not lose the current work area.
+    var captureViewport by remember(source) { mutableStateOf<WinUIXamlVisualBounds?>(null) }
     val canvasPan = remember(source) { mutableStateOf(Offset.Zero) }
     LaunchedEffect(source, resetViewport) { canvasPan.value = Offset.Zero }
     var lastView by remember(source, static) { mutableStateOf<WinUIXamlVisualSnapshot?>(null) }
@@ -359,7 +360,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
-    LaunchedEffect(session, launchModule, launch, projectCode, static, prepared, viewport, theme, captureScale, manualRefresh, resourceRevision, selectedStates, animationCommand, animationRevision) {
+    LaunchedEffect(session, launchModule, launch, projectCode, static, prepared, viewport, theme, captureScale, captureViewport, manualRefresh, resourceRevision, selectedStates, animationCommand, animationRevision) {
         if (static && prepared != null) withContext(Dispatchers.IO) {
             session.state.previewRenderTargets().collectLatest { target ->
                 val (pid, root) = target ?: return@collectLatest
@@ -380,7 +381,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 // Deliver the new image before invoking effective-property getters.
                 // The selection effect reads those once this snapshot is published.
                 val request = WinUIXamlInspectionRequest(root.className, root.resourcePath, 0, emptyList(), true,
-                    markup, w, h, theme, captureScale, validAnimation, readProperties = false)
+                    markup, w, h, theme, captureScale, validAnimation, readProperties = false, captureBounds = captureViewport)
                 val key = Triple(request, pid, Triple(manualRefresh, resourceRevision, animationRevision))
                 // Metadata notifications can prepare the same document again. Keep
                 // explicit refresh and asset changes, but avoid duplicate bitmaps.
@@ -390,18 +391,18 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     // capture-density changes during continuous canvas zoom here.
                     if (previous != null && previous.second == pid && previous.third == key.third &&
                         previous.first.previewMarkup == request.previewMarkup && previous.first.animation == request.animation &&
-                        previous.first.renderScale != request.renderScale) delay(150)
+                        (previous.first.renderScale != request.renderScale || previous.first.captureBounds != request.captureBounds)) delay(150)
                     // Capture density and the SDK animation clock do not change
                     // the source tree. Keep realized controls and template state
                     // when zooming; explicit refresh and asset edits still reload.
                     val captureOnly = previous != null && previous.second == pid && previous.third.first == manualRefresh && previous.third.second == resourceRevision &&
-                        previous.first.copy(animation = request.animation, renderScale = request.renderScale, readProperties = request.readProperties) == request
+                        previous.first.copy(animation = request.animation, renderScale = request.renderScale, readProperties = request.readProperties, captureBounds = request.captureBounds) == request
                     currentCoroutineContext().ensureActive()
                     val imageFirst = !captureOnly && (previous == null || previous.second != pid)
                     // The session schedules the complete tree after publishing
                     // the image, even if catalog preparation recomposes this view.
                     session.inspect(when {
-                        captureOnly -> request.copy(previewMarkup = "", selectedPath = selectedPath)
+                        captureOnly -> request.copy(previewMarkup = "", selectedPath = selectedPath, readTree = false)
                         imageFirst -> request.copy(readTree = false)
                         else -> request
                     })
@@ -889,7 +890,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                             selectedSourceIdentity = null
                             multiPaths = paths - setOf(staticPath)
                         }
-                    }, ::clipboardAction, panState = canvasPan)
+                    }, ::clipboardAction, panState = canvasPan, captureViewport = { if (static) captureViewport = it })
             } else if (showingPlaceholder) {
                 PreviewImage(placeholder!!, emptyList(), {}, {}, zoom, false, false,
                     { actualZoom = it }, { zoom = it }, {}, Modifier.fillMaxSize(),
@@ -1093,8 +1094,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     width.setTextAndPlaceCursorAtEnd(dimensions[0]); height.setTextAndPlaceCursorAtEnd(dimensions[1])
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }); if (validWidth == null) Text("Enter 64–4096 DIP.") }
-                    Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }); if (validHeight == null) Text("Enter 64–4096 DIP.") }
+                    Column(Modifier.weight(1f)) { Text("Width (DIP)"); TextField(width, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview width in DIP" }); if (validWidth == null) Text("Enter 64–16384 DIP.") }
+                    Column(Modifier.weight(1f)) { Text("Height (DIP)"); TextField(height, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview height in DIP" }); if (validHeight == null) Text("Enter 64–16384 DIP.") }
                 }
                 Link("Swap width and height", onClick = {
                     val previousWidth = width.text.toString()
@@ -1236,7 +1237,10 @@ private fun VisualTree(nodes: List<WinUIXamlVisualNode>, selected: List<Int>, se
     LazyTree(tree, modifier = modifier, treeState = state, onSelectionChange = { elements ->
         // Opening the inspector synchronizes its tree selection. This is not
         // a user selection and must not clear a canvas multi-selection.
-        elements.lastOrNull()?.data?.path?.takeIf { it != selected }?.let(select)
+        elements.lastOrNull()?.data?.path?.let { path ->
+            // The popup folder is a virtual group, not an SDK object.
+            if (path == listOf(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES)) nodes.firstOrNull { it.path.size == 2 && it.path.first() == WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES }?.path else path
+        }?.takeIf { it != selected }?.let(select)
     }) { element ->
         val node = element.data
         Text(node.typeName.substringAfterLast('.') + node.name.takeIf(String::isNotEmpty)?.let { " · $it" }.orEmpty())

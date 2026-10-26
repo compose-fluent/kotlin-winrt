@@ -101,13 +101,16 @@ internal object WinUIXamlHotReloadCodec {
     }
     fun writeInspectionRequest(token: String, request: WinUIXamlInspectionRequest) = write() {
         string(token); writeByte(2); string(request.className); string(request.resourcePath); writeInt(request.instance)
-        require(request.selectedPath.size <= 64 && request.selectedPath.all { it in 0..2048 })
+        require(request.selectedPath.size <= WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH && request.selectedPath.all { it in 0..WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES })
         writeInt(request.selectedPath.size); request.selectedPath.forEach { writeInt(it) }; writeBoolean(request.capture)
         require(request.renderScale.isFinite() && request.renderScale in 0.125..32.0)
         string(request.previewMarkup); writeInt(request.width); writeInt(request.height); string(request.theme); writeDouble(request.renderScale)
         writeBoolean(request.animation != null)
         request.animation?.let { it.validate(); string(it.owner); string(it.key); writeInt(it.positionMillis); string(it.action) }
         writeBoolean(request.readProperties); writeBoolean(request.readTree)
+        require(request.treeToken >= 0 && request.treeOffset in 0..WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES)
+        writeLong(request.treeToken); writeInt(request.treeOffset)
+        writeBoolean(request.captureBounds != null); request.captureBounds?.let { bounds(it) }
     }
     fun readRequest(frame: ByteArray): Pair<String, WinUIXamlHotReloadPatch?> = readCommand(frame).let {
         require(it.inspection == null && it.state == null) { "Use the visual inspection command reader." }; it.token to it.patch
@@ -122,11 +125,11 @@ internal object WinUIXamlHotReloadCodec {
         }
         if (operation == 2) {
             val name = string(); val resource = string(); val instance = count(1024)
-            val path = List(count(64)) { count(2048) }; val capture = readBoolean()
-            val markup = string(); val width = count(4096); val height = count(4096); val theme = string(); val scale = readDouble()
+            val path = List(count(WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH)) { count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) }; val capture = readBoolean()
+            val markup = string(); val width = count(WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION); val height = count(WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION); val theme = string(); val scale = readDouble()
             require(scale.isFinite() && scale in 0.125..32.0)
             val animation = if (readBoolean()) WinUIXamlPreviewAnimation(string(), string(), count(86_400_000), string()).also { it.validate() } else null
-            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale, animation, readBoolean(), readBoolean()))
+            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale, animation, readBoolean(), readBoolean(), readLong().also { require(it >= 0) }, count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES), if (readBoolean()) bounds() else null))
         }
         require(operation == 0 || operation == 1) { "Invalid development command." }
         val patch = if (operation == 0) null else {
@@ -164,10 +167,10 @@ internal object WinUIXamlHotReloadCodec {
         writeInt(reply.values.size); reply.values.forEach { string(it.element); string(it.property); string(it.value); path(it.path) }
         writeBoolean(reply.inspection != null)
         reply.inspection?.let { view ->
-            require(view.nodes.size <= 2048 && view.properties.size <= 64)
+            require(view.nodes.size <= WinUIXamlHotReloadProtocol.VISUAL_PAGE_SIZE && view.properties.size <= 64)
             writeInt(view.nodes.size)
             view.nodes.forEach { node ->
-                require(node.path.size <= 64); writeInt(node.path.size); node.path.forEach { writeInt(it) }
+                require(node.path.size <= WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH); writeInt(node.path.size); node.path.forEach { writeInt(it) }
                 string(node.typeName); string(node.name)
                 with(node.bounds) { writeDouble(x); writeDouble(y); writeDouble(width); writeDouble(height) }
                 writeBoolean(node.templateOwner != null)
@@ -175,16 +178,18 @@ internal object WinUIXamlHotReloadCodec {
                     require(owner.size < node.path.size && node.path.take(owner.size) == owner && node.templateProperty in listOf("ContentTemplate", "ItemTemplate"))
                     writeInt(owner.size); owner.forEach { writeInt(it) }; string(node.templateProperty)
                 }
-                require(node.sourceId.length <= 4096); string(node.sourceId)
+                require(node.sourceId.length <= 4096); string(node.sourceId); require(node.layer in 0..64); writeInt(node.layer)
             }
             writeInt(view.properties.size); view.properties.forEach { string(it.name); string(it.value) }
             writeBoolean(view.image != null)
             view.image?.let { image ->
                 require(image.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.pixels.size == 4 * image.width * image.height)
-                writeInt(image.width); writeInt(image.height); write(image.pixels)
+                writeInt(image.width); writeInt(image.height); writeBoolean(image.bounds != null); image.bounds?.let { bounds(it) }; write(image.pixels)
             }
             writeBoolean(view.clock != null)
             view.clock?.let { require(it.positionMillis in 0..86_400_000); writeInt(it.positionMillis); writeBoolean(it.playing) }
+            require(view.treeToken >= 0 && view.totalNodes in view.nodes.size..WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES && view.nextOffset in 0..view.totalNodes)
+            writeLong(view.treeToken); writeInt(view.nextOffset); writeInt(view.totalNodes)
         }
         writeBoolean(reply.savedState != null); reply.savedState?.let { savedState(it) }
     }
@@ -198,24 +203,31 @@ internal object WinUIXamlHotReloadCodec {
             WinUIXamlHotReloadRoot(name, path, hash, version, elements, instances, keys) }
         val values = List(count(512)) { WinUIXamlHotReloadValue(string(), string(), string(), path()) }
         val inspection = if (!readBoolean()) null else {
-            val nodes = List(count(2048)) {
-                val path = List(count(64)) { count(2048) }
+            val nodes = List(count(WinUIXamlHotReloadProtocol.VISUAL_PAGE_SIZE)) {
+                val path = List(count(WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH)) { count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) }
                 val type = string(); val name = string()
                 val bounds = WinUIXamlVisualBounds(readDouble(), readDouble(), readDouble(), readDouble())
-                val owner = if (readBoolean()) List(count(64)) { count(2048) } else null
+                val owner = if (readBoolean()) List(count(WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH)) { count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) } else null
                 val property = if (owner != null) string() else ""
                 require(owner == null || owner.size < path.size && path.take(owner.size) == owner && property in listOf("ContentTemplate", "ItemTemplate"))
-                WinUIXamlVisualNode(path, type, name, bounds, owner, property, string().also { require(it.length <= 4096) })
+                WinUIXamlVisualNode(path, type, name, bounds, owner, property, string().also { require(it.length <= 4096) }, count(64))
             }
             val properties = List(count(64)) { WinUIXamlVisualProperty(string(), string()) }
             val image = if (!readBoolean()) null else {
                 val width = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); val height = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); require(width > 0 && height > 0)
-                WinUIXamlVisualImage(width, height, ByteArray(4 * width * height).also(::readFully))
+                val region = if (readBoolean()) bounds() else null
+                WinUIXamlVisualImage(width, height, ByteArray(4 * width * height).also(::readFully), region)
             }
-            WinUIXamlVisualSnapshot(nodes, properties, image, if (readBoolean()) WinUIXamlPreviewClock(count(86_400_000), readBoolean()) else null)
+            WinUIXamlVisualSnapshot(nodes, properties, image, if (readBoolean()) WinUIXamlPreviewClock(count(86_400_000), readBoolean()) else null, readLong().also { require(it >= 0) }, count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES), count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES))
         }
         WinUIXamlHotReloadReply(status, message, roots, values, inspection, if (readBoolean()) savedState() else null)
     }
+
+    private fun Writer.bounds(value: WinUIXamlVisualBounds) {
+        validateWinUIXamlCaptureBounds(value)
+        writeDouble(value.x); writeDouble(value.y); writeDouble(value.width); writeDouble(value.height)
+    }
+    private fun Reader.bounds(): WinUIXamlVisualBounds = WinUIXamlVisualBounds(readDouble(), readDouble(), readDouble(), readDouble()).also(::validateWinUIXamlCaptureBounds)
 
     private class Writer {
         private var buffer = ByteArray(256)

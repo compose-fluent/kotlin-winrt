@@ -216,6 +216,13 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                         sanitize(replacement, sourcePath, stack)
                     } else sanitize(child, sourcePath, stack)
                 }
+                // Popup.IsOpen requires an attached XamlRoot. Loose XAML is
+                // parsed off-tree; the generated SDK adapter opens it after attach.
+                if (tag.localName == "Popup" && tag.getAttribute("IsOpen").equals("True", true) &&
+                    (tag.namespaceURI == WinUIXamlCatalog.PRESENTATION || tag.namespaceURI in setOf("using:Microsoft.UI.Xaml.Controls.Primitives", "using:Windows.UI.Xaml.Controls.Primitives"))) {
+                    tag.setAttribute("IsOpen", "False")
+                    WinUIXamlDesignIdentity.resource(tag, io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_POPUP_OPEN_KEY, "True")
+                }
                 WinUIXamlDesignIdentity.materialize(tag)
                 // Loose XAML loads merged dictionaries immediately, unlike
                 // compiled resource dictionaries' deferred materialization.

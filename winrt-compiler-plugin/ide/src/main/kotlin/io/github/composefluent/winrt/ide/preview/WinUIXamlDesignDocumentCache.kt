@@ -30,7 +30,7 @@ internal class WinUIXamlDesignDocumentCache(directory: Path, source: String) {
     }
     companion object {
         fun key(inputs: List<String>): String = digest(buildString {
-            append("native-design-document-v6;")
+            append("native-design-document-v7;")
             inputs.forEach { append(it.length); append(':'); append(it) }
         })
         private fun digest(text: String) = java.util.HexFormat.of().formatHex(

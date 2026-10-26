@@ -203,14 +203,125 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           // or animation frames. The IDE owns the redirected preview-host log.
           var tracedPreview = false
           var traceCapture = false
-          ${xamlDesignBindingHelpers()}
+          ${xamlDesignBindingHelpers(framework)}
+          var designElement: FrameworkElement? = null
+          var designSurface: ${framework.xamlKotlinNamespace}.controls.Canvas? = null
+          fun popupRoots(root: FrameworkElement): List<Any> = root.xamlRoot?.let { xamlRoot ->
+            // WinUI CPopupRoot::GetOpenPopups enumerates NewestBegin first.
+            // Render and hit-test layers share a bottom-to-top ordering.
+            VisualTreeHelper.getOpenPopupsForXamlRoot(xamlRoot)?.mapNotNull { it?.child }?.take(64)?.asReversed()
+          }.orEmpty()
+          fun visualBounds(item: FrameworkElement, root: UIElement): WinUIXamlVisualBounds {
+            val size = item.renderSize
+            val rect = requireNotNull(item.transformToVisual(root)).transformBounds(windows.foundation.Rect(0f, 0f, size.width, size.height))
+            return WinUIXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
+          }
+          fun captureFrame(value: Any, renderScale: Double, viewport: WinUIXamlVisualBounds?, complete: (Result<WinUIXamlVisualImage>) -> Unit) {
+            val timing = if (traceCapture) kotlin.time.TimeSource.Monotonic.markNow() else null
+            traceCapture = false
+            val element = value.asWinRT<FrameworkElement>()
+            val queue = requireNotNull(${dispatching}.DispatcherQueue.getForCurrentThread())
+            val dispatcher = object : CoroutineDispatcher() {
+              override fun dispatch(context: CoroutineContext, block: Runnable) {
+                check(queue.tryEnqueue { block.run() }) { "The visual dispatcher has closed" }
+              }
+            }
+            val lifetime = Job()
+            CoroutineScope(lifetime + dispatcher).launch {
+              var stage = "render the visual tree"
+              timing?.let { println("XAML preview capture queued: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+              try {
+                bindDesignTree(element)
+                val bitmap = RenderTargetBitmap()
+                // RenderAsync's requested size is in view pixels. PixelWidth and
+                // the BGRA buffer include XamlRoot's physical DPI scale.
+                val dpi = element.xamlRoot?.rasterizationScale ?: 1.0
+                require(dpi.isFinite() && dpi > 0) { "The visual root has an invalid DPI scale." }
+                // Replacing Window.Content can invalidate ActualWidth/Height
+                // before this queued capture runs. RenderAsync completes layout;
+                // use the explicit artboard dimensions while that layout is pending.
+                val logicalWidth = element.actualWidth.takeIf { it.isFinite() && it > 0 }
+                  ?: element.width.takeIf { it.isFinite() && it > 0 } ?: 1.0
+                val logicalHeight = element.actualHeight.takeIf { it.isFinite() && it > 0 }
+                  ?: element.height.takeIf { it.isFinite() && it > 0 } ?: 1.0
+                val region = viewport ?: WinUIXamlVisualBounds(0.0, 0.0, logicalWidth, logicalHeight)
+                val surface = designSurface?.takeIf { designElement?.let { item -> sameDesignObject(item, element) } == true }
+                require(viewport == null || surface != null) { "Viewport capture requires an isolated design surface." }
+                val captureElement = surface?.also { camera ->
+                  camera.width = region.width; camera.height = region.height
+                  ${framework.xamlKotlinNamespace}.controls.Canvas.setLeft(element, -region.x)
+                  ${framework.xamlKotlinNamespace}.controls.Canvas.setTop(element, -region.y)
+                  camera.clip = ${framework.xamlKotlinNamespace}.media.RectangleGeometry().apply {
+                    rect = windows.foundation.Rect(0f, 0f, region.width.toFloat(), region.height.toFloat())
+                  }
+                  camera.measure(windows.foundation.Size(region.width.toFloat(), region.height.toFloat()))
+                  camera.arrange(windows.foundation.Rect(0f, 0f, region.width.toFloat(), region.height.toFloat()))
+                  camera.updateLayout()
+                }?.let { camera ->
+                  // WinUI CRenderTargetElementData::UpdateMetrics uses GetInnerBounds:
+                  // the render root's own Clip does not constrain that measurement.
+                  // Capture its parent so the camera's clipped outer bounds are used.
+                  requireNotNull(VisualTreeHelper.getParent(camera)).asWinRT<FrameworkElement>().also { captureRoot ->
+                    captureRoot.width = region.width; captureRoot.height = region.height
+                    captureRoot.measure(windows.foundation.Size(region.width.toFloat(), region.height.toFloat()))
+                    captureRoot.arrange(windows.foundation.Rect(0f, 0f, region.width.toFloat(), region.height.toFloat()))
+                    captureRoot.updateLayout()
+                  }
+                } ?: element
+                surface?.let { camera ->
+                  require(kotlin.math.abs(camera.actualWidth - region.width) < 1 && kotlin.math.abs(camera.actualHeight - region.height) < 1) {
+                    "The SDK has not committed the capture viewport size."
+                  }
+                }
+                val (width, height) = winUIXamlCaptureSize(region.width, region.height, dpi, renderScale)
+                ${if (framework == XamlFramework.WinUI) """// WinUI hwwalk.cpp propagates UIElement.RasterizationScale through
+                // the subtree's realization transform, without changing DIP layout.
+                // RenderAsync's output size alone can enlarge existing glyph textures.
+                val previousRasterizationScale = captureElement.rasterizationScale
+                try {
+                  captureElement.rasterizationScale = maxOf(previousRasterizationScale, width / region.width, height / region.height)
+                  requireNotNull(bitmap.renderAsync(captureElement, width, height)).await()
+                } finally { captureElement.rasterizationScale = previousRasterizationScale }""" else """// Windows.UI.Xaml has no public UIElement.RasterizationScale setter.
+                // UWP retains RenderAsync density scaling without changing its layout.
+                requireNotNull(bitmap.renderAsync(captureElement, width, height)).await()"""}
+                timing?.let { println("XAML preview bitmap rendered: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+                stage = "read the rendered pixels"
+                val buffer = requireNotNull(requireNotNull(bitmap.getPixelsAsync()).await())
+                require(bitmap.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && bitmap.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
+                  "WinUI returned an unsupported bitmap size or pixel buffer."
+                }
+                timing?.let { println("XAML preview pixels available: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+                val bytes = readWinUIXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())
+                timing?.let { println("XAML preview pixels copied: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+                val result = WinUIXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes, viewport)
+                stage = "render popup layers"
+                for (popup in popupRoots(element)) {
+                  val popupElement = popup.asWinRT<FrameworkElement>()
+                  val bounds = visualBounds(popupElement, element)
+                  if (bounds.width <= 0 || bounds.height <= 0 || bounds.x + bounds.width <= region.x || bounds.y + bounds.height <= region.y ||
+                    bounds.x >= region.x + region.width || bounds.y >= region.y + region.height) continue
+                  val (popupWidth, popupHeight) = winUIXamlCaptureSize(bounds.width, bounds.height, dpi, renderScale)
+                  val layer = RenderTargetBitmap()
+                  requireNotNull(layer.renderAsync(popupElement, popupWidth, popupHeight)).await()
+                  val data = requireNotNull(requireNotNull(layer.getPixelsAsync()).await())
+                  require(layer.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && layer.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION &&
+                    data.length.toLong() == 4L * layer.pixelWidth * layer.pixelHeight) { "Invalid popup bitmap." }
+                  compositeWinUIXamlOverlay(result, region, WinUIXamlVisualImage(layer.pixelWidth, layer.pixelHeight,
+                    readWinUIXamlVisualPixels((data as IWinRTObject).nativeObject, data.length.toInt())), bounds)
+                }
+                complete(Result.success(result))
+                timing?.let { println("XAML preview snapshot delivered: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+              } catch (error: Exception) { complete(Result.failure(IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error))) }
+              finally { lifetime.cancel() }
+            }
+          }
           return WinUIXamlVisualInspector(
           formatValue = ::display,
-          visualRoot = { owner -> if (owner is Window) owner.content else owner },
+          visualRoot = { owner -> if (owner is Window) designElement ?: owner.content else owner },
           children = { value ->
             val element = value.asWinRT<DependencyObject>()
             val count = VisualTreeHelper.getChildrenCount(element)
-            require(count in 0..2048) { "Too many visual children" }
+            require(count in 0 until WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) { "Too many visual children" }
             List(count) { requireNotNull(VisualTreeHelper.getChild(element, it)) }
           },
           describe = { value, root ->
@@ -276,77 +387,44 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight",
               "HorizontalAlignment", "VerticalAlignment", "Margin", "Padding"), ::display)).distinctBy { it.name }
           },
-          capture = { value, renderScale, complete ->
-            val timing = if (traceCapture) kotlin.time.TimeSource.Monotonic.markNow() else null
-            traceCapture = false
-            val element = value.asWinRT<FrameworkElement>()
-            val queue = requireNotNull(${dispatching}.DispatcherQueue.getForCurrentThread())
-            val dispatcher = object : CoroutineDispatcher() {
-              override fun dispatch(context: CoroutineContext, block: Runnable) {
-                check(queue.tryEnqueue { block.run() }) { "The visual dispatcher has closed" }
-              }
-            }
-            val lifetime = Job()
-            CoroutineScope(lifetime + dispatcher).launch {
-              var stage = "render the visual tree"
-              timing?.let { println("XAML preview capture queued: " + it.elapsedNow().inWholeMilliseconds + "ms") }
-              try {
-                bindDesignTree(element)
-                val bitmap = RenderTargetBitmap()
-                // RenderAsync's requested size is in view pixels. PixelWidth and
-                // the BGRA buffer include XamlRoot's physical DPI scale.
-                val dpi = element.xamlRoot?.rasterizationScale ?: 1.0
-                require(dpi.isFinite() && dpi > 0) { "The visual root has an invalid DPI scale." }
-                // Replacing Window.Content can invalidate ActualWidth/Height
-                // before this queued capture runs. RenderAsync completes layout;
-                // use the explicit artboard dimensions while that layout is pending.
-                val logicalWidth = element.actualWidth.takeIf { it.isFinite() && it > 0 }
-                  ?: element.width.takeIf { it.isFinite() && it > 0 } ?: 1.0
-                val logicalHeight = element.actualHeight.takeIf { it.isFinite() && it > 0 }
-                  ?: element.height.takeIf { it.isFinite() && it > 0 } ?: 1.0
-                val (width, height) = winUIXamlCaptureSize(logicalWidth, logicalHeight, dpi, renderScale)
-                ${if (framework == XamlFramework.WinUI) """// WinUI hwwalk.cpp propagates UIElement.RasterizationScale through
-                // the subtree's realization transform, without changing DIP layout.
-                // RenderAsync's output size alone can enlarge existing glyph textures.
-                val previousRasterizationScale = element.rasterizationScale
-                try {
-                  element.rasterizationScale = maxOf(previousRasterizationScale, width / logicalWidth, height / logicalHeight)
-                  requireNotNull(bitmap.renderAsync(element, width, height)).await()
-                } finally { element.rasterizationScale = previousRasterizationScale }""" else """// Windows.UI.Xaml has no public UIElement.RasterizationScale setter.
-                // UWP retains RenderAsync density scaling without changing its layout.
-                requireNotNull(bitmap.renderAsync(element, width, height)).await()"""}
-                timing?.let { println("XAML preview bitmap rendered: " + it.elapsedNow().inWholeMilliseconds + "ms") }
-                stage = "read the rendered pixels"
-                val buffer = requireNotNull(requireNotNull(bitmap.getPixelsAsync()).await())
-                require(bitmap.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && bitmap.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && buffer.length.toLong() == 4L * bitmap.pixelWidth * bitmap.pixelHeight) {
-                  "WinUI returned an unsupported bitmap size or pixel buffer."
-                }
-                timing?.let { println("XAML preview pixels available: " + it.elapsedNow().inWholeMilliseconds + "ms") }
-                val bytes = readWinUIXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())
-                timing?.let { println("XAML preview pixels copied: " + it.elapsedNow().inWholeMilliseconds + "ms") }
-                complete(Result.success(WinUIXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes)))
-                timing?.let { println("XAML preview snapshot delivered: " + it.elapsedNow().inWholeMilliseconds + "ms") }
-              } catch (error: Exception) { complete(Result.failure(IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error))) }
-              finally { lifetime.cancel() }
-            }
-          },
+          capture = { value, scale, complete -> captureFrame(value, scale, null, complete) },
+          captureRegion = ::captureFrame,
+          overlays = { value -> popupRoots(value.asWinRT<FrameworkElement>()) },
           preview = { owner, request ->
             val timing = if (!tracedPreview) kotlin.time.TimeSource.Monotonic.markNow() else null
             val window = owner.asWinRT<Window>()
             activeStoryboard?.stop(); activeStoryboard = null; playing = false
             val previousContent = window.content
+            val previousElement = designElement
+            val previousSurface = designSurface
             var attached = false
             var stage = "load the XAML"
             try {
               val element = requireNotNull(${framework.xamlKotlinNamespace}.markup.XamlReader.load(request.previewMarkup)).asWinRT<FrameworkElement>()
               timing?.let { println("XAML preview markup loaded: " + it.elapsedNow().inWholeMilliseconds + "ms") }
-              beginDesignBindings(element)
-              bindDesignTree(element)
               element.width = request.width.toDouble(); element.height = request.height.toDouble()
               element.requestedTheme = when (request.theme) { "Dark" -> ElementTheme.Dark; "Light" -> ElementTheme.Light; else -> ElementTheme.Default }
               stage = "attach the visual tree"
-              window.content = element
+              val surface = ${framework.xamlKotlinNamespace}.controls.Canvas().apply {
+                width = request.width.toDouble(); height = request.height.toDouble()
+                horizontalAlignment = HorizontalAlignment.Left; verticalAlignment = VerticalAlignment.Top
+                children?.add(element)
+              }
+              designElement = element; designSurface = surface
+              previousElement?.xamlRoot?.let { oldRoot ->
+                VisualTreeHelper.getOpenPopupsForXamlRoot(oldRoot)?.forEach { it?.isOpen = false }
+              }
+              // A Window content root is arranged to the entire client size,
+              // overriding camera dimensions. Keep the camera as an aligned child.
+              val captureRoot = ${framework.xamlKotlinNamespace}.controls.Grid().apply {
+                width = request.width.toDouble(); height = request.height.toDouble()
+                horizontalAlignment = HorizontalAlignment.Left; verticalAlignment = VerticalAlignment.Top
+                children?.add(surface)
+              }
+              window.content = ${framework.xamlKotlinNamespace}.controls.Grid().apply { children?.add(captureRoot) }
               attached = true
+              beginDesignBindings(element)
+              bindDesignTree(element)
               stage = "size the design surface"
               // Read DPI from the attached document, including the first frame
               // when the isolated desktop window has no placeholder content.
@@ -359,7 +437,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               // Changing it only in RenderAsync would lay out text at one density
               // and immediately discard those realizations for the first bitmap.
               val (captureWidth, captureHeight) = winUIXamlCaptureSize(request.width.toDouble(), request.height.toDouble(), dpi, request.renderScale)
-              element.rasterizationScale = maxOf(element.rasterizationScale,
+              surface.rasterizationScale = maxOf(surface.rasterizationScale,
                 captureWidth.toDouble() / request.width, captureHeight.toDouble() / request.height)""" else ""}
               stage = "lay out the visual tree"
               // UWP defers the first Window content layout until rendering. Establish
@@ -375,6 +453,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               // Deferred DataTemplate loading can fail during Measure/Arrange after
               // attachment. Detach that poisoned tree before returning to the SDK
               // message loop, which would otherwise retry layout and terminate.
+              designElement = previousElement; designSurface = previousSurface
               if (attached) try { window.content = previousContent }
               catch (rollback: Exception) { error.addSuppressed(rollback) }
               throw IllegalStateException("WinUI could not ${'$'}stage: ${'$'}{error.message}", error)

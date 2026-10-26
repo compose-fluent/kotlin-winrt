@@ -252,6 +252,15 @@ class WinRTPreviewTest {
         assertEquals(nodes.map { it.path }, tree.map { it.id })
         assertEquals(listOf(0), tree.last().parent!!.id)
     }
+    @Test fun open_popups_are_deferred_until_the_sdk_attaches_the_design_tree() {
+        val document = WinUIXamlDesignDocument.prepare("""<Grid $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008"><Popup x:Name="Layer" IsOpen="False" d:IsOpen="True"><Border/></Popup><Popup IsOpen="False"><Border/></Popup></Grid>""")
+        val dom = parse(document.markup)
+        val popups = dom.getElementsByTagNameNS("*", "Popup")
+        assertEquals("False", (popups.item(0) as org.w3c.dom.Element).getAttribute("IsOpen"))
+        assertTrue((popups.item(0) as org.w3c.dom.Element).textContent.contains("True"))
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_POPUP_OPEN_KEY))
+        assertFalse((popups.item(1) as org.w3c.dom.Element).textContent.contains("True"))
+    }
     private fun parse(value: String) = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         .newDocumentBuilder().parse(InputSource(StringReader(value)))
 }

@@ -23,6 +23,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.floor
+import kotlin.math.ceil
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
 import io.github.composefluent.winrt.runtime.*
 import kotlinx.coroutines.Dispatchers
@@ -36,11 +40,15 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     selectedPaths: Set<List<Int>> = setOf(selected), toggleSelection: (List<Int>) -> Unit = select,
     snapEnabled: Boolean = true, armedTool: String? = null, toolDrop: DesignerToolDrop? = null,
     finishDrop: () -> Unit = {}, insert: (String, List<Int>, Double, Double) -> Unit = { _, _, _, _ -> },
-    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null, contextActions: List<Pair<String, () -> Unit>> = emptyList(), selectArea: (Set<List<Int>>) -> Unit = {}, clipboardAction: (String) -> Unit = {}, panState: MutableState<Offset>? = null) {
+    cancelTool: () -> Unit = {}, selectSiblings: () -> Unit = {}, sourcePaths: Set<List<Int>>? = null, contextActions: List<Pair<String, () -> Unit>> = emptyList(), selectArea: (Set<List<Int>>) -> Unit = {}, clipboardAction: (String) -> Unit = {}, panState: MutableState<Offset>? = null, captureViewport: (WinUIXamlVisualBounds?) -> Unit = {}) {
     val image = view.image ?: return
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, image) {
-        value = withContext(Dispatchers.IO) { bgraImage(image).toComposeImageBitmap() }
+    val renderedFrame by produceState<Pair<WinUIXamlVisualImage, androidx.compose.ui.graphics.ImageBitmap>?>(null, image) {
+        value = withContext(Dispatchers.IO) { image to bgraImage(image).toComposeImageBitmap() }
     }
+    val bitmap = renderedFrame?.second
+    val bitmapBounds = renderedFrame?.first?.bounds
+    var overview by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(renderedFrame) { if (renderedFrame != null && bitmapBounds == null && bitmap != null) overview = bitmap }
     val root = view.nodes.firstOrNull()?.bounds ?: return
     if (root.width <= 0 || root.height <= 0) return
     val target = if (fitSelection) view.nodes.firstOrNull { it.path == selected }?.bounds
@@ -62,6 +70,20 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
     var focused by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val factor by remember(density, target, zoom, fitSelection) { derivedStateOf { effectiveZoom * density } }
+    LaunchedEffect(viewport, factor, pan, target, root) {
+        if (viewport.width <= 0 || viewport.height <= 0 || factor <= 0) return@LaunchedEffect
+        val origin = previewOrigin(viewport.width.toFloat(), viewport.height.toFloat(), target, factor) + pan
+        val padding = 64.0 / factor
+        val left = floor(maxOf(0.0, -origin.x / factor - padding))
+        val top = floor(maxOf(0.0, -origin.y / factor - padding))
+        val right = ceil(minOf(root.width, (viewport.width - origin.x) / factor + padding))
+        val bottom = ceil(minOf(root.height, (viewport.height - origin.y) / factor + padding))
+        val bounds = if (right <= left || bottom <= top || root.width * factor <= WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION &&
+            root.height * factor <= WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION) null
+            else WinUIXamlVisualBounds(left, top, right - left, bottom - top)
+        delay(120)
+        captureViewport(bounds)
+    }
     fun zoomAt(value: Float, point: Offset) {
         pan = previewAnchoredPan(viewport, target, root, factor, value * density, pan, point)
         setZoom(value)
@@ -281,7 +303,11 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
         }) {
         val origin = previewOrigin(size.width, size.height, target, factor) + pan
         translate(origin.x, origin.y) { scale(factor, factor, Offset.Zero) {
-            bitmap?.let { drawImage(it, dstSize = IntSize(root.width.toInt(), root.height.toInt())) }
+            if (bitmapBounds != null) overview?.let { drawImage(it, dstSize = IntSize(root.width.toInt(), root.height.toInt())) }
+            bitmap?.let { frame ->
+                val bounds = bitmapBounds ?: root
+                drawImage(frame, dstOffset = IntOffset(bounds.x.toInt(), bounds.y.toInt()), dstSize = IntSize(bounds.width.toInt().coerceAtLeast(1), bounds.height.toInt().coerceAtLeast(1)))
+            }
             guides?.let { snap ->
                 snap.vertical?.let { x -> drawLine(Color(0xFFDC64CA), Offset(x.toFloat(), 0f), Offset(x.toFloat(), root.height.toFloat()), 1.dp.toPx() / factor) }
                 snap.horizontal?.let { y -> drawLine(Color(0xFFDC64CA), Offset(0f, y.toFloat()), Offset(root.width.toFloat(), y.toFloat()), 1.dp.toPx() / factor) }
