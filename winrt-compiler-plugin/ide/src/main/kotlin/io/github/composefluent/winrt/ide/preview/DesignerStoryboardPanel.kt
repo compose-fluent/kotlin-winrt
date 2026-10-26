@@ -56,8 +56,9 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
                 } }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Value")
-                TextField(value, enabled = frame?.complex != true, modifier = Modifier.width(160.dp))
+                Text(if (frame?.complex == true) "Object XAML" else "Value")
+                if (frame?.complex == true || value.text.trimStart().startsWith("<")) TextArea(value, modifier = Modifier.width(280.dp).heightIn(min = 90.dp, max = 160.dp))
+                else TextField(value, modifier = Modifier.width(160.dp))
                 if (frame == null) Box(Modifier.width(150.dp)) { WinRTChoice("Interpolation", (if (track?.kind == "Object") listOf("Discrete") else listOf("Linear", "Discrete")).map { it to it }, interpolation) { interpolation = it } }
                 else Text(frame.type.removeSuffix("${track?.kind}KeyFrame"))
                 if (frame != null) {
@@ -65,8 +66,8 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
                     TextField(frameTime, modifier = Modifier.width(100.dp))
                     OutlinedButton(onClick = { frameTime.setTextAndPlaceCursorAtEnd(position.toString()) }) { Text("Use playhead") }
                 }
-                OutlinedButton(enabled = track != null && frame?.complex != true && value.text.isNotBlank() && (frame == null || validFrameTime != null), onClick = { edit(false) }) { Text(if (frame == null) "Add at playhead" else "Save keyframe") }
-                OutlinedButton(enabled = frame != null && !frame.complex, onClick = { edit(true) }) { Text("Delete keyframe") }
+                OutlinedButton(enabled = track != null && value.text.isNotBlank() && (frame == null || validFrameTime != null), onClick = { edit(false) }) { Text(if (frame == null) "Add at playhead" else "Save keyframe") }
+                OutlinedButton(enabled = frame != null, onClick = { edit(true) }) { Text("Delete keyframe") }
             }
             if (frame != null && validFrameTime == null) Text("Enter a whole-millisecond time from 0 to 86400000; the source KeyTime is ${frame.time}.")
             Text(if (frame == null) "Adds a source keyframe at $position ms." else "Edits this frame at its specified time. Existing easing and spline settings are preserved.")

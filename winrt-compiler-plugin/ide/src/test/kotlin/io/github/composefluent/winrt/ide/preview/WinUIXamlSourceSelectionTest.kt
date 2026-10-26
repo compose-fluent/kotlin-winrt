@@ -14,6 +14,20 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
     private fun xml(body: String) = myFixture.configureByText("Selection.xaml",
         """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">$body</Grid>""") as XmlFile
 
+    fun testEveryVisualProvenanceResolvesRepeatedUnnamedPartsAcrossGeneratedWrappers() {
+        val file = xml("""<Grid.Resources><DataTemplate x:Key="Rows"><Border><TextBlock Text="Repeated"/><TextBlock Text="Other"/></Border></DataTemplate></Grid.Resources><ListView/>""")
+        val label = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java).first { it.localName == "TextBlock" }
+        val identity = WinUIXamlDesignIdentity.source(label)
+        val prepared = WinUIXamlDesignDocument.prepare(file.text, visualType = { _, type -> type in setOf("Grid", "Border", "TextBlock", "ListView") })
+        assertTrue(prepared.markup.contains(identity))
+        val first = node(listOf(0, 0, 0, 0), "TextBlock").copy(sourceId = identity)
+        val second = node(listOf(0, 1, 0, 0), "TextBlock").copy(sourceId = identity)
+        val nodes = listOf(node(emptyList(), "Grid"), first, second)
+        assertNull(WinUIXamlSourceSelection.node(label, nodes))
+        assertEquals(first, WinUIXamlSourceSelection.node(label, nodes, first.path))
+        assertEquals(second, WinUIXamlSourceSelection.node(label, nodes, second.path))
+        assertSame(label, WinUIXamlSourceSelection.tag(file, second, nodes, emptyList()))
+    }
     fun testDesignProvenanceMapsPresenterAndSelectorTemplatesWithoutReinvokingSelection() {
         val file = xml("""<Grid.Resources><DataTemplate x:Key="Selected"><Border Tag="User tag"><TextBlock x:Name="Label"/></Border></DataTemplate></Grid.Resources><ContentPresenter Content="item" ContentTemplateSelector="{Binding Selector}"/>""")
         val tags = PsiTreeUtil.findChildrenOfType(file, XmlTag::class.java)

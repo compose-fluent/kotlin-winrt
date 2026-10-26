@@ -1007,3 +1007,12 @@ business checkpoints have separate identities, and a failed restoration rolls ba
 the values already applied. Snapshots are bounded to 4,096 entries, 128 values per
 entry, 128 KiB per value and 8 MiB of value data per component. Checkpoints contain
 data: native stacks, sockets and coroutine continuations are recreated by the app.
+
+Object-valued properties expand in the property inspector. Nested objects expose
+their WinMD members through the same writable property controls; the type chooser
+filters assignable constructors. A XAML value editor handles collections and nested
+object graphs, with namespace-aware validation and one undoable replacement.
+Style and VisualState object setters keep their own source ownership. Object
+keyframes support value/time edits and deletion while retaining easing metadata.
+Every known visual in the design copy carries source provenance, so unnamed
+parts in repeated templates resolve to the clicked realization and shared source.

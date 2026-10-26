@@ -32,18 +32,7 @@ internal object WinUIXamlDesignerEditing {
         val tag = WinUIXamlSourceSelection.sourceTags(xml, context)
             .filter { WinUIXamlSourceSelection.node(it, nodes, selected.path, xml, context) == selected }.singleOrNull() ?: return null
         val catalog = context.catalog ?: return null
-        val members = WinUIXamlSymbols.members(tag).filterNot { it.isEvent }.toMutableList()
-        tag.parentTag?.let { parent ->
-            catalog.resolve(parent.namespace, parent.localName)?.let { owner ->
-                members += catalog.attachedMembers(owner).map { it.copy(name = "${parent.name}.${it.name}") }
-            }
-        }
-        val properties = members.distinctBy { it.name }.map { member ->
-            val choices = if (member.typeName in setOf("Boolean", "System.Boolean", "boolean")) listOf("True", "False")
-                else catalog.types[member.typeName]?.enumMembers?.map { it.name }.orEmpty()
-            DesignerProperty(member.name, member.typeName, sourceValue(tag, member.name), choices,
-                member.isWritable, tag.subTags.any { it.localName.substringAfter('.', "") == member.name.substringAfter('.') }, catalog.isDependencyProperty(member))
-        }.sortedWith(compareBy({ it.name !in layoutProperties }, { it.name }))
+        val properties = properties(tag, catalog)
         return DesignerSelection(SmartPointerManager.getInstance(project).createSmartPsiElementPointer(tag), tag.text,
             properties, selected.bounds, tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() },
             io.github.composefluent.winrt.ide.resources.WinRTResourceReferences.resourceKeys(tag.containingFile as XmlFile,
@@ -56,6 +45,21 @@ internal object WinUIXamlDesignerEditing {
                             it.getAttributeValue("TargetType")?.let { name -> "Implicit $name style" } else null
                     } ?: "Inline ${template.localName}"
                 })
+    }
+
+    internal fun properties(tag: XmlTag, catalog: WinUIXamlCatalog): List<DesignerProperty> {
+        val members = WinUIXamlSymbols.members(tag).filterNot { it.isEvent }.toMutableList()
+        tag.parentTag?.let { parent ->
+            catalog.resolve(parent.namespace, parent.localName)?.let { owner ->
+                members += catalog.attachedMembers(owner).map { it.copy(name = "${parent.name}.${it.name}") }
+            }
+        }
+        return members.distinctBy { it.name }.map { member ->
+            val choices = if (member.typeName in setOf("Boolean", "System.Boolean", "boolean")) listOf("True", "False")
+                else catalog.types[member.typeName]?.enumMembers?.map { it.name }.orEmpty()
+            DesignerProperty(member.name, member.typeName, sourceValue(tag, member.name), choices,
+                member.isWritable, tag.subTags.any { it.localName.substringAfter('.', "") == member.name.substringAfter('.') }, catalog.isDependencyProperty(member))
+        }.sortedWith(compareBy({ it.name !in layoutProperties }, { it.name }))
     }
 
     internal fun sourceValue(tag: XmlTag, name: String): String? =

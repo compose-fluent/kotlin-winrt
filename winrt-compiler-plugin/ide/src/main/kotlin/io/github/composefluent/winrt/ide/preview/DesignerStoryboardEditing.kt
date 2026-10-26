@@ -51,7 +51,7 @@ internal object DesignerStoryboardEditing {
                 val entries = track.subTags.toList().flatMap { if (sdk(it, "${track.localName}.KeyFrames")) it.subTags.toList() else listOf(it) }
                 val frames = entries.filter { it.namespace == WinUIXamlCatalog.PRESENTATION && it.localName.endsWith("${kind}KeyFrame") }.map {
                     DesignerAnimationFrame(pointers.createSmartPsiElementPointer(it), it.localName,
-                        it.getAttributeValue("KeyTime").orEmpty(), it.getAttributeValue("Value"),
+                        it.getAttributeValue("KeyTime").orEmpty(), it.getAttributeValue("Value") ?: it.subTags.singleOrNull { child -> child.localName.endsWith(".Value") }?.subTags?.joinToString("\n") { child -> child.text },
                         it.subTags.any { child -> child.localName.endsWith(".Value") })
                 }
                 DesignerAnimationTrack(pointers.createSmartPsiElementPointer(track), xml.text,
@@ -142,14 +142,17 @@ internal object DesignerStoryboardEditing {
         val keyTime = time(millis)
         require(remove || value.isNotBlank()) { "Enter a keyframe value." }
         require(interpolation in if (track.kind == "Object") listOf("Discrete") else listOf("Linear", "Discrete")) { "Choose an interpolation." }
-        if (!remove && track.kind == "Double" && !value.startsWith("{")) require(value.toDoubleOrNull()?.isFinite() == true) { "Enter a finite number." }
+        if (!remove && !frame.let { it?.complex == true } && track.kind == "Double" && !value.startsWith("{")) require(value.toDoubleOrNull()?.isFinite() == true) { "Enter a finite number." }
         WriteCommandAction.writeCommandAction(project).withName(if (remove) "Delete XAML keyframe" else "Edit XAML keyframe").run<RuntimeException> {
             val documents = PsiDocumentManager.getInstance(project)
             documents.commitAllDocuments()
             val tag = track.pointer.element ?: error("The animation no longer exists.")
             check(tag.isValid && tag.containingFile.isWritable && tag.containingFile.text == track.source) { "XAML changed. Select the animation again." }
             val existing = frame?.pointer?.element
-            check(frame == null || existing != null && existing.isValid && !frame.complex) { "This keyframe uses an object value. Edit it in XAML." }
+            check(frame == null || existing != null && existing.isValid) { "Select the keyframe again." }
+            val objectValue = !remove && (frame?.complex == true || value.trimStart().startsWith("<"))
+            val parsed = if (objectValue) DesignerObjectEditing.fragment(existing ?: tag, value) else null
+            require(parsed == null || track.kind == "Object" && parsed.size == 1) { "An object keyframe accepts one XAML value." }
             if (existing != null) {
                 val owner = existing.parentTag
                 check(owner == tag || owner?.parentTag == tag && sdk(owner, "${tag.localName}.KeyFrames")) {
@@ -159,18 +162,32 @@ internal object DesignerStoryboardEditing {
                     "The keyframe type no longer matches this animation. Select it again."
                 }
             }
+            val valueElements = existing?.subTags.orEmpty().filter { it.localName.endsWith(".Value") }
+            check(valueElements.size <= 1) { "Duplicate keyframe values." }
             if (remove) requireNotNull(existing) { "Select a keyframe." }.delete()
             else if (existing != null) {
                 // Preserve spline/easing and object metadata when editing a value.
                 existing.setAttribute("KeyTime", keyTime)
-                existing.setAttribute("Value", value)
+                if (parsed == null) existing.setAttribute("Value", value)
+                else {
+                    val values = valueElements
+                    val replacement = existing.createChildTag("${existing.localName}.Value", WinUIXamlCatalog.PRESENTATION, null, false)
+                    parsed.forEach { replacement.addSubTag(it, false) }
+                    values.singleOrNull()?.replace(replacement) ?: existing.addSubTag(replacement, false)
+                    existing.setAttribute("Value", null)
+                }
             } else {
                 val collections = tag.subTags.filter { sdk(it, "${tag.localName}.KeyFrames") }
                 check(collections.size <= 1) { "Duplicate keyframe collections. Edit them in XAML." }
                 val owner = collections.singleOrNull() ?: tag
                 val added = owner.createChildTag("$interpolation${track.kind}KeyFrame", WinUIXamlCatalog.PRESENTATION, null, false)
                 added.setAttribute("KeyTime", keyTime)
-                added.setAttribute("Value", value)
+                if (parsed == null) added.setAttribute("Value", value)
+                else {
+                    val values = added.createChildTag("${added.localName}.Value", WinUIXamlCatalog.PRESENTATION, null, false)
+                    parsed.forEach { values.addSubTag(it, false) }
+                    added.addSubTag(values, false)
+                }
                 owner.addSubTag(added, false)
             }
             documents.getDocument(tag.containingFile)?.let(documents::doPostponedOperationsAndUnblockDocument)

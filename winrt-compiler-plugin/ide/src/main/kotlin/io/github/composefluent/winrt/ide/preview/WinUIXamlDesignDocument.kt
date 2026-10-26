@@ -31,7 +31,7 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                 setFeature("http://xml.org/sax/features/external-general-entities", false)
                 setFeature("http://xml.org/sax/features/external-parameter-entities", false)
             }
-            fun parse(value: String) = factory.newDocumentBuilder().parse(InputSource(StringReader(value))).also { WinUIXamlDesignIdentity.mark(it, value) }
+            fun parse(value: String) = factory.newDocumentBuilder().parse(InputSource(StringReader(value))).also { WinUIXamlDesignIdentity.mark(it, value, visualType) }
             val document = parse(text)
             var root = document.documentElement
             val componentClass = root.getAttributeNS(WinUIXamlCatalog.XAML, "Class")

@@ -21,10 +21,12 @@ internal object WinUIXamlDesignIdentity {
             .map { it.parentTag!!.subTags.indexOf(it) }
         return id(hash(tag.containingFile.text), path)
     }
-    fun mark(document: Document, text: String) {
+    fun mark(document: Document, text: String, visualType: ((String, String) -> Boolean)? = null) {
         val fingerprint = hash(text)
         fun visit(tag: Element, path: List<Int>) {
             val children = (0 until tag.childNodes.length).mapNotNull { tag.childNodes.item(it) as? Element }
+            if (visualType?.invoke(tag.namespaceURI.orEmpty(), tag.localName) == true)
+                tag.setAttributeNS(NAMESPACE, "kwrt:Source", id(fingerprint, path))
             if (tag.namespaceURI == WinUIXamlCatalog.PRESENTATION && tag.localName in setOf("DataTemplate", "ControlTemplate", "ItemsPanelTemplate")) {
                 children.singleOrNull { '.' !in it.localName }?.setAttributeNS(NAMESPACE, "kwrt:Source", id(fingerprint, path + children.indexOfFirst { '.' !in it.localName }))
             }

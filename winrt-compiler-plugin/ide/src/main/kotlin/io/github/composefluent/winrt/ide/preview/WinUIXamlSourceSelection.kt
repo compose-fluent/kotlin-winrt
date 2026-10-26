@@ -151,6 +151,11 @@ internal object WinUIXamlSourceSelection {
 
     private fun resolveNode(tag: XmlTag, nodes: List<WinUIXamlVisualNode>, instance: List<Int>?,
         consumerFile: XmlFile?, context: Context): WinUIXamlVisualNode? {
+        val provenance = WinUIXamlDesignIdentity.source(tag)
+        val marked = nodes.filter { it.sourceId.isNotEmpty() && it.sourceId == provenance && matchesType(tag, it) }
+        if (marked.isNotEmpty()) return marked.filter { visual ->
+            instance == null || instance.size >= visual.path.size && instance.take(visual.path.size) == visual.path
+        }.singleOrNull()
         if (tag.inTemplate()) {
             // Resolve the exact consuming control, then scope template names to its
             // realized subtree. A shared template needs the clicked instance path;

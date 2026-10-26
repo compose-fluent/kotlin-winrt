@@ -61,6 +61,16 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
         val expected = if (content.collection)
             closure.mutableVectorElementType(reference, owner.namespace, specialTypes)?.qualifiedName ?: return false
         else if (member.isWritable) reference.qualifiedName else return false
+        return acceptsType(expected ?: return false, child)
+    }
+
+    fun propertyValueType(type: WinRTTypeDefinition, name: String): String? = members(type)
+        .firstOrNull { it.name == name && !it.isEvent }?.let { member ->
+            val reference = WinRTTypeRef.fromDisplayName(member.typeName)
+            closure.mutableVectorElementType(reference, type.namespace, specialTypes)?.qualifiedName ?: reference.qualifiedName
+        }
+
+    fun acceptsType(expected: String, child: WinRTTypeDefinition): Boolean {
         if (expected in setOf("Object", "System.Object")) return true
         val seen = hashSetOf<String>()
         var current: WinRTTypeDefinition? = child

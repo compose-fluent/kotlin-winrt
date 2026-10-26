@@ -94,6 +94,26 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
         assertEquals("0.4", DesignerStoryboardEditing.tracks(xml, "Fade", "").single().frames.single().value)
         assertTrue(DesignerStoryboardEditing.tracks(xml, "Fade", "Missing").isEmpty())
     }
+    fun testObjectKeyframeEditsNestedValueWithoutDiscardingMetadataAndSupportsUndo() {
+        val file = myFixture.configureByText("ObjectMotion.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid.Resources><Storyboard x:Key="Paint"><ObjectAnimationUsingKeyFrames Storyboard.TargetName="Target" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0:0:1"><DiscreteObjectKeyFrame.Value><SolidColorBrush Color="Red"/></DiscreteObjectKeyFrame.Value></DiscreteObjectKeyFrame></ObjectAnimationUsingKeyFrames></Storyboard></Grid.Resources><Border x:Name="Target"/></Grid>""") as XmlFile
+        val before = file.text
+        val track = DesignerStoryboardEditing.tracks(file, "Paint").single()
+        val frame = track.frames.single()
+        assertTrue(frame.complex)
+        assertTrue(frame.value!!.contains("SolidColorBrush"))
+        assertTrue(runCatching { DesignerStoryboardEditing.write(project, track, frame, 2000, "<SolidColorBrush>", "Discrete") }.isFailure)
+        assertEquals(before, file.text)
+        DesignerStoryboardEditing.write(project, track, frame, 2000, "<SolidColorBrush Color=\"Blue\"/>", "Discrete")
+        assertTrue(file.text.contains("KeyTime=\"0:0:2.000\""))
+        assertTrue(file.text.contains("Color=\"Blue\""))
+        assertTrue(file.text.contains("Storyboard.TargetProperty=\"Background\""))
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertEquals(before, file.text)
+        val refreshed = DesignerStoryboardEditing.tracks(file, "Paint").single()
+        DesignerStoryboardEditing.write(project, refreshed, refreshed.frames.single(), 1000, "", "Discrete", true)
+        assertTrue(DesignerStoryboardEditing.tracks(file, "Paint").single().frames.isEmpty())
+    }
     fun testDuplicateResourceIdentityIsNotGuessed() {
         assertTrue(DesignerStoryboardEditing.tracks(source(true), "Fade").isEmpty())
     }

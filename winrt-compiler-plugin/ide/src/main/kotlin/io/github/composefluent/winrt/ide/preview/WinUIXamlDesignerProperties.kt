@@ -25,7 +25,7 @@ internal data class DesignerEditRejection(val revision: Long, val edits: List<Pa
 }
 
 @Composable
-internal fun DesignerProperties(selection: DesignerSelection?, filter: String, active: Boolean = true, effectiveValues: Map<String, String> = emptyMap(), rejection: DesignerEditRejection? = null, apply: (Map<String, String?>, String) -> Unit) {
+internal fun DesignerProperties(selection: DesignerSelection?, filter: String, active: Boolean = true, effectiveValues: Map<String, String> = emptyMap(), rejection: DesignerEditRejection? = null, expandedByDefault: Boolean = false, apply: (Map<String, String?>, String) -> Unit) {
     val expansion = remember { mutableStateMapOf<String, Boolean>() }
     val currentSelection by rememberUpdatedState(selection)
     val currentActive by rememberUpdatedState(active)
@@ -36,7 +36,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
         selection.sharedTemplate?.let { Text("Shared template: $it. Changes affect all instances.") }
         selection.properties.filter { it.writable && it.name.contains(filter, true) }
             .groupBy(::designerPropertyCategory).toSortedMap().forEach { (category, properties) ->
-            val expanded = expansion[category] ?: (category == "Layout" || category == "Common")
+            val expanded = expansion[category] ?: (expandedByDefault || category == "Layout" || category == "Common")
             Link("${if (expanded || filter.isNotEmpty()) "▾" else "▸"} $category (${properties.size})", onClick = { expansion[category] = !expanded })
             if (expanded || filter.isNotEmpty()) properties.sortedWith(compareBy<DesignerProperty> {
                 if (category == "Layout") designerLayoutOrder.indexOf(it.name).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE else 0
@@ -49,6 +49,8 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
                             currentSelection?.style?.pointer == selection.style?.pointer },
                         advanced = { editing = if (editing == property.name) null else property.name })
                     if (editing == property.name) {
+                        if (property.elementValue) DesignerObjectPropertyPanel(selection, property, active)
+                        else {
                         val input = remember(selection.text, selection.state?.sourceText, selection.style?.sourceText, property.name) { TextFieldState(property.value.orEmpty()) }
                         val error = WinUIXamlDesignerEditing.validate(property, input.text.toString())
                         val latestApply by rememberUpdatedState(apply)
@@ -71,6 +73,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
                         var expressionMode by remember(property.name) { mutableStateOf<String?>(null) }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Link("Resource…", modifier = Modifier.heightIn(min = 28.dp), onClick = { expressionMode = "Resource" })
+                            Link("Object…", modifier = Modifier.heightIn(min = 28.dp), onClick = { expressionMode = if (expressionMode == "Object") null else "Object" })
                             Link("Binding…", modifier = Modifier.heightIn(min = 28.dp), onClick = { expressionMode = "Binding" })
                             if (property.type.substringAfterLast('.') in setOf("Brush", "Color")) Link("Color…", modifier = Modifier.heightIn(min = 28.dp), onClick = {
                                 javax.swing.SwingUtilities.invokeLater {
@@ -86,6 +89,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
                                 }
                             })
                         }
+                        if (expressionMode == "Object") DesignerObjectPropertyPanel(selection, property, active)
                         if (expressionMode == "Resource") {
                             val search = remember { TextFieldState() }
                             var themeResource by remember { mutableStateOf(false) }
@@ -124,7 +128,7 @@ internal fun DesignerProperties(selection: DesignerSelection?, filter: String, a
                                 else false
                             })
                         if (error != null) Text(error)
-
+                        }
                     }
                 }
             }
@@ -187,7 +191,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Layout(modifier = Modifier.fillMaxWidth(), content = {
             Tooltip(tooltip = { Text(property.name) }) { Text(when (property.name) { "HorizontalAlignment" -> "H. alignment"; "VerticalAlignment" -> "V. alignment"; else -> property.name }, Modifier, maxLines = 1) }
-            if (property.elementValue) Text("Property element", Modifier.fillMaxWidth(), maxLines = 1)
+            if (property.elementValue) Link("Object value…", onClick = advanced, modifier = Modifier.fillMaxWidth())
             else if (property.name in setOf("HorizontalAlignment", "VerticalAlignment") && property.choices.isNotEmpty()) Row(Modifier.fillMaxWidth()) {
                 val horizontal = property.name == "HorizontalAlignment"
                 val values = if (horizontal) listOf("Left", "Center", "Right", "Stretch") else listOf("Top", "Center", "Bottom", "Stretch")
@@ -227,7 +231,7 @@ private fun DesignerPropertyRow(property: DesignerProperty,
                 draft.reload(currentProperty.value)
                 if (currentGuard()) currentApply(mapOf(property.name to null), "Reset ${property.name}")
             }
-            PreviewAction("More ${property.name} options", "more", enabled = !property.elementValue, action = advanced)
+            PreviewAction("More ${property.name} options", "more", action = advanced)
         }) { children, constraints ->
             // Reflow during measurement, keeping the same editor composition so
             // resizing the inspector preserves its draft, selection and focus.
@@ -283,7 +287,7 @@ internal fun designerPropertyCategory(property: DesignerProperty): String = when
     property.name in setOf("Width", "Height", "MinWidth", "MaxWidth", "MinHeight", "MaxHeight", "Margin", "Padding",
         "HorizontalAlignment", "VerticalAlignment", "Orientation", "Spacing") || property.name.startsWith("Grid.") || property.name.startsWith("Canvas.") -> "Layout"
     property.name in setOf("Content", "Text", "Header", "PlaceholderText", "IsEnabled", "Visibility", "Name", "Tag") -> "Common"
-    property.name.contains("Brush") || property.name in setOf("Background", "Foreground", "Opacity", "BorderThickness", "CornerRadius") -> "Appearance"
+    property.name.contains("Brush") || property.name in setOf("Color", "Background", "Foreground", "Opacity", "BorderThickness", "CornerRadius") -> "Appearance"
     property.name.startsWith("Font") || property.name.startsWith("Text") || property.name.startsWith("Character") -> "Typography"
     property.name.contains("Template") || property.name in setOf("Style", "DataContext", "Resources") -> "Resources and templates"
     else -> "Other"

@@ -544,7 +544,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val (styleReady, styleSelection) = styleResult
     val editable = editables.lastOrNull()?.let { primary ->
         primary.copy(properties = primary.properties.filter { property -> editables.all { target ->
-            target.properties.any { it.name == property.name && it.writable && !it.elementValue }
+            target.properties.any { it.name == property.name && it.writable && (!it.elementValue || editables.size == 1) }
         } }.map { property -> property.copy(value = property.value.takeIf { value ->
             editables.all { target -> target.properties.first { it.name == property.name }.value == value }
         }) })
