@@ -1131,11 +1131,11 @@ private fun configureWinAppTasks(
             task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { restore -> restore.winmdLockFile })
             task.includeFrameworkRuntimeAssets.set(project.provider {
                 if (format != null) return@provider format.deployment == WindowsAppSdkDeployment.SelfContained
-                if (selectedVariant.get().kind == WinAppVariantKind.MingwX64 &&
-                    options.applicationModel.get() == WindowsApplicationModel.Desktop) {
+                if (options.applicationModel.get() == WindowsApplicationModel.Desktop) {
                     // The SDK BootstrapCommon/UndockedRegFreeWinRTCommon targets choose
                     // the package graph OR app-local framework DLLs. Mixing both loads
-                    // CoreMessaging twice when a native preview creates its window.
+                    // CoreMessaging twice, or shadows framework activation with local
+                    // DLL registrations in a JVM host's executable manifest.
                     val requested = options.windowsAppSdkDeployment.get()
                     val deployment = if (requested == WindowsAppSdkDeployment.Auto) resolvedWindowsAppSdkDeployment.get() else requested
                     return@provider deployment == WindowsAppSdkDeployment.SelfContained
@@ -1493,8 +1493,10 @@ private fun configureWinAppTasks(
             task.launcherOnly.set(true)
             task.applicationModel.set(options.applicationModel)
             task.xamlFramework.set(extension.xaml.framework)
-            task.packageType.set(options.packageType.map { it.name })
-            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
+            // The compiled JNI launcher reads deployment from staged metadata.
+            // Packaging modes must not invalidate this shared executable.
+            task.packageType.set(WindowsPackageType.Packaged.name)
+            task.windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
             task.launcherIconResource.set(options.launcherIcon.flatMap {
                 launcherIconTask.flatMap { icon -> icon.outputFile }
             })

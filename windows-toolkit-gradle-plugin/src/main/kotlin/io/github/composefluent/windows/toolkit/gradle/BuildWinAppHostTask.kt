@@ -234,7 +234,8 @@ abstract class BuildWinAppHostTask : DefaultTask() {
             outputRoot,
             executableBaseName.get(),
             windowsManifestProcessorArchitecture(runtimeIdentifier.get()),
-            redirectDlls = packageType.get() != WindowsPackageType.Packaged.name,
+            redirectDlls = packageType.get() != WindowsPackageType.Packaged.name &&
+                windowsAppSdkDeployment.get() == WindowsAppSdkDeployment.SelfContained,
         )
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             logger.warn("WinApp host native EXE build is Windows-only; generated source without compiling EXE.")

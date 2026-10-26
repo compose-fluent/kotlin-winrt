@@ -345,7 +345,8 @@ abstract class StageWinAppPackageTask : DefaultTask() {
             outputRoot,
             executableBaseName.get(),
             windowsManifestProcessorArchitecture(runtimeIdentifier.get()),
-            redirectDlls = jvmLauncherExecutable.isPresent && packageIdentity.get() == WinAppPackageIdentity.Unpackaged,
+            redirectDlls = jvmLauncherExecutable.isPresent && packageIdentity.get() == WinAppPackageIdentity.Unpackaged &&
+                windowsAppSdkDeployment.get() == WindowsAppSdkDeploymentMode.SelfContained,
         )
         val generatedPri = generateProjectPri(
             outputRoot = outputRoot,

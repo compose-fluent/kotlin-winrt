@@ -128,7 +128,8 @@ class WinRTIdeModelBuilderTest {
         assertTrue(
             builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.any { it.taskName.startsWith("runWinAppNativeMingwX64") })
         val unpackaged = builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches.single { it.taskName == "runWinAppHostDesktopMain" }
-        assertEquals(unpackaged.executable, unpackaged.previewExecutable)
+        assertNotEquals(unpackaged.executable, unpackaged.previewExecutable)
+        assertEquals("buildWinAppHostDesktopMain", unpackaged.developmentBuildTask)
         val unpackagedTasks = builder.buildAll(WinRTIdeModel::class.java.name, project).runTasks
         assertTrue(unpackagedTasks.contains("runWinAppHostDesktopMain"))
         assertTrue(unpackagedTasks.toString(), unpackagedTasks.any { it.startsWith("runDebugExecutable") })
@@ -146,9 +147,10 @@ class WinRTIdeModelBuilderTest {
         val nativeRuntimeStages = project.tasks.withType(StageWindowsPackageRuntimeAssetsTask::class.java)
             .filter { it.name.startsWith("stageWindowsPackageRuntimeAssetsMingwX64") }
         assertTrue(nativeRuntimeStages.isNotEmpty())
-        assertTrue(nativeRuntimeStages.all { it.includeFrameworkRuntimeAssets.get() })
+        val runtimeStages = nativeRuntimeStages + project.tasks.named("stageWindowsPackageRuntimeAssetsDesktopMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
+        assertTrue(runtimeStages.all { it.includeFrameworkRuntimeAssets.get() })
         application.frameworkDependent()
-        assertTrue(nativeRuntimeStages.none { it.includeFrameworkRuntimeAssets.get() })
+        assertTrue(runtimeStages.none { it.includeFrameworkRuntimeAssets.get() })
         application.mainClass.set("")
         assertTrue(builder.buildAll(WinRTIdeModel::class.java.name, project).hotReloadLaunches
             .filter { it.taskName.startsWith("runWinAppNative") }.all { it.previewExecutable.isEmpty() })
