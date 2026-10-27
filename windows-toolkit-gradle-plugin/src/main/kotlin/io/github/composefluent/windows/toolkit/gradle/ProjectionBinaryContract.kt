@@ -14,7 +14,8 @@ import java.security.MessageDigest
 /** A compiled contract is distinct from WinMD input and generator implementation fingerprints. */
 @CacheableTask
 abstract class GenerateWinRTJvmContractTask : DefaultTask() {
-    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    // Sync is NO-SOURCE for an empty reference assembly; its ABI inventory is empty.
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val referenceClasses: DirectoryProperty
     @get:Input abstract val kotlinCompilerVersion: Property<String>
     @get:Input abstract val owner: Property<String>
