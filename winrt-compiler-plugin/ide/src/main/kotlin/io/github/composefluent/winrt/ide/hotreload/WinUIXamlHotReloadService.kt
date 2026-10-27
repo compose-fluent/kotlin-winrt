@@ -259,12 +259,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             val modules = project.service<WinRTProjectService>().modules.value
             val generated = modules.flatMap { it.sourceSets }.flatMap { it.generatedKotlinRoots.orEmpty() }
             if (generated.any { file.startsWith(Path.of(it).toAbsolutePath().normalize()) }) return
-            val roots = modules.flatMap { listOf(it.projectDirectory) + it.sourceSets.flatMap { source -> source.kotlinRoots } }
-            val ignored = setOf("build", ".gradle", ".git", ".idea", ".kotlin", ".konan")
-            if (roots.any { root ->
-                val base = Path.of(root).toAbsolutePath().normalize()
-                file.startsWith(base) && base.relativize(file).none { it.toString() in ignored }
-            }) {
+            if (modules.any { module -> isWinRTUserKotlinSource(file, Path.of(module.projectDirectory),
+                    module.sourceSets.flatMap { it.kotlinRoots }.map(Path::of)) }) {
                 designRebuildDocuments.clear()
                 display.value = display.value.copy(projectCodeChanged = true)
                 savedLaunch = savedLaunch.copy(projectCodeChanged = true)
@@ -310,6 +306,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val launch = selectedLaunch ?: return
         val buildTask = launch.developmentBuildTask?.takeIf { it.isNotBlank() } ?: return
         val request = generation.get()
+        display.value = display.value.copy(message = "Code changes queued; waiting for edits to settle…",
+            rebuildingCode = true, restartOutcome = null)
         codeRebuild = scope.launch(Dispatchers.IO) {
             var lastAttempted = codeRevision.get()
             var pendingDeployment: WinRTPreparedDeployment? = null
