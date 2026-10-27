@@ -56,6 +56,8 @@ class WinRTIdeModelBuilderTest {
         assertFalse(model.runTasks.contains(preview.taskName))
         assertFalse(model.hotReloadLaunches.any { it.isDirectPreview })
         val sdk = project.tasks.named("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java).get()
+        assertTrue("SDK-only hosts need every emitted inspector dependency, including composition capture",
+            sdk.includeTypes.get().containsAll(io.github.composefluent.winrt.compiler.xaml.xamlCompilerSupportTypeNames(sdk.xamlFramework.get(), previewHost = true)))
         assertEquals(io.github.composefluent.winrt.runtime.XamlFramework.UWP, sdk.xamlFramework.get())
         assertTrue(sdk.includeNamespaces.get().contains("Windows.UI.Xaml"))
         assertTrue(sdk.sourceRoots.isEmpty)
@@ -196,6 +198,8 @@ class WinRTIdeModelBuilderTest {
         assertFalse("The SDK designer must not become a user application run configuration",
             model.hotReloadLaunches.any { it.taskName == model.staticPreview!!.taskName })
         val sdk = project.tasks.named("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java).get()
+        assertTrue("SDK-only hosts need every emitted inspector dependency, including composition capture",
+            sdk.includeTypes.get().containsAll(io.github.composefluent.winrt.compiler.xaml.xamlCompilerSupportTypeNames(sdk.xamlFramework.get(), previewHost = true)))
         assertTrue("The designer projection must never scan application source", sdk.sourceRoots.files.isEmpty())
         assertFalse(sdk.preparedMetadataManifest.isPresent)
         assertFalse(sdk.authoringCandidatesFile.isPresent)

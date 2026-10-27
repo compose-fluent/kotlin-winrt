@@ -13,13 +13,14 @@ class WinRTNativeCompositionIntegrationTest {
     @Test fun native_control_theme_tracks_application_resources_without_host_defaults() {
         // CsWinRT WinUI3CppApp/App.xaml explicitly merges XamlControlsResources.
         // Verify real SDK pixels across resource replacement in the same host process.
+        val sdkSession = System.getProperty("winrt.ide.sdkPreviewSession")?.let(Path::of)
         val configured = System.getProperty("winrt.ide.nativeRestartProject")
-        assumeTrue(configured != null)
-        val project = Path.of(requireNotNull(configured)).toAbsolutePath().normalize()
-        val executable = project.resolve("app/build/kotlin-winrt/application-layout/mingwX64_main_debugExecutable/package/native-project-preview.exe")
-        require(Files.isRegularFile(executable))
-        val directory = Files.createTempDirectory(project.resolve("app/build"), "theme-acceptance-")
-        val process = ProcessBuilder(executable.toString(), "--kotlin-winrt-xaml-preview").directory(executable.parent.toFile()).apply {
+        assumeTrue(configured != null || sdkSession != null)
+        val project = configured?.let { Path.of(it).toAbsolutePath().normalize() }
+        val executable = project?.resolve("app/build/kotlin-winrt/application-layout/mingwX64_main_debugExecutable/package/native-project-preview.exe")
+        if (sdkSession == null) require(Files.isRegularFile(requireNotNull(executable)))
+        val directory = sdkSession ?: Files.createTempDirectory(requireNotNull(project).resolve("app/build"), "theme-acceptance-")
+        val process = if (sdkSession != null) null else ProcessBuilder(requireNotNull(executable).toString(), "--kotlin-winrt-xaml-preview").directory(executable.parent.toFile()).apply {
             environment()["KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"] = directory.toString()
             environment()["KOTLIN_WINRT_XAML_PREVIEW"] = "1"
             environment()["KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"] = executable.parent.toString()
@@ -29,8 +30,8 @@ class WinRTNativeCompositionIntegrationTest {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
             var client: WinUIXamlHotReloadClient? = null
             while (client == null) {
-                check(process.isAlive && System.nanoTime() < deadline) { "The Native preview did not publish its endpoint." }
-                client = WinUIXamlHotReloadClient.discover(directory, executable.toString()).singleOrNull()
+                check(process?.isAlive != false && System.nanoTime() < deadline) { "The Native preview did not publish its endpoint." }
+                client = WinUIXamlHotReloadClient.discover(directory, executable?.toString()).singleOrNull()
                 if (client == null) Thread.sleep(50)
             }
             client.use { connection ->
@@ -62,8 +63,10 @@ class WinRTNativeCompositionIntegrationTest {
                 println("Native theme resources: absent / explicit / removed verified with $changed changed pixel channels.")
             }
         } finally {
-            process.destroy()
-            if (!process.waitFor(10, TimeUnit.SECONDS)) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
+            process?.let {
+                it.destroy()
+                if (!it.waitFor(10, TimeUnit.SECONDS)) it.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
+            }
         }
     }
 

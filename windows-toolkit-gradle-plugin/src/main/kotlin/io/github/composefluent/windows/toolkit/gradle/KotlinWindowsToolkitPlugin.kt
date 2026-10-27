@@ -2711,7 +2711,8 @@ private fun configureWinRTGeneration(
             if (framework == io.github.composefluent.winrt.runtime.XamlFramework.UWP) listOf("Windows.UI.Xaml", "Microsoft.UI.Xaml") else listOf("Microsoft.UI.Xaml")
         })
         task.includeTypes.set(extension.xaml.framework.map { framework ->
-            if (framework == io.github.composefluent.winrt.runtime.XamlFramework.UWP) listOf("Windows.UI.ViewManagement.ApplicationView") else listOf("Microsoft.UI.Dispatching.DispatcherQueue", "Microsoft.UI.Dispatching.DispatcherQueueHandler")
+            // The isolated inspector emits the same capture/hosting calls as project previews.
+            io.github.composefluent.winrt.compiler.xaml.xamlCompilerSupportTypeNames(framework, previewHost = true)
         })
         // Maps is outside the presentation namespace and the inspector's typed
         // member table. The native XamlReader can still instantiate map controls;
