@@ -8,6 +8,8 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.*
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
 
+internal data class DesignerStoryboardSource(val pointer: SmartPsiElementPointer<XmlTag>, val label: String)
+
 internal data class DesignerAnimationTrack(val pointer: SmartPsiElementPointer<XmlTag>, val source: String,
     val label: String, val kind: String, val frames: List<DesignerAnimationFrame>)
 internal data class DesignerAnimationFrame(val pointer: SmartPsiElementPointer<XmlTag>, val type: String,
@@ -18,13 +20,33 @@ internal data class DesignerAnimationFrame(val pointer: SmartPsiElementPointer<X
 internal object DesignerStoryboardEditing {
     private val kinds = setOf("Double", "Color", "Point", "Object")
     private fun sdk(tag: XmlTag, name: String) = tag.namespace == WinUIXamlCatalog.PRESENTATION && tag.localName == name
-    fun tracks(project: Project, path: String, key: String, owner: String? = null): List<DesignerAnimationTrack> {
+    fun sources(project: Project, path: String): List<DesignerStoryboardSource> {
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return emptyList()
         val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return emptyList()
-        return tracks(xml, key, owner)
+        return sources(xml)
     }
-    fun tracks(xml: XmlFile, key: String, owner: String? = null): List<DesignerAnimationTrack> {
-        val storyboard = PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter {
+    fun sources(xml: XmlFile): List<DesignerStoryboardSource> {
+        val pointers = SmartPointerManager.getInstance(xml.project)
+        val document = PsiDocumentManager.getInstance(xml.project).getDocument(xml)
+        return PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter { sdk(it, "Storyboard") }.map { storyboard ->
+            val scope = generateSequence(storyboard) { it.parentTag }.toList().asReversed()
+                .filter { !it.localName.contains('.') }.joinToString(" / ") { tag ->
+                    val identity = tag.getAttributeValue("Key", WinUIXamlCatalog.XAML)
+                        ?: tag.getAttributeValue("Name", WinUIXamlCatalog.XAML)
+                    tag.localName + identity?.let { " [$it]" }.orEmpty()
+                }
+            val line = document?.getLineNumber(storyboard.textOffset)?.plus(1)
+            DesignerStoryboardSource(pointers.createSmartPsiElementPointer(storyboard), scope + line?.let { " · line $it" }.orEmpty())
+        }
+    }
+    fun tracks(project: Project, path: String, key: String, owner: String? = null,
+        selected: SmartPsiElementPointer<XmlTag>? = null): List<DesignerAnimationTrack> {
+        val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return emptyList()
+        val xml = PsiManager.getInstance(project).findFile(file) as? XmlFile ?: return emptyList()
+        return tracks(xml, key, owner, selected)
+    }
+    fun tracks(xml: XmlFile, key: String, owner: String? = null, selected: SmartPsiElementPointer<XmlTag>? = null): List<DesignerAnimationTrack> {
+        val storyboard = (if (selected != null) selected.element?.takeIf { it.containingFile == xml && sdk(it, "Storyboard") } else PsiTreeUtil.findChildrenOfType(xml, XmlTag::class.java).filter {
             sdk(it, "Storyboard") && (it.getAttributeValue("Key", WinUIXamlCatalog.XAML)
                 ?: it.getAttributeValue("Name", WinUIXamlCatalog.XAML)) == key
         }.filter { storyboard ->
@@ -37,10 +59,10 @@ internal object DesignerStoryboardEditing {
                     (if (owner.isEmpty()) sourceOwner == xml.rootTag
                      else sourceOwner?.getAttributeValue("Name", WinUIXamlCatalog.XAML) == owner)
             }
-        }.singleOrNull() ?: return emptyList()
+        }.singleOrNull()) ?: return emptyList()
         // A preview-transformed owner name is not a source locator. Accept only
         // one source resource in the selected owner, never guess among repeated templates.
-        if (generateSequence(storyboard.parentTag) { it.parentTag }.any {
+        if (selected == null && generateSequence(storyboard.parentTag) { it.parentTag }.any {
             it.localName in setOf("ControlTemplate", "DataTemplate", "Style", "VisualState")
         }) return emptyList()
         val pointers = SmartPointerManager.getInstance(xml.project)

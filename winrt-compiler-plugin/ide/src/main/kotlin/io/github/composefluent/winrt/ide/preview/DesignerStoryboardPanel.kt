@@ -20,13 +20,19 @@ import io.github.composefluent.winrt.ide.ui.WinRTChoice
 @Composable
 internal fun DesignerStoryboardPanel(project: Project, source: String, key: String, revision: Long, position: Int, owner: String?, onSeek: (Int) -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
-    val tracks by produceState(emptyList<DesignerAnimationTrack>(), source, key, owner, revision, refresh) {
-        value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerAnimationTrack>, RuntimeException> {
-            DesignerStoryboardEditing.tracks(project, source, key, owner)
+    var selectedSource by remember(source, key, owner) { mutableStateOf<com.intellij.psi.SmartPsiElementPointer<com.intellij.psi.xml.XmlTag>?>(null) }
+    val sourceScopes by produceState(emptyList<DesignerStoryboardSource>(), source, revision, refresh) {
+        value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerStoryboardSource>, RuntimeException> {
+            DesignerStoryboardEditing.sources(project, source)
         } }
     }
-    var trackIndex by remember(source, key, owner) { mutableIntStateOf(0) }
-    var frameIndex by remember(source, key, owner, trackIndex) { mutableIntStateOf(-1) }
+    val tracks by produceState(emptyList<DesignerAnimationTrack>(), source, key, owner, selectedSource, revision, refresh) {
+        value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerAnimationTrack>, RuntimeException> {
+            DesignerStoryboardEditing.tracks(project, source, key, owner, selectedSource)
+        } }
+    }
+    var trackIndex by remember(source, key, owner, selectedSource) { mutableIntStateOf(0) }
+    var frameIndex by remember(source, key, owner, selectedSource, trackIndex) { mutableIntStateOf(-1) }
     val track = tracks.getOrNull(trackIndex)
     val frame = track?.frames?.getOrNull(frameIndex)
     val objectSelection by produceState<DesignerSelection?>(null, frame?.pointer, frame?.value, revision, refresh) {
@@ -42,13 +48,13 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
             }
         } else null
     }
-    val frameTime = remember(source, key, owner, trackIndex, frameIndex, frame?.time) {
+    val frameTime = remember(source, key, owner, selectedSource, trackIndex, frameIndex, frame?.time) {
         TextFieldState(frame?.time?.let(DesignerStoryboardEditing::milliseconds)?.toString().orEmpty())
     }
     val validFrameTime = frameTime.text.toString().toIntOrNull()?.takeIf { it in 0..86_400_000 }
-    val value = remember(source, key, owner, trackIndex, frameIndex, frame?.value) { TextFieldState(frame?.value.orEmpty()) }
+    val value = remember(source, key, owner, selectedSource, trackIndex, frameIndex, frame?.value) { TextFieldState(frame?.value.orEmpty()) }
     var interpolation by remember(track?.kind) { mutableStateOf(if (track?.kind == "Object") "Discrete" else "Linear") }
-    var feedback by remember(source, key, owner) { mutableStateOf<String?>(null) }
+    var feedback by remember(source, key, owner, selectedSource) { mutableStateOf<String?>(null) }
     fun edit(remove: Boolean) {
         val selected = track ?: return
         val text = value.text.toString()
@@ -60,12 +66,20 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (sourceScopes.isNotEmpty()) {
+            Text("Source storyboard scope")
+            val selectedIndex = sourceScopes.indexOfFirst { it.pointer == selectedSource }
+            WinRTChoice("Source storyboard scope", listOf("-1" to "Follow preview selection") + sourceScopes.mapIndexed { index, item ->
+                index.toString() to item.label
+            }, selectedIndex.toString()) { selectedSource = sourceScopes.getOrNull(it.toInt())?.pointer }
+            if (selectedSource != null) Text("Editing this source scope. Playback controls above still target the preview's selected instance.")
+        }
         if (tracks.isEmpty()) Text("No editable keyframe tracks in this source storyboard.")
         else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { WinRTChoice("Track", tracks.mapIndexed { index, item -> index.toString() to item.label }, trackIndex.toString()) { trackIndex = it.toInt() } }
                 Box(Modifier.weight(1f)) { WinRTChoice("Keyframe", listOf("-1" to "New at playhead") + track?.frames.orEmpty().mapIndexed { index, item -> index.toString() to "${item.time} · ${item.value ?: "Object value"}" }, frameIndex.toString()) { frameIndex = it.toInt()
-                    track?.frames?.getOrNull(frameIndex)?.time?.let(DesignerStoryboardEditing::milliseconds)?.let(onSeek)
+                    if (selectedSource == null) track?.frames?.getOrNull(frameIndex)?.time?.let(DesignerStoryboardEditing::milliseconds)?.let(onSeek)
                 } }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

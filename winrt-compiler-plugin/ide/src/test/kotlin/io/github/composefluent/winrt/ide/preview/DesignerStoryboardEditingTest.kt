@@ -82,6 +82,32 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
             assertEquals(before, xml.text)
         }
     }
+    fun testExplicitTemplateScopeEditsOnlyItsKeyframeAndSupportsUndo() {
+        val frame = """<Storyboard x:Key="Fade"><DoubleAnimationUsingKeyFrames Storyboard.TargetName="Target" Storyboard.TargetProperty="Opacity"><LinearDoubleKeyFrame KeyTime="0:0:1" Value="0.4"/></DoubleAnimationUsingKeyFrames></Storyboard>"""
+        val xml = myFixture.configureByText("Templates.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid.Resources><ControlTemplate x:Key="First"><Grid x:Name="Target"><Grid.Resources>$frame</Grid.Resources></Grid></ControlTemplate><ControlTemplate x:Key="Second"><Grid x:Name="Target"><Grid.Resources>$frame</Grid.Resources></Grid></ControlTemplate></Grid.Resources></Grid>""") as XmlFile
+        assertTrue(DesignerStoryboardEditing.tracks(xml, "Fade", "Target").isEmpty())
+        val scopes = DesignerStoryboardEditing.sources(xml)
+        assertEquals(2, scopes.size)
+        val selected = scopes.single { it.label.contains("ControlTemplate [Second]") }
+        val before = xml.text
+        val track = DesignerStoryboardEditing.tracks(xml, "", selected = selected.pointer).single()
+        DesignerStoryboardEditing.write(project, track, track.frames.single(), 2000, "0.7", "Linear")
+        assertEquals("0.7", DesignerStoryboardEditing.tracks(xml, "", selected = selected.pointer).single().frames.single().value)
+        assertEquals("0.4", DesignerStoryboardEditing.tracks(xml, "", selected = scopes.first().pointer).single().frames.single().value)
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertEquals(before, xml.text)
+    }
+    fun testExplicitVisualStateStoryboardNeedsNoResourceKey() {
+        val xml = myFixture.configureByText("StateAnimation.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="Common"><VisualState x:Name="Selected"><Storyboard><DoubleAnimationUsingKeyFrames Storyboard.TargetName="Target" Storyboard.TargetProperty="Opacity"><LinearDoubleKeyFrame KeyTime="0:0:1" Value="0.4"/></DoubleAnimationUsingKeyFrames></Storyboard></VisualState></VisualStateGroup></VisualStateManager.VisualStateGroups><Border x:Name="Target"/></Grid>""") as XmlFile
+        val source = DesignerStoryboardEditing.sources(xml).single()
+        assertTrue(source.label.contains("VisualState [Selected]"))
+        val track = DesignerStoryboardEditing.tracks(xml, "", selected = source.pointer).single()
+        DesignerStoryboardEditing.write(project, track, track.frames.single(), 1500, "0.8", "Linear")
+        assertEquals("0.8", DesignerStoryboardEditing.tracks(xml, "", selected = source.pointer).single().frames.single().value)
+        val foreign = myFixture.configureByText("Other.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"/>""") as XmlFile
+        assertTrue(DesignerStoryboardEditing.tracks(foreign, "", selected = source.pointer).isEmpty())
+    }
     fun testSameResourceKeyInNamedScopesEditsOnlySelectedStoryboard() {
         val text = source().text
         val resource = """<Storyboard x:Key="Fade"><DoubleAnimationUsingKeyFrames Storyboard.TargetName="Greeting" Storyboard.TargetProperty="Opacity"><LinearDoubleKeyFrame KeyTime="0:0:1" Value="0.2"/></DoubleAnimationUsingKeyFrames></Storyboard>"""
