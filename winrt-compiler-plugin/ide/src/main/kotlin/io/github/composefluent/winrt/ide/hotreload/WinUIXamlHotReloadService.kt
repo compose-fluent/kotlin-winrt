@@ -742,6 +742,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 if (preview) log.info("XAML preview connected: ${elapsed}ms, reusedBuild=$reused")
                 // A first project build also creates metadata manifests outside the VFS cache.
                 if (preview && !reused && isCurrent(request)) {
+                    // Gradle writes declarations under excluded build directories;
+                    // a catalog refresh alone does not update the x:Bind snapshot.
+                    project.service<io.github.composefluent.winrt.ide.analysis.WinUIXamlSnapshotService>().refresh()
                     project.service<WinUIXamlCatalogService>().refresh()
                     project.service<io.github.composefluent.winrt.ide.resources.WinRTResourceChanges>().revision.value += 1
                 }
