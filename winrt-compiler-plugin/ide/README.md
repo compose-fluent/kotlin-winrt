@@ -1153,16 +1153,16 @@ ownership checks also passed.
 
 ### Control theme resources in preview and Run
 
-The isolated WinUI designer loads `Microsoft.UI.Xaml.Controls.XamlControlsResources`
-as its standard control-theme baseline. The real application must declare the same
-resources in `App.xaml` (as in CsWinRT's `Samples/AuthoringDemo/WinUI3CppApp/App.xaml`)
-or merge them into `Application.resources` before constructing its first window.
-A code-only test application that omits this step can show older fallback control
-styles even though both processes use `Microsoft.UI.Xaml` from Windows App SDK.
-That visual difference alone does not mean the running application uses WinUI 2.
+The isolated designer follows the application's declared XAML resources. It does
+not inject `Microsoft.UI.Xaml.Controls.XamlControlsResources`: applications without
+that dictionary retain the SDK's fallback styles in both Preview and Run. Declare
+it in `Application.Resources` (directly or through a merged dictionary) to preview
+the corresponding WinUI control styles, as in CsWinRT's
+`Samples/AuthoringDemo/WinUI3CppApp/App.xaml`. Removing the declaration must also
+remove its styles from the next preview; the host does not keep a global theme.
 
 The isolated designer does not execute the application's `main`/Application startup.
-Consequently, its standard theme is not evidence that arbitrary resources installed
-by application startup code are reproduced. Check the application's resource setup
-when comparing static preview with Run; use Live Preview to inspect the actual
-running application's resources and styling.
+Resources installed only by arbitrary startup code cannot be inferred by static
+preview. Use declarative application resources for static preview, or Live Preview
+to inspect the actual running application's resources and styling. Fallback control
+styles alone do not mean an application using `Microsoft.UI.Xaml` uses WinUI 2.

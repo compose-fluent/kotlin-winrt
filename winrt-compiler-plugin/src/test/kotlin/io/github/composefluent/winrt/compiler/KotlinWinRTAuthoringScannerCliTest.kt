@@ -126,6 +126,15 @@ class KotlinWinRTAuthoringScannerCliTest {
     }
 
     @Test
+    fun isolated_project_preview_does_not_override_application_control_resources() {
+        // CsWinRT's WinUI3CppApp/App.xaml owns the opt-in, not the hosting runtime.
+        val root = Files.createTempDirectory("kotlin-winrt-preview-theme-")
+        io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.WinUI)
+        val host = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost.kt").readText()
+        assertFalse(host.contains("XamlControlsResources"))
+    }
+
+    @Test
     fun uwp_development_sources_use_core_window_and_the_system_dispatcher() {
         val root = Files.createTempDirectory("kotlin-winrt-uwp-inspector-")
         io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.UWP)

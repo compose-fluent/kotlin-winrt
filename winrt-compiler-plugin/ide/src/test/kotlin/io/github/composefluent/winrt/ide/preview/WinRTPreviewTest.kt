@@ -172,6 +172,24 @@ class WinRTPreviewTest {
         assertEquals("{Binding Title}", values["Item"])
         assertFalse(result.markup.contains("local:Model"))
     }
+    @Test fun control_theme_follows_application_declaration_and_removal() {
+        // CsWinRT's WinUI3CppApp/App.xaml opts into XamlControlsResources explicitly.
+        val page = """<Page $namespaces><Button Content="Theme probe"/></Page>"""
+        val plain = """<Application $namespaces/>"""
+        val themed = """<Application $namespaces><Application.Resources><ResourceDictionary>
+          <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Styles/Controls.xaml"/>
+          </ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources></Application>"""
+        for (application in listOf(null, plain, themed, plain)) {
+            val result = WinUIXamlDesignDocument.prepare(page, application, resource = { uri, _ ->
+                assertEquals("Styles/Controls.xaml", uri)
+                WinUIXamlDesignResource("""<ResourceDictionary $namespaces><ResourceDictionary.MergedDictionaries>
+                  <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/>
+                  </ResourceDictionary.MergedDictionaries></ResourceDictionary>""", "Styles/Controls.xaml")
+            })
+            assertEquals(if (application == themed) 1 else 0,
+                parse(result.markup).getElementsByTagNameNS("using:Microsoft.UI.Xaml.Controls", "XamlControlsResources").length)
+        }
+    }
     @Test fun application_resources_and_relative_dictionaries_keep_their_original_package_scope() {
         val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="../Styles/Page.xaml"/></Page.Resources><TextBlock/></Page>""",
             """<Application $namespaces xmlns:local="using:sample"><Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>

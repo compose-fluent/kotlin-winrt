@@ -143,7 +143,6 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel, framework:
             window = null; application = null
           }
           internal fun showWindow() {
-            ${if (framework == XamlFramework.WinUI) "requireNotNull(requireNotNull(requireNotNull(application).resources).mergedDictionaries).add(microsoft.ui.xaml.controls.XamlControlsResources())" else ""}
             window = ${xamlPreviewWindowSource(framework).prependIndent("            ").trimStart()}
           }
         }
@@ -631,7 +630,6 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               internal fun showWindow() {
                 // The native Application resource dictionary is ready after Start's
                 // initialization callback returns, when OnLaunched is dispatched.
-                ${if (framework == XamlFramework.WinUI) "requireNotNull(requireNotNull(requireNotNull(application).resources).mergedDictionaries).add(microsoft.ui.xaml.controls.XamlControlsResources())" else ""}
                 window = ${xamlPreviewWindowSource(framework).prependIndent("                ").trimStart()}
               }
             }

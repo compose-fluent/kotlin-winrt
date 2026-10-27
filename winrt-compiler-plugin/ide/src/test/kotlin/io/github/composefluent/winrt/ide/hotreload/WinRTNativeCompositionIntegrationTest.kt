@@ -10,6 +10,63 @@ import java.util.concurrent.TimeUnit
 
 /** Exercises Windows.Graphics.Capture and SoftwareBitmap through generated SDK projections. */
 class WinRTNativeCompositionIntegrationTest {
+    @Test fun native_control_theme_tracks_application_resources_without_host_defaults() {
+        // CsWinRT WinUI3CppApp/App.xaml explicitly merges XamlControlsResources.
+        // Verify real SDK pixels across resource replacement in the same host process.
+        val configured = System.getProperty("winrt.ide.nativeRestartProject")
+        assumeTrue(configured != null)
+        val project = Path.of(requireNotNull(configured)).toAbsolutePath().normalize()
+        val executable = project.resolve("app/build/kotlin-winrt/application-layout/mingwX64_main_debugExecutable/package/native-project-preview.exe")
+        require(Files.isRegularFile(executable))
+        val directory = Files.createTempDirectory(project.resolve("app/build"), "theme-acceptance-")
+        val process = ProcessBuilder(executable.toString(), "--kotlin-winrt-xaml-preview").directory(executable.parent.toFile()).apply {
+            environment()["KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"] = directory.toString()
+            environment()["KOTLIN_WINRT_XAML_PREVIEW"] = "1"
+            environment()["KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"] = executable.parent.toString()
+            redirectErrorStream(true); redirectOutput(directory.resolve("host.log").toFile())
+        }.start()
+        try {
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
+            var client: WinUIXamlHotReloadClient? = null
+            while (client == null) {
+                check(process.isAlive && System.nanoTime() < deadline) { "The Native preview did not publish its endpoint." }
+                client = WinUIXamlHotReloadClient.discover(directory, executable.toString()).singleOrNull()
+                if (client == null) Thread.sleep(50)
+            }
+            client.use { connection ->
+                while (connection.request().roots.none { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }) {
+                    check(System.nanoTime() < deadline); Thread.sleep(50)
+                }
+                val namespaces = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml""""
+                val page = """<Page $namespaces RequestedTheme="Light"><Grid Background="White">
+                  <Button Width="140" Height="40" Margin="20" HorizontalAlignment="Left" VerticalAlignment="Top" Content="Theme probe"/>
+                </Grid></Page>"""
+                val themed = """<Application $namespaces><Application.Resources><ResourceDictionary>
+                  <ResourceDictionary.MergedDictionaries><XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/>
+                  </ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources></Application>"""
+                fun frame(application: String?): WinUIXamlVisualImage {
+                    val markup = io.github.composefluent.winrt.ide.preview.WinUIXamlDesignDocument.prepare(page, application).markup
+                    val reply = connection.inspect(WinUIXamlInspectionRequest(WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "",
+                        width = 240, height = 120, readProperties = false, previewMarkup = markup))
+                    assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+                    return requireNotNull(reply.inspection?.image)
+                }
+                val baseline = frame(null)
+                val explicit = frame(themed)
+                val removed = frame(null)
+                assertEquals(baseline.width, explicit.width)
+                assertEquals(baseline.height, explicit.height)
+                val changed = baseline.pixels.indices.count { baseline.pixels[it] != explicit.pixels[it] }
+                assertTrue("An explicit control-theme dictionary must change the native control pixels (changed=$changed)", changed > 100)
+                assertArrayEquals("Removing the application dictionary must restore fallback styles without restarting the host", baseline.pixels, removed.pixels)
+                println("Native theme resources: absent / explicit / removed verified with $changed changed pixel channels.")
+            }
+        } finally {
+            process.destroy()
+            if (!process.waitFor(10, TimeUnit.SECONDS)) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
+        }
+    }
+
     @Test fun live_capture_preserves_layout_and_composes_real_swapchains() {
         val configured = System.getProperty("winrt.ide.liveCompositionSession")
         assumeTrue(configured != null)
