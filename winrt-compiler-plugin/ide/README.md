@@ -639,7 +639,7 @@ selected Windows App SDK and Windows SDK; its SDK compilation is cached across
 projects with matching SDKs and compiler/runtime inputs. Subsequent document
 edits reuse that process. The selected SDK must be installed/restorable, and the
 configured JDK and Windows native toolchain must be available for first preparation.
-**Retry preview** reruns preparation after a failure.
+**Retry preview** reruns preparation after a failure. Detached Native preparation compares source inputs after every build. If an edit overtakes compilation, it automatically builds the latest inputs before starting the host; a stable compilation failure retains its diagnostic. Cancellation also cancels the retry loop. ASC acceptance changed XAML during initial preparation and verified the automatic second build and current editable frame without Retry or Reconnect.
 
 UWP uses `runWinRTXamlSdkPreviewUwp`, an independent AppContainer package with a
 Kotlin/Native host and generated Application. Its identity and assets are owned by the
@@ -999,7 +999,9 @@ from a dependency control's theme dictionaries. Reopening the IDE with a validat
 Native deployment reuses the host build and replaces the labelled previous image
 with a current native capture.
 ASC acceptance also verifies editing a realized ContentPresenter template's FontSize,
-reading its effective Native value and undoing it, plus dragging a Canvas child,
+reading its effective Native value and undoing it. Selecting two realizations of the same template
+and applying a shared FontSize writes the template once, updates both instances, and restores
+both with one Undo. Acceptance also covers dragging a Canvas child,
 saving the new coordinates and restoring the exact original XAML with Ctrl+Z.
 
 
