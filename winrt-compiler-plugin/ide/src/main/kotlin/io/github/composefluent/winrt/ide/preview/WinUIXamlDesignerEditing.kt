@@ -141,8 +141,18 @@ internal object WinUIXamlDesignerEditing {
                 selection.style?.let { DesignerStyleEditing.validate(selection, changes) }
                 tag to changes
             }
-            check(validated.map { it.first }.distinct().size == validated.size) { "Selected instances share the same XAML source. Edit one instance at a time." }
-            validated.zip(edits).forEach { (validatedEdit, edit) ->
+            // Realizations of one template share a source command. Validate every
+            // selection above, then write identical commands once; different layout
+            // results must fail before any source is changed.
+            val commands = validated.zip(edits).groupBy { it.first.first }.values.map { group ->
+                val first = group.first()
+                check(group.all { it.first.second == first.first.second &&
+                    it.second.first.state == first.second.first.state && it.second.first.style == first.second.first.style }) {
+                    "Selected instances share XAML source but require different values. Set one common property value or edit one instance."
+                }
+                first
+            }
+            commands.forEach { (validatedEdit, edit) ->
                 val (tag, changes) = validatedEdit
                 if (edit.first.style != null) DesignerStyleEditing.write(edit.first, changes)
                 else if (edit.first.state != null) DesignerStateEditing.write(edit.first, changes)

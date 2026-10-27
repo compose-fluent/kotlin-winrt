@@ -218,7 +218,7 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         val consumerBefore = file.text
         assertTrue(runCatching { WinUIXamlDesignerEditing.applyBatch(project, listOf(target to mapOf("Width" to "120"), target to mapOf("Width" to "140")), "Edit shared instances") }.isFailure)
         assertEquals(before, com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(dictionary)!!.text)
-        WinUIXamlDesignerEditing.apply(project, target, mapOf("Width" to "160"), "Edit shared template")
+        WinUIXamlDesignerEditing.applyBatch(project, listOf(target to mapOf("Width" to "160"), target.copy(bounds = target.bounds.copy(width = 220.0)) to mapOf("Width" to "160")), "Edit shared template instances")
         assertEquals("160", part.getAttributeValue("Width"))
         assertEquals(consumerBefore, file.text)
         myFixture.performEditorAction(com.intellij.openapi.actionSystem.IdeActions.ACTION_UNDO)
@@ -237,7 +237,7 @@ class WinUIXamlSourceSelectionTest : BasePlatformTestCase() {
         val consumerBefore = file.text
         assertTrue(runCatching { WinUIXamlDesignerEditing.applyBatch(project, listOf(target to mapOf("Width" to "120"), target to mapOf("Width" to "140")), "Edit shared instances") }.isFailure)
         assertEquals(before, com.intellij.psi.PsiDocumentManager.getInstance(project).getDocument(dictionary)!!.text)
-        WinUIXamlDesignerEditing.apply(project, target, mapOf("Width" to "160"), "Edit shared template")
+        WinUIXamlDesignerEditing.applyBatch(project, listOf(target to mapOf("Width" to "160"), target.copy(bounds = target.bounds.copy(width = 220.0)) to mapOf("Width" to "160")), "Edit shared template instances")
         assertEquals("160", part.getAttributeValue("Width"))
         assertEquals(consumerBefore, file.text)
         myFixture.performEditorAction(com.intellij.openapi.actionSystem.IdeActions.ACTION_UNDO)
