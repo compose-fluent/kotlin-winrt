@@ -26,27 +26,33 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
             DesignerStoryboardEditing.sources(project, source)
         } }
     }
-    val tracks by produceState(emptyList<DesignerAnimationTrack>(), source, key, owner, selectedSource, revision, refresh) {
-        value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerAnimationTrack>, RuntimeException> {
-            DesignerStoryboardEditing.tracks(project, source, key, owner, selectedSource)
-        } }
+    // Scope switches must discard the previous edit handles immediately;
+    // produceState alone keeps its old value until the new producer runs.
+    val tracks by key(source, key, owner, selectedSource, revision, refresh) {
+        produceState(emptyList<DesignerAnimationTrack>()) {
+            value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerAnimationTrack>, RuntimeException> {
+                DesignerStoryboardEditing.tracks(project, source, key, owner, selectedSource)
+            } }
+        }
     }
     var trackIndex by remember(source, key, owner, selectedSource) { mutableIntStateOf(0) }
     var frameIndex by remember(source, key, owner, selectedSource, trackIndex) { mutableIntStateOf(-1) }
     val track = tracks.getOrNull(trackIndex)
     val frame = track?.frames?.getOrNull(frameIndex)
-    val objectSelection by produceState<DesignerSelection?>(null, frame?.pointer, frame?.value, revision, refresh) {
-        value = if (frame?.complex == true) withContext(Dispatchers.IO) {
-            ReadAction.compute<DesignerSelection?, RuntimeException> {
-                val tag = frame.pointer.element ?: return@compute null
-                val catalog = io.github.composefluent.winrt.ide.xaml.WinUIXamlSymbols.catalog(tag.containingFile) ?: return@compute null
-                val properties = WinUIXamlDesignerEditing.properties(tag, catalog)
-                if (properties.none { it.name == "Value" && it.writable }) return@compute null
-                DesignerSelection(frame.pointer, tag.text, properties,
-                    io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0),
-                    tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() })
-            }
-        } else null
+    val objectSelection by key(frame?.pointer, frame?.value, revision, refresh) {
+        produceState<DesignerSelection?>(null) {
+          value = if (frame?.complex == true) withContext(Dispatchers.IO) {
+              ReadAction.compute<DesignerSelection?, RuntimeException> {
+                  val tag = frame.pointer.element ?: return@compute null
+                  val catalog = io.github.composefluent.winrt.ide.xaml.WinUIXamlSymbols.catalog(tag.containingFile) ?: return@compute null
+                  val properties = WinUIXamlDesignerEditing.properties(tag, catalog)
+                  if (properties.none { it.name == "Value" && it.writable }) return@compute null
+                  DesignerSelection(frame.pointer, tag.text, properties,
+                      io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0),
+                      tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() })
+              }
+          } else null
+      }
     }
     val frameTime = remember(source, key, owner, selectedSource, trackIndex, frameIndex, frame?.time) {
         TextFieldState(frame?.time?.let(DesignerStoryboardEditing::milliseconds)?.toString().orEmpty())
