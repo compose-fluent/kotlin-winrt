@@ -385,6 +385,12 @@ Generated WinUI/UWP adapters use projection casts and SDK accessors to preserve
 unbound TextBox text and selection, toggle state, selector index when the item count
 still matches, range values clamped to the new bounds, ScrollViewer offsets/zoom,
 and focus. New bindings retain ownership of their values. Missing controls and
-changed control kinds are skipped. Unnamed controls, password contents, application
-fields, arbitrary view models, navigation history, and business state are not
-serialized. This is ephemeral development recovery, not application persistence.
+changed control kinds are skipped. Dynamic controls with unique AutomationProperties.AutomationId values are also
+recoverable. Frame navigation uses GetNavigationState/SetNavigationState before
+restoring descendant controls; attached component identities are recomputed after
+each navigation change. Components and DataContexts implementing
+WinUIXamlRestartParticipant can save versioned application state and task checkpoints.
+Missing or ambiguous identities, incompatible schemas and password contents are
+excluded. Arbitrary object graphs, native stacks and coroutine continuations are
+not serialized: applications recreate work from their saved data. This is ephemeral
+development recovery, not application persistence.

@@ -605,7 +605,7 @@ and undo restores the whole edit. Base attributes remain intact. Duplicate/compl
 setters, ambiguous names and stale source snapshots are rejected. **Create visual states…**
 adds a named state to a source group, or creates a group with its first state on the
 selected source element. Names are checked in their XAML namescope and edits support
-undo. Group/state rename uses the platform usage preview and updates resolved XAML/Kotlin references, including transition From/To references in that group. Dynamically constructed state names in code still need manual review. State/group deletion checks resolved external references, removes transitions referring to a deleted state, and supports a single undo. Empty groups remain editable. The storyboard timeline supports seeking and source-backed keyframe editing: create tracks for named elements, add/delete keyframes, edit their values and millisecond positions, and undo each source edit. Same-key storyboards in root and explicitly named resource owners are edited in their selected scope. Existing spline/easing settings are preserved; complex object-valued frames and ambiguous template-scoped storyboards still require source editing. The session menu (**…**) owns
+undo. Group/state rename uses the platform usage preview and updates resolved XAML/Kotlin references, including transition From/To references in that group. Dynamically constructed state names in code still need manual review. State/group deletion checks resolved external references, removes transitions referring to a deleted state, and supports a single undo. Empty groups remain editable. The storyboard timeline supports seeking and source-backed keyframe editing: create tracks for named elements, add/delete keyframes, edit their values and millisecond positions, and undo each source edit. Same-key storyboards in root and explicitly named resource owners are edited in their selected scope. Ordinary value/time edits preserve existing spline/easing settings. Numeric keyframes have a draggable timing-curve editor, curve presets and keyboard-editable control-point coordinates; applying a curve writes an SDK Spline keyframe as one undoable source operation. Object-valued frames expose their nested object properties as well as the XAML value editor. Template-scoped storyboards with ambiguous realized targets still require source editing. The session menu (**…**) owns
 launch selection, project-code mode, refresh, rebuild, stop and reconnect. During preparation,
 Cancel stops the native IDE Gradle execution associated with that preview session,
 using a background progress context so Gradle JVM resolution does not block EDT.
@@ -892,8 +892,7 @@ loads the new compiled binding value, and restores three distinct text inputs in
 the window and both dependency instances. No manual Run or Reconnect was needed.
 State without a unique compiled namescope path is still skipped instead of being
 transferred by creation order. The persistent recovery result waits for the new
-parent connector before reporting keyed components as restored. Debugger attachment
-pauses automatic replacement. External edits to loaded XAML files use the same
+parent connector before reporting keyed components as restored. A paused Native debugger defers the replacement until Resume; a running Native debugger detaches at replacement and reattaches with its breakpoints after state restoration. External edits to loaded XAML files use the same
 live patch path as editor changes. Dictionaries, deleted XAML files and components
 without a loaded root request a build so their compiled resources are refreshed;
 manual mode retains the pending-change indication without starting a build.
@@ -902,7 +901,7 @@ the old artboard available during compilation and rendering source again after i
 isolated host restarts. Unpackaged Native/JVM host runs use separate run and preview deployment
 copies, so the linker and staging tasks never write into the running payload.
 Direct JavaExec launches do not own an isolated deployment; automatic replacement requires the toolkit host Run task.
-There is no in-process page-recreation path. See
+Direct unpackaged Native replacements prepare a fresh deployment directory and resolve task arguments/environment while the old application remains interactive. Only after preparation succeeds does the IDE capture the latest state and start the prepared payload; no second Gradle launch or deployment copy is needed during the switch. Failed preparation leaves the existing process and its files intact. Other packaging modes continue to use their platform activation path. There is no in-process page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 
 The optional graph-host test uses `-Pwinrt.ide.hotReloadGraphSession=<fresh session>`,
