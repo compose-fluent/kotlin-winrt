@@ -108,6 +108,19 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
         val foreign = myFixture.configureByText("Other.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"/>""") as XmlFile
         assertTrue(DesignerStoryboardEditing.tracks(foreign, "", selected = source.pointer).isEmpty())
     }
+    fun testPlaybackSourceUsesTemplateProvenanceInsteadOfRepeatedNames() {
+        val resource = """<Grid x:Name="Repeated"><Grid.Resources><Storyboard x:Key="Fade"><DoubleAnimationUsingKeyFrames Storyboard.TargetName="Repeated" Storyboard.TargetProperty="Opacity"><LinearDoubleKeyFrame KeyTime="0:0:1" Value="0.2"/></DoubleAnimationUsingKeyFrames></Storyboard></Grid.Resources></Grid>"""
+        val xml = myFixture.configureByText("TemplatePlayback.xaml", """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Grid.Resources><DataTemplate x:Key="First">$resource</DataTemplate><DataTemplate x:Key="Second">${resource.replace("0.2", "0.6")}</DataTemplate></Grid.Resources></Grid>""") as XmlFile
+        val scopes = DesignerStoryboardEditing.sources(xml)
+        val owner = scopes[1].pointer.element!!.parentTag!!.parentTag!!
+        val identity = WinUIXamlDesignIdentity.source(owner)
+        val selected = DesignerStoryboardEditing.playbackSource(scopes, "Fade", identity)
+        assertEquals(scopes[1].pointer, selected)
+        assertEquals("0.6", DesignerStoryboardEditing.tracks(xml, "Fade", selected = selected).single().frames.single().value)
+        assertNull(DesignerStoryboardEditing.playbackSource(scopes, "Fade", "stale-source"))
+        assertNull(DesignerStoryboardEditing.playbackSource(scopes, "Missing", identity))
+    }
+
     fun testSameResourceKeyInNamedScopesEditsOnlySelectedStoryboard() {
         val text = source().text
         val resource = """<Storyboard x:Key="Fade"><DoubleAnimationUsingKeyFrames Storyboard.TargetName="Greeting" Storyboard.TargetProperty="Opacity"><LinearDoubleKeyFrame KeyTime="0:0:1" Value="0.2"/></DoubleAnimationUsingKeyFrames></Storyboard>"""

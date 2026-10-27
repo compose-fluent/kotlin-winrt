@@ -344,7 +344,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
                 if (fixture.inspections.last().readTree) {
                     entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS))
                     fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "tree", inspection =
-                        WinUIXamlVisualSnapshot(listOf(root, child, sibling), emptyList())))
+                        WinUIXamlVisualSnapshot(listOf(root, child, sibling), emptyList(), treeToken = 42)))
                 } else fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "picture", inspection =
                     WinUIXamlVisualSnapshot(listOf(root), emptyList(), WinUIXamlVisualImage(1, 1, ByteArray(4)))))
             }
@@ -375,6 +375,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertSame(image, service.state.value.inspection!!.image)
         assertEquals(properties, service.state.value.inspection!!.properties)
         assertEquals("The counter describes the retained complete tree", "3 visual nodes", service.state.value.message)
+        assertEquals("Instance commands retain the generation of the complete tree", 42L, service.state.value.inspection!!.treeToken)
         val replacement = child.copy(name = "Replacement", sourceId = "new-template")
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
         fixture.beforeInspection.set {

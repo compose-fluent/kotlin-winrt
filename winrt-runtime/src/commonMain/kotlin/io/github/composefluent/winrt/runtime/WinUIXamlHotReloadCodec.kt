@@ -106,7 +106,12 @@ internal object WinUIXamlHotReloadCodec {
         require(request.renderScale.isFinite() && request.renderScale in 0.125..32.0)
         string(request.previewMarkup); writeInt(request.width); writeInt(request.height); string(request.theme); writeDouble(request.renderScale)
         writeBoolean(request.animation != null)
-        request.animation?.let { it.validate(); string(it.owner); string(it.key); writeInt(it.positionMillis); string(it.action) }
+        request.animation?.let {
+            it.validate(); string(it.owner); string(it.key); writeInt(it.positionMillis); string(it.action)
+            writeBoolean(it.instancePath != null)
+            it.instancePath?.let { path -> writeInt(path.size); path.forEach { writeInt(it) } }
+            string(it.sourceId); writeLong(it.instanceTreeToken)
+        }
         writeBoolean(request.readProperties); writeBoolean(request.readTree)
         require(request.treeToken >= 0 && request.treeOffset in 0..WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES)
         writeLong(request.treeToken); writeInt(request.treeOffset)
@@ -128,7 +133,9 @@ internal object WinUIXamlHotReloadCodec {
             val path = List(count(WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH)) { count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) }; val capture = readBoolean()
             val markup = string(); val width = count(WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION); val height = count(WinUIXamlHotReloadProtocol.MAX_ARTBOARD_DIMENSION); val theme = string(); val scale = readDouble()
             require(scale.isFinite() && scale in 0.125..32.0)
-            val animation = if (readBoolean()) WinUIXamlPreviewAnimation(string(), string(), count(86_400_000), string()).also { it.validate() } else null
+            val animation = if (readBoolean()) WinUIXamlPreviewAnimation(string(), string(), count(86_400_000), string(),
+                if (readBoolean()) List(count(WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH)) { count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) } else null,
+                string(), readLong()).also { it.validate() } else null
             return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme, scale, animation, readBoolean(), readBoolean(), readLong().also { require(it >= 0) }, count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES), if (readBoolean()) bounds() else null))
         }
         require(operation == 0 || operation == 1) { "Invalid development command." }

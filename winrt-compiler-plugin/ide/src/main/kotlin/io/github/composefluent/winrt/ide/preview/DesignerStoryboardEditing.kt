@@ -39,6 +39,17 @@ internal object DesignerStoryboardEditing {
             DesignerStoryboardSource(pointers.createSmartPsiElementPointer(storyboard), scope + line?.let { " · line $it" }.orEmpty())
         }
     }
+    fun playbackSource(sources: List<DesignerStoryboardSource>, key: String, sourceId: String): SmartPsiElementPointer<XmlTag>? {
+        if (sourceId.isEmpty()) return null
+        return sources.singleOrNull { item ->
+            val tag = item.pointer.element ?: return@singleOrNull false
+            val parent = tag.parentTag
+            val resources = if (parent != null && sdk(parent, "ResourceDictionary")) parent.parentTag else parent
+            val owner = resources?.parentTag ?: return@singleOrNull false
+            resources.localName.endsWith(".Resources") && WinUIXamlDesignIdentity.source(owner) == sourceId &&
+                (tag.getAttributeValue("Key", WinUIXamlCatalog.XAML) ?: tag.getAttributeValue("Name", WinUIXamlCatalog.XAML)) == key
+        }?.pointer
+    }
     fun tracks(project: Project, path: String, key: String, owner: String? = null,
         selected: SmartPsiElementPointer<XmlTag>? = null): List<DesignerAnimationTrack> {
         val file = LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/')) ?: return emptyList()

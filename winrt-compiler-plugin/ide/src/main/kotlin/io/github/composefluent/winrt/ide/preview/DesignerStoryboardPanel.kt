@@ -18,7 +18,7 @@ import org.jetbrains.jewel.ui.component.*
 import io.github.composefluent.winrt.ide.ui.WinRTChoice
 
 @Composable
-internal fun DesignerStoryboardPanel(project: Project, source: String, key: String, revision: Long, position: Int, owner: String?, onSeek: (Int) -> Unit) {
+internal fun DesignerStoryboardPanel(project: Project, source: String, key: String, revision: Long, position: Int, owner: String?, playbackSourceId: String = "", onSeek: (Int) -> Unit) {
     var refresh by remember { mutableIntStateOf(0) }
     var selectedSource by remember(source, key, owner) { mutableStateOf<com.intellij.psi.SmartPsiElementPointer<com.intellij.psi.xml.XmlTag>?>(null) }
     val sourceScopes by produceState(emptyList<DesignerStoryboardSource>(), source, revision, refresh) {
@@ -26,12 +26,18 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
             DesignerStoryboardEditing.sources(project, source)
         } }
     }
+    val playbackSource = remember(sourceScopes, key, playbackSourceId) {
+        ReadAction.compute<com.intellij.psi.SmartPsiElementPointer<com.intellij.psi.xml.XmlTag>?, RuntimeException> {
+            DesignerStoryboardEditing.playbackSource(sourceScopes, key, playbackSourceId)
+        }
+    }
     // Scope switches must discard the previous edit handles immediately;
     // produceState alone keeps its old value until the new producer runs.
-    val tracks by key(source, key, owner, selectedSource, revision, refresh) {
+    val tracks by key(source, key, owner, selectedSource, playbackSource, revision, refresh) {
         produceState(emptyList<DesignerAnimationTrack>()) {
             value = withContext(Dispatchers.IO) { ReadAction.compute<List<DesignerAnimationTrack>, RuntimeException> {
-                DesignerStoryboardEditing.tracks(project, source, key, owner, selectedSource)
+                if (selectedSource == null && playbackSourceId.isNotEmpty() && playbackSource == null) emptyList()
+                else DesignerStoryboardEditing.tracks(project, source, key, owner, selectedSource ?: playbackSource)
             } }
         }
     }

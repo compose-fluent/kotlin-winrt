@@ -21,7 +21,7 @@ class WinUIXamlVisualInspector(
     private val captureRegion: ((Any, Double, WinUIXamlVisualBounds?, (Result<WinUIXamlVisualImage>) -> Unit) -> Unit)? = null,
     private val animate: (Any, WinUIXamlPreviewAnimation) -> Unit = { _, _ -> error("Rebuild the preview host to inspect storyboards.") },
 ) {
-    private data class Tree(val root: Any, val token: Long, val snapshot: WinUIXamlVisualSnapshot)
+    private data class Tree(val root: Any, val token: Long, val snapshot: WinUIXamlVisualSnapshot, val instances: Map<List<Int>, Any>)
     private var cachedTree: Tree? = null
     private var nextTreeToken = 0L
     private fun page(tree: Tree, offset: Int): WinUIXamlVisualSnapshot {
@@ -49,7 +49,28 @@ class WinUIXamlVisualInspector(
                 preview(owner, request)
             }
             val root = requireNotNull(visualRoot(owner)) { "This component has no visual content. Select a Window or page." }
-            request.animation?.let { animate(root, it) }
+            request.animation?.let { command ->
+                val path = command.instancePath
+                val target = if (path == null) root else {
+                    val tree = requireNotNull(cachedTree?.takeIf { it.token == command.instanceTreeToken && isSameObject(it.root, root) }) {
+                        "The storyboard instance expired. Select it again in the refreshed tree."
+                    }
+                    require(tree.snapshot.nodes.singleOrNull { it.path == path }?.sourceId == command.sourceId) { "The storyboard source changed." }
+                    var value = root
+                    val childPath = if (path.firstOrNull() == WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) {
+                        value = requireNotNull(overlays(root).getOrNull(path.getOrNull(1) ?: -1)) { "The storyboard popup closed." }
+                        path.drop(2)
+                    } else path
+                    for (index in childPath) value = requireNotNull(children(value).getOrNull(index)) { "The storyboard instance disappeared." }
+                    // CsWinRT WindowsRuntimeObject retains native object identity. Check
+                    // both provenance and identity: recycled template slots can share both a path and source.
+                    require(tree.instances[path]?.let { isSameObject(it, value) } == true && describe(value, root).sourceId == command.sourceId) {
+                        "The storyboard instance was replaced. Refresh and select it again."
+                    }
+                    value
+                }
+                animate(target, command)
+            }
             require(request.treeToken >= 0 && request.treeOffset in 0..WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES)
             request.captureBounds?.let { validateWinUIXamlCaptureBounds(it) }
             root
@@ -64,6 +85,7 @@ class WinUIXamlVisualInspector(
         }
         fun snapshot(root: Any, image: WinUIXamlVisualImage? = null): Result<WinUIXamlVisualSnapshot> = runCatching {
             val nodes = mutableListOf<WinUIXamlVisualNode>()
+            val instances = mutableMapOf<List<Int>, Any>()
             var selected: Any? = null
             val ancestors = mutableListOf<Pair<Any, List<Int>>>()
             fun visit(value: Any, path: List<Int>, inherited: List<Pair<WinUIXamlTemplateReference, List<Int>>>, layer: Int = 0) {
@@ -72,6 +94,7 @@ class WinUIXamlVisualInspector(
                     .map { it.second to it.first.property }.distinct().singleOrNull()
                 nodes += describe(value, root).copy(path = path, templateOwner = realization?.first,
                     templateProperty = realization?.second.orEmpty(), layer = layer)
+                instances[path] = value
                 ancestors += value to path
                 val reference = template(value)
                 val ownerPath = reference?.let { item -> ancestors.lastOrNull { sameObject(it.first, item.owner) }?.second }
@@ -114,7 +137,7 @@ class WinUIXamlVisualInspector(
             val result = WinUIXamlVisualSnapshot(nodes, if (request.readProperties) properties(requireNotNull(selected)).take(64)
                 .map { it.copy(value = it.value.take(4096)) } else emptyList(), image, clock())
             if (!request.readTree) result else {
-                val cached = Tree(root, ++nextTreeToken, result)
+                val cached = Tree(root, ++nextTreeToken, result, instances)
                 cachedTree = cached
                 page(cached, 0)
             }

@@ -1188,6 +1188,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             val retainTree = !next.readTree && retained != null && display.value.inspectionTreeRead &&
                                 (!next.readProperties || sameSelection)
                             display.value = display.value.copy(inspection = reply.inspection?.let { it.copy(
+                                treeToken = if (retainTree) retained!!.treeToken else it.treeToken,
                                 nodes = if (retainTree) retained!!.nodes.map { node ->
                                     if (node.path == next.selectedPath && observed != null) node.copy(bounds = observed.bounds) else node
                                 } else it.nodes, image = it.image ?: retained?.image) } ?: display.value.inspection,

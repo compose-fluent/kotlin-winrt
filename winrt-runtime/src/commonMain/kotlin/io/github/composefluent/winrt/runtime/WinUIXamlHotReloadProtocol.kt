@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 16
+    const val VERSION = 17
     const val MAX_IMAGE_DIMENSION = 4096
     const val MAX_ARTBOARD_DIMENSION = 16384
     const val MAX_VISUAL_NODES = 65536
@@ -72,9 +72,15 @@ data class WinUIXamlInspectionRequest(val className: String, val resourcePath: S
     val selectedPath: List<Int> = emptyList(), val capture: Boolean = true,
     val previewMarkup: String = "", val width: Int = 800, val height: Int = 600, val theme: String = "Default", val renderScale: Double = 1.0, val animation: WinUIXamlPreviewAnimation? = null, val readProperties: Boolean = true, val readTree: Boolean = true,
     val treeToken: Long = 0, val treeOffset: Int = 0, val captureBounds: WinUIXamlVisualBounds? = null)
-/** Preview-only SDK clock command. Resource owner is an exact name in the root namescope. */
-data class WinUIXamlPreviewAnimation(val owner: String, val key: String, val positionMillis: Int = 0, val action: String = "Seek") {
+/** Preview-only SDK clock command. An instance path is tied to one inspected tree
+ * and source identity; a root namescope owner remains available for ordinary resources. */
+data class WinUIXamlPreviewAnimation(val owner: String, val key: String, val positionMillis: Int = 0, val action: String = "Seek",
+    val instancePath: List<Int>? = null, val sourceId: String = "", val instanceTreeToken: Long = 0) {
     fun validate() {
+        require(if (instancePath == null) sourceId.isEmpty() && instanceTreeToken == 0L else
+            owner.isEmpty() && sourceId.isNotEmpty() && sourceId.length <= 4096 && instanceTreeToken > 0 &&
+                instancePath.size <= WinUIXamlHotReloadProtocol.MAX_VISUAL_DEPTH &&
+                instancePath.all { it in 0..WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES }) { "Invalid storyboard instance." }
         require(owner.length <= 256 && key.isNotEmpty() && key.length <= 256 && positionMillis in 0..86_400_000 &&
             action in listOf("Seek", "Play", "Stop")) { "Invalid storyboard preview command." }
     }

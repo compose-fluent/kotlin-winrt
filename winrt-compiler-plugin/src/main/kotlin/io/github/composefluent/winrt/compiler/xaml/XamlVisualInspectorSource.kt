@@ -496,7 +496,23 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val element = root.asWinRT<FrameworkElement>()
             val owner = if (command.owner.isEmpty()) element else
               requireNotNull(element.findName(command.owner)) { "The storyboard resource owner no longer exists." }.asWinRT<FrameworkElement>()
-            val storyboard = requireNotNull(owner.resources?.get(command.key)) { "The storyboard resource no longer exists." }.asWinRT<Storyboard>()
+            val resources = requireNotNull(owner.resources) { "The storyboard resources no longer exist." }
+            require(resources.containsKey(command.key)) { "The storyboard resource no longer belongs to this instance." }
+            val storyboard = requireNotNull(resources[command.key]) { "The storyboard resource no longer exists." }.asWinRT<Storyboard>()
+            if (command.instancePath != null && command.action != "Stop") {
+              // Explicit SDK targets prevent Begin from resolving an identically named
+              // target in another template namescope. Resolve every target before mutation.
+              val targets = mutableListOf<Pair<${framework.xamlKotlinNamespace}.media.animation.Timeline, DependencyObject>>()
+              fun resolve(timeline: ${framework.xamlKotlinNamespace}.media.animation.Timeline) {
+                val name = Storyboard.getTargetName(timeline)
+                if (!name.isNullOrEmpty()) targets += timeline to requireNotNull(owner.findName(name)) {
+                  "The animation target is not in the selected template instance: " + name
+                }.asWinRT<DependencyObject>()
+                runCatching { timeline.asWinRT<Storyboard>() }.getOrNull()?.children?.forEach { child -> child?.let(::resolve) }
+              }
+              resolve(storyboard)
+              targets.forEach { (timeline, target) -> Storyboard.setTarget(timeline, target) }
+            }
             activeStoryboard?.stop(); activeStoryboard = null; playing = false
             if (command.action != "Stop") {
               try {

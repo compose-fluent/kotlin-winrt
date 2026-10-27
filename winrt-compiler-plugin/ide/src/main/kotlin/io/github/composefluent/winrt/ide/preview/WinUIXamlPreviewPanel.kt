@@ -215,7 +215,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     val storyboardDocument = remember(prepared?.markup) {
         prepared?.markup?.let { runCatching { WinUIXamlDesignStoryboards.prepare(it) }.getOrNull() }
     }
-    val storyboards = storyboardDocument?.storyboards.orEmpty()
+    val storyboards = storyboardDocument?.realized(state.inspection?.nodes.orEmpty()).orEmpty()
     var showTimeline by remember { mutableStateOf(false) }
     var editTimeline by remember { mutableStateOf(false) }
     var createAnimationTrack by remember { mutableStateOf(false) }
@@ -241,7 +241,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             state.inspection?.clock?.let { !it.playing && it.positionMillis == animationTime() } == true
         val position = if (action == "Stop" || completed) 0 else animationTime()
         animationPosition.setTextAndPlaceCursorAtEnd(position.toString())
-        animationCommand = WinUIXamlPreviewAnimation(storyboard.owner, storyboard.key, position, action)
+        val token = if (storyboard.instancePath != null) state.inspection?.treeToken?.takeIf { it > 0 } ?: return else 0L
+        animationCommand = WinUIXamlPreviewAnimation(storyboard.owner, storyboard.key, position, action,
+            storyboard.instancePath, storyboard.sourceId, token)
         animationPlaying = action == "Play"
         animationRevision++
     }
@@ -362,6 +364,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             catch (error: Exception) { failure = error.message }
         }
     }
+    LaunchedEffect(viewport, theme, manualRefresh, resourceRevision, selectedStates) {
+        if (animationCommand?.instancePath != null) {
+            animationCommand = null
+            animationPlaying = false
+        }
+    }
     LaunchedEffect(session, launchModule, launch, projectCode, static, prepared, viewport, theme, captureScale, captureViewport, manualRefresh, resourceRevision, selectedStates, animationCommand, animationRevision) {
         if (static && prepared != null) withContext(Dispatchers.IO) {
             session.state.previewRenderTargets().collectLatest { target ->
@@ -378,7 +386,11 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 // Preparation and selection effects can run in the same composition.
                 // Never replay a command whose resource disappeared in the new document.
                 val validAnimation = animationCommand?.takeIf { command ->
-                    storyboards.any { it.owner == command.owner && it.key == command.key }
+                    storyboards.any { it.owner == command.owner && it.key == command.key && it.sourceId == command.sourceId && it.instancePath == command.instancePath } &&
+                        (command.instancePath == null || submitted?.let {
+                            it.second == pid && it.first.previewMarkup == markup && it.first.width == w && it.first.height == h &&
+                                it.first.theme == theme && it.third.first == manualRefresh && it.third.second == resourceRevision
+                        } == true)
                 }
                 // Deliver the new image before invoking effective-property getters.
                 // The selection effect reads those once this snapshot is published.
@@ -993,7 +1005,8 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 }
                 if (createAnimationTrack) DesignerStoryboardCreatePanel(project, currentEditables.singleOrNull(), animationTime(), editorStoryboardKey) { createdStoryboardKey = it }
                 if (editTimeline) DesignerStoryboardPanel(project, source,
-                    editorStoryboardKey, revision, animationTime(), editorStoryboardOwner) { millis ->
+                    editorStoryboardKey, revision, animationTime(), editorStoryboardOwner,
+                    storyboards.singleOrNull { it.id == storyboardId }?.sourceId.orEmpty()) { millis ->
                     animationPosition.setTextAndPlaceCursorAtEnd(millis.toString())
                     animationPlaying = false
                     controlAnimation("Seek")

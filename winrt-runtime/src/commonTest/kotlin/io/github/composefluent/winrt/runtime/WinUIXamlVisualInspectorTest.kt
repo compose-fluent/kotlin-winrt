@@ -88,6 +88,41 @@ class WinUIXamlVisualInspectorTest {
         assertEquals(1600, decoded.width)
         assertContentEquals(pixels, decoded.pixels)
     }
+    @Test fun template_clock_targets_one_realized_identity_and_rejects_recycled_slots() {
+        // CsWinRT WindowsRuntimeObject identity is separate from template source identity.
+        val first = Any(); val second = Any(); val root = Any()
+        val children = mutableListOf(first, second)
+        val animated = mutableListOf<Any>()
+        val inspector = WinUIXamlVisualInspector({ it }, { if (it === root) children else emptyList() }, { value, _ ->
+            WinUIXamlVisualNode(emptyList(), "Grid", "Repeated", WinUIXamlVisualBounds(0.0, 0.0, 1.0, 1.0),
+                sourceId = if (value === root) "root" else "shared-template")
+        }, { emptyList() }, { _, _, done -> done(Result.success(WinUIXamlVisualImage(1, 1, ByteArray(4)))) },
+            { _, _ -> }, animate = { value, _ -> animated += value })
+        val request = WinUIXamlInspectionRequest(WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "", capture = false, readProperties = false)
+        var result: Result<WinUIXamlVisualSnapshot>? = null
+        inspector.inspect(root, request) { result = it }
+        val command = WinUIXamlPreviewAnimation("", "Fade", 1000, instancePath = listOf(1), sourceId = "shared-template",
+            instanceTreeToken = result!!.getOrThrow().treeToken)
+        val seek = request.copy(readTree = false, animation = command)
+        assertEquals(seek, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", seek)).inspection)
+        inspector.inspect(root, seek) { result = it }
+        assertTrue(result!!.isSuccess); assertSame(second, animated.single())
+        children.reverse()
+        inspector.inspect(root, seek) { result = it }
+        assertTrue(result!!.isFailure); assertEquals(1, animated.size)
+        children.reverse(); children[1] = Any()
+        inspector.inspect(root, seek) { result = it }
+        assertTrue(result!!.isFailure); assertEquals(1, animated.size)
+        inspector.inspect(root, seek.copy(animation = command.copy(sourceId = "wrong"))) { result = it }
+        assertTrue(result!!.isFailure)
+        inspector.inspect(root, request) { result = it }
+        inspector.inspect(root, seek) { result = it }
+        assertTrue(result!!.isFailure)
+        inspector.inspect(root, seek.copy(previewMarkup = "<Grid/>")) { result = it }
+        assertTrue(result!!.isFailure); assertEquals(1, animated.size)
+        assertFailsWith<IllegalArgumentException> { command.copy(instanceTreeToken = 0).validate() }
+        assertFailsWith<IllegalArgumentException> { command.copy(instancePath = listOf(-1)).validate() }
+    }
     @Test fun storyboard_commands_are_bounded_and_confined_to_preview_before_capture() {
         // SDK Storyboard.Begin/Pause/SeekAlignedToLastTick stays in generated adaptation;
         // common runtime only validates and dispatches, on JVM and mingwX64.
