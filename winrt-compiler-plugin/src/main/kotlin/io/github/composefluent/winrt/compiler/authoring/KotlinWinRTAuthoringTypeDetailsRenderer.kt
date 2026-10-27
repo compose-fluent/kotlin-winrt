@@ -630,6 +630,13 @@ object KotlinWinRTAuthoringTypeDetailsRenderer {
             authoredRuntimeClassNames = authoredRuntimeClassNames,
         )
         if (directInboundCallSitePlan != null) {
+            // CsWinRT code_writers.h resolves the returned class's default interface
+            // before marshaling. Typed entrypoints must retain the same metadata
+            // validation as the fallback bridge, even though lowering emits the QI.
+            if (directInboundCallSitePlan.returnShape.kind == WinRTDirectInboundShapeKind.Projection) {
+                renderObjectInterfaceId(method, directInboundCallSitePlan.returnShape.abiTypeName,
+                    directInboundCallSitePlan.returnShape.definitionType, typesByName)
+            }
             return CodeBlock.builder()
                 .add("%T(\n", winRTInspectableMethodDefinitionType)
                 .indent()
