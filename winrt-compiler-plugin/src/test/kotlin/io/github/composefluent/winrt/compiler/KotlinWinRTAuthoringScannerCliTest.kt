@@ -113,6 +113,12 @@ class KotlinWinRTAuthoringScannerCliTest {
             assertTrue(source.contains("frame.getNavigationState()"))
             assertTrue(source.contains("value.asWinRT<Frame>().setNavigationState(it)"))
             assertTrue(source.contains("AutomationProperties.getAutomationId(item)"))
+            // Both SDKs separate Window.Closed from FrameworkElement.Unloaded:
+            // replacing Window.Content must not detach the registered Window.
+            val lifetime = source.substringAfter("observeLifetime =")
+            assertTrue(lifetime.contains("window.closed.add { _, _ -> attached(false) }"))
+            assertFalse(lifetime.contains(".content"))
+            assertTrue(lifetime.contains("element.unloaded.add(::changed)"))
             assertTrue(source.contains("context is WinUIXamlRestartParticipant"))
             assertTrue(source.contains("filterValues { it.size == 1 }"))
             assertFalse(source.contains("Password"))

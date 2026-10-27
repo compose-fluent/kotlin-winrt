@@ -163,9 +163,13 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
             // CsWinRT-generated event delegates supply the SDK lifecycle boundary.
             // Frame.SetNavigationState can retain an unloaded page until GC. Its
             // replacement alone participates in state identity and inspection.
-            val element = runCatching { owner.asWinRT<Window>().content?.asWinRT<FrameworkElement>() }.getOrNull()
-              ?: runCatching { owner.asWinRT<FrameworkElement>() }.getOrNull()
-            if (element != null) {
+            val window = runCatching { owner.asWinRT<Window>() }.getOrNull()
+            val element = if (window == null) runCatching { owner.asWinRT<FrameworkElement>() }.getOrNull() else null
+            if (window != null) {
+              // Window.Content is replaceable; unloading its old page does not
+              // close the window or invalidate the isolated designer's owner.
+              window.closed.add { _, _ -> attached(false) }
+            } else if (element != null) {
               attached(element.isLoaded)
               // Reparenting can queue both notifications in one dispatcher turn.
               // Event order is not the current tree state: read the SDK property
