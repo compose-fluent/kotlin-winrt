@@ -133,7 +133,7 @@ class KotlinWinRTAuthoringScannerCliTest {
         assertTrue(inspector.contains("layoutSize.width, layoutSize.height"))
         assertTrue(inspector.contains("windows.ui.viewmanagement.ApplicationView.getForCurrentView()"))
         assertTrue(!inspector.contains("element.rasterizationScale"))
-        assertTrue(inspector.contains("bitmap.renderAsync(element, width, height)"))
+        assertTrue(inspector.contains("bitmap.renderAsync(captureElement, width, height)"))
         assertTrue((host + inspector).let { !it.contains("microsoft.ui.") && !it.contains("XamlControlsResources") && !it.contains("window.appWindow") })
     }
 
@@ -146,10 +146,10 @@ class KotlinWinRTAuthoringScannerCliTest {
         // WinUI UIElement.RasterizationScale affects subtree rasterization, not
         // layout. Preserve the authored value across successful and failed capture.
         val inspector = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_preview.kt").readText()
-        val capture = inspector.substringAfter("capture = ").substringBefore("preview = ")
-        assertTrue(capture.contains("val previousRasterizationScale = element.rasterizationScale"))
-        assertTrue(capture.contains("maxOf(previousRasterizationScale, width / logicalWidth, height / logicalHeight)"))
-        assertTrue(capture.contains("finally { element.rasterizationScale = previousRasterizationScale }"))
+        val capture = inspector.substringAfter("fun captureFrame(").substringBefore("return WinUIXamlVisualInspector(")
+        assertTrue(capture.contains("val previousRasterizationScale = captureElement.rasterizationScale"))
+        assertTrue(capture.contains("maxOf(previousRasterizationScale, width / region.width, height / region.height)"))
+        assertTrue(capture.contains("finally { captureElement.rasterizationScale = previousRasterizationScale }"))
         assertTrue(!capture.contains("element.width =") && !capture.contains("element.height =") && !capture.contains("renderTransform"))
         val index = root.resolve("index.tsv")
         index.writeText("Microsoft.UI.Xaml.Application\tRuntimeClass\tMicrosoft.UI.Xaml.IApplicationOverrides\n" +

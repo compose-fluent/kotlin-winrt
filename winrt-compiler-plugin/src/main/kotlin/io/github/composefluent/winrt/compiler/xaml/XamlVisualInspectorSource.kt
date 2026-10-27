@@ -424,7 +424,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               window.content = ${framework.xamlKotlinNamespace}.controls.Grid().apply { children?.add(captureRoot) }
               attached = true
               beginDesignBindings(element)
-              bindDesignTree(element)
+              timing?.let { println("XAML preview model connected: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               stage = "size the design surface"
               // Read DPI from the attached document, including the first frame
               // when the isolated desktop window has no placeholder content.
@@ -439,12 +439,17 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               val (captureWidth, captureHeight) = winUIXamlCaptureSize(request.width.toDouble(), request.height.toDouble(), dpi, request.renderScale)
               surface.rasterizationScale = maxOf(surface.rasterizationScale,
                 captureWidth.toDouble() / request.width, captureHeight.toDouble() / request.height)""" else ""}
+              timing?.let { println("XAML preview surface sized: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               stage = "lay out the visual tree"
               // UWP defers the first Window content layout until rendering. Establish
               // the requested artboard before capture chooses its bounded pixel size.
               element.measure(windows.foundation.Size(request.width.toFloat(), request.height.toFloat()))
               element.arrange(windows.foundation.Rect(0f, 0f, request.width.toFloat(), request.height.toFloat()))
               element.updateLayout()
+              timing?.let { println("XAML preview initial layout: " + it.elapsedNow().inWholeMilliseconds + "ms") }
+              // Bind only after sizing and establishing glyph density: the binding
+              // walk itself updates layout and realizes templates. Doing it before
+              // this point laid out the entire tree at the previous window density.
               bindDesignTree(element)
               timing?.let { println("XAML preview layout completed: " + it.elapsedNow().inWholeMilliseconds + "ms") }
               traceCapture = !tracedPreview
