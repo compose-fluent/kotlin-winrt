@@ -37,7 +37,7 @@ object WinRTGradleTasks {
 
     fun run(project: Project, module: WinRTModuleData, tasks: List<String>, title: String,
         environment: Map<String, String> = emptyMap(), arguments: String = "", passParentEnvironment: Boolean = true, onFailure: () -> Unit = {},
-        onProcessStarted: ((ProcessHandler) -> Unit)? = null, onSuccess: () -> Unit = {}) {
+        onProcessStarted: ((ProcessHandler) -> Unit)? = null, onFinished: (Boolean) -> Unit = {}, onSuccess: () -> Unit = {}) {
         val settings = ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(
                 project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory)
@@ -63,12 +63,14 @@ object WinRTGradleTasks {
         ExternalSystemUtil.runTask(settings, DefaultRunExecutor.EXECUTOR_ID, project, GradleConstants.SYSTEM_ID,
             object : TaskCallback {
                 override fun onSuccess() {
+                    onFinished(true)
                     connection?.disconnect()
                     com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                         if (!project.isDisposed) onSuccess()
                     }
                 }
                 override fun onFailure() {
+                    onFinished(false)
                     connection?.disconnect()
                     com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
                         if (!project.isDisposed) onFailure()

@@ -312,6 +312,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val request = generation.get()
         codeRebuild = scope.launch(Dispatchers.IO) {
             var lastAttempted = codeRevision.get()
+            var pendingDeployment: WinRTPreparedDeployment? = null
             try {
                 var builtRevision: Long
                 var preparedLaunch: WinRTPreparedLaunch? = null
@@ -327,9 +328,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     val finished = CompletableDeferred<Boolean>()
                     val slot = if (prepareDirect) UUID.randomUUID().toString() else null
                     val baseExecutable = Path.of(if (isolatedPreview) launch.previewExecutable else launch.executable)
-                    preparedLaunch?.let { obsolete -> runCatching { WinRTPreparedLaunch.discard(baseExecutable, Path.of(obsolete.executable)) } }
+                    pendingDeployment?.abandon()
+                    pendingDeployment = null
                     preparedLaunch = null
                     val preparedExecutable = slot?.let { WinRTPreparedLaunch.deployment(baseExecutable.parent, it).resolve(baseExecutable.fileName) }
+                    val preparation = preparedExecutable?.let { WinRTPreparedDeployment(baseExecutable, it) }
+                    pendingDeployment = preparation
                     withCurrent(request) { display.value = display.value.copy(
                         message = "Building code changes; the current application stays running…", rebuildingCode = true, restartOutcome = null) }
                     withContext(Dispatchers.EDT) {
@@ -341,8 +345,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             passParentEnvironment = passParentEnvironment,
                             onProcessStarted = { handler ->
                                 if (!withCurrent(request) { codeBuildProcess = handler }) WinRTGradleTasks.cancel(project, handler)
-                            }, onSuccess = { finished.complete(true) }, onFailure = { finished.complete(false) })
-                        else finished.cancel()
+                            }, onFinished = { succeeded ->
+                                runCatching { preparation?.buildFinished() }.onFailure { log.warn("Unused Native deployment cleanup failed", it) }
+                                finished.complete(succeeded)
+                            })
+                        else { preparation?.buildFinished(); finished.cancel() }
                     }
                     val succeeded = finished.await()
                     codeBuildProcess = null
@@ -383,6 +390,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 theme = previewTheme, restoredState = states, skippedStateComponents = statePlan.skippedComponents,
                                 launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment,
                                 debugRestart = debugRestart, preparedLaunch = preparedLaunch)
+                            pendingDeployment?.claim()
                         } else debugRestart?.restartFailed(IllegalStateException("Sources changed while preparing the Native restart."))
                     }
                 }
@@ -390,6 +398,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             catch (error: Exception) { withCurrent(request) { display.value = display.value.copy(
                 message = "Automatic restart failed: ${error.message}. See Gradle output and the connection status.") } }
             finally {
+                runCatching { pendingDeployment?.abandon() }.onFailure { log.warn("Unused Native deployment cleanup failed", it) }
                 if (isCurrent(request)) {
                     codeRebuild = null
                     display.value = display.value.copy(rebuildingCode = false)
