@@ -63,12 +63,16 @@ private fun xamlPreviewWindowSource(framework: XamlFramework): String = if (fram
       host.move(windows.graphics.PointInt32(-32000, -32000))
       host.show(false)
       println("XAML preview window shown: " + startup.elapsedNow().inWholeMilliseconds + "ms")
-      completeWinUIXamlHotReloadComponent(this, WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
-      println("XAML preview root registered: " + startup.elapsedNow().inWholeMilliseconds + "ms")
-      requireNotNull(microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()).tryEnqueue(
+      val previewWindow = this
+      // Publish after the SDK has processed the initial shown-window turn.
+      // Otherwise a high-priority inspection can overtake that turn, construct
+      // the entire project tree, and request a bitmap before the host is ready.
+      check(requireNotNull(microsoft.ui.dispatching.DispatcherQueue.getForCurrentThread()).tryEnqueue(
         microsoft.ui.dispatching.DispatcherQueueHandler {
           println("XAML preview first UI turn: " + startup.elapsedNow().inWholeMilliseconds + "ms")
-        })
+          completeWinUIXamlHotReloadComponent(previewWindow, WinUIXamlHotReloadProtocol.PREVIEW_CLASS, "", "0".repeat(64))
+          println("XAML preview root registered: " + startup.elapsedNow().inWholeMilliseconds + "ms")
+        })) { "The preview dispatcher closed before window initialization." }
     }
 """.trimIndent()
 
