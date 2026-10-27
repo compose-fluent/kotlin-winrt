@@ -1008,6 +1008,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                 if (showTimeline && static) VerticalSplitLayout(
                     first = { artboard() }, second = { timeline() },
                     state = rememberSplitLayoutState(.6f),
+                    draggableWidth = 14.dp, firstPaneMinWidth = 100.dp, secondPaneMinWidth = 120.dp,
                     modifier = Modifier.fillMaxSize(),
                 ) else artboard()
             }
