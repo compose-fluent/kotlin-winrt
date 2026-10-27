@@ -3103,6 +3103,7 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
 
     fun configureBusinessTask(businessTask: KotlinJvmCompile) {
         if (businessTask.name.contains("Test", ignoreCase = true) ||
+            isXamlSemanticTask(businessTask.name) ||
             taskNameOwnsStaticProjectionSupport(businessTask.name)
         ) {
             return
@@ -3270,7 +3271,13 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
         val jarTaskNames = if (!isMultiplatformProject && businessTask.name == "compileKotlin") {
             listOf("jar")
         } else {
-            kotlinWinRTJvmTargetJarTaskNames(project, businessTask.name)
+            // KGP publishes the target's main compilation. An auxiliary application
+            // compilation must not replace that API artifact or register its tasks
+            // again through the single-JVM-target fallback used for host lookup.
+            project.extensions.findByType(KotlinMultiplatformExtension::class.java)
+                ?.targets?.withType(KotlinJvmTarget::class.java)
+                ?.filter { target -> target.compilations.findByName("main")?.compileKotlinTaskName == businessTask.name }
+                ?.map { target -> "${target.name}Jar" }.orEmpty()
         }
         val businessReference = configureJvmIncrementalReferenceArtifact(project, businessTask)
         businessTask.pluginOptions.add(businessReference.map { directory ->
