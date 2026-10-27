@@ -215,6 +215,23 @@ class WinUIXamlHotReloadTest {
         assertFailsWith<IllegalArgumentException> { baseline.validate(branch.children) }
     }
 
+
+    @Test fun deep_named_anchor_keeps_its_own_full_traversal_budget() {
+        ComWrappersSupport.clearRegistriesForTests()
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+            SharedBaselineNode::class, "probe.SharedBaselineNode", "System.Object", isWinRTComponent = false,
+            contentProperty = "Children", members = listOf(WinUIXamlMemberDefinition(
+                "Children", "List", MutableList::class, { (it as SharedBaselineNode).children }))))
+        val nodes = List(42) { SharedBaselineNode() }
+        nodes.zipWithNext().forEach { (parent, child) -> parent.children += child }
+        // Each collection consumes another graph level. The root alone reaches
+        // node 30 near the depth limit; its explicit name starts a new path.
+        val baseline = WinUIXamlCollectionBaseline.capture(listOf(nodes[0], nodes[30]))
+        baseline.validate(nodes[40].children)
+        nodes[40].children[0] = SharedBaselineNode()
+        assertFailsWith<IllegalArgumentException> { baseline.validate(nodes[40].children) }
+    }
+
     @Test fun projected_paths_keep_shared_resource_identity_and_guard_live_collection_shape() {
         val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
         val brush = Element(); val owner = Page(mutableMapOf("Accent" to brush), mutableListOf(brush))

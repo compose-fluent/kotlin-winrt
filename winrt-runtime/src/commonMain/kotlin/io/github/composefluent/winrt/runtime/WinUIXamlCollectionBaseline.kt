@@ -44,27 +44,37 @@ internal class WinUIXamlCollectionBaseline private constructor(private val slots
             val retained = if (retainObjects) mutableListOf<Any>() else null
             val visited = mutableListOf<Any>()
             val nativeIdentities = mutableSetOf<Pair<Long, kotlin.reflect.KClass<*>>>()
+            val capturedNativeSlots = mutableSetOf<Pair<Long, String>>()
             val leases = mutableListOf<ComObjectReference>()
-            var depth = 0
-            fun visit(value: Any?) {
+            data class Pending(val value: Any, val depth: Int, val nativeIdentity: Long?)
+            val pending = ArrayDeque<Pending>()
+            fun enqueue(value: Any?, depth: Int) {
                 if (value == null || depth > 64 || visited.size >= 16384 || visited.any { it === value }) return
                 // CsWinRT Runtime2 ObjectReference.As/AsValue owns QI lifetime.
                 // Reuse the runtime's canonical IUnknown key, retaining its lease
                 // until this walk ends so a pointer cannot be recycled mid-capture.
                 // Distinct projection classes can expose different accessor sets.
-                ComWrappersSupport.tryUnwrapObject(value)?.let { reference ->
+                val nativeIdentity = ComWrappersSupport.tryUnwrapObject(value)?.let { reference ->
                     val key = try { ComWrappersSupport.rcwCacheKey(reference.pointer.asRawAddress()) to value::class }
                     catch (error: Throwable) { reference.close(); throw error }
                     if (!nativeIdentities.add(key)) { reference.close(); return }
                     leases += reference
+                    key.first
                 }
                 visited += value
                 retained?.add(value)
-                depth++
-                try {
+                pending.addLast(Pending(value, depth, nativeIdentity))
+            }
+            try {
+                // Seed every named anchor before walking children. Breadth-first
+                // traversal visits an alias at its shortest depth, so a deeply
+                // nested first occurrence cannot hide descendants of a later name.
+                anchors.forEach { enqueue(it, 0) }
+                while (pending.isNotEmpty()) {
+                    val (value, depth, nativeIdentity) = pending.removeFirst()
                     when (value) {
-                        is List<*> -> value.take(4096).forEach(::visit)
-                        is Map<*, *> -> value.values.take(4096).forEach(::visit)
+                        is List<*> -> value.take(4096).forEach { enqueue(it, depth + 1) }
+                        is Map<*, *> -> value.values.take(4096).forEach { enqueue(it, depth + 1) }
                     }
                     // Shared XAML graph roles; the content member comes from IXamlType metadata.
                     (listOfNotNull(WinUIAuthoredTypeMetadata.contentProperty(value)) +
@@ -74,9 +84,12 @@ internal class WinUIXamlCollectionBaseline private constructor(private val slots
                             // A getter may be unavailable before template realization. Leave that
                             // path uncaptured (and reject edits to it), not the entire component.
                             val child = runCatching { member.get(value) }.getOrElse { return@let }
-                            if (child is List<*> && child.size <= 4096 && slots.none {
-                                it.member.name == name && it.owner.matchesTarget(value)
-                            }) {
+                            // The walk already deduplicates managed owners by reference.
+                            // Different Native projection wrappers can still expose the
+                            // same member; use its leased identity instead of repeatedly
+                            // resolving every previous weak owner (quadratic COM calls).
+                            if (child is List<*> && child.size <= 4096 &&
+                                (nativeIdentity == null || capturedNativeSlots.add(nativeIdentity to name))) {
                                 val existing = previous?.slots?.firstOrNull {
                                     it.member.name == name && it.owner.matchesTarget(value)
                                 }
@@ -86,13 +99,10 @@ internal class WinUIXamlCollectionBaseline private constructor(private val slots
                                     changedCollections.none { sameObject(it, child) }) existing
                                 else Slot(WeakReference(value), member, child.map { it?.let(::WeakReference) })
                             }
-                            visit(child)
+                            enqueue(child, depth + 1)
                         }
                     }
-                } finally { depth-- }
-            }
-            try {
-                anchors.forEach(::visit)
+                }
                 return WinUIXamlCollectionBaseline(slots, retained.orEmpty())
             } finally { closeAllAutoCloseables(leases.asReversed()) }
         }
