@@ -255,17 +255,6 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 }
                 stage = "connect capture bindings"
                 bindDesignTree(element)
-                run {
-                  // Layout completion is not a composition commit. Wait through
-                  // the following rendering boundary before WGC's first frame.
-                  val rendered = CompletableDeferred<Unit>()
-                  var ticks = 0
-                  fun onRendering(sender: Any?, args: Any?) { if (++ticks == 2) rendered.complete(Unit) }
-                  val handler = ::onRendering
-                  ${framework.xamlKotlinNamespace}.media.CompositionTarget.rendering.add(handler)
-                  try { withTimeout(5_000) { rendered.await() } }
-                  finally { ${framework.xamlKotlinNamespace}.media.CompositionTarget.rendering.remove(handler) }
-                }
                 // Popup realization can occur after the tree snapshot. Decide from
                 // current SDK visuals, not a stale describe() side effect.
                 fun hasComposedPixels(root: Any): Boolean {
@@ -282,7 +271,25 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                   }
                   return false
                 }
-                requiresComposition = hasComposedPixels(element) || popupRoots(element).any(::hasComposedPixels)
+                run {
+                  // Loaded/layout is not a composition commit. Inspect after the
+                  // first rendering boundary so newly realized popups participate.
+                  // RenderTargetBitmap awaits its own rasterization; only WGC needs
+                  // the following composition commit before reading external surfaces.
+                  val rendering = CompletableDeferred<Unit>()
+                  val committed = CompletableDeferred<Unit>()
+                  var ticks = 0
+                  fun onRendering(sender: Any?, args: Any?) {
+                    if (++ticks == 1) rendering.complete(Unit) else committed.complete(Unit)
+                  }
+                  val handler = ::onRendering
+                  ${framework.xamlKotlinNamespace}.media.CompositionTarget.rendering.add(handler)
+                  try {
+                    withTimeout(5_000) { rendering.await() }
+                    requiresComposition = hasComposedPixels(element) || popupRoots(element).any(::hasComposedPixels)
+                    if (requiresComposition) withTimeout(5_000) { committed.await() }
+                  } finally { ${framework.xamlKotlinNamespace}.media.CompositionTarget.rendering.remove(handler) }
+                }
                 stage = "prepare the capture camera"
                 val bitmap = RenderTargetBitmap()
                 // RenderAsync's requested size is in view pixels. PixelWidth and

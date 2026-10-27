@@ -121,6 +121,19 @@ class WinRTNativeCompositionIntegrationTest {
                     val restored = frame()
                     color(restored, 80, 60, 255, 0); color(restored, 250, 150, 0, 255)
                 }
+                // RenderTargetBitmap owns its asynchronous draw completion; the
+                // ordinary XAML path must remain accurate without WGC's extra commit.
+                val ordinary = markup.replace(Regex("<SwapChainPanel[^>]*/>"), "")
+                val ordinaryFirst = requireNotNull(inspect(request.copy(previewMarkup = ordinary)).image)
+                assertEquals("Xaml", ordinaryFirst.captureBackend)
+                color(ordinaryFirst, 80, 60, 255, 0)
+                color(ordinaryFirst, 250, 150, 0, 255)
+                for (scale in listOf(1.0, 2.0, 1.0)) {
+                    val image = requireNotNull(inspect(request.copy(readTree = false, renderScale = scale)).image)
+                    assertEquals("Xaml", image.captureBackend)
+                    color(image, (80 * scale).toInt(), (60 * scale).toInt(), 255, 0)
+                    color(image, (250 * scale).toInt(), (150 * scale).toInt(), 0, 255)
+                }
                 val video = uwpSession?.parent?.resolve("composition-green.mp4")
                     ?: requireNotNull(project).parent.resolve("xaml-reload-validation/composition-green.mp4")
                 require(Files.isRegularFile(video)) { "Generate a 160x120 H.264 fixture alternating lime/blue every 5 seconds at $video before acceptance." }

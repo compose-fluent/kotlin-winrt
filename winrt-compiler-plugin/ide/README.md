@@ -1109,3 +1109,27 @@ run untrusted project previews elevated. A separately enforced production build
 policy is required if the distribution must be unable to enable this facility even
 with manipulated launch environment. The copied UWP development capture capability
 does not modify the production manifest.
+
+### Cached Native cold-start acceptance
+
+Ordinary XAML capture waits for the first rendering boundary, then relies on the
+SDK RenderTargetBitmap asynchronous draw completion. Media/SwapChain content,
+including newly realized popup roots, still waits for the next composition commit
+before Windows.Graphics.Capture. This follows the SDK RenderAsyncImpl/RequestRender
+and RenderTargetBitmapWaitExecutor completion contract; it does not relax build
+fingerprints, binding readiness or substitute a saved bitmap for a live frame.
+
+On ASC Canary 262, the same Native dependency-project fixture and viewport produced
+cached process-cold first frames of 4.019/4.243 seconds before this change and
+3.464/3.236 seconds after it. Both IDE and preview host were restarted between
+samples; paired launches inherited the same parent environment. The timer runs
+from preview launch to receipt of the first new image, excluding IDE startup and
+Previous render. These are local acceptance samples, not a one-second guarantee;
+the first baseline sample overlapped plugin compilation, while the second baseline
+and both final samples did not overlap validation builds.
+
+Desktop Native and UWP AppContainer pixel acceptance passed ordinary XAML's first
+image and 1x/2x restoration, composition scale/crop, advancing decoded video, and
+popup video scale/crop. ASC displayed the fixture's bindings and 166 visual nodes
+after both final cache hits. Generator tests, runtime JVM tests and plugin class
+ownership checks also passed.
