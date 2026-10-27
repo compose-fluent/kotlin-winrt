@@ -193,6 +193,28 @@ class WinUIXamlHotReloadTest {
         }
     }
 
+    private class SharedBaselineNode(val children: MutableList<SharedBaselineNode> = mutableListOf()) {
+        var reads = 0
+    }
+    @Test fun overlapping_named_anchors_capture_each_collection_once_and_still_reject_reordering() {
+        // CsWinRT Runtime2 ObjectReference identity is shared by graph aliases;
+        // generated custom-property accessors still own collection discovery.
+        ComWrappersSupport.clearRegistriesForTests()
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+            SharedBaselineNode::class, "probe.SharedBaselineNode", "System.Object", isWinRTComponent = false,
+            contentProperty = "Children", members = listOf(WinUIXamlMemberDefinition(
+                "Children", "List", MutableList::class, { (it as SharedBaselineNode).also { node -> node.reads++ }.children }))))
+        val first = SharedBaselineNode(); val second = SharedBaselineNode()
+        val branch = SharedBaselineNode(mutableListOf(first, second))
+        val root = SharedBaselineNode(mutableListOf(branch, branch))
+        // The same objects are reachable through content and multiple x:Name anchors.
+        val baseline = WinUIXamlCollectionBaseline.capture(listOf(root, branch, first, second, root))
+        assertEquals(listOf(1, 1, 1, 1), listOf(root, branch, first, second).map { it.reads })
+        baseline.validate(branch.children)
+        branch.children.reverse()
+        assertFailsWith<IllegalArgumentException> { baseline.validate(branch.children) }
+    }
+
     @Test fun projected_paths_keep_shared_resource_identity_and_guard_live_collection_shape() {
         val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
         val brush = Element(); val owner = Page(mutableMapOf("Accent" to brush), mutableListOf(brush))

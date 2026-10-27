@@ -42,12 +42,25 @@ internal class WinUIXamlCollectionBaseline private constructor(private val slots
             retainObjects: Boolean = false): WinUIXamlCollectionBaseline {
             val slots = mutableListOf<Slot>()
             val retained = if (retainObjects) mutableListOf<Any>() else null
-            val ancestors = mutableListOf<Any>()
-            var count = 0
+            val visited = mutableListOf<Any>()
+            val nativeIdentities = mutableSetOf<Pair<Long, kotlin.reflect.KClass<*>>>()
+            val leases = mutableListOf<ComObjectReference>()
+            var depth = 0
             fun visit(value: Any?) {
-                if (value == null || ancestors.size > 64 || ++count > 16384 || ancestors.any { sameObject(it, value) }) return
+                if (value == null || depth > 64 || visited.size >= 16384 || visited.any { it === value }) return
+                // CsWinRT Runtime2 ObjectReference.As/AsValue owns QI lifetime.
+                // Reuse the runtime's canonical IUnknown key, retaining its lease
+                // until this walk ends so a pointer cannot be recycled mid-capture.
+                // Distinct projection classes can expose different accessor sets.
+                ComWrappersSupport.tryUnwrapObject(value)?.let { reference ->
+                    val key = try { ComWrappersSupport.rcwCacheKey(reference.pointer.asRawAddress()) to value::class }
+                    catch (error: Throwable) { reference.close(); throw error }
+                    if (!nativeIdentities.add(key)) { reference.close(); return }
+                    leases += reference
+                }
+                visited += value
                 retained?.add(value)
-                ancestors += value
+                depth++
                 try {
                     when (value) {
                         is List<*> -> value.take(4096).forEach(::visit)
@@ -76,10 +89,12 @@ internal class WinUIXamlCollectionBaseline private constructor(private val slots
                             visit(child)
                         }
                     }
-                } finally { ancestors.removeAt(ancestors.lastIndex) }
+                } finally { depth-- }
             }
-            anchors.forEach(::visit)
-            return WinUIXamlCollectionBaseline(slots, retained.orEmpty())
+            try {
+                anchors.forEach(::visit)
+                return WinUIXamlCollectionBaseline(slots, retained.orEmpty())
+            } finally { closeAllAutoCloseables(leases.asReversed()) }
         }
     }
 }

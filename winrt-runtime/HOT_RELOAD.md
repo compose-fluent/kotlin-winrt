@@ -341,6 +341,7 @@ metadata; omitted properties are not read and the transport limit is unchanged.
 Collection baselines are captured at component completion using generated content
 metadata, resource graph accessors, and generated mutable-vector property metadata
 (including non-content collections such as Grid.RowDefinitions and ColumnDefinitions).
+Overlapping owner/name anchors are traversed once per object and projection class. Native identity uses the existing canonical IUnknown key with a leased reference during capture, so pointer reuse cannot alias objects in that walk.
 The compiler and IDE share the WinMD interface-closure classifier; the runtime does
 not probe unrelated application getters. An unavailable collection getter leaves
 only that path uncaptured. Indexed edits and child-collection updates
