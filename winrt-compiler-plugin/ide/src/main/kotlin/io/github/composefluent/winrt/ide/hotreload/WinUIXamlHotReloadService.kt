@@ -105,6 +105,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     private var edits: Job? = null
     private var codeRebuild: Job? = null
     private val codeRevision = AtomicLong()
+    @Volatile private var launchSourceSnapshot: Map<Path, String>? = null
+
+    private fun kotlinSourceSnapshot(): Map<Path, String>? = runCatching {
+        val modules = project.service<WinRTProjectService>().modules.value
+        winRTKotlinSourceSnapshot(modules.map { Path.of(it.projectDirectory) },
+            modules.flatMap { it.sourceSets }.flatMap { it.kotlinRoots }.map(Path::of)) { documentText(it.toString()) }
+    }.getOrNull()
     private val designRebuildDocuments = linkedSetOf<String>()
     @Volatile private var codeBuildProcess: com.intellij.execution.process.ProcessHandler? = null
     private var update: Job? = null
@@ -261,6 +268,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             if (generated.any { file.startsWith(Path.of(it).toAbsolutePath().normalize()) }) return
             if (isWinRTUserKotlinSource(file, modules.map { Path.of(it.projectDirectory) },
                     modules.flatMap { it.sourceSets }.flatMap { it.kotlinRoots }.map(Path::of))) {
+                val unchanged = launchSourceSnapshot?.get(file)?.let { hash ->
+                    runCatching { winRTKotlinSourceHash(documentText(file.toString())) == hash }.getOrDefault(false)
+                } == true
+                // Reverting an edit during compilation is still a new revision:
+                // the in-flight payload may already contain the intermediate text.
+                if (unchanged && codeRebuild?.isActive != true) return
                 designRebuildDocuments.clear()
                 display.value = display.value.copy(projectCodeChanged = true)
                 savedLaunch = savedLaunch.copy(projectCodeChanged = true)
@@ -486,6 +499,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         if (!isolatedPreview && restart) runProcess?.prepareRestart()
         val request = beginRequest(WinUIXamlHotReloadState("Preparing the development launch…", busy = true,
             projectCodeChanged = retainedCodeChange))
+        launchSourceSnapshot = null
         this.launchEnvironment = launchEnvironment.toMap()
         this.launchArguments = launchArguments
         this.passParentEnvironment = passParentEnvironment
@@ -521,6 +535,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (isCurrent(request)) FileDocumentManager.getInstance().saveAllDocuments()
                     }
                 }
+                val sourceSnapshot = if (sdkPreview) null else kotlinSourceSnapshot()
+                withCurrent(request) { launchSourceSnapshot = sourceSnapshot }
                 mutex.withLock {
                     if (!isCurrent(request)) return@launch
                     if (restart) {
@@ -753,8 +769,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }
                 }
                 if (!rolledBack && codeRevision.get() != launchCodeRevision) {
-                    withCurrent(request) { display.value = display.value.copy(projectCodeChanged = true) }
-                    scheduleCodeRebuild()
+                    val changed = restart || sourceSnapshot == null || sourceSnapshot != kotlinSourceSnapshot()
+                    withCurrent(request) {
+                        display.value = display.value.copy(projectCodeChanged = changed)
+                        savedLaunch = savedLaunch.copy(projectCodeChanged = changed)
+                    }
+                    if (changed) scheduleCodeRebuild()
                 }
                 watch(request)
             } catch (error: TimeoutCancellationException) {
