@@ -255,6 +255,34 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 }
                 stage = "connect capture bindings"
                 bindDesignTree(element)
+                run {
+                  // Layout completion is not a composition commit. Wait through
+                  // the following rendering boundary before WGC's first frame.
+                  val rendered = CompletableDeferred<Unit>()
+                  var ticks = 0
+                  fun onRendering(sender: Any?, args: Any?) { if (++ticks == 2) rendered.complete(Unit) }
+                  val handler = ::onRendering
+                  ${framework.xamlKotlinNamespace}.media.CompositionTarget.rendering.add(handler)
+                  try { withTimeout(5_000) { rendered.await() } }
+                  finally { ${framework.xamlKotlinNamespace}.media.CompositionTarget.rendering.remove(handler) }
+                }
+                // Popup realization can occur after the tree snapshot. Decide from
+                // current SDK visuals, not a stale describe() side effect.
+                fun hasComposedPixels(root: Any): Boolean {
+                  val pending = mutableListOf(root)
+                  var visited = 0
+                  while (pending.isNotEmpty()) {
+                    check(++visited <= WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES) { "Too many visual children" }
+                    val current = pending.removeAt(pending.lastIndex).asWinRT<DependencyObject>()
+                    val type = current.nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
+                    if (winUIXamlNeedsCompositionCapture(type)) return true
+                    val count = VisualTreeHelper.getChildrenCount(current)
+                    require(count in 0 until WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES)
+                    repeat(count) { pending.add(requireNotNull(VisualTreeHelper.getChild(current, it))) }
+                  }
+                  return false
+                }
+                requiresComposition = hasComposedPixels(element) || popupRoots(element).any(::hasComposedPixels)
                 stage = "prepare the capture camera"
                 val bitmap = RenderTargetBitmap()
                 // RenderAsync's requested size is in view pixels. PixelWidth and
@@ -270,8 +298,21 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                   ?: element.height.takeIf { it.isFinite() && it > 0 } ?: 1.0
                 val region = viewport ?: WinUIXamlVisualBounds(0.0, 0.0, logicalWidth, logicalHeight)
                 val surface = designSurface?.takeIf { designElement?.let { item -> sameDesignObject(item, element) } == true }
-                require(viewport == null || surface != null) { "Viewport capture requires an isolated design surface." }
-                val captureElement = surface?.also { camera ->
+                require(viewport == null || surface != null || requiresComposition) { "Viewport capture requires an isolated design surface." }
+                // Composition captures the existing tree. Reset only our isolated camera
+                // after an earlier XAML-only viewport; never mutate live application layout.
+                if (requiresComposition) surface?.let { camera ->
+                  camera.width = logicalWidth; camera.height = logicalHeight; camera.clip = null
+                  ${framework.xamlKotlinNamespace}.controls.Canvas.setLeft(element, 0.0)
+                  ${framework.xamlKotlinNamespace}.controls.Canvas.setTop(element, 0.0)
+                  designCaptureRoot?.let { it.width = logicalWidth; it.height = logicalHeight }
+                  ${if (framework == XamlFramework.WinUI) """// The first attached XamlRoot may establish DPI after preview setup.
+                  // Only the owned designer window follows the natural DIP artboard.
+                  requireNotNull(requireNotNull(designWindow).appWindow).resizeClient(windows.graphics.SizeInt32(
+                    (logicalWidth * dpi).toInt(), (logicalHeight * dpi).toInt()))""" else ""}
+                  camera.updateLayout()
+                }
+                val captureElement = surface?.takeUnless { requiresComposition }?.also { camera ->
                   camera.width = region.width; camera.height = region.height
                   ${framework.xamlKotlinNamespace}.controls.Canvas.setLeft(element, -region.x)
                   ${framework.xamlKotlinNamespace}.controls.Canvas.setTop(element, -region.y)
@@ -292,13 +333,13 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                     captureRoot.updateLayout()
                   }
                 } ?: element
-                surface?.let { camera ->
+                surface?.takeUnless { requiresComposition }?.let { camera ->
                   require(kotlin.math.abs(camera.actualWidth - region.width) < 1 && kotlin.math.abs(camera.actualHeight - region.height) < 1) {
                     "The SDK has not committed the capture viewport size."
                   }
                 }
                 val (width, height) = winUIXamlCaptureSize(region.width, region.height, dpi, renderScale)
-                val result = if (requiresComposition && surface != null) {
+                val result = if (requiresComposition) {
                   stage = "capture the composed preview surface"
                   captureComposition(captureElement, region, viewport, width, height, dpi)
                 } else {
@@ -325,19 +366,24 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 WinUIXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes, viewport)
                 }
                 stage = "render popup layers"
-                for (popup in popupRoots(element)) {
+                for (popup in ${if (framework == XamlFramework.WinUI) "if (requiresComposition) emptyList() else popupRoots(element)" else "popupRoots(element)"}) {
                   val popupElement = popup.asWinRT<FrameworkElement>()
                   val bounds = visualBounds(popupElement, element)
                   if (bounds.width <= 0 || bounds.height <= 0 || bounds.x + bounds.width <= region.x || bounds.y + bounds.height <= region.y ||
                     bounds.x >= region.x + region.width || bounds.y >= region.y + region.height) continue
                   val (popupWidth, popupHeight) = winUIXamlCaptureSize(bounds.width, bounds.height, dpi, renderScale)
-                  val layer = RenderTargetBitmap()
-                  requireNotNull(layer.renderAsync(popupElement, popupWidth, popupHeight)).await()
-                  val data = requireNotNull(requireNotNull(layer.getPixelsAsync()).await())
-                  require(layer.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && layer.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION &&
-                    data.length.toLong() == 4L * layer.pixelWidth * layer.pixelHeight) { "Invalid popup bitmap." }
-                  compositeWinUIXamlOverlay(result, region, WinUIXamlVisualImage(layer.pixelWidth, layer.pixelHeight,
-                    readWinUIXamlVisualPixels((data as IWinRTObject).nativeObject, data.length.toInt())), bounds)
+                  val overlay = ${if (framework == XamlFramework.UWP) """if (requiresComposition) {
+                    captureComposition(popupElement, WinUIXamlVisualBounds(0.0, 0.0, bounds.width, bounds.height), null, popupWidth, popupHeight, dpi)
+                  } else """ else ""}run {
+                    val layer = RenderTargetBitmap()
+                    requireNotNull(layer.renderAsync(popupElement, popupWidth, popupHeight)).await()
+                    val data = requireNotNull(requireNotNull(layer.getPixelsAsync()).await())
+                    require(layer.pixelWidth in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && layer.pixelHeight in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION &&
+                      data.length.toLong() == 4L * layer.pixelWidth * layer.pixelHeight) { "Invalid popup bitmap." }
+                    WinUIXamlVisualImage(layer.pixelWidth, layer.pixelHeight,
+                      readWinUIXamlVisualPixels((data as IWinRTObject).nativeObject, data.length.toInt()))
+                  }
+                  compositeWinUIXamlOverlay(result, region, overlay, bounds)
                 }
                 complete(Result.success(result))
                 timing?.let { println("XAML preview snapshot delivered: " + it.elapsedNow().inWholeMilliseconds + "ms") }

@@ -732,20 +732,23 @@ supports 65536 nodes and 128 levels, delivered in immutable 2048-node pages.
 WinUI captures temporarily raise the root UIElement.RasterizationScale to rasterize its subtree at the requested
 density, then restore the original value without changing DIP layout. Windows.UI.Xaml
 has no matching public setter, so UWP uses RenderAsync output scaling only.
-Up to 64 open Popup and Flyout layers are enumerated from their XamlRoot, captured
-separately and composited with premultiplied alpha in SDK stacking order; their
-visual-tree entries retain that order for picking. Isolated previews containing
-realized MediaPlayerElement or SwapChainPanel controls use Windows.Graphics.Capture
-and SoftwareBitmap surface readback, preserving composed video/DirectX pixels.
-A Canvas-hosted camera avoids applying the physical window size as a layout clip
-before scaling. The SDK rendering boundary is awaited before readback. Capture crops the actual client
-region, including when Windows enforces a larger minimum window size. The designer
-refreshes composed content while visible and pauses polling during edits/rebuilds.
-Ordinary XAML continues to use RenderTargetBitmap. Live application inspection and
-Popup/Flyout layers retain the XAML capture path; video/DirectX pixels in those
-surfaces remain unavailable and expose a **Partial capture** explanation. Layout
-and property editing remain available. Protected media is subject to Windows
-capture restrictions.
+Up to 64 open Popup and Flyout layers are enumerated from their XamlRoot; their
+visual-tree entries retain SDK stacking order for picking. Realized MediaPlayerElement
+and SwapChainPanel controls trigger Windows.Graphics.Capture in both isolated and live
+application inspection. Capture checks the current SDK visual tree after its rendering
+boundary, including popups realized after the previous inspection.
+WinUI captures the natural application window and its owned SDK popup HWNDs in native
+bottom-to-top order, then scales/crops the composed image. Inline popups are already
+in the main frame and are not painted twice. Live capture does not resize the application,
+change its render transform, or move its controls. The isolated designer alone synchronizes
+its physical window size after the attached XamlRoot establishes its DPI.
+UWP uses owned CompositionVisualSurface/SpriteVisual surfaces for both the main subtree
+and popup layers. Development deployments with a Hot Reload session receive the
+`graphicsCapture` capability in their copied deployment manifest; production inputs
+remain unchanged. SoftwareBitmap reads the composed video/DirectX surfaces.
+The designer refreshes composed content while visible and pauses polling during edits
+and rebuilds. Ordinary XAML uses RenderTargetBitmap. Protected media remains subject
+to Windows capture restrictions.
 
 `WinRTNativeCompositionIntegrationTest` exercises the generated Native adapter's
 pixels at full size, 2x scale, cropped viewports and after camera restoration. With
@@ -1055,7 +1058,7 @@ Every known visual in the design copy carries source provenance, so unnamed
 parts in repeated templates resolve to the clicked realization and shared source.
 
 UWP composition acceptance uses the actual Native AppContainer designer. Its deployment
-adds the SDK `graphicsCapture` capability only to the isolated preview package. A
+adds the SDK `graphicsCapture` capability to the isolated preview/development deployment. A
 CompositionVisualSurface and an owned SpriteVisual capture the XAML subtree without
 changing its SDK-owned visual size. Acceptance verifies repeated full-frame, 2x zoom,
 viewport crop and camera restoration, then decoded H.264 playback advancing from
@@ -1064,3 +1067,19 @@ green to blue. Run `WinRTNativeCompositionIntegrationTest` with
 `composition-green.mp4` fixture in that package and next to the session directory.
 Window lifetime follows `Window.Closed`; replacing its Content no longer detaches
 the inspector. FrameworkElement instances still follow Loaded/Unloaded.
+
+Live composition acceptance can attach to a running Native fixture with
+`-Pwinrt.ide.liveCompositionSession=<active development session directory>`.
+The fixture provides cyan DirectX pixels in a main SwapChainPanel and yellow pixels
+in an open Popup SwapChainPanel. The test verifies both actual swapchains at 1x/2x,
+then checks that the root and named application controls retain their layout.
+The isolated composition test also opens a video Popup through the same post-attach
+marker as ASC and verifies its pixels at full size, 2x scale and a cropped viewport.
+
+ASC Canary acceptance also starts the fixture through **Live Preview > Start application**,
+opens its real video Flyout, and observes the main video, Flyout video and both DirectX
+surfaces in the preview. Switching the designer to 200% and back to Fit preserves the
+running application's layout. The Native acceptance run covers both live and isolated
+capture; UWP AppContainer acceptance covers popup video, zoom, crop and restoration.
+Protected/DRM video remains governed by Windows capture protection, not bypassed by
+this capture path.

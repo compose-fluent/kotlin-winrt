@@ -15,6 +15,12 @@ private object XamlCaptureInterop {
     val clientToScreen by lazy { WinRTPlatformApi.getProcAddressRaw(user32, "ClientToScreen") }
     val setWindowAttribute by lazy { WinRTPlatformApi.getProcAddressRaw(dwm, "DwmSetWindowAttribute") }
     val frameBounds by lazy { WinRTPlatformApi.getProcAddressRaw(dwm, "DwmGetWindowAttribute") }
+    val framework by lazy { WinRTPlatformApi.loadLibraryExWRaw("Microsoft.Internal.FrameworkUdk.dll", 0) }
+    val windowFromId by lazy { WinRTPlatformApi.getProcAddressRaw(framework, "Windowing_GetWindowFromWindowId") }
+    val getWindow by lazy { WinRTPlatformApi.getProcAddressRaw(user32, "GetWindow") }
+    val threadId by lazy { WinRTPlatformApi.getProcAddressRaw(user32, "GetWindowThreadProcessId") }
+    val visible by lazy { WinRTPlatformApi.getProcAddressRaw(user32, "IsWindowVisible") }
+    val className by lazy { WinRTPlatformApi.getProcAddressRaw(user32, "GetClassNameW") }
     val dxgiDevice = guidOf("54EC77FA-1377-44E6-8C32-88FD5F44C84C")
     val windowNative = guidOf("EECDBF0E-BAE9-4CB6-A68E-9598E1CB57BB")
     val captureInterop = guidOf("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")
@@ -56,7 +62,9 @@ fun createWinUIXamlCaptureDevice(): ComObjectReference = PlatformAbi.confinedSco
 
 /** Captures the provided WinUI window only; no desktop/window enumeration or picker. */
 fun createWinUIXamlWindowCaptureItem(window: ComObjectReference): ComObjectReference =
-    withXamlCaptureWindow(window) { hwnd ->
+    withXamlCaptureWindow(window) { createWinUIXamlCaptureItem(it) }
+
+fun createWinUIXamlCaptureItem(hwnd: RawAddress): ComObjectReference =
         PlatformAbi.confinedScope().use { scope ->
             val output = PlatformAbi.allocatePointerSlot(scope)
             check(!PlatformAbi.isNull(hwnd)) { "The preview window is closed." }
@@ -74,7 +82,6 @@ fun createWinUIXamlWindowCaptureItem(window: ComObjectReference): ComObjectRefer
                 ComObjectReference(item.asRawComPtr(), XamlCaptureInterop.captureItem)
             }
         }
-    }
 
 internal expect fun platformCreateXamlD3DDevice(procedure: RawAddress, driver: Int, output: RawAddress): Int
 internal expect fun platformWrapXamlD3DDevice(procedure: RawAddress, device: RawAddress, output: RawAddress): Int
@@ -152,3 +159,63 @@ fun configureWinUIXamlCompositionWindow(window: ComObjectReference) = withXamlCa
         if (result != 0x80070057.toInt()) ExceptionHelpers.throwExceptionForHR(result, "DwmSetWindowAttribute(WindowCornerPreference)")
     }
 }
+
+/** Microsoft.UI.Interop.h owns WindowId conversion; never reinterpret the ID as HWND. */
+fun winUIXamlCaptureWindowFromId(id: ULong): RawAddress = PlatformAbi.confinedScope().use { scope ->
+    val output = PlatformAbi.allocatePointerSlot(scope)
+    ExceptionHelpers.throwExceptionForHR(platformXamlCaptureWindowId(XamlCaptureInterop.windowFromId, id.toLong(), output), "GetWindowFromWindowId")
+    PlatformAbi.readPointer(output).also { check(!PlatformAbi.isNull(it)) { "The captured window is closed." } }
+}
+
+/** Screen-pixel bounds let separate Popup HWNDs compose without changing application layout. */
+fun winUIXamlCaptureBounds(hwnd: RawAddress, client: Boolean = false): WinUIXamlVisualBounds = PlatformAbi.confinedScope().use { scope ->
+    val rect = PlatformAbi.allocateBytes(scope, 16, 4)
+    val origin = PlatformAbi.allocateBytes(scope, 8, 4)
+    PlatformAbi.zeroBytes(origin, 8)
+    if (client) {
+        check(platformReadXamlCaptureWindow(XamlCaptureInterop.clientRect, hwnd, rect) != 0)
+        check(platformReadXamlCaptureWindow(XamlCaptureInterop.clientToScreen, hwnd, origin) != 0)
+    } else ExceptionHelpers.throwExceptionForHR(platformXamlCaptureDwmAttribute(XamlCaptureInterop.frameBounds, hwnd, 9, rect, 16), "DwmGetWindowAttribute")
+    fun int(address: RawAddress, offset: Long = 0) = PlatformAbi.readInt32(PlatformAbi.slice(address, offset, 4))
+    WinUIXamlVisualBounds((if(client) int(origin) else int(rect)).toDouble(),
+        (if(client) int(origin, 4) else int(rect, 4)).toDouble(),
+        (int(rect, 8)-int(rect)).toDouble(), (int(rect, 12)-int(rect, 4)).toDouble())
+}
+
+/** WinUI's legacy PopupWindowSiteBridge is absent from ContentIsland.Popups.
+ * Enumerate only visible SDK popup hosts on the target window's thread and owner
+ * chain. GetWindow traversal preserves native z-order; no desktop pixels are read. */
+fun winUIXamlCapturePopupWindows(main: RawAddress): List<RawAddress> = PlatformAbi.confinedScope().use { scope ->
+    val thread = platformReadXamlCaptureWindow(XamlCaptureInterop.threadId, main, PlatformAbi.nullPointer)
+    check(thread != 0) { "The captured window is closed." }
+    val result = mutableListOf<RawAddress>()
+    val name = PlatformAbi.allocateBytes(scope, 512, 2)
+    fun ownedByTarget(window: RawAddress): Boolean {
+        var owner = platformXamlCaptureWindowCommand(XamlCaptureInterop.getWindow, window, 4) // GW_OWNER
+        repeat(64) {
+            if (owner == main) return true
+            if (PlatformAbi.isNull(owner)) return false
+            owner = platformXamlCaptureWindowCommand(XamlCaptureInterop.getWindow, owner, 4)
+        }
+        return false
+    }
+    var current = platformXamlCaptureWindowCommand(XamlCaptureInterop.getWindow, main, 0) // GW_HWNDFIRST
+    val visited = mutableSetOf<RawAddress>()
+    while (!PlatformAbi.isNull(current) && visited.add(current)) {
+        check(visited.size <= 4096) { "Too many windows in the capture owner chain." }
+        if (current != main && platformReadXamlCaptureWindow(XamlCaptureInterop.threadId, current, PlatformAbi.nullPointer) == thread &&
+            ownedByTarget(current) &&
+            platformXamlCaptureWindowVisible(XamlCaptureInterop.visible, current)) {
+            val count = platformXamlCaptureClassName(XamlCaptureInterop.className, current, name, 256)
+            val text = buildString { repeat(count.coerceIn(0,255)) { append(PlatformAbi.readInt16(PlatformAbi.slice(name, it.toLong()*2, 2)).toInt().toChar()) } }
+            if (text == "Microsoft.UI.Content.PopupWindowSiteBridge") result.add(current)
+        }
+        current = platformXamlCaptureWindowCommand(XamlCaptureInterop.getWindow, current, 2) // GW_HWNDNEXT
+    }
+    result.asReversed()
+}
+
+internal expect fun platformXamlCaptureWindowId(procedure: RawAddress, id: Long, output: RawAddress): Int
+internal expect fun platformXamlCaptureWindowCommand(procedure: RawAddress, window: RawAddress, command: Int): RawAddress
+internal expect fun platformXamlCaptureWindowVisible(procedure: RawAddress, window: RawAddress): Boolean
+internal expect fun platformXamlCaptureClassName(procedure: RawAddress, window: RawAddress, output: RawAddress, count: Int): Int

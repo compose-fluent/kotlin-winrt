@@ -140,6 +140,11 @@ class KotlinWinRTAuthoringScannerCliTest {
         assertTrue(inspector.contains("windows.ui.viewmanagement.ApplicationView.getForCurrentView()"))
         assertTrue(!inspector.contains("element.rasterizationScale"))
         assertTrue(inspector.contains("bitmap.renderAsync(captureElement, width, height)"))
+        // UWP owns a CompositionVisualSurface instead of an SDK-owned visual.
+        assertTrue(inspector.contains("compositor.createVisualSurface()"))
+        assertTrue(!inspector.contains("winUIXamlCapturePopupWindows(main)"))
+        assertTrue(!inspector.substringAfter("suspend fun captureComposition(").substringBefore("fun captureFrame(").contains("resizeClient"))
+
         assertTrue((host + inspector).let { !it.contains("microsoft.ui.") && !it.contains("XamlControlsResources") && !it.contains("window.appWindow") })
     }
 
@@ -152,6 +157,10 @@ class KotlinWinRTAuthoringScannerCliTest {
         // WinUI UIElement.RasterizationScale affects subtree rasterization, not
         // layout. Preserve the authored value across successful and failed capture.
         val inspector = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_preview.kt").readText()
+        // WinUI captures main/Popup HWNDs without resizing live content.
+        assertTrue(inspector.contains("winUIXamlCapturePopupWindows(main)"))
+        assertTrue(inspector.contains("winUIXamlCaptureWindowFromId"))
+        assertFalse(inspector.substringAfter("suspend fun captureComposition(").substringBefore("fun captureFrame(").contains("resizeClient"))
         val capture = inspector.substringAfter("fun captureFrame(").substringBefore("return WinUIXamlVisualInspector(")
         assertTrue(capture.contains("val previousRasterizationScale = captureElement.rasterizationScale"))
         assertTrue(capture.contains("maxOf(previousRasterizationScale, width / region.width, height / region.height)"))

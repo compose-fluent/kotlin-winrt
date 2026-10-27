@@ -21,3 +21,17 @@ internal actual fun platformReadXamlCaptureWindow(procedure: RawAddress, window:
 internal actual fun platformXamlCaptureDwmAttribute(procedure: RawAddress, window: RawAddress, attribute: Int, output: RawAddress, bytes: Int): Int =
     requireNotNull(procedure.value.toCPointer<CFunction<(COpaquePointer?, UInt, COpaquePointer?, UInt) -> Int>>())
         .invoke(window.value.toCPointer<COpaque>(), attribute.toUInt(), output.value.toCPointer<COpaque>(), bytes.toUInt())
+
+internal actual fun platformXamlCaptureWindowId(procedure: RawAddress, id: Long, output: RawAddress): Int =
+    requireNotNull(procedure.value.toCPointer<CFunction<(Long, COpaquePointer?) -> Int>>()).invoke(id, output.value.toCPointer<COpaque>())
+
+internal actual fun platformXamlCaptureWindowCommand(procedure: RawAddress, window: RawAddress, command: Int): RawAddress =
+    RawAddress(requireNotNull(procedure.value.toCPointer<CFunction<(COpaquePointer?, UInt) -> COpaquePointer?>>())
+        .invoke(window.value.toCPointer<COpaque>(), command.toUInt())?.rawValue?.toLong() ?: 0L)
+
+internal actual fun platformXamlCaptureWindowVisible(procedure: RawAddress, window: RawAddress): Boolean =
+    requireNotNull(procedure.value.toCPointer<CFunction<(COpaquePointer?) -> Int>>()).invoke(window.value.toCPointer<COpaque>()) != 0
+
+internal actual fun platformXamlCaptureClassName(procedure: RawAddress, window: RawAddress, output: RawAddress, count: Int): Int =
+    requireNotNull(procedure.value.toCPointer<CFunction<(COpaquePointer?, COpaquePointer?, Int) -> Int>>())
+        .invoke(window.value.toCPointer<COpaque>(), output.value.toCPointer<COpaque>(), count)

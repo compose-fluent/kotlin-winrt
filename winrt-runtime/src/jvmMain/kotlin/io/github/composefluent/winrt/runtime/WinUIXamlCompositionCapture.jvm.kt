@@ -29,3 +29,23 @@ internal actual fun platformXamlCaptureDwmAttribute(procedure: RawAddress, windo
     Linker.nativeLinker().downcallHandle(MemorySegment.ofAddress(procedure.value),
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT))
         .invokeWithArguments(MemorySegment.ofAddress(window.value), attribute, MemorySegment.ofAddress(output.value), bytes) as Int
+
+internal actual fun platformXamlCaptureWindowId(procedure: RawAddress, id: Long, output: RawAddress): Int =
+    Linker.nativeLinker().downcallHandle(MemorySegment.ofAddress(procedure.value),
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS))
+        .invokeWithArguments(id, MemorySegment.ofAddress(output.value)) as Int
+
+internal actual fun platformXamlCaptureWindowCommand(procedure: RawAddress, window: RawAddress, command: Int): RawAddress =
+    RawAddress((Linker.nativeLinker().downcallHandle(MemorySegment.ofAddress(procedure.value),
+        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT))
+        .invokeWithArguments(MemorySegment.ofAddress(window.value), command) as MemorySegment).address())
+
+internal actual fun platformXamlCaptureWindowVisible(procedure: RawAddress, window: RawAddress): Boolean =
+    (Linker.nativeLinker().downcallHandle(MemorySegment.ofAddress(procedure.value),
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS))
+        .invokeWithArguments(MemorySegment.ofAddress(window.value)) as Int) != 0
+
+internal actual fun platformXamlCaptureClassName(procedure: RawAddress, window: RawAddress, output: RawAddress, count: Int): Int =
+    Linker.nativeLinker().downcallHandle(MemorySegment.ofAddress(procedure.value),
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT))
+        .invokeWithArguments(MemorySegment.ofAddress(window.value), MemorySegment.ofAddress(output.value), count) as Int

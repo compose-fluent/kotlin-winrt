@@ -437,7 +437,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly, renderScale = captureScale))
         }
     }
-    val compositionPlayback = previewUsesComposition(state.inspection?.nodes.orEmpty())
+    val compositionPlayback = state.inspection?.image?.captureBackend == "Composition" || previewUsesComposition(state.inspection?.nodes.orEmpty())
     LaunchedEffect(animationPlaying, compositionPlayback, root, state.connected, selectedPath, captureScale, captureViewport, showInspector, state.inspectionError, startupCancelled, state.busy, state.rebuildingCode, treeOnly, failure) {
         if (static && !treeOnly && failure == null && !state.busy && !state.rebuildingCode && (animationPlaying || compositionPlayback) && !startupCancelled && state.inspectionError == null && state.connected && root != null) while (true) {
             delay(if (animationPlaying) 100 else 250)
