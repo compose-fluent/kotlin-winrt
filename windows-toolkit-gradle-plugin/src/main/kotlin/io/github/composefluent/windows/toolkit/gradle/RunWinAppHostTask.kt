@@ -41,6 +41,9 @@ abstract class RunWinAppHostTask @Inject constructor(
         detach.convention(project.providers.environmentVariable("KOTLIN_WINRT_RELEASE_BUILD_LOCK").map { it == "1" }.orElse(false))
         noLaunch.convention(project.providers.environmentVariable("KOTLIN_WINRT_REGISTER_ONLY").map { it == "1" }.orElse(false))
         previewHostExecutable.convention(deployedExecutable)
+        // Launching is a side effect, just like RunWinAppPackageTask. An unchanged
+        // executable (or an existing output log) must never suppress a new run.
+        outputs.upToDateWhen { false }
         designPreview.convention(project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
     }
 
