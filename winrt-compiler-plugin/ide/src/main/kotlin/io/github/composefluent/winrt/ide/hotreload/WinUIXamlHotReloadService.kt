@@ -231,12 +231,12 @@ internal open class WinRTDevelopmentSession(private val project: Project, privat
      * compiled resources current through the same build-before-restart boundary. */
     internal fun markXamlChanged(path: String) {
         if (disposed || !path.endsWith(".xaml", true) || !display.value.connected) return
-        val file = runCatching { Path.of(path).toAbsolutePath().normalize() }.getOrNull() ?: return
+        val file = runCatching { winRTSourcePath(Path.of(path)) }.getOrNull() ?: return
         val roots = project.service<WinRTProjectService>().modules.value
             .flatMap { it.xamlCompilations }.flatMap { it.sourceRoots }
-        if (roots.none { file.startsWith(Path.of(it).toAbsolutePath().normalize()) }) return
+        if (roots.none { file.startsWith(winRTSourcePath(Path.of(it))) }) return
         if (codeRebuild?.isActive == true) codeRevision.incrementAndGet()
-        val source = sources.singleOrNull { Path.of(it.path).toAbsolutePath().normalize() == file }
+        val source = sources.singleOrNull { winRTSourcePath(Path.of(it.path)) == file }
         val loaded = source != null && Files.exists(file) &&
             display.value.inspectionRoots.any { it.className == source.markup.className }
         if (isolatedPreview && source?.markup?.isResourceDictionary == true && runCatching {
@@ -264,10 +264,10 @@ internal open class WinRTDevelopmentSession(private val project: Project, privat
             val launch = selectedLaunch ?: return
             if (launch == module.staticPreview?.launch() ||
                 (!display.value.connected && !display.value.busy)) return
-            val file = runCatching { Path.of(path).toAbsolutePath().normalize() }.getOrNull() ?: return
+            val file = runCatching { winRTSourcePath(Path.of(path)) }.getOrNull() ?: return
             val modules = project.service<WinRTProjectService>().modules.value
             val generated = modules.flatMap { it.sourceSets }.flatMap { it.generatedKotlinRoots.orEmpty() }
-            if (generated.any { file.startsWith(Path.of(it).toAbsolutePath().normalize()) }) return
+            if (generated.any { file.startsWith(winRTSourcePath(Path.of(it))) }) return
             if (isWinRTUserKotlinSource(file, modules.map { Path.of(it.projectDirectory) },
                     modules.flatMap { it.sourceSets }.flatMap { it.kotlinRoots }.map(Path::of))) {
                 val unchanged = launchSourceSnapshot?.get(file)?.let { hash ->
@@ -907,8 +907,8 @@ internal open class WinRTDevelopmentSession(private val project: Project, privat
     fun loadedSourceLaunch(path: String): Pair<WinRTModuleData, WinUIXamlHotReloadLaunchData>? {
         val current = display.value
         if (!current.connected) return null
-        val normalized = Path.of(path).toAbsolutePath().normalize()
-        val source = sources.singleOrNull { Path.of(it.path).toAbsolutePath().normalize() == normalized } ?: return null
+        val normalized = winRTSourcePath(Path.of(path))
+        val source = sources.singleOrNull { winRTSourcePath(Path.of(it.path)) == normalized } ?: return null
         val name = source.markup.className
         if (current.inspectionRoots.none { it.className == name } &&
             current.inspection?.nodes?.none { it.typeName == name } != false) return null
@@ -1320,7 +1320,7 @@ internal open class WinRTDevelopmentSession(private val project: Project, privat
     }
 
     private fun documentText(path: String): String = ReadAction.compute<String?, RuntimeException> {
-        LocalFileSystem.getInstance().findFileByPath(path.replace('\\', '/'))?.let { FileDocumentManager.getInstance().getCachedDocument(it)?.text }
+        LocalFileSystem.getInstance().findFileByPath(winRTSourcePath(Path.of(path)).toString().replace('\\', '/'))?.let { FileDocumentManager.getInstance().getCachedDocument(it)?.text }
     } ?: Files.readString(Path.of(path))
 
     private fun loadSources(): List<Source> = project.service<WinRTProjectService>().modules.value
@@ -1328,7 +1328,7 @@ internal open class WinRTDevelopmentSession(private val project: Project, privat
             val path = Path.of(root)
             if (!Files.isDirectory(path)) emptyList() else Files.walk(path).use { files -> files.filter {
                 Files.isRegularFile(it) && it.fileName.toString().endsWith(".xaml", true) && Files.size(it) <= 2 * 1024 * 1024
-            }.limit(4096).map { it.toAbsolutePath().normalize().toString() }.toList() }
+            }.limit(4096).map { winRTSourcePath(it).toString() }.toList() }
         }.distinct().mapNotNull { path -> runCatching { Source(path, WinUIXamlHotReloadMarkup.parse(documentText(path))) }
             .getOrNull()?.takeIf { it.markup.className.isNotEmpty() } }
 

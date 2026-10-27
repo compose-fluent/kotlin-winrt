@@ -1,10 +1,27 @@
 package io.github.composefluent.winrt.ide.hotreload
 
 import java.nio.file.Path
+import java.nio.file.Files
 import org.junit.Assert.*
 import org.junit.Test
 
 class WinRTUserKotlinSourceTest {
+    @Test fun canonical_editor_paths_match_imported_roots_including_deleted_sources() {
+        // Windows CI's java.io.tmpdir uses an 8.3 user directory. VFS events use
+        // its expanded path; preserve the same behavior for source deletion.
+        val imported = Files.createTempDirectory("winrt-source-path-")
+        try {
+            val source = Files.writeString(imported.resolve("Model.kt"), "class Model")
+            val editorPath = source.toRealPath()
+            assertTrue(isWinRTUserKotlinSource(editorPath, listOf(imported), emptyList()))
+            assertEquals(setOf(editorPath), winRTKotlinSourceSnapshot(listOf(imported), listOf(imported)).keys)
+            Files.delete(source)
+            assertTrue(isWinRTUserKotlinSource(editorPath, listOf(imported), emptyList()))
+            assertFalse(isWinRTUserKotlinSource(imported.toRealPath().resolve("build/Generated.kt"),
+                listOf(imported), listOf(imported.resolve("build"))))
+        } finally { Files.deleteIfExists(imported.resolve("Model.kt")); Files.delete(imported) }
+    }
+
     @Test fun imported_generated_root_cannot_reclassify_build_output_as_user_code() {
         val project = Path.of("workspace/app")
         for (directory in listOf("build", "Build", ".gradle", ".kotlin")) {

@@ -11,7 +11,7 @@ import java.security.MessageDigest
 internal fun winRTKotlinSourceSnapshot(projects: List<Path>, roots: List<Path>,
     text: (Path) -> String = Files::readString): Map<Path, String> {
     val result = linkedMapOf<Path, String>()
-    roots.map { it.toAbsolutePath().normalize() }.distinct().filter(Files::isDirectory).forEach { root ->
+    roots.map(::winRTSourcePath).distinct().filter(Files::isDirectory).forEach { root ->
         Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes) =
                 if (isWinRTUserKotlinSource(dir, projects, roots)) FileVisitResult.CONTINUE else FileVisitResult.SKIP_SUBTREE

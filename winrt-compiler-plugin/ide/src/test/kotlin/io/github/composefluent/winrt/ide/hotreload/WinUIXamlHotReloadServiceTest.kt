@@ -112,7 +112,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         val service = fixture.service()
         service.reconnect(); fixture.connected(service)
         Files.writeString(fixture.source, markup.replace("Hello", "External edit"))
-        service.markXamlChanged(fixture.source.toString())
+        service.markXamlChanged(fixture.source.toRealPath().toString())
         PlatformTestUtil.waitWithEventsDispatching("External XAML edit reaches the live root", {
             fixture.lastPatch.get()?.changes?.singleOrNull()?.literal == "External edit"
         }, 10)
