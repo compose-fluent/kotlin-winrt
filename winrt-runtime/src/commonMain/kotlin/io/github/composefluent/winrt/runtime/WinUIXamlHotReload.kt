@@ -648,6 +648,7 @@ fun configureWinUIXamlHotReload(dispatcherFactory: () -> ((() -> Unit) -> Boolea
     loadResources: (String) -> Map<Any?, Any?> = { error("Resource loading is not configured; rebuild.") },
     loadElement: (String) -> Any = { error("Element loading is not configured; rebuild.") },
     inspector: WinUIXamlVisualInspector? = null, stateAdapter: WinUIXamlStateAdapter? = null) {
+    if (!isWinUIXamlDevelopmentBuild()) return
     WinUIXamlHotReloadConfiguration.lock.withLock {
         if (WinUIXamlHotReloadConfiguration.initialized) return
         WinUIXamlHotReloadConfiguration.initialized = true

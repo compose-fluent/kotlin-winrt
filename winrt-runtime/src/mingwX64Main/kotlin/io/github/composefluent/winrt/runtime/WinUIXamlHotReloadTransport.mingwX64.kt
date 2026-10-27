@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.native.concurrent.ObsoleteWorkersApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.native.concurrent.ObsoleteWorkersApi::class, kotlin.experimental.ExperimentalNativeApi::class)
 
 package io.github.composefluent.winrt.runtime
 
@@ -9,6 +9,7 @@ import platform.windows.GetTickCount64
 import platform.windows.Sleep
 
 internal actual fun platformStartWinUIXamlHotReload(registry: WinUIXamlHotReloadRegistry): AutoCloseable? {
+    if (!isWinUIXamlDevelopmentBuild()) return null
     initializeNativeXamlDevelopmentArguments()
     val directory = platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY)
         ?.takeIf(String::isNotBlank) ?: return null
@@ -29,6 +30,7 @@ internal class NativeWinUIXamlHotReloadServer(
     private var closed = false
     private var tracedPreview = false
     private val server = memScoped {
+        check(isWinUIXamlDevelopmentBuild()) { "XAML development is disabled in Release binaries." }
         requireNotNull(kotlin_winrt_development_open(directory.wcstr.ptr, WinUIXamlHotReloadProtocol.VERSION)) { "Cannot create the native development session." }
     }
     private val worker = try {
@@ -132,11 +134,15 @@ internal class NativeWinUIXamlHotReloadServer(
 /** Native launcher boundary, called before choosing the generated designer or user main.
  * Packaged activation supplies arguments rather than inheriting the IDE environment. */
 fun isNativeWinUIXamlPreviewRequested(): Boolean {
+    if (!isWinUIXamlDevelopmentBuild()) return false
     initializeNativeXamlDevelopmentArguments()
     return isWinUIXamlPreviewHost()
 }
 
+actual fun isWinUIXamlDevelopmentBuild(): Boolean = kotlin.native.Platform.isDebugBinary
+
 private fun initializeNativeXamlDevelopmentArguments() = memScoped {
+    if (!isWinUIXamlDevelopmentBuild()) return@memScoped
     val count = alloc<IntVar>()
     val arguments = platform.windows.CommandLineToArgvW(platform.windows.GetCommandLineW()?.toKStringFromUtf16(), count.ptr) ?: return@memScoped
     try {

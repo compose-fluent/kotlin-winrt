@@ -157,3 +157,8 @@ private fun Iterable<WinAppVariant>.describe(): String =
             candidate.buildType?.let { ", buildType=$it" }.orEmpty() +
             candidate.executableName?.let { ", executable=$it" }.orEmpty() + ")"
     }
+
+/** JVM grants permission only to isolated run copies. Native permission belongs
+ * to the compiler's binary kind and cannot be changed by a launch task. */
+internal val WinAppVariant.supportsXamlDevelopment: Boolean
+    get() = kind == WinAppVariantKind.Jvm || buildType == "DEBUG"

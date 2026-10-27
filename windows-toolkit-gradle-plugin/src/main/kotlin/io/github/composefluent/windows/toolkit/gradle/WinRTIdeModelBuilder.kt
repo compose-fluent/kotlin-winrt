@@ -115,8 +115,8 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             else if (windows?.packageReferences?.nugetPackages?.any {
                     it.packageId.startsWith("Microsoft.WindowsAppSDK", true) } != true) null else
                 hostRuns.firstOrNull { it.sdkPreview.get() }?.let { task ->
-                    IdeStaticPreview(task.name, task.hostExecutable.get().asFile.absolutePath,
-                        task.workingDirectory.get().asFile.absolutePath,
+                    IdeStaticPreview(task.name, task.deployedExecutable.get().asFile.absolutePath,
+                        task.deploymentDirectory.get().asFile.absolutePath,
                         project.tasks.named("buildWinRTXamlSdkPreview", BuildWinUIXamlSdkPreviewTask::class.java)
                             .get().metadataReferencesFile.get().asFile.absolutePath)
                 },

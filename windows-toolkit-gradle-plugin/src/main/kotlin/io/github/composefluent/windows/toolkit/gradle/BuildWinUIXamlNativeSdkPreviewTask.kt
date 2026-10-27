@@ -65,7 +65,7 @@ abstract class BuildWinUIXamlNativeSdkPreviewTask @Inject constructor(private va
             "projectionSupportMode" to "embedded",
         )
         val arguments = buildList {
-            addAll(listOf("-target", "mingw_x64", "-produce", "program", "-o", output.toString(),
+            addAll(listOf("-g", "-target", "mingw_x64", "-produce", "program", "-o", output.toString(),
                 "-entry", "io.github.composefluent.winrt.generated.xaml.main", "-Xmulti-platform",
                 "-opt-in=kotlinx.cinterop.ExperimentalForeignApi", "-opt-in=kotlin.experimental.ExperimentalNativeApi",
                 "-Xcommon-sources=${sources.joinToString(",")}"))
@@ -78,7 +78,7 @@ abstract class BuildWinUIXamlNativeSdkPreviewTask @Inject constructor(private va
         Files.writeString(response, arguments.joinToString("\n") { "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\"" })
         val digest = MessageDigest.getInstance("SHA-256")
         fun field(value: String) { digest.update(value.toByteArray()); digest.update(0) }
-        field("kotlin-winrt-uwp-native-sdk-preview-v1")
+        field("kotlin-winrt-uwp-native-sdk-preview-debug-v2")
         field(home.toString()); field(javaHome.get()); field(Files.readString(entry))
         val registration = listOf(root.resolve("kotlin-winrt-authoring/metadata-index.tsv")) +
             Files.walk(root.resolve("kotlin-winrt-support")).use { paths -> paths.filter(Files::isRegularFile).sorted().toList() }

@@ -131,6 +131,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel, framework:
           private var application: Application? = null
           private var window: Window? = null
           @kotlin.jvm.JvmStatic fun main(args: Array<String>) {
+            check(isWinUIXamlDevelopmentBuild()) { "XAML preview is disabled in this production artifact." }
             XamlRuntime.initialize(XamlFramework.${framework.name})
             WinRTProjectionSupportIntrinsic.ensureInitialized()
             Application.start {
@@ -619,6 +620,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               private var application: Application? = null
               private var window: Window? = null
               @kotlin.jvm.JvmStatic fun main(args: Array<String>) {
+            check(isWinUIXamlDevelopmentBuild()) { "XAML preview is disabled in this production artifact." }
                 XamlRuntime.initialize(XamlFramework.${framework.name})
                 Application.start {
                   ${registrars.joinToString("\n                  ") { "$it.registerAll()" }}

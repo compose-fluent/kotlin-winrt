@@ -222,10 +222,21 @@ abstract class RunWinAppPackageTask @Inject constructor(
                     "or install and activate the self-contained MSIX.",
             )
         }
-        val input = packageDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        var input = packageDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         val output = deploymentDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         if (output.startsWith(input) || input.startsWith(output)) {
             throw GradleException("Packaged run deployment directory must be separate from its build input: $output and $input.")
+        }
+        if (applicationModel.get() == WindowsApplicationModel.Desktop && nativeCompilerHome.orNull.isNullOrBlank() && supportsXamlHotReload.get()) {
+            val developmentInput = temporaryDir.toPath().resolve("development-input")
+            GradleFileOperations.cleanDirectory(developmentInput)
+            Files.walk(input).use { files -> files.forEach { source ->
+                val target = developmentInput.resolve(input.relativize(source))
+                if (Files.isDirectory(source)) Files.createDirectories(target)
+                else Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+            } }
+            stampWinUIXamlDevelopmentRuntime(developmentInput, true)
+            input = developmentInput.toAbsolutePath().normalize()
         }
         val manifest = input.resolve("AppxManifest.xml")
         val errors = ProjectPriManifestSupport.validatePackageManifest(manifest) +

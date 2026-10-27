@@ -1101,14 +1101,31 @@ These controls do not isolate mutually untrusted processes under the same Window
 account: a process that can read the session token can act as a development client.
 Administrators/debuggers are also outside this boundary.
 
-The runtime does not start a listener without an explicit development session
-launch argument/environment. IDE launch discovery uses supported launch
-configurations, but that is not compile-time removal of the runtime facility from every
-Release/JVM artifact. Do not ship session files or development launch settings, or
-run untrusted project previews elevated. A separately enforced production build
-policy is required if the distribution must be unable to enable this facility even
-with manipulated launch environment. The copied UWP development capture capability
-does not modify the production manifest.
+Development permission is owned by the artifact, not by environment variables,
+JVM system properties or activation arguments:
+
+- Kotlin/Native Release binaries deny Preview and Hot Reload before parsing
+  development activation arguments or creating a session. Only compiler-debug
+  binaries permit these facilities; the IDE does not advertise Release launches
+  as XAML development targets.
+- JVM IDE Run/Debug and Gradle `runWinAppHost...` / `runWinAppPackage...` enable
+  development capability automatically in an isolated runtime copy. The original
+  dependency JAR, directly built host and packaged/distribution output remain
+  disabled. Preview still requires selecting a preview launch; ordinary Run keeps
+  the application's normal main/UI.
+- The JVM runtime reads permission only from its own JAR manifest. Missing permission
+  fails closed, including loose classes. Development run tasks stamp their private
+  copy; production classpath staging removes the stamp even if given a development
+  copy. Setting launch environment, `-D` properties or preview arguments cannot
+  grant production permission. Direct JVM host launch therefore does not replace
+  the supported IDE/Gradle development run task.
+
+An allowed development artifact still requires a session directory to start its
+authenticated endpoint. Do not distribute the isolated development run directory.
+Replacing application/runtime files or injecting code into the process is outside
+this boundary; the protection does not defend against an attacker already able to
+rewrite the installed program. The copied UWP development capture capability does
+not modify the production manifest.
 
 ### Cached Native cold-start acceptance
 

@@ -5,6 +5,34 @@ applications, and to Kotlin/Native UWP AppContainer applications. UWP package
 activation and session handoff are owned by the Gradle toolkit; see the
 [UWP guide](../docs/UWP.md) for configuration and the remaining JVM limitation.
 
+## Development runs versus production artifacts
+
+Native Preview and Hot Reload are available only in compiler-debug binaries.
+Release returns disabled before processing development environment/activation
+arguments, registering a development session or entering the generated preview host.
+No environment variable or startup argument can turn them back on in that binary.
+
+JVM IDE Run/Debug and Gradle `runWinAppHost...` / `runWinAppPackage...` automatically
+prepare an isolated development runtime copy. **Direct build outputs, dependency
+JARs and packaged/distribution outputs do not enable Preview or Hot Reload.** The
+run tasks never modify those original artifacts. Production staging strips any
+development permission inherited from an input copy. Use the IDE/Gradle run path
+for development rather than directly executing the production host/JAR.
+
+JVM has no Kotlin/Native-style Release binary flag. Its narrow platform adaptation
+reads a permission stamp from the defining runtime JAR's own manifest, never from
+classpath resource lookup, environment variables, JVM properties or application
+arguments. Unstamped JARs and loose classes fail closed. An allowed development
+artifact still needs the IDE's session directory and authentication; normal Run
+opens the application, while Preview opens the explicitly selected designer.
+Do not ship the isolated development run directory. Artifact replacement or
+in-process code injection is outside this protection's boundary.
+
+This development-only adapter has no CsWinRT transport equivalent. Its Native
+compile-time boundary follows the DEBUG-only responsibility split in
+`.cswinrt/src/WinRT.Runtime2/InteropServices/Streams/WindowsRuntimeStreamMapping.cs`;
+ABI, activation and authored object ownership remain unchanged.
+
 The common property engine uses the compiler's existing XAML type/member
 registrations. Property discovery reuses `WinUIAuthoredTypeMetadata.customProperty`,
 corresponding to CsWinRT's generated `ICustomProperty` implementation in

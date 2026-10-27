@@ -98,11 +98,16 @@ data class WinUIXamlVisualSnapshot(val nodes: List<WinUIXamlVisualNode>, val pro
 /** Application.RequestedTheme must be chosen during construction, before OnLaunched.
  * The generated SDK adaptation maps this option to its framework's enum. */
 fun winUIXamlPreviewStartupTheme(): String =
-    platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT)
+    if (!isWinUIXamlDevelopmentBuild()) "Default" else platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT)
         ?.takeIf { it == "Light" || it == "Dark" } ?: "Default"
 
 /** Shared designer-host flag after the platform launcher has normalized activation
  * arguments. SDK adapters use it to isolate interactive design scheduling from
  * the user's live application dispatcher. */
 fun isWinUIXamlPreviewHost(): Boolean =
-    platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT) == "1"
+    isWinUIXamlDevelopmentBuild() && platformGetWindowsEnvironmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT) == "1"
+
+/** Artifact-owned permission, never derived from launch arguments, properties or environment.
+ * CsWinRT has no IDE transport. Its compile-time DEBUG boundary is mirrored by the
+ * Native binary flag; JVM uses the runtime JAR's own development-only manifest. */
+expect fun isWinUIXamlDevelopmentBuild(): Boolean

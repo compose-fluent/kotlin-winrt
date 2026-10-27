@@ -87,8 +87,13 @@ class RunWinAppPackageTaskTest {
         write(launcher, "launcher")
         val first = root.resolve("first/library.jar")
         val second = root.resolve("second/library.jar")
-        write(first, "first library")
-        write(second, "second library")
+        for ((jar, content) in listOf(first to "first library", second to "second library")) {
+            Files.createDirectories(jar.parent)
+            java.util.jar.JarOutputStream(Files.newOutputStream(jar)).use { output ->
+                output.putNextEntry(java.util.jar.JarEntry("payload.txt"))
+                output.write(content.toByteArray()); output.closeEntry()
+            }
+        }
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
         val task = project.tasks.register("directDevelopment", StageWinAppPackageTask::class.java).get()
         task.runtimeAssetsDirectory.set(input.toFile())
@@ -106,7 +111,9 @@ class RunWinAppPackageTaskTest {
         assertEquals("component", Files.readString(root.resolve("development/Component.dll")))
         assertTrue(Files.readString(root.resolve("development/AppxManifest.xml")).contains("KotlinWinRT.RunTest.dev"))
         Files.list(root.resolve("development/lib")).use { jars ->
-            assertEquals(setOf("first library", "second library"), jars.map(Files::readString).toList().toSet())
+            assertEquals(setOf("first library", "second library"), jars.map { path -> java.util.jar.JarFile(path.toFile()).use { jar ->
+                jar.getInputStream(jar.getEntry("payload.txt")).bufferedReader().use { it.readText() }
+            } }.toList().toSet())
         }
         write(input.resolve("lib/unexpected.jar"), "reserved")
         assertTrue(runCatching { task.stage() }.isFailure)

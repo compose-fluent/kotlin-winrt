@@ -12,6 +12,7 @@ import java.util.*
 import java.util.concurrent.*
 
 internal actual fun platformStartWinUIXamlHotReload(registry: WinUIXamlHotReloadRegistry): AutoCloseable? {
+    if (!isWinUIXamlDevelopmentBuild()) return null
     val directory = System.getenv(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY)?.takeIf(String::isNotBlank) ?: return null
     return runCatching { WinUIXamlHotReloadServer(registry, Path.of(directory)) }.getOrElse {
         System.err.println("Kotlin WinRT XAML Hot Reload is unavailable: ${it.message}")

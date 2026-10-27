@@ -380,6 +380,7 @@ internal fun stageWinAppJvmRuntimeClasspath(jars: Iterable<java.io.File>, output
         .forEach { (jar, name) ->
             val target = libRoot.resolve(name)
             if (!Files.exists(target)) Files.copy(jar.toPath(), target)
+            stampWinUIXamlDevelopmentRuntimeJar(target, false)
         }
 }
 
@@ -916,6 +917,16 @@ internal fun applicationHostSource(
         if (kotlin_winrt_handle_pending_exception(env)) {
             kotlin_winrt_close_application_host(env, application_host);
             return 1;
+        }
+        if (kotlin_winrt_preview_requested) {
+            jclass policy = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinUIXamlDevelopmentBuildPolicy");
+            jmethodID allowed = policy == NULL ? NULL : (*env)->GetStaticMethodID(env, policy, "isWinUIXamlDevelopmentBuild", "()Z");
+            if (allowed == NULL || kotlin_winrt_handle_pending_exception(env)) {
+                exit_code = 1;
+                goto cleanup;
+            }
+            kotlin_winrt_preview_requested = (*env)->CallStaticBooleanMethod(env, policy, allowed);
+            (*env)->DeleteLocalRef(env, policy);
         }
         main_class = (*env)->FindClass(env, kotlin_winrt_preview_requested ?
             "io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost" : "$mainClassPath");

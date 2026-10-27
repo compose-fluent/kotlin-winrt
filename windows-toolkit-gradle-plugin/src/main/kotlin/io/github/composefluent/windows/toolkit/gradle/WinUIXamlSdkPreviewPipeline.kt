@@ -148,6 +148,7 @@ internal fun configureWinUIXamlSdkPreview(
         task.description = "Opens the SDK-only XAML designer; does not build or run project code."
         task.hostExecutable.set(host.flatMap { it.outputDirectory.file("KotlinWinUIXamlPreview.exe") })
         task.workingDirectory.set(host.flatMap { it.outputDirectory })
+        task.deploymentDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/xaml-sdk-preview/run"))
         task.supportsXamlHotReload.set(true)
         task.sdkPreview.set(true)
         task.designPreview.set(true)

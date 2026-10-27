@@ -191,7 +191,8 @@ class WinRTIdeModelBuilderTest {
         assertEquals(listOf("Microsoft.WindowsAppSDK", "Sample.ProjectDependency"), model.nuGetPackages.map { it.id })
         assertEquals("2.2.0", model.nuGetPackages.first().version)
         assertEquals("runWinRTXamlSdkPreview", model.staticPreview!!.taskName)
-        assertTrue(model.staticPreview!!.executable.endsWith("KotlinWinUIXamlPreview.exe"))
+        assertTrue(model.staticPreview!!.executable.replace('\\', '/').endsWith("xaml-sdk-preview/run/KotlinWinUIXamlPreview.exe"))
+        assertTrue(model.staticPreview!!.workingDirectory.replace('\\', '/').endsWith("xaml-sdk-preview/run"))
         assertFalse("The SDK designer must not become a user application run configuration",
             model.hotReloadLaunches.any { it.taskName == model.staticPreview!!.taskName })
         val sdk = project.tasks.named("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java).get()

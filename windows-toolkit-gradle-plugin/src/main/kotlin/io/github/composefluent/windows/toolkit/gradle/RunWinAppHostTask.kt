@@ -127,6 +127,10 @@ abstract class RunWinAppHostTask @Inject constructor(
                     previewBuildInputs.files.map { it.toPath() })
             }
         }
+        if (nativeCompilerHome.orNull.isNullOrBlank() && supportsXamlHotReload.get()) {
+            check(deploymentDirectory.isPresent) { "JVM development requires an isolated runtime deployment." }
+            stampWinUIXamlDevelopmentRuntime(runtimeDirectory().toPath(), true)
+        }
         if (nativeCompilerHome.orNull?.isNotBlank() == true && deploymentDirectory.isPresent) {
             // Keep the exact resolved launch contract for a failed-replacement rollback.
             val environment = mutableMapOf<String, String>().also(::configureEnvironment)

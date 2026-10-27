@@ -812,3 +812,19 @@ Build and validate this repository on Windows.
 - [CsWinRT](https://github.com/microsoft/CsWinRT)
 
 When local behavior disagrees with those projections, the intent is to change `kotlin-winrt` to match the reference projection model instead of inventing project-specific rules.
+
+## XAML development permissions in built artifacts
+
+JVM IDE Run/Debug and Gradle `runWinAppHost...` / `runWinAppPackage...` enable
+Preview/Hot Reload capability automatically in a separate development runtime copy.
+Building the host/JAR or producing a package does **not** enable those capabilities.
+Directly launching that production output cannot enable them through environment
+variables, JVM properties or startup arguments. Use the development run tasks to
+retain the normal editing workflow, and distribute the build/package output, not
+the isolated run directory. Ordinary Run still opens your application; Preview is
+an explicit designer launch.
+
+Native Debug retains development support. Native Release permanently denies these
+entry points for that binary, including attempts through packaged activation
+arguments. See [runtime development security](../winrt-runtime/HOT_RELOAD.md#development-runs-versus-production-artifacts)
+for the artifact boundary and authentication requirements.
