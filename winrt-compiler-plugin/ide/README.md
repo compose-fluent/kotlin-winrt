@@ -734,9 +734,32 @@ density, then restore the original value without changing DIP layout. Windows.UI
 has no matching public setter, so UWP uses RenderAsync output scaling only.
 Up to 64 open Popup and Flyout layers are enumerated from their XamlRoot, captured
 separately and composited with premultiplied alpha in SDK stacking order; their
-visual-tree entries retain that order for picking. Other RenderTargetBitmap
-limitations, such as video and native swap-chain content, still apply. Realized MediaPlayerElement and SwapChainPanel surfaces expose a **Partial capture** link with the missing-pixel explanation; layout and property editing stay available. These diagnostics do not imply that the capture backend supports their pixels.
-The protocol is version 17: rebuild applications using an older development host
+visual-tree entries retain that order for picking. Isolated previews containing
+realized MediaPlayerElement or SwapChainPanel controls use Windows.Graphics.Capture
+and SoftwareBitmap surface readback, preserving composed video/DirectX pixels.
+A Canvas-hosted camera avoids applying the physical window size as a layout clip
+before scaling. The SDK rendering boundary is awaited before readback. Capture crops the actual client
+region, including when Windows enforces a larger minimum window size. The designer
+refreshes composed content while visible and pauses polling during edits/rebuilds.
+Ordinary XAML continues to use RenderTargetBitmap. Live application inspection and
+Popup/Flyout layers retain the XAML capture path; video/DirectX pixels in those
+surfaces remain unavailable and expose a **Partial capture** explanation. Layout
+and property editing remain available. Protected media is subject to Windows
+capture restrictions.
+
+`WinRTNativeCompositionIntegrationTest` exercises the generated Native adapter's
+pixels at full size, 2x scale, cropped viewports and after camera restoration. With
+`winrt.ide.nativeRestartProject` pointing to a built preview fixture, place its
+video beside that project at `../xaml-reload-validation/composition-green.mp4`.
+The deterministic H.264 test input can be generated with FFmpeg:
+
+```powershell
+ffmpeg -y -f lavfi -i "color=c=lime:s=160x120:r=10:d=120" -vf "drawbox=x=0:y=0:w=iw:h=ih:color=blue:t=fill:enable='gte(mod(t,10),5)'" -c:v libx264 -pix_fmt yuv420p composition-green.mp4
+```
+
+The test requires both decoded green pixels and a later blue frame, in addition
+to exact camera geometry; a transparent SwapChainPanel alone is insufficient.
+The protocol is version 18: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
 adapters are shared Kotlin; development transports support desktop JVM/Native
 WinUI and Native UWP. Native UWP project-code previews and application launches

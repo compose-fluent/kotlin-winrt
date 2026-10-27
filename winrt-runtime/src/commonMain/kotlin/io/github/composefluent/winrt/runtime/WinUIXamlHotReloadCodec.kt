@@ -191,7 +191,7 @@ internal object WinUIXamlHotReloadCodec {
             writeBoolean(view.image != null)
             view.image?.let { image ->
                 require(image.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION && image.pixels.size == 4 * image.width * image.height)
-                writeInt(image.width); writeInt(image.height); writeBoolean(image.bounds != null); image.bounds?.let { bounds(it) }; write(image.pixels)
+                writeInt(image.width); writeInt(image.height); writeBoolean(image.bounds != null); image.bounds?.let { bounds(it) }; require(image.captureBackend in listOf("Xaml", "Composition")); string(image.captureBackend); write(image.pixels)
             }
             writeBoolean(view.clock != null)
             view.clock?.let { require(it.positionMillis in 0..86_400_000); writeInt(it.positionMillis); writeBoolean(it.playing) }
@@ -223,7 +223,8 @@ internal object WinUIXamlHotReloadCodec {
             val image = if (!readBoolean()) null else {
                 val width = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); val height = count(WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION); require(width > 0 && height > 0)
                 val region = if (readBoolean()) bounds() else null
-                WinUIXamlVisualImage(width, height, ByteArray(4 * width * height).also(::readFully), region)
+                val backend = string().also { require(it in listOf("Xaml", "Composition")) }
+                WinUIXamlVisualImage(width, height, ByteArray(4 * width * height).also(::readFully), region, backend)
             }
             WinUIXamlVisualSnapshot(nodes, properties, image, if (readBoolean()) WinUIXamlPreviewClock(count(86_400_000), readBoolean()) else null, readLong().also { require(it >= 0) }, count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES), count(WinUIXamlHotReloadProtocol.MAX_VISUAL_NODES))
         }

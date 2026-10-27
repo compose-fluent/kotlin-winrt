@@ -288,7 +288,8 @@ internal fun PreviewImage(view: WinUIXamlVisualSnapshot, selected: List<Int>, se
                             } else if (layoutDrag && dragged && !cancelDrag) manipulation?.let(latestLayout)
                             manipulation = null; guides = null; marquee = null
                             if (!panning && !dragged && latestTool != null) latestDrop(latestTool!!, change.position)
-                            else if (!panning && !dragged && !multiple) latestHit(change.position)?.let { node ->
+                            // A resize handle owns the gesture even below the drag threshold.
+                            else if (!panning && !dragged && !multiple && handle == null) latestHit(change.position)?.let { node ->
                                 if (latestSelectedPaths.size != 1 || node.path !in latestSelectedPaths) latestSelect(node.path)
                                 if (change.uptimeMillis - lastTap in 1..viewConfiguration.doubleTapTimeoutMillis &&
                                     (change.position - lastPoint).getDistance() < viewConfiguration.touchSlop) {

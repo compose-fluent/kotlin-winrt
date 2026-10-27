@@ -59,6 +59,8 @@ private fun xamlPreviewWindowSource(framework: XamlFramework): String = if (fram
       // empty placeholder tree before that document is available.
       val host = requireNotNull(appWindow)
       host.isShownInSwitchers = false
+      requireNotNull(host.presenter).asWinRT<microsoft.ui.windowing.OverlappedPresenter>().setBorderAndTitleBar(false, false)
+      configureWinUIXamlCompositionWindow(nativeObject)
       // Keep the host offscreen and out of task switching without taking focus.
       host.move(windows.graphics.PointInt32(-32000, -32000))
       host.show(false)
@@ -208,6 +210,8 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
           var tracedPreview = false
           var traceCapture = false
           ${xamlDesignBindingHelpers(framework)}
+          var designWindow: Window? = null
+          var requiresComposition = false
           var designElement: FrameworkElement? = null
           var designCaptureRoot: FrameworkElement? = null
           var designSurface: ${framework.xamlKotlinNamespace}.controls.Canvas? = null
@@ -221,6 +225,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val rect = requireNotNull(item.transformToVisual(root)).transformBounds(windows.foundation.Rect(0f, 0f, size.width, size.height))
             return WinUIXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
           }
+          ${xamlCompositionCaptureSource(framework)}
           fun captureFrame(value: Any, renderScale: Double, viewport: WinUIXamlVisualBounds?, complete: (Result<WinUIXamlVisualImage>) -> Unit) {
             val timing = if (traceCapture) kotlin.time.TimeSource.Monotonic.markNow() else null
             traceCapture = false
@@ -293,6 +298,10 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                   }
                 }
                 val (width, height) = winUIXamlCaptureSize(region.width, region.height, dpi, renderScale)
+                val result = if (requiresComposition && surface != null) {
+                  stage = "capture the composed preview surface"
+                  captureComposition(captureElement, region, viewport, width, height, dpi)
+                } else {
                 stage = "render the visual tree"
                 ${if (framework == XamlFramework.WinUI) """// WinUI hwwalk.cpp propagates UIElement.RasterizationScale through
                 // the subtree's realization transform, without changing DIP layout.
@@ -313,7 +322,8 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
                 timing?.let { println("XAML preview pixels available: " + it.elapsedNow().inWholeMilliseconds + "ms") }
                 val bytes = readWinUIXamlVisualPixels((buffer as IWinRTObject).nativeObject, buffer.length.toInt())
                 timing?.let { println("XAML preview pixels copied: " + it.elapsedNow().inWholeMilliseconds + "ms") }
-                val result = WinUIXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes, viewport)
+                WinUIXamlVisualImage(bitmap.pixelWidth, bitmap.pixelHeight, bytes, viewport)
+                }
                 stage = "render popup layers"
                 for (popup in popupRoots(element)) {
                   val popupElement = popup.asWinRT<FrameworkElement>()
@@ -354,6 +364,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               WinUIXamlVisualBounds(rect.x.toDouble(), rect.y.toDouble(), rect.width.toDouble(), rect.height.toDouble())
             }.getOrNull() } ?: WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0)
             val type = winUIXamlInspectionTypeName(value) ?: (value as IWinRTObject).nativeObject.asInspectable().use { it.getRuntimeClassName(true) }.orEmpty()
+            if (winUIXamlNeedsCompositionCapture(type)) requiresComposition = true
             val sourceId = if (isWinUIXamlPreviewHost() && element != null) runCatching {
               element.resources?.let { resources ->
                 if (resources.containsKey(WinUIXamlHotReloadProtocol.PREVIEW_SOURCE_KEY))
@@ -414,6 +425,9 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
             val timing = if (!tracedPreview) kotlin.time.TimeSource.Monotonic.markNow() else null
             val window = owner.asWinRT<Window>()
             activeStoryboard?.stop(); activeStoryboard = null; playing = false
+            val previousComposition = requiresComposition
+            requiresComposition = false
+            designWindow = window
             val previousContent = window.content
             val previousElement = designElement
             val previousSurface = designSurface
@@ -435,15 +449,16 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               previousElement?.xamlRoot?.let { oldRoot ->
                 VisualTreeHelper.getOpenPopupsForXamlRoot(oldRoot)?.forEach { it?.isOpen = false }
               }
-              // A Window content root is arranged to the entire client size,
-              // overriding camera dimensions. Keep the camera as an aligned child.
+              // A Window content root is arranged to the entire client size. Canvas
+              // measures the camera without a layout clip tied to that physical
+              // viewport; Grid would clip before the camera scale is applied.
               val captureRoot = ${framework.xamlKotlinNamespace}.controls.Grid().apply {
                 width = request.width.toDouble(); height = request.height.toDouble()
                 horizontalAlignment = HorizontalAlignment.Left; verticalAlignment = VerticalAlignment.Top
                 children?.add(surface)
               }
               designCaptureRoot = captureRoot
-              window.content = ${framework.xamlKotlinNamespace}.controls.Grid().apply { children?.add(captureRoot) }
+              window.content = ${framework.xamlKotlinNamespace}.controls.Canvas().apply { children?.add(captureRoot) }
               attached = true
               beginDesignBindings(element)
               timing?.let { println("XAML preview model connected: " + it.elapsedNow().inWholeMilliseconds + "ms") }
@@ -480,6 +495,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               // Deferred DataTemplate loading can fail during Measure/Arrange after
               // attachment. Detach that poisoned tree before returning to the SDK
               // message loop, which would otherwise retry layout and terminate.
+              requiresComposition = previousComposition
               designElement = previousElement; designSurface = previousSurface; designCaptureRoot = previousCaptureRoot
               if (attached) try { window.content = previousContent }
               catch (rollback: Exception) { error.addSuppressed(rollback) }

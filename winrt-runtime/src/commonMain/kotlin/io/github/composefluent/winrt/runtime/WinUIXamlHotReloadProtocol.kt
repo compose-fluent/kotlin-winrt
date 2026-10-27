@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 /** Development protocol, separate from XAMLC's compilation/declaration protocol. */
 object WinUIXamlHotReloadProtocol {
-    const val VERSION = 17
+    const val VERSION = 18
     const val MAX_IMAGE_DIMENSION = 4096
     const val MAX_ARTBOARD_DIMENSION = 16384
     const val MAX_VISUAL_NODES = 65536
@@ -90,7 +90,7 @@ data class WinUIXamlVisualNode(val path: List<Int>, val typeName: String, val na
     val templateOwner: List<Int>? = null, val templateProperty: String = "", val sourceId: String = "", val layer: Int = 0)
 data class WinUIXamlVisualProperty(val name: String, val value: String)
 /** BGRA8 premultiplied pixels, as returned by WinUI RenderTargetBitmap.GetPixelsAsync. */
-data class WinUIXamlVisualImage(val width: Int, val height: Int, val pixels: ByteArray, val bounds: WinUIXamlVisualBounds? = null)
+data class WinUIXamlVisualImage(val width: Int, val height: Int, val pixels: ByteArray, val bounds: WinUIXamlVisualBounds? = null, val captureBackend: String = "Xaml")
 data class WinUIXamlPreviewClock(val positionMillis: Int, val playing: Boolean)
 data class WinUIXamlVisualSnapshot(val nodes: List<WinUIXamlVisualNode>, val properties: List<WinUIXamlVisualProperty>,
     val image: WinUIXamlVisualImage? = null, val clock: WinUIXamlPreviewClock? = null, val treeToken: Long = 0, val nextOffset: Int = 0, val totalNodes: Int = nodes.size)

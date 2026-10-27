@@ -437,11 +437,12 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
             session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, instance, selectedPath, !treeOnly, renderScale = captureScale))
         }
     }
-    LaunchedEffect(animationPlaying, root, state.connected, selectedPath, captureScale, showInspector) {
-        if (static && animationPlaying && state.connected && root != null) while (true) {
-            delay(100)
+    val compositionPlayback = previewUsesComposition(state.inspection?.nodes.orEmpty())
+    LaunchedEffect(animationPlaying, compositionPlayback, root, state.connected, selectedPath, captureScale, captureViewport, showInspector, state.inspectionError, startupCancelled, state.busy, state.rebuildingCode, treeOnly, failure) {
+        if (static && !treeOnly && failure == null && !state.busy && !state.rebuildingCode && (animationPlaying || compositionPlayback) && !startupCancelled && state.inspectionError == null && state.connected && root != null) while (true) {
+            delay(if (animationPlaying) 100 else 250)
             if (!session.state.value.inspecting) session.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
-                selectedPath = selectedPath, renderScale = captureScale, readProperties = showInspector || treeOnly))
+                selectedPath = selectedPath, renderScale = captureScale, captureBounds = captureViewport, readTree = false, readProperties = showInspector || treeOnly))
         }
     }
     LaunchedEffect(state.inspection?.clock, state.inspecting) {
@@ -464,7 +465,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
-    val captureLimitations = remember(view?.nodes) { previewCaptureLimitations(view?.nodes.orEmpty()) }
+    val captureLimitations = remember(view?.nodes, view?.image?.captureBackend) { previewCaptureLimitations(view?.nodes.orEmpty(), view?.image?.captureBackend ?: "Xaml") }
     val showingPlaceholder = static && view == null && placeholder != null
     LaunchedEffect(state.inspection?.image, state.inspectionDocument, placeholderCache) {
         val document = state.inspectionDocument
@@ -520,7 +521,9 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     // A new selection/revision must lose edit capabilities in this composition,
     // before the asynchronous resolver starts. produceState keys alone retain
     // the previous value until its new coroutine runs, exposing stale commands.
-    val editableResult by key(selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection, state.inspectionTreeRead, failure, state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
+    // Image/clock/property refreshes keep the same tree identity. Keying this
+    // resolver by the whole snapshot would revoke edits on every video frame.
+    val editableResult by key(selectedPaths, revision, view?.nodes, static, source, state.connected, state.inspection?.treeToken, state.inspectionTreeRead, failure, state.inspectionError, state.projectCodeChanged, recordState, selectedStates, theme, previewApplication, catalogRevision, resourceRevision) {
       produceState<List<DesignerSelection>?>(null) {
         val snapshot = view
         if (snapshot == null || !static || !state.connected || state.inspection == null || !state.inspectionTreeRead || failure != null || state.inspectionError != null || state.projectCodeChanged) { value = emptyList(); return@produceState }
@@ -753,6 +756,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         !state.connected -> "Last successful render · ${state.message}"
         failure != null || state.inspectionError != null -> "Out of date · last successful render"
         !state.inspectionTreeRead -> "Preview visible · preparing selection and properties…"
+        view.image?.captureBackend == "Composition" -> "Live composition preview"
         prepared == null || state.inspecting -> "Updating preview…"
         else -> state.message
     } else state.message
@@ -853,7 +857,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                                     view?.properties.orEmpty().associate { it.name to it.value } else emptyMap(), rejection = rejectedEdits, apply = ::applyEdit)
                         }
                         Text("Effective values · read only")
-                        if (state.inspecting || state.inspectionPath != selectedPath || !state.inspectionPropertiesRead) Text("Reading selection…")
+                        if (state.inspectionPath != selectedPath || !state.inspectionPropertiesRead) Text("Reading selection…")
                         else androidx.compose.foundation.text.selection.SelectionContainer {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 view?.properties?.filter { it.name.contains(propertyFilter.text, ignoreCase = true) }

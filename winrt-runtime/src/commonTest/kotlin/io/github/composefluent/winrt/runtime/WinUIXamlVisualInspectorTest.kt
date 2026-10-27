@@ -189,12 +189,13 @@ class WinUIXamlVisualInspectorTest {
         val region = WinUIXamlVisualBounds(5000.0, 6000.0, 2.0, 1.0)
         val request = WinUIXamlInspectionRequest("probe.Page", "", width = 12000, height = 10000, captureBounds = region)
         assertEquals(request, WinUIXamlHotReloadCodec.readCommand(WinUIXamlHotReloadCodec.writeInspectionRequest("token", request)).inspection)
-        val base = WinUIXamlVisualImage(2, 1, byteArrayOf(0, 0, 0, -1, 0, 0, 0, -1), region)
+        val base = WinUIXamlVisualImage(2, 1, byteArrayOf(0, 0, 0, -1, 0, 0, 0, -1), region, "Composition")
         val layer = WinUIXamlVisualImage(1, 1, byteArrayOf(0, 0, -128, -128))
         compositeWinUIXamlOverlay(base, region, layer, WinUIXamlVisualBounds(5001.0, 6000.0, 1.0, 1.0))
         assertContentEquals(byteArrayOf(0, 0, 0, -1, 0, 0, -128, -1), base.pixels)
         val roundtrip = WinUIXamlHotReloadCodec.readReply(WinUIXamlHotReloadCodec.writeReply(WinUIXamlHotReloadReply(0, "", inspection = WinUIXamlVisualSnapshot(emptyList(), emptyList(), base)))).inspection!!.image!!
         assertEquals(region, roundtrip.bounds)
+        assertEquals("Composition", roundtrip.captureBackend)
         assertContentEquals(base.pixels, roundtrip.pixels)
         assertFailsWith<IllegalArgumentException> { validateWinUIXamlCaptureBounds(region.copy(width = Double.NaN)) }
     }

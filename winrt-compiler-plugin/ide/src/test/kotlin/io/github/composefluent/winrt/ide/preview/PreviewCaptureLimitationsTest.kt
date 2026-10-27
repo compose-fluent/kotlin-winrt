@@ -15,7 +15,14 @@ class PreviewCaptureLimitationsTest {
             node("Microsoft.UI.Xaml.Controls.MediaPlayerElement"),
             node("Microsoft.UI.Xaml.Controls.MediaPlayerElement"),
             node("Microsoft.UI.Xaml.Controls.SwapChainPanel")))
-        assertEquals(2, diagnostics.size)
+        val video = listOf(node("Microsoft.UI.Xaml.Controls.MediaPlayerElement"))
+        assertTrue(previewUsesComposition(video))
+        assertTrue(previewCaptureLimitations(video, "Composition").isEmpty())
+        assertFalse(previewUsesComposition(listOf(node("sample.MediaPlayerElement"))))
+        val popup = listOf(video.single().copy(layer = 1))
+        assertFalse(previewUsesComposition(popup))
+        assertEquals(1, previewCaptureLimitations(popup, "Composition").size)
+        assertEquals(1, diagnostics.size)
         assertTrue(diagnostics.any { "Video pixels" in it })
         assertTrue(diagnostics.any { "DirectX swap-chain pixels" in it })
     }
