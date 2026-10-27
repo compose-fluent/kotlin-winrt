@@ -29,6 +29,19 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
     var frameIndex by remember(source, key, owner, trackIndex) { mutableIntStateOf(-1) }
     val track = tracks.getOrNull(trackIndex)
     val frame = track?.frames?.getOrNull(frameIndex)
+    val objectSelection by produceState<DesignerSelection?>(null, frame?.pointer, frame?.value, revision, refresh) {
+        value = if (frame?.complex == true) withContext(Dispatchers.IO) {
+            ReadAction.compute<DesignerSelection?, RuntimeException> {
+                val tag = frame.pointer.element ?: return@compute null
+                val catalog = io.github.composefluent.winrt.ide.xaml.WinUIXamlSymbols.catalog(tag.containingFile) ?: return@compute null
+                val properties = WinUIXamlDesignerEditing.properties(tag, catalog)
+                if (properties.none { it.name == "Value" && it.writable }) return@compute null
+                DesignerSelection(frame.pointer, tag.text, properties,
+                    io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(0.0, 0.0, 0.0, 0.0),
+                    tag.parentTag?.localName.orEmpty(), tag.attributes.associate { it.name to it.value.orEmpty() })
+            }
+        } else null
+    }
     val frameTime = remember(source, key, owner, trackIndex, frameIndex, frame?.time) {
         TextFieldState(frame?.time?.let(DesignerStoryboardEditing::milliseconds)?.toString().orEmpty())
     }
@@ -56,8 +69,9 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
                 } }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (frame?.complex == true) "Object XAML" else "Value")
-                if (frame?.complex == true || value.text.trimStart().startsWith("<")) TextArea(value, modifier = Modifier.width(280.dp).heightIn(min = 90.dp, max = 160.dp))
+                if (objectSelection == null) Text(if (frame?.complex == true) "Object XAML" else "Value")
+                if (objectSelection != null) Text("Edit object properties below")
+                else if (frame?.complex == true || value.text.trimStart().startsWith("<")) TextArea(value, modifier = Modifier.width(280.dp).heightIn(min = 90.dp, max = 160.dp))
                 else TextField(value, modifier = Modifier.width(160.dp))
                 if (frame == null) Box(Modifier.width(150.dp)) { WinRTChoice("Interpolation", (if (track?.kind == "Object") listOf("Discrete") else listOf("Linear", "Discrete")).map { it to it }, interpolation) { interpolation = it } }
                 else Text(frame.type.removeSuffix("${track?.kind}KeyFrame"))
@@ -71,6 +85,9 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
             }
             if (frame != null && validFrameTime == null) Text("Enter a whole-millisecond time from 0 to 86400000; the source KeyTime is ${frame.time}.")
             Text(if (frame == null) "Adds a source keyframe at $position ms." else "Edits this frame at its specified time. Existing easing and spline settings are preserved.")
+            objectSelection?.let { selected ->
+                DesignerObjectPropertyPanel(selected, selected.properties.single { it.name == "Value" }, active = true)
+            }
             if (frame != null && track != null && track.kind != "Object") key(trackIndex, frameIndex, frame.spline) {
                 DesignerSplinePanel(frame.spline) { curve ->
                     ApplicationManager.getApplication().invokeLater {

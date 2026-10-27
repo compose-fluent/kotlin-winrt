@@ -140,6 +140,19 @@ class DesignerStoryboardEditingTest : BasePlatformTestCase() {
         assertEquals(DesignerSpline.Linear, DesignerStoryboardEditing.tracks(xml, "Fade").single().frames.single().spline)
         for (text in listOf("NaN,0 1,1", "0,0 1,Infinity", "-0.1,0 1,1", "0,0 1,1.1", "0,1")) assertNull(DesignerSpline.parse(text))
     }
+    fun testTimingCurveConversionPreservesPresentationPrefix() {
+        val xml = myFixture.configureByText("Prefixed.xaml", """<p:Grid xmlns:p="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><p:Grid.Resources><p:Storyboard x:Key="Fade"><p:DoubleAnimationUsingKeyFrames Storyboard.TargetName="Target" Storyboard.TargetProperty="Opacity"><p:LinearDoubleKeyFrame KeyTime="0:0:1" Value="0.4"/></p:DoubleAnimationUsingKeyFrames></p:Storyboard></p:Grid.Resources><p:Border x:Name="Target"/></p:Grid>""") as XmlFile
+        val before = xml.text
+        val track = DesignerStoryboardEditing.tracks(xml, "Fade").single()
+        DesignerStoryboardEditing.writeSpline(project, track, track.frames.single(), DesignerSpline.Linear)
+        val changed = DesignerStoryboardEditing.tracks(xml, "Fade").single().frames.single()
+        assertEquals("p", changed.pointer.element!!.namespacePrefix)
+        assertEquals("SplineDoubleKeyFrame", changed.type)
+        assertEquals("0.4", changed.value)
+        myFixture.performEditorAction(IdeActions.ACTION_UNDO)
+        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        assertEquals(before, xml.text)
+    }
     fun testDuplicateResourceIdentityIsNotGuessed() {
         assertTrue(DesignerStoryboardEditing.tracks(source(true), "Fade").isEmpty())
     }

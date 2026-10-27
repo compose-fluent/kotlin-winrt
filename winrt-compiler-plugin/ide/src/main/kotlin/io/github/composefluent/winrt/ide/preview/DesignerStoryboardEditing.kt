@@ -72,12 +72,13 @@ internal object DesignerStoryboardEditing {
             check(original.namespace == WinUIXamlCatalog.PRESENTATION && original.localName.endsWith("${track.kind}KeyFrame")) { "The keyframe type changed." }
             val replacement = original.copy() as XmlTag
             val oldName = replacement.localName
-            replacement.setName("Spline${track.kind}KeyFrame")
+            val newName = "Spline${track.kind}KeyFrame"
+            replacement.setName(replacement.namespacePrefix.takeIf { it.isNotEmpty() }?.let { "$it:$newName" } ?: newName)
             replacement.setAttribute("KeySpline", curve.toString())
             replacement.subTags.forEach { child ->
                 if (child.localName == "$oldName.KeySpline" || child.localName == "$oldName.EasingFunction") child.delete()
                 else if (child.namespace == replacement.namespace && child.localName.startsWith("$oldName."))
-                    child.setName(replacement.localName + child.localName.removePrefix(oldName))
+                    child.setName(child.namespacePrefix.takeIf { it.isNotEmpty() }?.let { "$it:" }.orEmpty() + newName + child.localName.removePrefix(oldName))
             }
             original.replace(replacement)
             documents.getDocument(animation.containingFile)?.let(documents::doPostponedOperationsAndUnblockDocument)

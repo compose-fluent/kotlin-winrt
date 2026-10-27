@@ -30,6 +30,7 @@ internal fun DesignerObjectPropertyPanel(selection: DesignerSelection, property:
     LaunchedEffect(model?.xml) { model?.let { if (draft.text.toString() == expected) draft.setTextAndPlaceCursorAtEnd(it.xml); expected = it.xml } }
     var objectIndex by remember { mutableStateOf("0") }
     var type by remember(property.name) { mutableStateOf("") }
+    var showXaml by remember(selection.pointer, property.name) { mutableStateOf(false) }
     fun write(value: String?) {
         ApplicationManager.getApplication().invokeLater {
             if (active) runCatching { DesignerObjectEditing.replace(selection, property, value) }
@@ -59,14 +60,18 @@ internal fun DesignerObjectPropertyPanel(selection: DesignerSelection, property:
                     val uri = if (io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.namespaces(io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.PRESENTATION).contains(ns))
                         io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.PRESENTATION else "using:$ns"
                     draft.setTextAndPlaceCursorAtEnd("<${type.substringAfterLast('.')} xmlns=\"$uri\"/>")
+                    showXaml = true
                 }) { Text("Create value draft") }
             }
-            Text("XAML value · nested objects and collections")
-            TextArea(draft, modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp).semantics { contentDescription = "${property.name} object XAML" })
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = active && draft.text.isNotBlank(), onClick = { write(draft.text.toString()) }) { Text("Apply object") }
-                OutlinedButton(enabled = active && (property.elementValue || property.value != null), onClick = { write(null) }) { Text("Reset value") }
-                Link("Reload source", onClick = { draft.setTextAndPlaceCursorAtEnd(model.xml); expected = model.xml })
+            CheckboxRow("Edit object XAML", showXaml, { showXaml = it })
+            if (showXaml || model.nodes.isEmpty()) {
+                Text("XAML value · nested objects and collections")
+                TextArea(draft, modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 220.dp).semantics { contentDescription = "${property.name} object XAML" })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(enabled = active && draft.text.isNotBlank(), onClick = { write(draft.text.toString()) }) { Text("Apply object") }
+                    OutlinedButton(enabled = active && (property.elementValue || property.value != null), onClick = { write(null) }) { Text("Reset value") }
+                    Link("Reload source", onClick = { draft.setTextAndPlaceCursorAtEnd(model.xml); expected = model.xml })
+                }
             }
         }
         feedback?.let { Text(it) }

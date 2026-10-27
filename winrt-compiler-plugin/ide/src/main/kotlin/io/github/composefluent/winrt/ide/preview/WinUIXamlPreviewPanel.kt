@@ -935,14 +935,17 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     modifier = Modifier.fillMaxSize(),
                 ) else retainedCanvas()
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            @Composable fun artboard() {
                 if (showToolbox && static) HorizontalSplitLayout(
                     first = { DesignerToolbox(toolboxTypes, armedTool, { armedTool = it; panTool = false }, { toolDrop = it }, { showToolbox = false; armedTool = null }) },
                     second = { workspace() }, state = rememberSplitLayoutState(.25f),
                     firstPaneMinWidth = 160.dp, secondPaneMinWidth = 120.dp, modifier = Modifier.fillMaxSize())
                 else workspace()
             }
-            if (showTimeline && static) Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            @Composable fun timeline() {
+            val timelineScroll = rememberScrollState()
+            Box(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(end = 12.dp).verticalScroll(timelineScroll).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Storyboard timeline", Modifier.weight(1f))
                     PreviewAction("Close storyboard timeline", "close") { showTimeline = false }
@@ -995,6 +998,18 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     controlAnimation("Seek")
                 }
                 (state.animationError ?: failure)?.let { Text(it) }
+            }
+            androidx.compose.foundation.VerticalScrollbar(
+                adapter = androidx.compose.foundation.rememberScrollbarAdapter(timelineScroll),
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+            }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (showTimeline && static) VerticalSplitLayout(
+                    first = { artboard() }, second = { timeline() },
+                    state = rememberSplitLayoutState(.6f),
+                    modifier = Modifier.fillMaxSize(),
+                ) else artboard()
             }
             Divider(Orientation.Horizontal)
             // One fixed-height command strip; popups never participate in artboard measurement.
