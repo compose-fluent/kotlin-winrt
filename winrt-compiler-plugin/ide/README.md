@@ -1083,3 +1083,29 @@ running application's layout. The Native acceptance run covers both live and iso
 capture; UWP AppContainer acceptance covers popup video, zoom, crop and restoration.
 Protected/DRM video remains governed by Windows capture protection, not bypassed by
 this capture path.
+
+### Development endpoint security boundary
+
+Preview and Hot Reload are privileged local development tools, not a sandbox for
+untrusted projects. Preview executes project control constructors and binding code.
+An authenticated client can inspect UI/property/state data and submit XAML/property
+changes, which can invoke application code with the target process's privileges.
+
+Desktop TCP binds only loopback. Each process creates a cryptographically random
+256-bit bearer token, compared without an early-exit byte comparison. Native UWP
+uses a named pipe that rejects remote clients and grants access to the owning user
+and that AppContainer, rather than all application packages. Session files restrict
+access to their owner (and the owning AppContainer on Native). Protocol size limits,
+timeouts and bounded work reject malformed requests; shutdown removes the session.
+These controls do not isolate mutually untrusted processes under the same Windows
+account: a process that can read the session token can act as a development client.
+Administrators/debuggers are also outside this boundary.
+
+The runtime does not start a listener without an explicit development session
+launch argument/environment. IDE launch discovery uses supported launch
+configurations, but that is not compile-time removal of the runtime facility from every
+Release/JVM artifact. Do not ship session files or development launch settings, or
+run untrusted project previews elevated. A separately enforced production build
+policy is required if the distribution must be unable to enable this facility even
+with manipulated launch environment. The copied UWP development capture capability
+does not modify the production manifest.
