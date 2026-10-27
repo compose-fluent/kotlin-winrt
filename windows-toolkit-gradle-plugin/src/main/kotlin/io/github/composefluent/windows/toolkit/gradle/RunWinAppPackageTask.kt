@@ -271,6 +271,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
                 if (Files.isDirectory(source)) Files.createDirectories(target)
                 else Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
             } }
+            if (designPreview.get()) AppxManifestPackageSupport.enableDesignerCapture(output.resolve("AppxManifest.xml"))
             // PowerShell -File reparses quoted and switch-shaped arguments. Pass application data
             // through UTF-8 JSON so ActivateApplication receives the original command-line string.
             Files.writeString(configuration, buildJsonObject {

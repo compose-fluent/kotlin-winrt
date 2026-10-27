@@ -58,6 +58,32 @@ internal object AppxManifestPackageSupport {
         writeXml(manifest, document)
     }
 
+    /** Only isolated UWP designer deployments call this; application manifests remain unchanged.
+     * SDK schema: uap6:Capability graphicsCapture (Windows 10 1803).
+     */
+    fun enableDesignerCapture(manifest: Path) {
+        val document = requireNotNull(readXml(manifest)) { "Cannot read AppX manifest: $manifest" }
+        val root = document.documentElement
+        val namespace = "http://schemas.microsoft.com/appx/manifest/uap/windows10/6"
+        val capabilities = root.childElements("Capabilities").firstOrNull()
+            ?: document.createElementNS(APPX_NAMESPACE, "Capabilities").also(root::appendChild)
+        if (capabilities.childElements("Capability").none {
+            it.namespaceURI == namespace && it.getAttribute("Name") == "graphicsCapture"
+        }) {
+            val capability = document.createElementNS(namespace, "uap6:Capability").apply {
+                setAttribute("Name", "graphicsCapture")
+            }
+            // Capability must precede CustomCapability and DeviceCapability.
+            val following = capabilities.childElements("CustomCapability").firstOrNull()
+                ?: capabilities.childElements("DeviceCapability").firstOrNull()
+            capabilities.insertBefore(capability, following)
+        }
+        root.setAttributeNS(XMLConstants.XMLNS_ATTRIBUTE_NS_URI, "xmlns:uap6", namespace)
+        root.setAttribute("IgnorableNamespaces", (root.getAttribute("IgnorableNamespaces")
+            .split(Regex("\\s+")).filter(String::isNotBlank) + "uap6").distinct().joinToString(" "))
+        writeXml(manifest, document)
+    }
+
     /** The package loader override replaces the default root search path; callers must include it. */
     fun mergeLoaderSearchPaths(manifest: Path, requiredFolders: Iterable<String>) {
         val document = requireNotNull(readXml(manifest)) { "Cannot read AppX manifest: $manifest" }
