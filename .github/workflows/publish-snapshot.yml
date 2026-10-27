@@ -41,19 +41,7 @@ jobs:
 
       - name: Install Windows SDK 10.0.22621.0
         shell: pwsh
-        run: |
-          $sdkPath = "C:\Program Files (x86)\Windows Kits\10\References\10.0.22621.0"
-          if (Test-Path $sdkPath) {
-            Write-Host "Windows SDK 10.0.22621.0 already installed at $sdkPath"
-          } else {
-            winget install --id Microsoft.WindowsSDK.10.0.22621 `
-              --silent `
-              --accept-source-agreements `
-              --accept-package-agreements
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "winget exited with code $LASTEXITCODE (may indicate already installed)"
-            }
-          }
+        run: ./.github/scripts/install-release-sdks.ps1 -Versions @('10.0.22621.0')
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
