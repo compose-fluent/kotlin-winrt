@@ -167,12 +167,16 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
               ?: runCatching { owner.asWinRT<FrameworkElement>() }.getOrNull()
             if (element != null) {
               attached(element.isLoaded)
-              fun loaded(sender: Any?, args: RoutedEventArgs?) { attached(true) }
-              fun unloaded(sender: Any?, args: RoutedEventArgs?) { attached(false) }
+              // Reparenting can queue both notifications in one dispatcher turn.
+              // Event order is not the current tree state: read the SDK property
+              // from the event sender without retaining the component owner.
+              fun changed(sender: Any?, args: RoutedEventArgs?) {
+                sender?.asWinRT<FrameworkElement>()?.let { attached(it.isLoaded) }
+              }
               // The handlers retain only the registry callback, never the owner.
               // The SDK element owns and releases its delegates with its lifetime.
-              element.loaded.add(::loaded)
-              element.unloaded.add(::unloaded)
+              element.loaded.add(::changed)
+              element.unloaded.add(::changed)
             }
           })
         }

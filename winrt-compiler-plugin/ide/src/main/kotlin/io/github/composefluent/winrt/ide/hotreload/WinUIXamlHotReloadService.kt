@@ -370,13 +370,9 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     val connection = client ?: return@launch
                     // A designer re-renders its source after replacement; it must not
                     // replay the synthetic artboard's control state into application roots.
-                    val roots = connection.request().roots.filterNot { it.className == WinUIXamlHotReloadProtocol.PREVIEW_CLASS }
-                    val statePlan = restartStatePlan(roots)
-                    val states = statePlan.requests.mapNotNull { capture ->
-                        val reply = connection.transferState(capture)
-                        check(reply.status == WinUIXamlHotReloadProtocol.APPLIED) { reply.message }
-                        reply.savedState?.takeIf { it.isNotEmpty() }?.let { capture.copy(restore = it) }
-                    }
+                    withCurrent(request) { display.value = display.value.copy(message = "Build complete; saving current UI state…") }
+                    val statePlan = captureWinRTRestartState({ connection.request().roots }, connection::transferState)
+                    val states = statePlan.requests.filter { !it.restore.isNullOrEmpty() }
                     val debugRestart = WinRTNativeDebugOwnership.restarter(connection.process.pid(), connection.started)
                     debugRestart?.detachForRestart()?.let { future -> runInterruptible { future.get(25, TimeUnit.SECONDS) } }
                     withContext(Dispatchers.EDT) {

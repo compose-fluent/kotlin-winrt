@@ -67,7 +67,7 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
             try { withTimeout(900_000) { while (!condition()) {
                 val message = service.state.value.message
                 if (message != previous) {
-                    println("$label: $message; connected=${service.state.value.connected}, pid=${service.state.value.pid}, roots=${service.state.value.roots.map { it.className }}")
+                    println("$label: $message; connected=${service.state.value.connected}, pid=${service.state.value.pid}, roots=${service.state.value.roots.map { it.className to it.instances }}")
                     previous = message
                 }
                 check(listOf("The Gradle launch failed", "The Gradle launch finished, but", "Code build failed", "Automatic restart failed", "The preview host exited", "The application exited").none(message::startsWith)) { "$label: $message" }
@@ -107,16 +107,75 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
                 service.state.value.connected && service.state.value.roots.any { it.className == "sample.hello.RecoveryPage" }
             }
             val before = service.state.value.pid
+            // Exercise the actual Native mutable-vector baseline before restarting.
+            // The generated Children accessor follows CsWinRT's collection projection;
+            // owner/name anchors must share one baseline without losing collection edits.
+            val xmlFactory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = true
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            }
+            val xml = xmlFactory.newDocumentBuilder().parse(code.resolveSibling("MainWindow.xaml").toFile())
+            val grids = xml.getElementsByTagNameNS("http://schemas.microsoft.com/winfx/2006/xaml/presentation", "Grid")
+            val layout = (0 until grids.length).map { grids.item(it) as org.w3c.dom.Element }.single {
+                it.getAttributeNS("http://schemas.microsoft.com/winfx/2006/xaml", "Name") == "LayoutRoot"
+            }
+            val childCount = (0 until layout.childNodes.length).count {
+                (layout.childNodes.item(it) as? org.w3c.dom.Element)?.localName?.contains('.') == false
+            }
+            require(childCount > 1)
+            client().use { connection ->
+                // LayoutCanvas has two children inserted by application code;
+                // it is intentionally outside the compiled collection baseline.
+                // Reorder the unchanged LayoutRoot collection instead.
+                val canvas = xml.getElementsByTagNameNS("http://schemas.microsoft.com/winfx/2006/xaml/presentation", "Canvas").item(0)
+                val compiledChildren = (0 until canvas.childNodes.length).count {
+                    (canvas.childNodes.item(it) as? org.w3c.dom.Element)?.localName?.contains('.') == false
+                }
+                val beforeGuard = connection.request().roots.single { it.className == "sample.hello.MainWindow" }
+                val rejected = connection.request(WinUIXamlHotReloadPatch(beforeGuard.className, beforeGuard.resourcePath,
+                    beforeGuard.sourceHash, beforeGuard.sourceHash, beforeGuard.version + 1, emptyList(),
+                    children = listOf(WinUIXamlHotReloadChildren(WinUIXamlHotReloadTarget("LayoutCanvas",
+                        listOf(WinUIXamlHotReloadStep.Property("Children"))), compiledChildren,
+                        (0 until compiledChildren).map { WinUIXamlHotReloadItem.Existing(it) }))))
+                assertEquals(WinUIXamlHotReloadProtocol.REJECTED, rejected.status)
+                assertEquals(beforeGuard.version, connection.request().roots.single { it.className == beforeGuard.className }.version)
+                repeat(2) {
+                    val main = connection.request().roots.single { it.className == "sample.hello.MainWindow" }
+                    val order = (0 until childCount).toMutableList().apply { this[0] = 1; this[1] = 0 }
+                    val patch = WinUIXamlHotReloadPatch(main.className, main.resourcePath, main.sourceHash, main.sourceHash,
+                        main.version + 1, emptyList(), children = listOf(WinUIXamlHotReloadChildren(
+                            WinUIXamlHotReloadTarget("LayoutRoot", listOf(WinUIXamlHotReloadStep.Property("Children"))),
+                            childCount, order.map { WinUIXamlHotReloadItem.Existing(it) })))
+                    val reply = connection.request(patch)
+                    assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+                }
+            }
+            println("Actual Native collection reordered and restored through the component baseline")
+            runBlocking {
+                var description = ""
+                try { withTimeout(15_000) {
+                    while (true) {
+                        val roots = client().use { it.request().roots }
+                        val current = roots.map { it.className to it.instances }.toString()
+                        if (current != description) { description = current; println("Native components after collection edit: $current") }
+                        if (roots.any { it.className == "sample.hello.RecoveryPage" } &&
+                            roots.any { it.className == "sample.controls.GreetingControl" && it.instances == 2 }) break
+                        delay(100)
+                    }
+                } } catch (error: TimeoutCancellationException) {
+                    throw AssertionError("Reparented components did not become available: $description", error)
+                }
+            }
             var navigation = ""
             var saved = client().use { connection ->
-                val requests = restartStatePlan(connection.request().roots).requests
-                val values = requests.map { request ->
-                    val captured = connection.transferState(request)
-                    assertEquals(captured.message, WinUIXamlHotReloadProtocol.APPLIED, captured.status)
-                    captured.savedState!!.singleOrNull { it.kind == "Frame" }?.let { frame ->
+                val snapshot = runBlocking { captureWinRTRestartState({ connection.request().roots }, connection::transferState) }
+                val requests = snapshot.requests.map { it.copy(restore = null) }
+                val values = snapshot.requests.map { captured ->
+                    val request = captured.copy(restore = null)
+                    captured.restore!!.singleOrNull { it.kind == "Frame" }?.let { frame ->
                         navigation = frame.values.single { it.name == "NavigationState" }.value
                     }
-                    val updates = captured.savedState!!.mapNotNull { state -> expected(request, state)?.let { value ->
+                    val updates = captured.restore!!.mapNotNull { state -> expected(request, state)?.let { value ->
                         state.copy(values = listOf(WinUIXamlVisualProperty(if (state.kind.startsWith("Participant:")) "clicks" else "Text", value)))
                     } }
                     assertEquals(WinUIXamlHotReloadProtocol.APPLIED, connection.transferState(request.copy(restore = updates)).status)

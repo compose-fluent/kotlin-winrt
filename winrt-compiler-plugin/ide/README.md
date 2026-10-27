@@ -901,7 +901,7 @@ the old artboard available during compilation and rendering source again after i
 isolated host restarts. Unpackaged Native/JVM host runs use separate run and preview deployment
 copies, so the linker and staging tasks never write into the running payload.
 Direct JavaExec launches do not own an isolated deployment; automatic replacement requires the toolkit host Run task.
-Direct unpackaged Native replacements prepare a fresh deployment directory and resolve task arguments/environment while the old application remains interactive. Only after preparation succeeds does the IDE capture the latest state and start the prepared payload; no second Gradle launch or deployment copy is needed during the switch. Failed preparation leaves the existing process and its files intact. If the replacement fails to start, the IDE relaunches the retained previous deployment with its resolved launch contract and restores saveable state. The failed code remains marked as pending. Unclaimed replacement directories are cleaned only after their build writer finishes, including cancellation and project disposal. Generated output roots imported as Kotlin sources do not trigger another user-code rebuild. Other packaging modes continue to use their platform activation path. There is no in-process page-recreation path. See
+Direct unpackaged Native replacements prepare a fresh deployment directory and resolve task arguments/environment while the old application remains interactive. Only after preparation succeeds does the IDE capture the latest state and start the prepared payload. State capture retries transient Loaded/Unloaded races and verifies a stable component set before stopping the old process. No second Gradle launch or deployment copy is needed during the switch. Failed preparation leaves the existing process and its files intact. If the replacement fails to start, the IDE relaunches the retained previous deployment with its resolved launch contract and restores saveable state. The failed code remains marked as pending. Unclaimed replacement directories are cleaned only after their build writer finishes, including cancellation and project disposal. Generated output roots imported as Kotlin sources do not trigger another user-code rebuild. Other packaging modes continue to use their platform activation path. There is no in-process page-recreation path. See
 `winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 
 The optional graph-host test uses `-Pwinrt.ide.hotReloadGraphSession=<fresh session>`,
@@ -940,8 +940,8 @@ and Native AppContainer for UWP.
 `mainClass` and generated XAML host. The native entry wrapper selects the isolated
 designer before calling user main, using the same compiled project/dependency XAML
 registrars as the JVM designer. Both unpackaged native runs and framework-dependent
-packaged development runs expose this capability. Rebuild the designer after Kotlin
-class changes; markup-only edits reuse the running host. The compatibility matrix records
+packaged development runs expose this capability. Kotlin class changes automatically
+prepare a replacement while the current designer stays visible; markup-only edits reuse the running host. The compatibility matrix records
 backend validation for installed SDKs; desktop interaction still requires
 acceptance in each distribution.
 
