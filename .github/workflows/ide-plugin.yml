@@ -194,8 +194,8 @@ jobs:
 
           Install the matching ZIP through Settings > Plugins > Install Plugin from Disk.
           Each package includes the project toolchain and default application icons.
-          XAML Preview is temporarily disabled. JVM Run/Debug enables Hot Reload by default;
-          Native Hot Reload transport is not yet supported.
+          Includes editable XAML Preview and Hot Reload for JVM and Kotlin/Native development runs.
+          Native code changes rebuild and restart with recoverable UI state; production artifacts disable development transports.
 
           Source commit: $env:RELEASE_COMMIT. SHA256SUMS.txt verifies all three ZIPs.
           "@ | Set-Content -LiteralPath 'release-notes.md' -Encoding utf8NoBOM
