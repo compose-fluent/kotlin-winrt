@@ -259,8 +259,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             val modules = project.service<WinRTProjectService>().modules.value
             val generated = modules.flatMap { it.sourceSets }.flatMap { it.generatedKotlinRoots.orEmpty() }
             if (generated.any { file.startsWith(Path.of(it).toAbsolutePath().normalize()) }) return
-            if (modules.any { module -> isWinRTUserKotlinSource(file, Path.of(module.projectDirectory),
-                    module.sourceSets.flatMap { it.kotlinRoots }.map(Path::of)) }) {
+            if (isWinRTUserKotlinSource(file, modules.map { Path.of(it.projectDirectory) },
+                    modules.flatMap { it.sourceSets }.flatMap { it.kotlinRoots }.map(Path::of))) {
                 designRebuildDocuments.clear()
                 display.value = display.value.copy(projectCodeChanged = true)
                 savedLaunch = savedLaunch.copy(projectCodeChanged = true)
