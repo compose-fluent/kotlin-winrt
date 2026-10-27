@@ -307,6 +307,7 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("winrt.ide.hotReloadSession").orNull?.let { systemProperty("winrt.ide.hotReloadSession", it) }
     providers.gradleProperty("winrt.ide.previewSession").orNull?.let { systemProperty("winrt.ide.previewSession", it) }
     providers.gradleProperty("winrt.ide.uwpPreviewSession").orNull?.let { systemProperty("winrt.ide.uwpPreviewSession", it) }
+    providers.gradleProperty("winrt.ide.uwpCompositionSession").orNull?.let { systemProperty("winrt.ide.uwpCompositionSession", it) }
     providers.gradleProperty("winrt.ide.uwpSdkPreviewSession").orNull?.let { systemProperty("winrt.ide.uwpSdkPreviewSession", it) }
     listOf("winrt.ide.nativeDebugLldb", "winrt.ide.nativeDebugKonanHome").forEach { name ->
         providers.gradleProperty(name).orNull?.let { systemProperty(name, it) }

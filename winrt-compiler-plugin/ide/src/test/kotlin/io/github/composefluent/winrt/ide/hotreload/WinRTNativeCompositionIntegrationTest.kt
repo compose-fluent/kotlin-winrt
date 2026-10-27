@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.ide.hotreload
 
 import io.github.composefluent.winrt.runtime.*
 import org.junit.Assert.*
-import org.junit.Assume.assumeNotNull
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
@@ -11,13 +11,14 @@ import java.util.concurrent.TimeUnit
 /** Exercises Windows.Graphics.Capture and SoftwareBitmap through generated SDK projections. */
 class WinRTNativeCompositionIntegrationTest {
     @Test fun composition_capture_preserves_pixels_scale_and_viewport() {
+        val uwpSession = System.getProperty("winrt.ide.uwpCompositionSession")?.let(Path::of)
         val configured = System.getProperty("winrt.ide.nativeRestartProject")
-        assumeNotNull(configured)
-        val project = Path.of(configured).toAbsolutePath().normalize()
-        val executable = project.resolve("app/build/kotlin-winrt/application-layout/mingwX64_main_debugExecutable/package/native-project-preview.exe")
-        require(Files.isRegularFile(executable))
-        val directory = Files.createTempDirectory(project.resolve("app/build"), "composition-acceptance-")
-        val process = ProcessBuilder(executable.toString(), "--kotlin-winrt-xaml-preview").directory(executable.parent.toFile()).apply {
+        assumeTrue(configured != null || uwpSession != null)
+        val project = configured?.let { Path.of(it).toAbsolutePath().normalize() }
+        val executable = project?.resolve("app/build/kotlin-winrt/application-layout/mingwX64_main_debugExecutable/package/native-project-preview.exe")
+        if (uwpSession == null) require(Files.isRegularFile(requireNotNull(executable)))
+        val directory = uwpSession ?: Files.createTempDirectory(requireNotNull(project).resolve("app/build"), "composition-acceptance-")
+        val process = if (uwpSession != null) null else ProcessBuilder(requireNotNull(executable).toString(), "--kotlin-winrt-xaml-preview").directory(executable.parent.toFile()).apply {
             environment()["KOTLIN_WINRT_HOT_RELOAD_DIRECTORY"] = directory.toString()
             environment()["KOTLIN_WINRT_XAML_PREVIEW"] = "1"
             environment()["KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"] = executable.parent.toString()
@@ -27,8 +28,8 @@ class WinRTNativeCompositionIntegrationTest {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45)
             var client: WinUIXamlHotReloadClient? = null
             while (client == null) {
-                check(process.isAlive && System.nanoTime() < deadline) { "The Native preview did not publish its endpoint." }
-                client = WinUIXamlHotReloadClient.discover(directory, executable.toString()).singleOrNull()
+                check(process?.isAlive != false && System.nanoTime() < deadline) { "The Native preview did not publish its endpoint." }
+                client = WinUIXamlHotReloadClient.discover(directory, if (uwpSession == null) executable.toString() else null).singleOrNull()
                 if (client == null) Thread.sleep(50)
             }
             client.use { connection ->
@@ -82,9 +83,11 @@ class WinRTNativeCompositionIntegrationTest {
                     val restored = frame()
                     color(restored, 80, 60, 255, 0); color(restored, 250, 150, 0, 255)
                 }
-                val video = project.parent.resolve("xaml-reload-validation/composition-green.mp4")
+                val video = uwpSession?.parent?.resolve("composition-green.mp4")
+                    ?: requireNotNull(project).parent.resolve("xaml-reload-validation/composition-green.mp4")
                 require(Files.isRegularFile(video)) { "Generate a 160x120 H.264 fixture alternating lime/blue every 5 seconds at $video before acceptance." }
-                inspect(request.copy(previewMarkup = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="Red"><MediaPlayerElement Width="160" Height="120" HorizontalAlignment="Left" VerticalAlignment="Top" Source="${video.toUri()}" AutoPlay="True"/></Grid>"""))
+                val videoSource = if (uwpSession != null) "ms-appx:///composition-green.mp4" else video.toUri().toString()
+                inspect(request.copy(previewMarkup = """<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Background="Red"><MediaPlayerElement Width="160" Height="120" HorizontalAlignment="Left" VerticalAlignment="Top" Source="${videoSource}" AutoPlay="True"/></Grid>"""))
                 var videoFrame: WinUIXamlVisualImage? = null
                 val videoDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
                 while (videoFrame == null && System.nanoTime() < videoDeadline) {
@@ -108,8 +111,10 @@ class WinRTNativeCompositionIntegrationTest {
                 println("Native composition capture: physical pixels, 2x scale, crop and camera restoration verified.")
             }
         } finally {
-            process.destroy()
-            if (!process.waitFor(10, TimeUnit.SECONDS)) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
+            process?.let {
+                it.destroy()
+                if (!it.waitFor(10, TimeUnit.SECONDS)) it.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
+            }
         }
     }
 }

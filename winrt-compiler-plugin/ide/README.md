@@ -1048,3 +1048,14 @@ Style and VisualState object setters keep their own source ownership. Object
 keyframes support value/time edits and deletion while retaining easing metadata.
 Every known visual in the design copy carries source provenance, so unnamed
 parts in repeated templates resolve to the clicked realization and shared source.
+
+UWP composition acceptance uses the actual Native AppContainer designer. Its deployment
+adds the SDK `graphicsCapture` capability only to the isolated preview package. A
+CompositionVisualSurface and an owned SpriteVisual capture the XAML subtree without
+changing its SDK-owned visual size. Acceptance verifies repeated full-frame, 2x zoom,
+viewport crop and camera restoration, then decoded H.264 playback advancing from
+green to blue. Run `WinRTNativeCompositionIntegrationTest` with
+`-Pwinrt.ide.uwpCompositionSession=<active preview session directory>`; stage the
+`composition-green.mp4` fixture in that package and next to the session directory.
+Window lifetime follows `Window.Closed`; replacing its Content no longer detaches
+the inspector. FrameworkElement instances still follow Loaded/Unloaded.

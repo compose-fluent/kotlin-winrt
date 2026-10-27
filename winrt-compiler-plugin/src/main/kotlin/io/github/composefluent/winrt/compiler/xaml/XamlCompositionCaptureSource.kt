@@ -15,15 +15,18 @@ internal fun xamlCompositionCaptureSource(framework: XamlFramework): String = ""
             val oldTransform = captureElement.renderTransform
             ${if (framework == XamlFramework.WinUI) """val host = requireNotNull(requireNotNull(designWindow).appWindow)
             val oldSize = host.clientSize""" else ""}
+            ${if (framework == XamlFramework.UWP) """var visualSurface: windows.ui.composition.CompositionVisualSurface? = null
+            var captureBrush: windows.ui.composition.CompositionSurfaceBrush? = null
+            var captureVisual: windows.ui.composition.SpriteVisual? = null""" else ""}
             var pool: windows.graphics.capture.Direct3D11CaptureFramePool? = null
             var session: windows.graphics.capture.GraphicsCaptureSession? = null
             var device: windows.graphics.directx.direct3d11.IDirect3DDevice? = null
             try {
-              val compositionDpi = captureElement.xamlRoot?.rasterizationScale ?: dpi
+              ${if (framework == XamlFramework.WinUI) """val compositionDpi = captureElement.xamlRoot?.rasterizationScale ?: dpi
               captureElement.renderTransform = ${framework.xamlKotlinNamespace}.media.ScaleTransform().apply {
                 scaleX = pixelWidth / (region.width * compositionDpi); scaleY = pixelHeight / (region.height * compositionDpi)
               }
-              ${if (framework == XamlFramework.WinUI) "host.resizeClient(windows.graphics.SizeInt32(pixelWidth, pixelHeight))" else ""}
+              host.resizeClient(windows.graphics.SizeInt32(pixelWidth, pixelHeight))""" else ""}
               captureElement.updateLayout()
               // Rendering is raised before the SDK commits that frame. Await the
               // next rendering boundary too, so WGC cannot return the old camera
@@ -40,12 +43,30 @@ internal fun xamlCompositionCaptureSource(framework: XamlFramework): String = ""
               device = createWinUIXamlCaptureDevice().use { it.asWinRT<windows.graphics.directx.direct3d11.IDirect3DDevice>() }
               val item = ${if (framework == XamlFramework.WinUI) """createWinUIXamlWindowCaptureItem(requireNotNull(designWindow).nativeObject).use {
                 it.asWinRT<windows.graphics.capture.GraphicsCaptureItem>()
-              }""" else """requireNotNull(windows.graphics.capture.GraphicsCaptureItem.createFromVisual(
-                requireNotNull(windows.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(captureElement))))"""}
+              }""" else """run {
+                // XAML's handed-out visual can have zero Size. Own a bounded
+                // capture visual instead of changing the SDK-owned visual tree.
+                val source = requireNotNull(windows.ui.xaml.hosting.ElementCompositionPreview.getElementVisual(captureElement))
+                val compositor = requireNotNull(source.compositor)
+                visualSurface = requireNotNull(compositor.createVisualSurface()).apply {
+                  sourceVisual = source
+                  sourceSize = windows.foundation.numerics.Vector2(region.width.toFloat(), region.height.toFloat())
+                }
+                captureBrush = requireNotNull(compositor.createSurfaceBrush(visualSurface)).apply {
+                  stretch = windows.ui.composition.CompositionStretch.Fill
+                }
+                captureVisual = requireNotNull(compositor.createSpriteVisual()).apply {
+                  size = windows.foundation.numerics.Vector2(pixelWidth.toFloat(), pixelHeight.toFloat())
+                  brush = captureBrush
+                }
+                // Publish the owned visual's size/brush before WGC reads its bounds.
+                withTimeout(5_000) { requireNotNull(compositor.requestCommitAsync()).await() }
+                requireNotNull(windows.graphics.capture.GraphicsCaptureItem.createFromVisual(captureVisual))
+              }"""}
               val client = ${if (framework == XamlFramework.WinUI) "winUIXamlWindowCaptureRegion(requireNotNull(designWindow).nativeObject)" else "WinUIXamlVisualBounds(0.0, 0.0, pixelWidth.toDouble(), pixelHeight.toDouble())"}
               require(client.width >= pixelWidth && client.height >= pixelHeight) { "The SDK has not committed the composition camera size." }
               val frameSize = item.size
-              require(frameSize.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION + 256 && frameSize.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION + 256) { "Invalid composition surface size." }
+              require(frameSize.width in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION + 256 && frameSize.height in 1..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION + 256) { "Invalid composition surface size: ${'$'}{frameSize.width} x ${'$'}{frameSize.height}." }
               pool = requireNotNull(windows.graphics.capture.Direct3D11CaptureFramePool.createFreeThreaded(device,
                 windows.graphics.directx.DirectXPixelFormat.B8G8R8A8UIntNormalized, 2,
                 frameSize))
@@ -87,7 +108,9 @@ internal fun xamlCompositionCaptureSource(framework: XamlFramework): String = ""
                 try { pool?.close() } finally {
                   try { device?.close() } finally {
                     captureElement.renderTransform = oldTransform
-                    ${if (framework == XamlFramework.WinUI) "host.resizeClient(oldSize)" else ""}
+                    ${if (framework == XamlFramework.WinUI) "host.resizeClient(oldSize)" else """try { captureVisual?.close() } finally {
+                      try { captureBrush?.close() } finally { visualSurface?.close() }
+                    }"""}
                   }
                 }
               }
