@@ -682,7 +682,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }
                 }
                 if (!reused) {
-                    val buildInputs = if (!sdkPreview) cache?.buildInputs() else null
+                    var buildInputs = if (!sdkPreview) cache?.buildInputs() else null
                     val buildFinished = CompletableDeferred<Unit>()
                     // A Gradle Exec task keeps the project execution lock while
                     // its host lives. Prepare the desktop SDK host, release Gradle,
@@ -691,30 +691,42 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     // Register the desktop Native package without launching a child
                     // that would inherit Gradle pipes. UWP still uses package activation.
                     val detachedNative = preview && launch.isDirectPreview
-                    ApplicationManager.getApplication().invokeLater {
-                        if (isCurrent(request)) WinRTGradleTasks.run(project, module,
-                            listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
-                            environment = launchEnvironment + mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
-                                (if (!preview && !launch.developmentBuildTask.isNullOrBlank()) mapOf("KOTLIN_WINRT_RELEASE_BUILD_LOCK" to "1") else emptyMap()) +
-                                (if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1",
-                                    WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT to theme) else emptyMap()) +
-                                if (detachedNative) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap(),
-                            arguments = if (detachedNative) "--no-launch" else launchArguments,
-                            passParentEnvironment = passParentEnvironment,
-                            onProcessStarted = { handler ->
-                                if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
-                            },
-                            onSuccess = { buildFinished.complete(Unit) },
-                            onFailure = { withCurrent(request) { if (client == null) {
-                                worker?.cancel(); runProcess?.complete(1); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
-                            } } })
+                    suspend fun buildOnce(): Boolean {
+                        val attemptFinished = CompletableDeferred<Boolean>()
+                        ApplicationManager.getApplication().invokeLater {
+                            if (isCurrent(request)) WinRTGradleTasks.run(project, module,
+                                listOf(if (detachedSdk) "prepareWinRTXamlSdkPreview" else launch.taskName), if (preview) "XAML Static Preview" else "Run with XAML Hot Reload",
+                                environment = launchEnvironment + mapOf(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY to directory!!.toString()) +
+                                    (if (!preview && !launch.developmentBuildTask.isNullOrBlank()) mapOf("KOTLIN_WINRT_RELEASE_BUILD_LOCK" to "1") else emptyMap()) +
+                                    (if (preview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1",
+                                        WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT to theme) else emptyMap()) +
+                                    if (detachedNative) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap(),
+                                arguments = if (detachedNative) "--no-launch" else launchArguments,
+                                passParentEnvironment = passParentEnvironment,
+                                onProcessStarted = { handler ->
+                                    if (!withCurrent(request) { gradleProcess = handler }) WinRTGradleTasks.cancel(project, handler)
+                                },
+                                onSuccess = { buildFinished.complete(Unit); attemptFinished.complete(true) },
+                                onFailure = {
+                                    if (detachedSdk || detachedNative) attemptFinished.complete(false)
+                                    else withCurrent(request) { if (client == null) {
+                                        worker?.cancel(); runProcess?.complete(1); display.value = WinUIXamlHotReloadState("The Gradle launch failed or stopped. See its Run output.")
+                                    } }
+                                })
+                        }
+                        if (!withCurrent(request) {
+                            display.value = WinUIXamlHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
+                                else "Building and waiting for the application. See Gradle Run output.", busy = true)
+                        }) throw CancellationException("Preview launch superseded")
+                        return if (detachedSdk || detachedNative) attemptFinished.await() else true
                     }
-                    if (!withCurrent(request) {
-                        display.value = WinUIXamlHotReloadState(if (sdkPreview) "Preparing the WinUI designer. Project code is not compiled. See Gradle Run output."
-                            else "Building and waiting for the application. See Gradle Run output.", busy = true)
-                    }) return@launch
                     if (detachedSdk || detachedNative) {
-                        buildFinished.await()
+                        buildInputs = buildStableWinRTPreview(
+                            inputs = { if (!sdkPreview) cache?.buildInputs() else null },
+                            build = ::buildOnce,
+                            changed = { withCurrent(request) { display.value = display.value.copy(
+                                message = "Sources changed during preview preparation; building the latest version…", busy = true) } },
+                        )
                         currentCoroutineContext().ensureActive()
                         val executable = if (detachedNative) launch.previewExecutable else launch.executable
                         val process = ProcessBuilder(executable, WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT)
@@ -725,8 +737,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                                 environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1" }.start()
                         if (!withCurrent(request) { directPreview = process }) { process.destroy(); return@launch }
                         awaitConnection(request, directory!!, executable, process)
-                    } else awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable,
-                        building = { !buildFinished.isCompleted && gradleProcess?.isProcessTerminated != true })
+                    } else {
+                        buildOnce()
+                        awaitConnection(request, directory!!, if (preview) launch.previewExecutable else launch.executable,
+                            building = { !buildFinished.isCompleted && gradleProcess?.isProcessTerminated != true })
+                    }
                     // Never bless inputs edited while Gradle was compiling an earlier version.
                     if (!sdkPreview && inputs != null && cache != null && isCurrent(request)) runCatching {
                         if (display.value.connected && buildInputs != null) cache.rememberAfterBuild(buildInputs)
