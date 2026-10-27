@@ -18,7 +18,8 @@ fun xamlCompilerSupportTypeNames(framework: XamlFramework, previewHost: Boolean 
         "Application", "Window", "DataTemplate", "Markup.IDataTemplateComponent", "Markup.IDataTemplateExtension",
         "Markup.XamlBindingHelper", "Markup.XamlMarkupHelper", "Markup.XamlReader",
         "Media.CompositionTarget", "Media.VisualTreeHelper", "Media.Imaging.RenderTargetBitmap", "Media.Animation.Storyboard",
-        "Controls.ContentControl", "Controls.ItemsControl",
+        "Controls.ContentControl", "Controls.ItemsControl", "Controls.Canvas",
+        "Media.ScaleTransform", "Automation.AutomationProperties",
         "Controls.TextBox", "Controls.ToggleSwitch", "Controls.ScrollViewer",
         "Controls.Primitives.ToggleButton", "Controls.Primitives.Selector", "Controls.Primitives.RangeBase",
     ).map(framework::xamlTypeName) + listOf(
