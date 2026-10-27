@@ -29,6 +29,13 @@ class WinRTPreviewLaunchCacheTest {
         assertEquals("Concurrent validation must retain receipt compatibility", cache.reusable(result.first), result.second)
         result.second
     }
+    @Test fun environmentFingerprintPreservesBoundariesAndIgnoresMapOrdering() {
+        fun hash(values: Map<String, String>) = WinRTPreviewLaunchCache.buildEnvironmentFingerprint(values)
+        assertEquals(hash(linkedMapOf("A" to "1", "B" to "2")), hash(linkedMapOf("B" to "2", "A" to "1")))
+        assertNotEquals(hash(mapOf("A" to "1, B=2")), hash(mapOf("A" to "1", "B" to "2")))
+        assertNotEquals(hash(emptyMap()), hash(mapOf("A" to "")))
+    }
+
     @Test fun parallelFileHashesPreserveOrderingBoundariesAndLargeFiles() {
         val root = Files.createTempDirectory("preview-hash-compatibility")
         try {
@@ -137,13 +144,27 @@ class WinRTPreviewLaunchCacheTest {
             val launch = WinUIXamlHotReloadLaunchData("runWinAppNativeMingwX64MainDebugExecutable",
                 exe.toString(), deployed.toString(), exe.toString(), "native", isDirectPreview = true)
             val module = WinRTModuleData(":app", root.toString(), build.toString(), "2.4", "sdk", emptyList(), emptyList(), emptyList(), emptyList())
-            val cache = WinRTPreviewLaunchCache(root, listOf(module), module, launch)
+            var buildEnvironment = mapOf("CUSTOM_BUILD_FLAVOR" to "original-private-value")
+            val cache = WinRTPreviewLaunchCache(root, listOf(module), module, launch) { buildEnvironment }
             assertFalse(cache.supported())
             io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.write(
                 deployed.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME), listOf(dependency))
             assertTrue(cache.supported())
             cache.remember(cache.inputs())
             assertTrue(checked(cache))
+            buildEnvironment = mapOf("CUSTOM_BUILD_FLAVOR" to "changed-private-value")
+            assertFalse("Arbitrary build environment changes must invalidate reuse", checked(cache))
+            buildEnvironment = emptyMap()
+            assertFalse("Removing a build variable must invalidate reuse", checked(cache))
+            buildEnvironment = mapOf("CUSTOM_BUILD_FLAVOR" to "original-private-value",
+                "KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" to "another-session", "KOTLIN_WINRT_XAML_PREVIEW_THEME" to "Dark")
+            assertTrue("Per-launch session/theme variables do not change the compiled binary", checked(cache))
+            Files.walk(build.resolve("kotlin-winrt/ide-preview-launch")).use { paths ->
+                paths.filter(Files::isRegularFile).forEach { receipt ->
+                    assertFalse(Files.readString(receipt).contains("original-private-value"))
+                    assertFalse(Files.readString(receipt).contains("CUSTOM_BUILD_FLAVOR"))
+                }
+            }
             Files.writeString(dependency, "changed")
             assertFalse(checked(cache))
             assertFalse(WinRTPreviewLaunchCache(root, listOf(module), module, launch.copy(isDirectPreview = false)).supported())

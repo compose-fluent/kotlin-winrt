@@ -545,7 +545,7 @@ durations are recorded as `XAML preview connected`, `XAML preview rendered` and
 `XAML preview first frame` in
 the IDE log. This cache does not replace Gradle dependency resolution; explicitly
 rebuild after changing an external unpublished dependency without changing its
-version or project configuration, or changing environment-dependent build inputs.
+version or project configuration. Inherited build environment changes, including custom project variables, invalidate reuse automatically; receipts contain only hashes, never environment names or values. Per-launch preview session/theme variables are excluded.
 
 Cold project builds remain cancellable and do not consume the connection timeout.
 The designer polls for the host while Gradle runs, then allows 30 seconds for session

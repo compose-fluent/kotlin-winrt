@@ -19,6 +19,7 @@ internal class WinRTPreviewLaunchCache(
     private val modules: List<WinRTModuleData>,
     private val module: WinRTModuleData,
     private val launch: WinUIXamlHotReloadLaunchData,
+    private val processEnvironment: () -> Map<String, String> = System::getenv,
 ) {
     private val sdk = launch.taskName == "runWinRTXamlSdkPreview" && module.staticPreview?.launch() == launch
     private val executable = Path.of(launch.previewExecutable).toAbsolutePath().normalize()
@@ -145,11 +146,9 @@ internal class WinRTPreviewLaunchCache(
         "plugin" to if (!sdk) "native-protocol-${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.VERSION}:$bundledToolchainIdentity" else javaClass.protectionDomain.codeSource?.location?.let { url ->
             runCatching { Files.getLastModifiedTime(Path.of(url.toURI())).toString() }.getOrDefault(url.toString())
         }.orEmpty(),
-        // Explicit build-variable allowlist: toolchain locations and compiler/linker
-        // flags affect native output. Per-launch transport variables are excluded;
-        // application environment is inherited afresh by the launched process.
-        "toolchain" to listOf("JAVA_HOME", "GRADLE_USER_HOME", "KONAN_DATA_DIR", "WindowsSdkDir", "WindowsSDKVersion", "VCToolsInstallDir", "VCToolsVersion", "INCLUDE", "LIB", "LIBPATH", "CL", "_CL_", "LINK", "_LINK_")
-            .associateWith { System.getenv(it).orEmpty() }.toString(),
+        // Gradle scripts may use arbitrary inherited variables, not just SDK paths.
+        // Keep values out of receipts/logs, with unambiguous length-delimited hashing.
+        "buildEnvironment" to buildEnvironmentFingerprint(processEnvironment()),
     )
 
     private fun record(inputs: String, environment: Map<String, String> = environment()): String =
@@ -253,6 +252,22 @@ internal class WinRTPreviewLaunchCache(
     }
 
     companion object {
+        internal fun buildEnvironmentFingerprint(environment: Map<String, String>): String {
+            val transport = setOf(
+                io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.SESSION_DIRECTORY,
+                io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT,
+                io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT,
+            )
+            val hash = MessageDigest.getInstance("SHA-256")
+            environment.entries.sortedBy { it.key }.filterNot { it.key.uppercase(java.util.Locale.ROOT) in transport }.forEach { (name, value) ->
+                listOf(name, value).forEach { text ->
+                    val bytes = text.toByteArray(Charsets.UTF_8)
+                    hash.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.size).array())
+                    hash.update(bytes)
+                }
+            }
+            return java.util.HexFormat.of().formatHex(hash.digest())
+        }
         // A new bundle may resolve newer artifacts than the old Gradle receipt.
         // Packaging records payload identity without Maven publication timestamps; UI-only changes need not
         // rebuild Native. Older development bundles retain the streaming fallback.
