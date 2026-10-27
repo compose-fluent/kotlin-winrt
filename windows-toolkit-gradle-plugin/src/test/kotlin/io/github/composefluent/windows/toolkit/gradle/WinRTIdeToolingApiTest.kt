@@ -12,9 +12,9 @@ import java.util.Properties
 
 /** Cross-process validation of Gradle model registration and its public interface proxies. */
 class WinRTIdeToolingApiTest {
-    /** The first-sync projection source contract must survive import optimizations. */
+    /** Import exposes task-backed source roots without executing the compiler during configuration. */
     @Test
-    fun first_sync_exposes_projection_sources_without_compilation_and_warm_sync_repairs_them() {
+    fun sync_exposes_generated_source_roots_without_executing_projection_generation() {
         val directory = Files.createTempDirectory("winrt-ide-tooling-sources-").toFile()
         val metadata = Properties().apply {
             WinRTIdeToolingApiTest::class.java.classLoader.getResourceAsStream("plugin-under-test-metadata.properties")!!.use(::load)
@@ -46,17 +46,14 @@ class WinRTIdeToolingApiTest {
                     fun sync() = connection.model(WinRTIdeModel::class.java)
                         .setJavaHome(File(System.getProperty("java.home")))
                         .withArguments("--no-configuration-cache").get()
-                    fun projection(model: WinRTIdeModel): File = model.sourceSets.flatMap { it.kotlinRoots }
-                        .flatMap { root -> File(root).walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }
-                        .first { it.readText().contains("interface IProbe") }
-                    val source = projection(sync())
-                    val contents = source.readText()
-                    val timestamp = source.lastModified()
-                    assertEquals(source, projection(sync()))
-                    assertEquals(timestamp, source.lastModified())
-                    assertTrue(source.delete())
-                    assertEquals(source, projection(sync()))
-                    assertEquals(contents, source.readText())
+                    // Generation is a cacheable task (CsWinRT compiler ownership), not a model-query side effect.
+                    val first = sync()
+                    val generated = first.sourceSets.flatMap { it.generatedKotlinRoots }.distinct()
+                    assertTrue("Sync must advertise generated source roots", generated.isNotEmpty())
+                    assertEquals(generated, sync().sourceSets.flatMap { it.generatedKotlinRoots }.distinct())
+                    assertTrue(generated.none { root ->
+                        File(root).walkTopDown().any { it.isFile && it.extension == "kt" }
+                    })
                     assertTrue(!directory.resolve("build/classes").exists())
                 }
         } finally {
