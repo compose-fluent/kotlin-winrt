@@ -1150,3 +1150,19 @@ image and 1x/2x restoration, composition scale/crop, advancing decoded video, an
 popup video scale/crop. ASC displayed the fixture's bindings and 166 visual nodes
 after both final cache hits. Generator tests, runtime JVM tests and plugin class
 ownership checks also passed.
+
+### Control theme resources in preview and Run
+
+The isolated WinUI designer loads `Microsoft.UI.Xaml.Controls.XamlControlsResources`
+as its standard control-theme baseline. The real application must declare the same
+resources in `App.xaml` (as in CsWinRT's `Samples/AuthoringDemo/WinUI3CppApp/App.xaml`)
+or merge them into `Application.resources` before constructing its first window.
+A code-only test application that omits this step can show older fallback control
+styles even though both processes use `Microsoft.UI.Xaml` from Windows App SDK.
+That visual difference alone does not mean the running application uses WinUI 2.
+
+The isolated designer does not execute the application's `main`/Application startup.
+Consequently, its standard theme is not evidence that arbitrary resources installed
+by application startup code are reproduced. Check the application's resource setup
+when comparing static preview with Run; use Live Preview to inspect the actual
+running application's resources and styling.
