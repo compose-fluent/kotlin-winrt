@@ -1,4 +1,5 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class, kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 import kotlinx.cinterop.*

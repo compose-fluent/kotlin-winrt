@@ -111,6 +111,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel, framework:
     writeXamlMemberConversionSource(root, framework)
     val inspector = writeXamlVisualInspectorSource(root, "SdkPreview", false, emptyList(), framework)
     root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost.kt").writeText("""
+        @file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
         package io.github.composefluent.winrt.generated.xaml
         import ${framework.xamlKotlinNamespace}.*
         ${if (framework == XamlFramework.UWP) "import windows.applicationmodel.activation.LaunchActivatedEventArgs" else ""}
@@ -127,6 +128,7 @@ fun writeXamlSdkPreviewSources(root: Path, model: WinRTMetadataModel, framework:
             catch (error: Throwable) { error.printStackTrace(); throw error }
           }
         }
+        @InternalWinRTApi
         object KotlinWinUIXamlPreviewHost {
           private var application: Application? = null
           private var window: Window? = null
@@ -161,6 +163,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
     Files.createDirectories(file.parent)
     file.writeText("""
         @file:Suppress("DEPRECATION")
+        @file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
         package io.github.composefluent.winrt.generated.xaml
         import io.github.composefluent.winrt.runtime.*
         import kotlinx.coroutines.*
@@ -599,6 +602,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
     """.trimIndent())
     if (application) {
         file.parent.resolve("KotlinWinUIXamlPreviewHost.kt").writeText("""
+            @file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
             package io.github.composefluent.winrt.generated.xaml
             import ${framework.xamlKotlinNamespace}.*
         ${if (framework == XamlFramework.UWP) "import windows.applicationmodel.activation.LaunchActivatedEventArgs" else ""}
@@ -615,6 +619,7 @@ internal fun writeXamlVisualInspectorSource(root: Path, assemblyName: String?, a
               override fun onLaunched(args: LaunchActivatedEventArgs?) { KotlinWinUIXamlPreviewHost.showWindow() }
             }
             /** Isolated design host: the user's application main/constructor is not invoked. */
+            @InternalWinRTApi
             object KotlinWinUIXamlPreviewHost {
               private var application: Application? = null
               private var window: Window? = null

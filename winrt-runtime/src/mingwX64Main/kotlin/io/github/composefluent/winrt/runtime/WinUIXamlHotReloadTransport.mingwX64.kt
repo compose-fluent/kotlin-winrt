@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.native.concurrent.ObsoleteWorkersApi::class, kotlin.experimental.ExperimentalNativeApi::class)
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class, kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.native.concurrent.ObsoleteWorkersApi::class, kotlin.experimental.ExperimentalNativeApi::class)
 
 package io.github.composefluent.winrt.runtime
 
@@ -133,12 +133,14 @@ internal class NativeWinUIXamlHotReloadServer(
 }
 /** Native launcher boundary, called before choosing the generated designer or user main.
  * Packaged activation supplies arguments rather than inheriting the IDE environment. */
+@InternalWinRTApi
 fun isNativeWinUIXamlPreviewRequested(): Boolean {
     if (!isWinUIXamlDevelopmentBuild()) return false
     initializeNativeXamlDevelopmentArguments()
     return isWinUIXamlPreviewHost()
 }
 
+@InternalWinRTApi
 actual fun isWinUIXamlDevelopmentBuild(): Boolean = kotlin.native.Platform.isDebugBinary
 
 private fun initializeNativeXamlDevelopmentArguments() = memScoped {

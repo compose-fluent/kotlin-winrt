@@ -1,11 +1,15 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 /** SDK-reported realized content root, its consuming object and template property. */
+@InternalWinRTApi
 data class WinUIXamlTemplateReference(val root: Any, val owner: Any, val property: String)
 
 /** SDK calls live in the compiler-generated typed adapter. Runtime ownership,
  * bounded traversal and UI dispatch mirror CsWinRT's generated accessor/runtime split.
  * The same contract is used by JVM and mingwX64 development transports. */
+@InternalWinRTApi
 class WinUIXamlVisualInspector(
     private val visualRoot: (Any) -> Any?,
     private val children: (Any) -> List<Any>,
@@ -158,9 +162,11 @@ class WinUIXamlVisualInspector(
  * WindowsRuntimeComWrappers, use the managed instance's exact type metadata rather
  * than treating the native base object's runtime class name as the derived type.
  * Unknown SDK wrappers retain the native runtime class name fallback in the adapter. */
+@InternalWinRTApi
 fun winUIXamlInspectionTypeName(value: Any): String? = WinUIAuthoredTypeMetadata.registeredTypeName(value)
 
 /** Read generated ICustomProperty accessors; inspect failures stay local to a property. */
+@InternalWinRTApi
 fun winUIXamlInspectionProperties(
     value: Any,
     format: (Any?) -> String = { it?.toString().orEmpty() },
@@ -168,6 +174,7 @@ fun winUIXamlInspectionProperties(
 
 /** The designer adapter chooses priority names; generated ICustomProperty metadata
  * still owns lookup and inheritance. Prioritization never raises the getter budget. */
+@InternalWinRTApi
 fun winUIXamlInspectionProperties(
     value: Any,
     preferredNames: List<String>,
@@ -186,6 +193,7 @@ fun winUIXamlInspectionProperties(
  * CopyTo: copy a contiguous span with its IBufferByteAccess owner leased. Uses the robuffer.h
  * IUnknown + Buffer(byte**) ABI. Keep the QI owner alive while copying pixels;
  * both JVM and mingwX64 use the existing scoped platform/vtable contracts. */
+@InternalWinRTApi
 fun readWinUIXamlVisualPixels(buffer: ComObjectReference, count: Int): ByteArray {
     require(count in 0..WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION * WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION * 4)
     if (count == 0) return byteArrayOf()
@@ -204,6 +212,7 @@ fun readWinUIXamlVisualPixels(buffer: ComObjectReference, count: Int): ByteArray
  * artboard layout in DIP; increasing capture density must not reflow controls.
  * Bounds apply before allocating the bitmap and again at the protocol boundary.
  */
+@InternalWinRTApi
 fun winUIXamlCaptureSize(width: Double, height: Double, dpi: Double, renderScale: Double): Pair<Int, Int> {
     require(width.isFinite() && height.isFinite() && width > 0 && height > 0)
     require(dpi.isFinite() && dpi > 0 && renderScale.isFinite() && renderScale in 0.125..32.0)
@@ -213,6 +222,7 @@ fun winUIXamlCaptureSize(width: Double, height: Double, dpi: Double, renderScale
 }
 
 /** Viewport captures keep DirectX texture limits independent of logical artboard size. */
+@InternalWinRTApi
 fun validateWinUIXamlCaptureBounds(bounds: WinUIXamlVisualBounds) {
     require(listOf(bounds.x, bounds.y, bounds.width, bounds.height).all { it.isFinite() } &&
         bounds.x >= 0 && bounds.y >= 0 && bounds.width > 0 && bounds.height > 0 &&
@@ -222,6 +232,7 @@ fun validateWinUIXamlCaptureBounds(bounds: WinUIXamlVisualBounds) {
 
 /** Premultiplied BGRA source-over, matching RenderTargetBitmap.GetPixelsAsync.
  * Popup visuals are captured separately by the SDK adapter; no substitute renderer. */
+@InternalWinRTApi
 fun compositeWinUIXamlOverlay(base: WinUIXamlVisualImage, baseBounds: WinUIXamlVisualBounds,
     overlay: WinUIXamlVisualImage, bounds: WinUIXamlVisualBounds): WinUIXamlVisualImage {
     if (bounds.width <= 0 || bounds.height <= 0) return base

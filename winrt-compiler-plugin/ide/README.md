@@ -1029,6 +1029,7 @@ A component or its DataContext can implement `WinUIXamlRestartParticipant` to sa
 business state and task checkpoints on its owning UI thread:
 
 ```kotlin
+@OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
 class SearchViewModel : WinUIXamlRestartParticipant {
     override val restartStateSchema: String = "Search/v1"
     var query = ""
@@ -1166,3 +1167,17 @@ Resources installed only by arbitrary startup code cannot be inferred by static
 preview. Use declarative application resources for static preview, or Live Preview
 to inspect the actual running application's resources and styling. Fallback control
 styles alone do not mean an application using `Microsoft.UI.Xaml` uses WinUI 2.
+
+### Internal development APIs
+
+Preview and Hot Reload are IDE/Gradle features, not supported application APIs.
+Runtime implementation types are `internal`. The bridges that generated code and
+IDE tooling must access across modules carry `@InternalWinRTApi`, an error-level
+Kotlin opt-in marker on JVM and Native. Their signatures may change without
+compatibility guarantees. This includes the development-only restart participant
+extension above; opting in does not make it a supported persistence API.
+
+Generated development glue opts in locally; ordinary application code needs no
+opt-in and no project-wide compiler flag. The annotation is an API boundary, not
+a security mechanism: the existing Release/production build gates still prevent
+Preview and Hot Reload from being enabled by environment variables or arguments.

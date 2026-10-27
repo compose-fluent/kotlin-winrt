@@ -17,7 +17,7 @@ import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 
 /** Keep the platform's XML editor, actions, navigation and persisted caret state. */
-class WinUIXamlPreviewEditorProvider : TextEditorWithPreviewProvider(WinUIXamlPreviewPaneProvider()), DumbAware {
+internal class WinUIXamlPreviewEditorProvider : TextEditorWithPreviewProvider(WinUIXamlPreviewPaneProvider()), DumbAware {
     override fun createSplitEditor(firstEditor: TextEditor, secondEditor: FileEditor): FileEditor =
         WinUIXamlEditorWithPreview(firstEditor, secondEditor as WinUIXamlPreviewEditor)
 }

@@ -1,5 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
@@ -108,6 +109,13 @@ private fun mingwApplicationEntrySource(
         .addAliasedImport(userMain, "userMain")
         .addFunction(
             FunSpec.builder(entryFunctionName)
+                .apply {
+                    if (xamlPreviewHost) addAnnotation(
+                        AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+                            .addMember("%T::class", ClassName("io.github.composefluent.winrt.runtime", "InternalWinRTApi"))
+                            .build(),
+                    )
+                }
                 .beginControlFlow(
                     "%T.initialize(%T.fromStagedRuntimeAssets()).use",
                     bootstrap,

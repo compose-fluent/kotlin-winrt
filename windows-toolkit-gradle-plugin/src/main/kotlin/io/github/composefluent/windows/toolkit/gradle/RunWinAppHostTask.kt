@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.windows.toolkit.gradle
 
 import org.gradle.api.DefaultTask

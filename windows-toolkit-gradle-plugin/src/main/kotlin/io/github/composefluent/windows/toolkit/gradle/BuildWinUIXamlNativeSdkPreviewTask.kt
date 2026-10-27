@@ -16,7 +16,7 @@ import javax.inject.Inject
 /** Fixed UWP SDK host. CsWinRT's projection/authoring boundaries remain the same;
  * Kotlin/Native supplies the AppContainer executable without a JVM filesystem dependency. */
 @CacheableTask
-abstract class BuildWinUIXamlNativeSdkPreviewTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
+internal abstract class BuildWinUIXamlNativeSdkPreviewTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val projectionSources: DirectoryProperty
     @get:Classpath abstract val compilerPluginClasspath: ConfigurableFileCollection
@@ -40,6 +40,7 @@ abstract class BuildWinUIXamlNativeSdkPreviewTask @Inject constructor(private va
         Files.createDirectories(work)
         val entry = work.resolve("SdkPreviewEntry.kt")
         Files.writeString(entry, """
+            @file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
             package io.github.composefluent.winrt.generated.xaml
             import io.github.composefluent.winrt.runtime.*
             fun main() {

@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package io.github.composefluent.winrt.ide.preview
 
@@ -82,7 +82,7 @@ import java.nio.file.Path
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Boolean = false) {
+internal fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly: Boolean = false) {
     val live = project.service<WinUIXamlHotReloadService>()
     val design = project.service<WinRTStaticPreviewService>()
     var static by remember { mutableStateOf(staticFile != null) }

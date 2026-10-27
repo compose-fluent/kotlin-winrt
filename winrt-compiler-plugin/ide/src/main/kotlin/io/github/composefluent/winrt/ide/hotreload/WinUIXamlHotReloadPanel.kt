@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.hotreload
 
 import androidx.compose.foundation.layout.*
@@ -13,7 +15,7 @@ import org.jetbrains.jewel.ui.component.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WinUIXamlHotReloadPanel(project: Project) {
+internal fun WinUIXamlHotReloadPanel(project: Project) {
     val service = project.service<WinUIXamlHotReloadService>()
     val state by service.state.collectAsState()
     val automatic by service.automatic.collectAsState()

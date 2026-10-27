@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.hotreload
 
 import com.intellij.openapi.Disposable
@@ -39,7 +41,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-data class WinUIXamlHotReloadState(val message: String = "Run an application with XAML Hot Reload to update its properties.",
+internal data class WinUIXamlHotReloadState(val message: String = "Run an application with XAML Hot Reload to update its properties.",
     val connected: Boolean = false, val busy: Boolean = false, val pid: Long? = null,
     val roots: List<WinUIXamlHotReloadRoot> = emptyList(), val values: List<WinUIXamlHotReloadValue> = emptyList(),
     val inspection: WinUIXamlVisualSnapshot? = null, val inspecting: Boolean = false, val inspectionError: String? = null,
@@ -50,7 +52,7 @@ data class WinUIXamlHotReloadState(val message: String = "Run an application wit
     val inspectionDocument: WinUIXamlInspectionRequest? = null, val restartOutcome: String? = null)
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
-data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
+internal data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
     var processId: Long = 0, var startedUtc: String = "", var previewTheme: String = "Default", var projectCodeChanged: Boolean = false, var preparedExecutable: String = "")
 
 /** Instance ordinals identify live objects only within one process. They cannot
@@ -70,7 +72,7 @@ internal fun restartStatePlan(roots: List<WinUIXamlHotReloadRoot>) = WinRTRestar
         .map { "${it.className} (${it.resourcePath})" },
 )
 
-open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
+internal open class WinRTDevelopmentSession(private val project: Project, private val scope: CoroutineScope,
     private val isolatedPreview: Boolean = false) : Disposable, PersistentStateComponent<WinUIXamlHotReloadLaunchState> {
     private data class Source(val path: String, val markup: WinUIXamlHotReloadMarkup)
     private val display = MutableStateFlow(if (isolatedPreview)
@@ -1372,13 +1374,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
 @Service(Service.Level.PROJECT)
 @State(name = "KotlinWinRTXamlHotReload", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
-class WinUIXamlHotReloadService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope)
+internal class WinUIXamlHotReloadService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope)
 
 @Service(Service.Level.PROJECT)
 @State(name = "KotlinWinRTXamlStaticPreview", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
-class WinRTStaticPreviewService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope, isolatedPreview = true)
+internal class WinRTStaticPreviewService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope, isolatedPreview = true)
 
 /** Independent SDK host keeps a usable artboard while project code compiles. */
 @Service(Service.Level.PROJECT)
 @State(name = "KotlinWinRTXamlSdkPreview", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
-class WinRTSdkPreviewService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope, isolatedPreview = true)
+internal class WinRTSdkPreviewService(project: Project, scope: CoroutineScope) : WinRTDevelopmentSession(project, scope, isolatedPreview = true)

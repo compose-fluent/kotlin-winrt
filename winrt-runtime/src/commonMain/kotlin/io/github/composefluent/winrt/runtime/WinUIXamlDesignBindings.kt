@@ -1,17 +1,21 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 /** XamlCompiler CSharpPagePass2 connection identity, emitted alongside IXamlType.
  * Signatures cover the generated connection contract, never source coordinates.
  */
-data class WinUIXamlDesignConnection(val id: Int, val signature: String, val scopeId: Int,
+internal data class WinUIXamlDesignConnection(val id: Int, val signature: String, val scopeId: Int,
     val template: Boolean, val scopeRoot: Boolean, val controlTemplate: Boolean = false)
 
+@InternalWinRTApi
 class WinUIXamlDesignRebuildRequired(message: String) : IllegalStateException(message)
 
 /** Reuses generated Connect/Update/StopTracking bodies on the design tree.
  * SDK tree traversal and DataContext events belong to the generated adapter.
  * No binding expression is interpreted or reflected over by this runtime.
  */
+@InternalWinRTApi
 class WinUIXamlDesignBindingSession internal constructor(
     val className: String,
     val owner: Any,

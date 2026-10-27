@@ -13,6 +13,7 @@ internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: Xa
     val file = root.resolve("io/github/composefluent/winrt/generated/xaml/${name}State.kt")
     Files.createDirectories(file.parent)
     file.writeText("""
+        @file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
         package io.github.composefluent.winrt.generated.xaml
         import io.github.composefluent.winrt.runtime.*
         import $sdk.*

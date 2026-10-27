@@ -5607,6 +5607,7 @@ class WindowsToolkitPluginTest {
         task.xamlPreviewHost.set(true)
         task.generate()
         val source = task.outputDirectory.file("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt").get().asFile.readText()
+        assertTrue(source.contains("@OptIn(InternalWinRTApi::class)"))
         assertTrue(source.contains("if (isNativeWinUIXamlPreviewRequested())"))
         assertTrue(source.contains("KotlinWinUIXamlPreviewHost.main(emptyArray())"))
         assertTrue(source.contains("else {\n      userMain()"))
@@ -5614,6 +5615,7 @@ class WindowsToolkitPluginTest {
         task.generate()
         val ordinary = task.outputDirectory.file("io/github/composefluent/winrt/application/WinRTMingwApplicationEntry.kt").get().asFile.readText()
         assertFalse(ordinary.contains("KotlinWinUIXamlPreviewHost"))
+        assertFalse(ordinary.contains("InternalWinRTApi"))
         assertTrue(ordinary.contains("userMain()"))
     }
 

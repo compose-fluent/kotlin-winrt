@@ -57,7 +57,7 @@ internal object WinUIAuthoredTypeMetadata {
     }
 
     /** Development accessors do not advertise SDK classes as authored XAML types. */
-    fun registerPropertyAccessors(definition: WinUIXamlTypeDefinition) {
+    internal fun registerPropertyAccessors(definition: WinUIXamlTypeDefinition) {
         accessorDefinitions.putIfAbsent(definition.name, definition)
         definitionsByType.putIfAbsent(definition.type, definition)
     }

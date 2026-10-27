@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 /**
@@ -12,14 +14,20 @@ class WinUIXamlBindingState {
     val eventConnections = WinUIXamlConnectionState()
     private var designSuppressed = emptySet<String>()
     private val designTargets = mutableMapOf<Int, Any>()
+    @InternalWinRTApi
     fun registerDesignTarget(connectionId: Int, target: Any?) { if (target != null) designTargets[connectionId] = target }
+    @InternalWinRTApi
     fun designTarget(connectionId: Int): Any? = designTargets[connectionId]
+    @InternalWinRTApi
     fun stopDesignBindings() { stopTracking(); designTargets.clear() }
+    @InternalWinRTApi
     fun configureDesignBindings(suppressed: String) {
         stopTracking()
         designSuppressed = suppressed.lineSequence().filter { it.isNotBlank() }.toSet()
     }
+    @InternalWinRTApi
     fun addDesignSuppression(values: List<String>) { designSuppressed = designSuppressed + values }
+    @InternalWinRTApi
     fun isDesignBindingEnabled(connectionId: Int, member: String): Boolean =
         designSuppressed.isEmpty() || "$connectionId:$member" !in designSuppressed
     private var active = false

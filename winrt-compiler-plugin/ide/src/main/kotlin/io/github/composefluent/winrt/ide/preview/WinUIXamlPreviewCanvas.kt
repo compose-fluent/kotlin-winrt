@@ -1,4 +1,5 @@
-@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.foundation.Canvas

@@ -7,6 +7,9 @@ import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirClassLikeDeclaration
 import org.jetbrains.kotlin.fir.extensions.*
+import org.jetbrains.kotlin.fir.expressions.builder.buildAnnotation
+import org.jetbrains.kotlin.fir.expressions.impl.FirEmptyAnnotationArgumentMapping
+import org.jetbrains.kotlin.fir.toFirResolvedTypeRef
 import org.jetbrains.kotlin.fir.plugin.*
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.impl.*
@@ -169,6 +172,16 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
                 status { isOverride = true }
                 valueParameter(Name.identifier("connectionId"), session.builtinTypes.intType.coneType)
                 valueParameter(Name.identifier("target"), session.builtinTypes.nullableAnyType.coneType)
+            }
+        }.apply {
+            // Overrides are new declarations: preserve the runtime's internal API
+            // diagnostic in FIR/IDE analysis and in emitted JVM/Native metadata.
+            if (name in setOf(xamlDesignConnectionsName, xamlDesignConnectName, xamlDesignBindingsName, xamlStopDesignBindingsName)) {
+                replaceAnnotations(annotations + buildAnnotation {
+                    annotationTypeRef = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.InternalWinRTApi"))
+                        .createConeType(session).toFirResolvedTypeRef()
+                    argumentMapping = FirEmptyAnnotationArgumentMapping
+                })
             }
         }.symbol)
     }

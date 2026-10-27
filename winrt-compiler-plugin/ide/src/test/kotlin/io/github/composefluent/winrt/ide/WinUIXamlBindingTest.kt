@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide
 
 import com.intellij.codeInsight.completion.CompletionType

@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 import microsoft.ui.xaml.data.ICustomProperty
@@ -644,6 +646,7 @@ internal fun promoteWinUIXamlDesignSource(owner: Any) {
 }
 
 /** Generated application metadata supplies typed SDK conversion and an owning-thread dispatcher. */
+@InternalWinRTApi
 fun configureWinUIXamlHotReload(dispatcherFactory: () -> ((() -> Unit) -> Boolean), sdkConvert: (KClass<*>, String) -> Any?,
     loadResources: (String) -> Map<Any?, Any?> = { error("Resource loading is not configured; rebuild.") },
     loadElement: (String) -> Any = { error("Element loading is not configured; rebuild.") },
@@ -661,19 +664,23 @@ fun configureWinUIXamlHotReload(dispatcherFactory: () -> ((() -> Unit) -> Boolea
     }
 }
 
+@InternalWinRTApi
 fun registerWinUIXamlHotReloadElement(owner: Any, className: String, path: String, sourceHash: String, name: String, target: Any, compiledBindings: String = "") {
     WinUIXamlHotReloadConfiguration.lock.withLock { WinUIXamlHotReloadConfiguration.registry }
         ?.observe(owner, className, path, sourceHash, name, target, compiledBindings = compiledBindings.split('\n').filter { it.isNotEmpty() }.toSet())
 }
 
 /** Compiler-generated SDK getters/setters supplement the existing member registry in development only. */
+@InternalWinRTApi
 fun registerWinUIXamlHotReloadAccessors(definition: WinUIXamlTypeDefinition) {
     if (isWinUIXamlHotReloadEnabled()) WinUIAuthoredTypeMetadata.registerPropertyAccessors(definition)
 }
 
+@InternalWinRTApi
 fun isWinUIXamlHotReloadEnabled(): Boolean = WinUIXamlHotReloadConfiguration.lock.withLock {
     WinUIXamlHotReloadConfiguration.registry != null
 }
+@InternalWinRTApi
 fun completeWinUIXamlHotReloadComponent(owner: Any, className: String, path: String, sourceHash: String,
     lifetime: WinUIXamlConnectionState? = null) {
     WinUIXamlHotReloadConfiguration.lock.withLock { WinUIXamlHotReloadConfiguration.registry }
@@ -683,6 +690,7 @@ fun completeWinUIXamlHotReloadComponent(owner: Any, className: String, path: Str
 internal expect fun platformStartWinUIXamlHotReload(registry: WinUIXamlHotReloadRegistry): AutoCloseable?
 
 /** Called only by compiler-generated event forwarding delegates in development. */
+@InternalWinRTApi
 fun registerWinUIXamlHotReloadEvent(owner: Any, className: String, path: String, sourceHash: String,
     element: String, target: Any, event: String, route: WinUIXamlEventRoute) {
     WinUIXamlHotReloadConfiguration.lock.withLock { WinUIXamlHotReloadConfiguration.registry }

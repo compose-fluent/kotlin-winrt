@@ -11,7 +11,7 @@ import javax.imageio.ImageIO
 
 /** Fixed designer package assets; never read application manifests, resources or source. */
 @CacheableTask
-abstract class PrepareUwpSdkPreviewAssetsTask : DefaultTask() {
+internal abstract class PrepareUwpSdkPreviewAssetsTask : DefaultTask() {
     @get:Input abstract val identity: Property<String>
     @get:Input abstract val architecture: Property<String>
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty

@@ -22,7 +22,7 @@ import javax.inject.Inject
  * contains no user code, source paths, resources or application package identity.
  */
 @CacheableTask
-abstract class BuildWinUIXamlSdkPreviewTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
+internal abstract class BuildWinUIXamlSdkPreviewTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val projectionSources: DirectoryProperty
     @get:Classpath abstract val compilerClasspath: ConfigurableFileCollection

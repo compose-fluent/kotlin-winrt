@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 import java.io.DataInputStream
@@ -5,6 +7,7 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /** Stream adapter; JVM and Native share the bounded development wire codec. */
+@InternalWinRTApi
 object WinUIXamlHotReloadWire {
     private fun read(stream: InputStream): ByteArray {
         val input = DataInputStream(stream)

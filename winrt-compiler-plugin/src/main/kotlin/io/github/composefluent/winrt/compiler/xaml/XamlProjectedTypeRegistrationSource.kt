@@ -69,7 +69,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
     fun literal(value: String) = JsonPrimitive(value).toString()
     file.writeText(buildString {
         appendLine("@file:Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\")")
-        appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
+        appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class, io.github.composefluent.winrt.runtime.InternalWinRTApi::class)")
         appendLine("package $packageName")
         fun emit(type: WinRTTypeDefinition, development: Boolean) {
             val name = type.qualifiedName

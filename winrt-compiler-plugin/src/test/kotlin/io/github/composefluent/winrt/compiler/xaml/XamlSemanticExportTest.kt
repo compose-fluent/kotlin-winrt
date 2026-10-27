@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.*
@@ -21,6 +23,51 @@ class XamlSemanticExportTest {
         Unit::class.java, WinUIXamlLoadState::class.java, io.github.composefluent.winrt.runtime.Guid::class.java,
     ).map { File(it.protectionDomain.codeSource.location.toURI()).absolutePath }
         .distinct().joinToString(File.pathSeparator)
+
+    @Test
+    fun generated_design_overrides_keep_the_internal_api_boundary() {
+        val root = Files.createTempDirectory("xaml-internal-overrides-").toFile()
+        try {
+            val input = File(root, "declarations.json").apply {
+                writeText(WinUIXamlDeclarations.canonicalText(WinUIXamlDeclarationIndex(
+                    WinUIXamlDeclarations.SCHEMA_VERSION, listOf(WinUIXamlPageDeclaration(
+                        "probe.MainPage", "MainPage.xaml", "Microsoft.UI.Xaml.Controls.Page",
+                        false, emptyList(), emptyList())), emptyList())))
+            }
+            val index = File(root, "metadata.tsv").apply { writeText("Microsoft.UI.Xaml.Controls.Page\tRuntimeClass\t\tSystem.Object\n") }
+            val references = File(root, "references.txt").apply { writeText("") }
+            File(root, "MainPage.xaml").writeText("<Page />")
+            File(root, "UI.kt").writeText("package microsoft.ui.xaml.controls; open class Page")
+            File(root, "Connector.kt").writeText("""
+                package microsoft.ui.xaml.markup
+                interface IComponentConnector {
+                    fun connect(connectionId: Int, target: Any?)
+                    fun getBindingConnector(connectionId: Int, target: Any?): IComponentConnector?
+                }
+            """.trimIndent())
+            val source = File(root, "MainPage.kt")
+            val body = """
+                package probe
+                class MainPage : microsoft.ui.xaml.controls.Page()
+                fun inspect(page: MainPage) = page._kotlinXamlDesignConnections()
+            """.trimIndent()
+            source.writeText(body)
+            val options = mapOf("xamlDeclarations" to input.absolutePath, "metadataIndex" to index.absolutePath,
+                "xamlSemanticOutput" to File(root, "symbols.json").absolutePath,
+                "xamlReferencesFile" to references.absolutePath)
+            val args = listOf("-no-stdlib", "-no-reflect", "-classpath", compilerRuntimeClasspath(),
+                "-Xplugin=${System.getProperty("winrt.test.fullPluginJar")}", "-d", File(root, "output").absolutePath) +
+                root.listFiles()!!.filter { it.extension == "kt" }.map { it.absolutePath } +
+                options.flatMap { (key, value) -> listOf("-P", "plugin:io.github.composefluent.winrt.compiler:$key=$value") }
+            val diagnostics = ByteArrayOutputStream()
+            fun compile() = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *args.toTypedArray()) }
+            assertEquals(ExitCode.COMPILATION_ERROR, compile())
+            assertTrue(diagnostics.toString(), diagnostics.toString().contains("Internal Kotlin WinRT infrastructure API", ignoreCase = true))
+            assertTrue(diagnostics.toString(), diagnostics.toString().contains("page._kotlinXamlDesignConnections()"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 
     @Test
     fun semantic_only_compilation_exports_symbols_without_business_class_files() {

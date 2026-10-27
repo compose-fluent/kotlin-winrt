@@ -1,13 +1,18 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 /** Ephemeral development state, not application persistence or executable code.
  * SDK access stays in generated typed delegates, like CsWinRT custom-property access.
  * Compiled names and unique SDK automation IDs survive process replacement. */
+@InternalWinRTApi
 data class WinUIXamlSavedElement(val name: String, val kind: String, val values: List<WinUIXamlVisualProperty>)
 
+@InternalWinRTApi
 data class WinUIXamlStateRequest(val className: String, val resourcePath: String, val instance: Int = 0,
     val restore: List<WinUIXamlSavedElement>? = null, val componentKey: String = "")
 
+@InternalWinRTApi
 class WinUIXamlStateAdapter(
     val capture: (Any, Set<String>) -> WinUIXamlSavedElement?,
     val restore: (Any, WinUIXamlSavedElement, Set<String>) -> Unit,
@@ -36,6 +41,7 @@ internal fun validateWinUIXamlSavedState(state: List<WinUIXamlSavedElement>) {
  * here and restart/cancel asynchronous work using the application's own lifetime.
  * As with CsWinRT generated custom properties, access runs on the owner UI thread.
  */
+@InternalWinRTApi
 interface WinUIXamlRestartParticipant {
     val restartStateSchema: String
     fun saveRestartState(): Map<String, String>

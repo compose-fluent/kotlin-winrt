@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 /** Compiler-generated, typed event dispatch on the owning UI thread.
@@ -5,6 +7,7 @@ package io.github.composefluent.winrt.runtime
  * retargeting keeps the original subscription/token. No executable code or member
  * reflection crosses the development transport. Empty names disable dispatch.
  */
+@InternalWinRTApi
 class WinUIXamlEventRoute(initialHandler: String, handlers: Array<String>) {
     private val allowed = handlers.toSet()
     var handlerName: String = initialHandler

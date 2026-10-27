@@ -311,7 +311,7 @@ object KotlinWinRTAuthoringScannerCli {
                 .resolve("KotlinWinUIXaml${candidate.className}.kt")
             Files.createDirectories(file.parent)
             val code = buildString {
-                appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
+                appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class, io.github.composefluent.winrt.runtime.InternalWinRTApi::class)")
                 if (candidate.packageName.isNotBlank()) appendLine("package ${candidate.packageName}")
                 source.imports().forEach { appendLine("import $it") }
                 appendLine()
@@ -390,6 +390,7 @@ object KotlinWinRTAuthoringScannerCli {
                 val registry = ownerRoot.resolve("io/github/composefluent/winrt/generated/xaml/$registryName.kt")
                 Files.createDirectories(registry.parent)
                 registry.writeText(buildString {
+                    appendLine("@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)")
                     appendLine("package io.github.composefluent.winrt.generated.xaml")
                     appendLine("import io.github.composefluent.winrt.runtime.asWinRT")
                     appendLine("object $registryName {")

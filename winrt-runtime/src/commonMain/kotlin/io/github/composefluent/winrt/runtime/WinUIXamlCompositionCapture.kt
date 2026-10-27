@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 /** Desktop capture interop follows CsWinRT Runtime2's activation/object-reference
@@ -28,6 +30,7 @@ private object XamlCaptureInterop {
 }
 
 /** Returns an owned IInspectable supporting the SDK IDirect3DDevice projection. */
+@InternalWinRTApi
 fun createWinUIXamlCaptureDevice(): ComObjectReference = PlatformAbi.confinedScope().use { scope ->
     val output = PlatformAbi.allocatePointerSlot(scope)
     var result = platformCreateXamlD3DDevice(XamlCaptureInterop.createDevice, 1, output)
@@ -61,9 +64,11 @@ fun createWinUIXamlCaptureDevice(): ComObjectReference = PlatformAbi.confinedSco
 }
 
 /** Captures the provided WinUI window only; no desktop/window enumeration or picker. */
+@InternalWinRTApi
 fun createWinUIXamlWindowCaptureItem(window: ComObjectReference): ComObjectReference =
     withXamlCaptureWindow(window) { createWinUIXamlCaptureItem(it) }
 
+@InternalWinRTApi
 fun createWinUIXamlCaptureItem(hwnd: RawAddress): ComObjectReference =
         PlatformAbi.confinedScope().use { scope ->
             val output = PlatformAbi.allocatePointerSlot(scope)
@@ -89,6 +94,7 @@ internal expect fun platformWrapXamlD3DDevice(procedure: RawAddress, device: Raw
 /** WGC includes DWM nonclient pixels even for a borderless AppWindow. Resolve the
  * client origin against DWMWA_EXTENDED_FRAME_BOUNDS in the window UI thread's DPI
  * context, instead of guessing title-bar/border sizes or assuming symmetric edges. */
+@InternalWinRTApi
 fun winUIXamlWindowCaptureRegion(window: ComObjectReference): WinUIXamlVisualBounds =
     withXamlCaptureWindow(window) { hwnd ->
         PlatformAbi.confinedScope().use { scope ->
@@ -106,6 +112,7 @@ fun winUIXamlWindowCaptureRegion(window: ComObjectReference): WinUIXamlVisualBou
     }
 
 /** Copy the physical client rectangle without scaling or changing premultiplied BGRA. */
+@InternalWinRTApi
 fun cropWinUIXamlCompositionFrame(width: Int, height: Int, pixels: ByteArray,
     client: WinUIXamlVisualBounds, viewport: WinUIXamlVisualBounds? = null): WinUIXamlVisualImage {
     val limit = WinUIXamlHotReloadProtocol.MAX_IMAGE_DIMENSION
@@ -134,6 +141,7 @@ private val compositionXamlSurfaces = setOf(
 
 /** Shared by the SDK adapter and IDE; unused templates and similarly named project
  * classes must not trigger capture or a missing-pixel diagnostic. */
+@InternalWinRTApi
 fun winUIXamlNeedsCompositionCapture(typeName: String): Boolean = typeName in compositionXamlSurfaces
 
 
@@ -151,6 +159,7 @@ private fun <T> withXamlCaptureWindow(window: ComObjectReference, action: (RawAd
 /** The isolated artboard is rectangular; Windows 11 DWM corner decoration must
  * not erase its pixels. Windows 10 does not support attribute 33 and has no rounded
  * corners, so E_INVALIDARG is the documented downlevel absence, not a capture error. */
+@InternalWinRTApi
 fun configureWinUIXamlCompositionWindow(window: ComObjectReference) = withXamlCaptureWindow(window) { hwnd ->
     PlatformAbi.confinedScope().use { scope ->
         val value = PlatformAbi.allocateBytes(scope, 4, 4)
@@ -161,6 +170,7 @@ fun configureWinUIXamlCompositionWindow(window: ComObjectReference) = withXamlCa
 }
 
 /** Microsoft.UI.Interop.h owns WindowId conversion; never reinterpret the ID as HWND. */
+@InternalWinRTApi
 fun winUIXamlCaptureWindowFromId(id: ULong): RawAddress = PlatformAbi.confinedScope().use { scope ->
     val output = PlatformAbi.allocatePointerSlot(scope)
     ExceptionHelpers.throwExceptionForHR(platformXamlCaptureWindowId(XamlCaptureInterop.windowFromId, id.toLong(), output), "GetWindowFromWindowId")
@@ -168,6 +178,7 @@ fun winUIXamlCaptureWindowFromId(id: ULong): RawAddress = PlatformAbi.confinedSc
 }
 
 /** Screen-pixel bounds let separate Popup HWNDs compose without changing application layout. */
+@InternalWinRTApi
 fun winUIXamlCaptureBounds(hwnd: RawAddress, client: Boolean = false): WinUIXamlVisualBounds = PlatformAbi.confinedScope().use { scope ->
     val rect = PlatformAbi.allocateBytes(scope, 16, 4)
     val origin = PlatformAbi.allocateBytes(scope, 8, 4)
@@ -185,6 +196,7 @@ fun winUIXamlCaptureBounds(hwnd: RawAddress, client: Boolean = false): WinUIXaml
 /** WinUI's legacy PopupWindowSiteBridge is absent from ContentIsland.Popups.
  * Enumerate only visible SDK popup hosts on the target window's thread and owner
  * chain. GetWindow traversal preserves native z-order; no desktop pixels are read. */
+@InternalWinRTApi
 fun winUIXamlCapturePopupWindows(main: RawAddress): List<RawAddress> = PlatformAbi.confinedScope().use { scope ->
     val thread = platformReadXamlCaptureWindow(XamlCaptureInterop.threadId, main, PlatformAbi.nullPointer)
     check(thread != 0) { "The captured window is closed." }

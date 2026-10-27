@@ -1,4 +1,5 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.foundation.layout.*
