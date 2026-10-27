@@ -67,7 +67,6 @@ internal fun DesignerStoryboardPanel(project: Project, source: String, key: Stri
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (sourceScopes.isNotEmpty()) {
-            Text("Source storyboard scope")
             val selectedIndex = sourceScopes.indexOfFirst { it.pointer == selectedSource }
             WinRTChoice("Source storyboard scope", listOf("-1" to "Follow preview selection") + sourceScopes.mapIndexed { index, item ->
                 index.toString() to item.label
