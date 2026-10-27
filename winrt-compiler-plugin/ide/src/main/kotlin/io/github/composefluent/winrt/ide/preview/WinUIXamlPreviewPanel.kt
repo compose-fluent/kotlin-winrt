@@ -452,6 +452,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
     }
     LaunchedEffect(currentView) { if (currentView?.image != null) lastView = currentView }
     val view = currentView ?: lastView.takeIf { static }
+    val captureLimitations = remember(view?.nodes) { previewCaptureLimitations(view?.nodes.orEmpty()) }
     val showingPlaceholder = static && view == null && placeholder != null
     LaunchedEffect(state.inspection?.image, state.inspectionDocument, placeholderCache) {
         val document = state.inspectionDocument
@@ -1085,7 +1086,10 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
                     if (codeOutdated && !state.rebuildingCode) Link("Rebuild project code", onClick = ::rebuildProjectPreview)
                     else if (!state.connected && canStart) Link("Retry preview", onClick = ::startPreview)
                     else if (error != null && state.connected) Link("Retry", enabled = !state.inspecting, onClick = { manualRefresh++ })
-                    if (error != null) { Spacer(Modifier.width(8.dp)); Link("Details", onClick = { showDiagnostics = true }) }
+                    if (error != null || captureLimitations.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Link(if (error != null) "Details" else "Partial capture", onClick = { showDiagnostics = true })
+                    }
                 }
             }
         }
@@ -1200,6 +1204,7 @@ fun WinUIXamlPreviewPanel(project: Project, staticFile: String? = null, treeOnly
         }
         if (showDiagnostics) PreviewPopup("Preview details", popupWidth, popupHeight, { showDiagnostics = false }) {
             Text(error ?: status)
+            captureLimitations.forEach { Text(it) }
             notes.forEach { Text(it) }
         }
     }
