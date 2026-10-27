@@ -1,6 +1,13 @@
 [CmdletBinding()]
-param([string[]] $Versions)
+param([string[]] $Versions, [string] $SdkRoot)
 $ErrorActionPreference = 'Stop'
+if (-not $SdkRoot) { $SdkRoot = $env:WINDOWS_KITS_10_DIR }
+if (-not $SdkRoot) {
+  $SdkRoot = Get-ItemPropertyValue 'HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots' `
+    -Name KitsRoot10 -ErrorAction SilentlyContinue
+}
+if (-not $SdkRoot) { $SdkRoot = 'C:\Program Files (x86)\Windows Kits\10' }
+$SdkRoot = [IO.Path]::GetFullPath($SdkRoot)
 if (-not $Versions) {
     $line = Get-Content (Join-Path $PSScriptRoot '../../gradle.properties') | Where-Object { $_ -match '^kotlinWinRT.projections.windowsSdkVersions=' }
     $Versions = ($line -split '=', 2)[1].Split(',')
@@ -55,7 +62,7 @@ function Install-WindowsSdkBaseline([string] $version) {
   }
 }
 foreach ($version in $versions) {
-  $sdkPath = "C:\Program Files (x86)\Windows Kits\10\References\$version"
+  $sdkPath = Join-Path $SdkRoot "References/$version"
   if (Test-Path $sdkPath) {
     Write-Host "Windows SDK $version already installed at $sdkPath"
     continue
@@ -66,3 +73,7 @@ foreach ($version in $versions) {
     exit 1
   }
 }
+# GitHub's PowerShell wrapper exits with the last native command's code. An
+# already-installed result (or reboot-required installer result) is successful
+# once every requested SDK was verified above.
+$global:LASTEXITCODE = 0

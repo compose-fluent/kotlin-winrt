@@ -42,25 +42,8 @@ jobs:
           distribution: 'temurin'
 
       - name: Install Windows SDK 10.0.22621.0
-        # The GitHub-hosted windows-2022 runner ships with SDK 10.0.19041.0 pre-installed.
-        # The project discovers the SDK dynamically via registry; installing 10.0.22621.0 ensures
-        # the latest available version is the one the SDK-version-sensitive tests expect.
         shell: pwsh
-        run: |
-          $sdkPath = "C:\Program Files (x86)\Windows Kits\10\References\10.0.22621.0"
-          if (Test-Path $sdkPath) {
-            Write-Host "Windows SDK 10.0.22621.0 already installed at $sdkPath"
-          } else {
-            winget install --id Microsoft.WindowsSDK.10.0.22621 `
-              --silent `
-              --accept-source-agreements `
-              --accept-package-agreements
-            # winget exits with a non-zero code when the package is already present;
-            # reset the exit code so the step does not fail for that reason.
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "winget exited with code $LASTEXITCODE (may indicate already installed)"
-            }
-          }
+        run: ./.github/scripts/install-release-sdks.ps1 -Versions @('10.0.22621.0')
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
