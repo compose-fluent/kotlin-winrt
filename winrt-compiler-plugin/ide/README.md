@@ -998,6 +998,11 @@ ASC desktop acceptance covers 100%, 150% and 200% zoom and Light/Dark styles
 from a dependency control's theme dictionaries. Reopening the IDE with a validated
 Native deployment reuses the host build and replaces the labelled previous image
 with a current native capture.
+The fully bundled ASC plugin also passes a toolchain-invalidated Native rebuild:
+the designer retains the labelled previous image throughout compilation, connects
+automatically after Gradle completes, and renders subsequent external XAML edits
+without Refresh or Reconnect. The acceptance fixture is restored after checking.
+
 ASC acceptance also verifies editing a realized ContentPresenter template's FontSize,
 reading its effective Native value and undoing it. Selecting two realizations of the same template
 and applying a shared FontSize writes the template once, updates both instances, and restores
