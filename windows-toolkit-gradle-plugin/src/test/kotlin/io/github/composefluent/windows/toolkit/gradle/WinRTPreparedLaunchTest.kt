@@ -39,6 +39,26 @@ class WinRTPreparedLaunchTest {
             assertEquals("running binary", Files.readString(base.resolve("app.exe")))
         } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
     }
+    @Test fun initial_native_deployment_preserves_its_resolved_rollback_contract() {
+        val root = Files.createTempDirectory("native-rollback-contract")
+        try {
+            val project = org.gradle.testfixtures.ProjectBuilder.builder().withProjectDir(root.toFile()).build()
+            val source = root.resolve("staging"); Files.createDirectories(source)
+            Files.writeString(source.resolve("app.exe"), "original binary")
+            val base = root.resolve("run/Unpackaged")
+            val task = project.tasks.create("initialNative", RunWinAppHostTask::class.java)
+            task.hostExecutable.set(source.resolve("app.exe").toFile())
+            task.workingDirectory.set(source.toFile()); task.deploymentDirectory.set(base.toFile())
+            task.nativeCompilerHome.set(root.resolve("compiler").toString())
+            task.noLaunch.set(true); task.args.set(listOf("--application-mode", "original mode"))
+            task.environmentVariables.put("APPLICATION_MODE", "original")
+            task.run()
+            val launch = WinRTPreparedLaunch.read(base.resolve(WinRTPreparedLaunch.FILE_NAME), base.resolve("app.exe"))
+            assertEquals(listOf("--application-mode", "original mode"), launch.arguments)
+            assertEquals("original", launch.environment["APPLICATION_MODE"])
+            assertEquals(base.toString(), launch.environment["KOTLIN_WINRT_RUNTIME_ASSETS_ROOT"])
+        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
+    }
     @Test fun malformed_slot_cannot_escape_deployment_root() {
         val base = java.nio.file.Path.of("build/run/Unpackaged")
         for (value in listOf("..", "../outside", "", "not-a-uuid")) {

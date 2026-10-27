@@ -124,7 +124,8 @@ abstract class RunWinAppHostTask @Inject constructor(
                     previewBuildInputs.files.map { it.toPath() })
             }
         }
-        if (restartSlot.get().isNotEmpty()) {
+        if (nativeCompilerHome.orNull?.isNotBlank() == true && deploymentDirectory.isPresent) {
+            // Keep the exact resolved launch contract for a failed-replacement rollback.
             val environment = mutableMapOf<String, String>().also(::configureEnvironment)
             WinRTPreparedLaunch(deployedExecutable.get().asFile.absolutePath, applicationArguments(), environment)
                 .write(runtimeDirectory().toPath().resolve(WinRTPreparedLaunch.FILE_NAME))

@@ -355,8 +355,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     codeBuildProcess = null
                     preparedLaunch = if (succeeded && preparedExecutable != null) {
                         val descriptor = preparedExecutable.parent.resolve(WinRTPreparedLaunch.FILE_NAME)
-                        try { WinRTPreparedLaunch.read(descriptor, preparedExecutable) }
-                        finally { Files.deleteIfExists(descriptor) }
+                        WinRTPreparedLaunch.read(descriptor, preparedExecutable)
                     } else null
                     if (!succeeded) {
                         withCurrent(request) { display.value = display.value.copy(
@@ -386,11 +385,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (isCurrent(request) && builtRevision == codeRevision.get() && (automaticBuildEnabled || force) && !debuggerPaused()) {
                             // start cancels outstanding jobs; relinquish this completed build first.
                             codeRebuild = null
-                            start(module, launch, restart = true, preview = isolatedPreview,
+                            val accepted = start(module, launch, restart = true, preview = isolatedPreview,
                                 theme = previewTheme, restoredState = states, skippedStateComponents = statePlan.skippedComponents,
                                 launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment,
                                 debugRestart = debugRestart, preparedLaunch = preparedLaunch)
-                            pendingDeployment?.claim()
+                            if (accepted) pendingDeployment?.claim()
                         } else debugRestart?.restartFailed(IllegalStateException("Sources changed while preparing the Native restart."))
                     }
                 }
@@ -472,8 +471,8 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     internal fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default",
         restoredState: List<WinUIXamlStateRequest> = emptyList(),
         skippedStateComponents: List<String> = emptyList(),
-        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true, debugRestart: WinRTNativeDebugRestarter? = null, preparedLaunch: WinRTPreparedLaunch? = null) {
-        if (disposed || project.isDisposed) return
+        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true, debugRestart: WinRTNativeDebugRestarter? = null, preparedLaunch: WinRTPreparedLaunch? = null): Boolean {
+        if (disposed || project.isDisposed) return false
         require(theme in setOf("Default", "Light", "Dark"))
         val sdkPreview = preview && launch == module.staticPreview?.launch()
         val baseExecutable = Path.of(if (preview) launch.previewExecutable else launch.executable)
@@ -482,7 +481,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val startedAt = System.nanoTime()
         val launchCodeRevision = codeRevision.get()
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
-        if (display.value.busy) return
+        if (display.value.busy) return false
         val themeOnly = preview && !rebuild && display.value.connected && usesLaunch(module, launch) && !usesPreviewTheme(theme)
         val retainedCodeChange = themeOnly && display.value.projectCodeChanged
         val priorDeployment = connectedPreviewDeployment.takeIf { themeOnly }
@@ -505,6 +504,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         gradleProcess = null
         worker = scope.launch(Dispatchers.IO) {
             var warmingPreview: Process? = null
+            var rollbackLaunch: WinRTPreparedLaunch? = null
+            var replacementProcess: Process? = null
+            var rolledBack = false
+            var activeExecutable = preparedLaunch?.executable ?: launch.executable
             fun discardWarmingPreview() {
                 warmingPreview?.let { process ->
                     warmingPreview = null
@@ -526,8 +529,18 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 }
                 mutex.withLock {
                     if (!isCurrent(request)) return@launch
-                    if (restart) stopOwned()
-                    else {
+                    if (restart) {
+                        if (preparedLaunch != null) {
+                            val previous = requireNotNull(owned) { "The previous Native session is unavailable." }
+                            val executable = Path.of(requireNotNull(previous.process.info().command().orElse(null)))
+                            val descriptor = executable.parent.resolve(WinRTPreparedLaunch.FILE_NAME)
+                            rollbackLaunch = if (Files.isRegularFile(descriptor)) WinRTPreparedLaunch.read(descriptor, executable)
+                            else if (preview && directPreview != null) WinRTPreparedLaunch(executable.toString(),
+                                listOf(WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT), emptyMap())
+                            else error("The running application has no saved launch contract. It remains running; restart it once to enable automatic rollback.")
+                        }
+                        stopOwned(retainDeployment = rollbackLaunch != null)
+                    } else {
                         check(owned?.process?.isAlive != true) { "Stop or restart the existing development application first." }
                         stopOwned()
                     }
@@ -587,25 +600,52 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     sources = preparedSources
                 }
                 var reused = false
-                if (preparedLaunch != null) {
-                    val process = ProcessBuilder(listOf(preparedLaunch.executable) + preparedLaunch.arguments)
-                        .directory(Path.of(preparedLaunch.executable).parent.toFile())
-                        .redirectErrorStream(true).redirectOutput(launchDirectory.resolve("application-host.log").toFile())
+                suspend fun launchPrepared(spec: WinRTPreparedLaunch) {
+                    val process = ProcessBuilder(listOf(spec.executable) + spec.arguments)
+                        .directory(Path.of(spec.executable).parent.toFile())
+                        .redirectErrorStream(true).redirectOutput(launchDirectory.resolve(if (rolledBack) "rollback-host.log" else "application-host.log").toFile())
                         .apply {
                             if (!passParentEnvironment) environment().clear()
                             environment().putAll(launchEnvironment)
-                            environment().putAll(preparedLaunch.environment)
+                            environment().putAll(spec.environment)
                             environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = launchDirectory.toString()
                             if (preview) {
                                 environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1"
                                 environment()[WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT] = theme
                             }
                         }.start()
-                    if (!withCurrent(request) { if (preview) directPreview = process else warmingPreview = process }) { process.destroy(); return@launch }
-                    awaitConnection(request, launchDirectory, preparedLaunch.executable, process)
+                    if (spec === preparedLaunch) replacementProcess = process
+                    if (!withCurrent(request) { if (preview) directPreview = process else warmingPreview = process }) {
+                        process.destroy(); currentCoroutineContext().ensureActive(); error("The development launch was superseded.")
+                    }
+                    awaitConnection(request, launchDirectory, spec.executable, process)
                     warmingPreview = null
+                }
+                if (preparedLaunch != null) {
+                    try {
+                        launchPrepared(preparedLaunch)
+                        log.info("Prepared Native replacement connected: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
+                    } catch (error: Exception) {
+                        if (error is CancellationException && error !is TimeoutCancellationException) throw error
+                        currentCoroutineContext().ensureActive()
+                        val previous = rollbackLaunch ?: throw error
+                        withCurrent(request) { display.value = display.value.copy(message = "Replacement failed to start; restoring the previous application…", busy = true) }
+                        discardWarmingPreview()
+                        mutex.withLock { stopOwned(); client?.close(); client = null }
+                        runCatching { WinRTPreparedLaunch.discard(baseExecutable, Path.of(preparedLaunch.executable)) }
+                            .onFailure { log.debug("Failed Native deployment cleanup deferred", it) }
+                        rolledBack = true
+                        activeExecutable = previous.executable
+                        withCurrent(request) { savedLaunch.preparedExecutable = previous.executable.takeIf {
+                            WinRTPreparedLaunch.isReplacement(baseExecutable, Path.of(it)) }.orEmpty() }
+                        try { launchPrepared(previous) }
+                        catch (recovery: Exception) {
+                            if (recovery is CancellationException && recovery !is TimeoutCancellationException) throw recovery
+                            error.addSuppressed(recovery)
+                            throw IllegalStateException("The replacement and automatic rollback both failed. See application-host.log and rollback-host.log in $launchDirectory.", error)
+                        }
+                    }
                     reused = true
-                    log.info("Prepared Native replacement connected: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                 }
                 if (reusable && cache != null) {
                     try {
@@ -699,13 +739,26 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 debugRestart?.let { debugger ->
                     try {
                         val connection = requireNotNull(client)
-                        runInterruptible { debugger.attachAfterRestart(connection.process.pid(), connection.started, Path.of(preparedLaunch?.executable ?: launch.executable)).get(45, TimeUnit.SECONDS) }
+                        runInterruptible { debugger.attachAfterRestart(connection.process.pid(), connection.started, Path.of(activeExecutable)).get(45, TimeUnit.SECONDS) }
                     } catch (error: Exception) {
                         debugger.restartFailed(error)
                         withCurrent(request) { display.value = display.value.copy(message = "Application restarted, but the Native debugger could not reattach: ${error.message}") }
                     }
                 }
-                if (codeRevision.get() != launchCodeRevision) {
+                if (rolledBack) {
+                    withCurrent(request) {
+                        val outcome = "Replacement failed to start; the previous application was restored. " + (display.value.restartOutcome?.replace("Code changes loaded", "Saved state recovery") ?: "No saved state was required.")
+                        display.value = display.value.copy(message = outcome, restartOutcome = outcome, projectCodeChanged = true)
+                    }
+                } else {
+                    rollbackLaunch?.let { previous ->
+                        val executable = Path.of(previous.executable)
+                        if (WinRTPreparedLaunch.isReplacement(baseExecutable, executable))
+                            runCatching { WinRTPreparedLaunch.discard(baseExecutable, executable) }
+                                .onFailure { log.debug("Retired Native deployment cleanup deferred", it) }
+                    }
+                }
+                if (!rolledBack && codeRevision.get() != launchCodeRevision) {
                     withCurrent(request) { display.value = display.value.copy(projectCodeChanged = true) }
                     scheduleCodeRebuild()
                 }
@@ -723,10 +776,16 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 // Cancellation, validation and source-preparation failures must
                 // not leave a candidate outside normal session ownership.
                 discardWarmingPreview()
+                if (preparedLaunch != null && replacementProcess?.isAlive != true &&
+                    owned?.process?.info()?.command()?.orElse(null) != preparedLaunch.executable) {
+                    runCatching { WinRTPreparedLaunch.discard(baseExecutable, Path.of(preparedLaunch.executable)) }
+                        .onFailure { log.debug("Unused Native deployment cleanup deferred", it) }
+                }
                 deploymentReady.complete(Unit)
                 if (!display.value.connected || !isCurrent(request)) firstFrame.complete(Unit)
             }
         }
+        return true
     }
 
     /** Observe an application already being launched by the IDE's native
@@ -1199,9 +1258,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         } }
     }
 
-    private fun stopOwned() {
+    private fun stopOwned(retainDeployment: Boolean = false) {
+        val previousExecutable = (owned?.process?.info()?.command()?.orElse(null)
+            ?: directPreview?.info()?.command()?.orElse(null))?.let(Path::of)
         owned?.let { previous ->
-            val previousExecutable = previous.process.info().command().orElse(null)?.let(Path::of)
             if (previous.process.isAlive) {
                 check(previous.process.info().startInstant().orElse(null) == previous.started) { "The original application has exited; refusing to stop a reused process ID." }
                 check(previous.process.destroy()) { "Stop the application from its Gradle Run window." }
@@ -1210,18 +1270,18 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             previous.close()
             // This file belongs to a process launched in this service's fresh session directory.
             Files.deleteIfExists(previous.sessionFile)
-            selectedLaunch?.let { launch ->
-                val base = Path.of(if (isolatedPreview) launch.previewExecutable else launch.executable)
-                if (previousExecutable != null && WinRTPreparedLaunch.isReplacement(base, previousExecutable))
-                    runCatching { WinRTPreparedLaunch.discard(base, previousExecutable) }
-                        .onFailure { log.debug("Retired Native deployment cleanup deferred", it) }
-            }
         }
         owned = null
         directPreview?.let { process ->
             if (process.isAlive) { process.destroy(); check(process.waitFor(8, TimeUnit.SECONDS)) { "Preview host did not stop." } }
         }
         directPreview = null
+        selectedLaunch?.let { launch ->
+            val base = Path.of(if (isolatedPreview) launch.previewExecutable else launch.executable)
+            if (!retainDeployment && previousExecutable != null && WinRTPreparedLaunch.isReplacement(base, previousExecutable))
+                runCatching { WinRTPreparedLaunch.discard(base, previousExecutable) }
+                    .onFailure { log.debug("Retired Native deployment cleanup deferred", it) }
+        }
     }
 
     private fun documentText(path: String): String = ReadAction.compute<String?, RuntimeException> {

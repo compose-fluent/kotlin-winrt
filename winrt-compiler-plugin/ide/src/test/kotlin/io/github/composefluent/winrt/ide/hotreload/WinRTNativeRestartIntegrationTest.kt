@@ -171,6 +171,42 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
             }
             assertEquals("Code changes loaded; saved UI and application checkpoints restored.", service.state.value.restartOutcome)
             println("Actual Native replacement recovered navigation, dynamic input, two dependency instances and business checkpoint: $before -> ${service.state.value.pid}")
+            val healthyExecutable = Path.of(service.getState().preparedExecutable)
+            val healthyPid = service.state.value.pid
+            val rollbackState = client().use { connection ->
+                restartStatePlan(connection.request().roots).requests.map { request ->
+                    request.copy(restore = requireNotNull(connection.transferState(request).savedState))
+                }
+            }
+            val brokenExecutable = io.github.composefluent.winrt.ide.model.WinRTPreparedLaunch.deployment(
+                deployment, java.util.UUID.randomUUID().toString()).resolve(healthyExecutable.fileName)
+            Files.createDirectories(brokenExecutable.parent)
+            Files.writeString(brokenExecutable, "Invalid PE image: deliberate failed-replacement acceptance")
+            EdtTestUtil.runInEdtAndWait<Exception> {
+                service.start(module("app", listOf(launch)), launch, restart = true,
+                    restoredState = rollbackState,
+                    preparedLaunch = io.github.composefluent.winrt.ide.model.WinRTPreparedLaunch(brokenExecutable.toString(), emptyList(), emptyMap()))
+            }
+            await("Automatic rollback after invalid Native replacement") {
+                service.state.value.connected && service.state.value.pid != healthyPid &&
+                    service.state.value.restartOutcome?.startsWith("Replacement failed to start; the previous application was restored.") == true
+            }
+            assertEquals(healthyExecutable.toString(), service.getState().preparedExecutable)
+            assertTrue(Files.isRegularFile(healthyExecutable))
+            assertFalse(Files.exists(brokenExecutable.parent))
+            assertTrue(service.state.value.projectCodeChanged)
+            client().use { connection ->
+                saved.forEach { (request, updates) ->
+                    val reply = connection.transferState(request)
+                    assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+                    updates.forEach { update ->
+                        val actual = reply.savedState!!.single { it.name == update.name && it.kind == update.kind }
+                        update.values.forEach { value -> assertEquals(value.value, actual.values.single { it.name == value.name }.value) }
+                    }
+                }
+            }
+            println("Actual invalid Native replacement rolled back with saved state and removed the failed deployment: $healthyPid -> ${service.state.value.pid}")
+
         } finally {
             EdtTestUtil.runInEdtAndWait<Exception> { service.stop() }
             Files.writeString(code, original)
