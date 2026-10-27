@@ -18,6 +18,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import io.github.composefluent.winrt.ide.gradle.*
+import io.github.composefluent.winrt.ide.model.WinRTPreparedLaunch
 import io.github.composefluent.winrt.ide.debug.WinRTNativeDebugOwnership
 import io.github.composefluent.winrt.ide.debug.WinRTNativeDebugRestarter
 import io.github.composefluent.winrt.ide.project.*
@@ -50,7 +51,7 @@ data class WinUIXamlHotReloadState(val message: String = "Run an application wit
 
 /** Workspace metadata only: authentication remains in the runtime's session file. */
 data class WinUIXamlHotReloadLaunchState(var moduleDirectory: String = "", var taskName: String = "", var sessionDirectory: String = "",
-    var processId: Long = 0, var startedUtc: String = "", var previewTheme: String = "Default", var projectCodeChanged: Boolean = false)
+    var processId: Long = 0, var startedUtc: String = "", var previewTheme: String = "Default", var projectCodeChanged: Boolean = false, var preparedExecutable: String = "")
 
 /** Instance ordinals identify live objects only within one process. They cannot
  * establish object identity after a restart; never move input between such roots. */
@@ -313,6 +314,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             var lastAttempted = codeRevision.get()
             try {
                 var builtRevision: Long
+                var preparedLaunch: WinRTPreparedLaunch? = null
+                // Only direct unpackaged Native tasks expose this preparation contract.
+                // Other packaging modes retain their activation/registration owner.
+                val prepareDirect = launch.isDirectPreview && launch.nativeCompilerHome.isNotBlank() && launch.taskName.startsWith("runWinAppNative")
                 do {
                     delay(900)
                     if (!isCurrent(request) || (!automaticBuildEnabled && !force)) return@launch
@@ -320,11 +325,19 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     builtRevision = codeRevision.get()
                     lastAttempted = builtRevision
                     val finished = CompletableDeferred<Boolean>()
+                    val slot = if (prepareDirect) UUID.randomUUID().toString() else null
+                    val baseExecutable = Path.of(if (isolatedPreview) launch.previewExecutable else launch.executable)
+                    preparedLaunch?.let { obsolete -> runCatching { WinRTPreparedLaunch.discard(baseExecutable, Path.of(obsolete.executable)) } }
+                    preparedLaunch = null
+                    val preparedExecutable = slot?.let { WinRTPreparedLaunch.deployment(baseExecutable.parent, it).resolve(baseExecutable.fileName) }
                     withCurrent(request) { display.value = display.value.copy(
                         message = "Building code changes; the current application stays running…", rebuildingCode = true, restartOutcome = null) }
                     withContext(Dispatchers.EDT) {
-                        if (isCurrent(request)) WinRTGradleTasks.run(project, module, listOf(buildTask), "Build Hot Reload changes",
-                            environment = launchEnvironment + mapOf("KOTLIN_WINRT_BUILD_REQUEST" to UUID.randomUUID().toString()),
+                        if (isCurrent(request)) WinRTGradleTasks.run(project, module, listOf(if (prepareDirect) launch.taskName else buildTask), "Build Hot Reload changes",
+                            environment = launchEnvironment + mapOf("KOTLIN_WINRT_BUILD_REQUEST" to UUID.randomUUID().toString()) +
+                                (if (slot != null) mapOf(WinRTPreparedLaunch.SLOT_ENVIRONMENT to slot, "KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap()) +
+                                (if (isolatedPreview) mapOf(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT to "1", WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT to previewTheme) else emptyMap()),
+                            arguments = if (prepareDirect) launchArguments else "",
                             passParentEnvironment = passParentEnvironment,
                             onProcessStarted = { handler ->
                                 if (!withCurrent(request) { codeBuildProcess = handler }) WinRTGradleTasks.cancel(project, handler)
@@ -333,6 +346,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     }
                     val succeeded = finished.await()
                     codeBuildProcess = null
+                    preparedLaunch = if (succeeded && preparedExecutable != null) {
+                        val descriptor = preparedExecutable.parent.resolve(WinRTPreparedLaunch.FILE_NAME)
+                        try { WinRTPreparedLaunch.read(descriptor, preparedExecutable) }
+                        finally { Files.deleteIfExists(descriptor) }
+                    } else null
                     if (!succeeded) {
                         withCurrent(request) { display.value = display.value.copy(
                             message = "Code build failed; the existing application was not replaced. See Gradle output.") }
@@ -364,7 +382,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                             start(module, launch, restart = true, preview = isolatedPreview,
                                 theme = previewTheme, restoredState = states, skippedStateComponents = statePlan.skippedComponents,
                                 launchEnvironment = launchEnvironment, launchArguments = launchArguments, passParentEnvironment = passParentEnvironment,
-                                debugRestart = debugRestart)
+                                debugRestart = debugRestart, preparedLaunch = preparedLaunch)
                         } else debugRestart?.restartFailed(IllegalStateException("Sources changed while preparing the Native restart."))
                     }
                 }
@@ -445,10 +463,13 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
     internal fun start(module: WinRTModuleData, launch: WinUIXamlHotReloadLaunchData, restart: Boolean = false, preview: Boolean = false, rebuild: Boolean = restart, theme: String = "Default",
         restoredState: List<WinUIXamlStateRequest> = emptyList(),
         skippedStateComponents: List<String> = emptyList(),
-        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true, debugRestart: WinRTNativeDebugRestarter? = null) {
+        launchEnvironment: Map<String, String> = emptyMap(), launchArguments: String = "", passParentEnvironment: Boolean = true, debugRestart: WinRTNativeDebugRestarter? = null, preparedLaunch: WinRTPreparedLaunch? = null) {
         if (disposed || project.isDisposed) return
         require(theme in setOf("Default", "Light", "Dark"))
         val sdkPreview = preview && launch == module.staticPreview?.launch()
+        val baseExecutable = Path.of(if (preview) launch.previewExecutable else launch.executable)
+        require(preparedLaunch == null || restart && launch.isDirectPreview && launch.taskName.startsWith("runWinAppNative") &&
+            WinRTPreparedLaunch.isReplacement(baseExecutable, Path.of(preparedLaunch.executable))) { "The prepared launch does not belong to this deployment." }
         val startedAt = System.nanoTime()
         val launchCodeRevision = codeRevision.get()
         require(launch in module.hotReloadLaunches || sdkPreview) { "Synchronize Gradle before selecting this application." }
@@ -507,7 +528,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     selectedModule = module; selectedLaunch = launch
                     directory = Path.of(module.buildDirectory).resolve("kotlin-winrt/ide-hot-reload/${UUID.randomUUID()}").toAbsolutePath().normalize()
                     Files.createDirectories(directory!!)
-                    withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString(), previewTheme = theme) }
+                    withCurrent(request) { savedLaunch = WinUIXamlHotReloadLaunchState(module.projectDirectory, launch.taskName, directory.toString(), previewTheme = theme, preparedExecutable = preparedLaunch?.executable.orEmpty()) }
                 }
                 val launchDirectory = requireNotNull(directory)
                 fun startCachedPreview(cache: WinRTPreviewLaunchCache): Process =
@@ -524,7 +545,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                         if (preview) log.info("XAML preview sources ready: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
                     }
                 }
-                val cache = if (preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.isDirectPreview)) WinRTPreviewLaunchCache(
+                val cache = if (preparedLaunch == null && preview && (sdkPreview && launch.taskName == "runWinRTXamlSdkPreview" || launch.nativeCompilerHome.isNotBlank() && launch.isDirectPreview)) WinRTPreviewLaunchCache(
                     Path.of(project.service<WinRTProjectService>().buildRootFor(module) ?: module.projectDirectory),
                     project.service<WinRTProjectService>().modules.value, module, launch) else null
                 val validation = cache?.let { candidate -> runCatching {
@@ -557,6 +578,26 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     sources = preparedSources
                 }
                 var reused = false
+                if (preparedLaunch != null) {
+                    val process = ProcessBuilder(listOf(preparedLaunch.executable) + preparedLaunch.arguments)
+                        .directory(Path.of(preparedLaunch.executable).parent.toFile())
+                        .redirectErrorStream(true).redirectOutput(launchDirectory.resolve("application-host.log").toFile())
+                        .apply {
+                            if (!passParentEnvironment) environment().clear()
+                            environment().putAll(launchEnvironment)
+                            environment().putAll(preparedLaunch.environment)
+                            environment()[WinUIXamlHotReloadProtocol.SESSION_DIRECTORY] = launchDirectory.toString()
+                            if (preview) {
+                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT] = "1"
+                                environment()[WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT] = theme
+                            }
+                        }.start()
+                    if (!withCurrent(request) { if (preview) directPreview = process else warmingPreview = process }) { process.destroy(); return@launch }
+                    awaitConnection(request, launchDirectory, preparedLaunch.executable, process)
+                    warmingPreview = null
+                    reused = true
+                    log.info("Prepared Native replacement connected: ${(System.nanoTime() - startedAt) / 1_000_000}ms")
+                }
                 if (reusable && cache != null) {
                     try {
                         // Only now can the fully checked candidate enter a session.
@@ -649,7 +690,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                 debugRestart?.let { debugger ->
                     try {
                         val connection = requireNotNull(client)
-                        runInterruptible { debugger.attachAfterRestart(connection.process.pid(), connection.started, Path.of(launch.executable)).get(45, TimeUnit.SECONDS) }
+                        runInterruptible { debugger.attachAfterRestart(connection.process.pid(), connection.started, Path.of(preparedLaunch?.executable ?: launch.executable)).get(45, TimeUnit.SECONDS) }
                     } catch (error: Exception) {
                         debugger.restartFailed(error)
                         withCurrent(request) { display.value = display.value.copy(message = "Application restarted, but the Native debugger could not reattach: ${error.message}") }
@@ -733,7 +774,10 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
         val candidate = awaitDevelopmentPublication(building) {
             currentCoroutineContext().ensureActive()
             check(isCurrent(request)) { "The development launch was superseded." }
-            check(process == null || process.isAlive) { "The cached preview host exited before connecting." }
+            check(process == null || process.isAlive) {
+                val output = folder.resolve("application-host.log").takeIf { Files.isRegularFile(it) } ?: folder.resolve("preview-host.log")
+                "The ${if (isolatedPreview) "preview host" else "application"} exited before connecting. See $output."
+            }
             val found = WinUIXamlHotReloadClient.discover(folder, executable)
             require(found.size <= 1) { "Multiple development processes use this session directory. Stop them before reconnecting." }
             found.singleOrNull()
@@ -819,7 +863,11 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
                     require(folder.parent == expected && runCatching { UUID.fromString(folder.fileName.toString()).toString().equals(folder.fileName.toString(), true) }.getOrDefault(false)) {
                         "The saved development session does not belong to this module. Start a new session."
                     }
-                    val next = WinUIXamlHotReloadClient.discover(folder, if (isolatedPreview) launch.previewExecutable else launch.executable)
+                    val base = Path.of(if (isolatedPreview) launch.previewExecutable else launch.executable)
+                    val executable = saved.preparedExecutable.takeIf { it.isNotEmpty() }?.also {
+                        require(WinRTPreparedLaunch.isReplacement(base, Path.of(it))) { "The saved replacement does not belong to this launch." }
+                    } ?: base.toString()
+                    val next = WinUIXamlHotReloadClient.discover(folder, executable)
                     require(next.size == 1) { "No unique live development session. Rebuild and restart the application." }
                     val candidate = next.single()
                     if (saved.processId > 0) {
@@ -1144,6 +1192,7 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
 
     private fun stopOwned() {
         owned?.let { previous ->
+            val previousExecutable = previous.process.info().command().orElse(null)?.let(Path::of)
             if (previous.process.isAlive) {
                 check(previous.process.info().startInstant().orElse(null) == previous.started) { "The original application has exited; refusing to stop a reused process ID." }
                 check(previous.process.destroy()) { "Stop the application from its Gradle Run window." }
@@ -1152,6 +1201,12 @@ open class WinRTDevelopmentSession(private val project: Project, private val sco
             previous.close()
             // This file belongs to a process launched in this service's fresh session directory.
             Files.deleteIfExists(previous.sessionFile)
+            selectedLaunch?.let { launch ->
+                val base = Path.of(if (isolatedPreview) launch.previewExecutable else launch.executable)
+                if (previousExecutable != null && WinRTPreparedLaunch.isReplacement(base, previousExecutable))
+                    runCatching { WinRTPreparedLaunch.discard(base, previousExecutable) }
+                        .onFailure { log.debug("Retired Native deployment cleanup deferred", it) }
+            }
         }
         owned = null
         directPreview?.let { process ->

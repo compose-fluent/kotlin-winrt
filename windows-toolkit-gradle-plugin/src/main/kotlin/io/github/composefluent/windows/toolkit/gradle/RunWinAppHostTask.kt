@@ -22,6 +22,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Files
+import io.github.composefluent.winrt.ide.model.WinRTPreparedLaunch
 import javax.inject.Inject
 
 @DisableCachingByDefault(because = "Runs an application against the local Windows environment")
@@ -30,6 +31,7 @@ abstract class RunWinAppHostTask @Inject constructor(
     private val fileSystem: org.gradle.api.file.FileSystemOperations,
 ) : DefaultTask() {
     init {
+        restartSlot.convention(project.providers.environmentVariable(WinRTPreparedLaunch.SLOT_ENVIRONMENT).orElse(""))
         args.convention(emptyList())
         jvmArgs.convention(emptyList())
         environmentVariables.convention(emptyMap())
@@ -41,6 +43,8 @@ abstract class RunWinAppHostTask @Inject constructor(
         previewHostExecutable.convention(deployedExecutable)
         designPreview.convention(project.providers.environmentVariable(io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
     }
+
+    @get:Input abstract val restartSlot: org.gradle.api.provider.Property<String>
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.ABSOLUTE)
@@ -89,8 +93,9 @@ abstract class RunWinAppHostTask @Inject constructor(
     @get:Internal abstract val previewBuildInputs: org.gradle.api.file.ConfigurableFileCollection
     @get:Internal abstract val developmentBuildTask: org.gradle.api.provider.Property<String>
     @get:Internal val deployedExecutable: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>
-        get() = deploymentDirectory.zip(hostExecutable) { directory, executable -> directory.file(executable.asFile.name) }
-            .orElse(hostExecutable)
+        get() = project.layout.file(deploymentDirectory.zip(hostExecutable) { directory, executable ->
+            WinRTPreparedLaunch.deployment(directory.asFile.toPath(), restartSlot.get()).resolve(executable.asFile.name).toFile()
+        }).orElse(hostExecutable)
     @get:Internal abstract val previewHostExecutable: RegularFileProperty
     @get:Input abstract val detach: org.gradle.api.provider.Property<Boolean>
     @get:Input
@@ -105,7 +110,10 @@ abstract class RunWinAppHostTask @Inject constructor(
     fun run() {
         deploymentDirectory.orNull?.asFile?.let { destination ->
             val source = workingDirectory.get().asFile.toPath().toAbsolutePath().normalize()
-            val target = destination.toPath().toAbsolutePath().normalize()
+            val target = WinRTPreparedLaunch.deployment(destination.toPath(), restartSlot.get())
+            require(restartSlot.get().isEmpty() || noLaunch.get() && nativeCompilerHome.orNull?.isNotBlank() == true) {
+                "Prepared restart payloads require an isolated Native no-launch task."
+            }
             require(!target.startsWith(source) && !source.startsWith(target)) {
                 "The development deployment must be separate from the staging directory."
             }
@@ -115,6 +123,11 @@ abstract class RunWinAppHostTask @Inject constructor(
                     target.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME),
                     previewBuildInputs.files.map { it.toPath() })
             }
+        }
+        if (restartSlot.get().isNotEmpty()) {
+            val environment = mutableMapOf<String, String>().also(::configureEnvironment)
+            WinRTPreparedLaunch(deployedExecutable.get().asFile.absolutePath, applicationArguments(), environment)
+                .write(runtimeDirectory().toPath().resolve(WinRTPreparedLaunch.FILE_NAME))
         }
         if (noLaunch.get()) return
         if (detach.get() && nativeDebugDirectory.orNull.isNullOrBlank()) {
@@ -140,7 +153,9 @@ abstract class RunWinAppHostTask @Inject constructor(
         }
     }
 
-    private fun runtimeDirectory() = deploymentDirectory.orNull?.asFile ?: workingDirectory.get().asFile
+    private fun runtimeDirectory() = deploymentDirectory.orNull?.asFile?.let {
+        WinRTPreparedLaunch.deployment(it.toPath(), restartSlot.get()).toFile()
+    } ?: workingDirectory.get().asFile
 
     private fun applicationArguments(): List<String> {
         val applicationArguments = args.get().toMutableList()

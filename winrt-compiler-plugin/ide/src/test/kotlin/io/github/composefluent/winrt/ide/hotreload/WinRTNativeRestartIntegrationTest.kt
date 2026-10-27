@@ -42,14 +42,17 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
         val opened = EdtTestUtil.runInEdtAndGet<com.intellij.openapi.project.Project, Exception> {
             ApplicationManager.getApplication().runWriteAction { ProjectJdkTable.getInstance().addJdk(sdk) }
             manager.openProject(root, OpenProjectTask {
-                isNewProject = true; useDefaultProjectAsTemplate = false; forceOpenInNewFrame = true
+                isNewProject = false; useDefaultProjectAsTemplate = false; forceOpenInNewFrame = true
                 runConfigurators = false; createModule = false
             })!!
         }
         val deployment = app.resolve("build/kotlin-winrt/application-run/mingwX64_main_debugExecutable/Unpackaged")
         val launch = WinUIXamlHotReloadLaunchData("runWinAppNativeMingwX64MainDebugExecutable",
             deployment.resolve("native-project-preview.exe").toString(), deployment.toString(),
-            developmentBuildTask = "stageWinAppPackageMingwX64MainDebugExecutable")
+            nativeCompilerHome = System.getProperty("winrt.ide.nativeDebugKonanHome")
+                ?: Path.of(System.getenv("KONAN_DATA_DIR") ?: Path.of(System.getProperty("user.home"), ".konan").toString())
+                    .resolve("kotlin-native-prebuilt-windows-x86_64-2.4.0").toString(),
+            isDirectPreview = true, developmentBuildTask = "stageWinAppPackageMingwX64MainDebugExecutable")
         fun module(name: String, launches: List<WinUIXamlHotReloadLaunchData>): WinRTModuleData {
             val folder = root.resolve(name)
             val sources = folder.resolve("src/winuiMain/kotlin")
@@ -61,18 +64,18 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
         val service = opened.service<WinUIXamlHotReloadService>()
         fun await(label: String, condition: () -> Boolean) = runBlocking {
             var previous = ""
-            try { withTimeout(360_000) { while (!condition()) {
+            try { withTimeout(900_000) { while (!condition()) {
                 val message = service.state.value.message
                 if (message != previous) {
                     println("$label: $message; connected=${service.state.value.connected}, pid=${service.state.value.pid}, roots=${service.state.value.roots.map { it.className }}")
                     previous = message
                 }
-                check(listOf("The Gradle launch failed", "The Gradle launch finished, but", "Code build failed", "Automatic restart failed").none(message::startsWith)) { "$label: $message" }
+                check(listOf("The Gradle launch failed", "The Gradle launch finished, but", "Code build failed", "Automatic restart failed", "The preview host exited", "The application exited").none(message::startsWith)) { "$label: $message" }
                 delay(100)
             } } }
             catch (error: TimeoutCancellationException) { throw AssertionError("$label: ${service.state.value.message}", error) }
         }
-        fun client() = WinUIXamlHotReloadClient.discover(Path.of(service.getState().sessionDirectory), launch.executable)
+        fun client() = WinUIXamlHotReloadClient.discover(Path.of(service.getState().sessionDirectory), service.getState().preparedExecutable.ifEmpty { launch.executable })
             .single { it.process.pid() == service.state.value.pid }
         fun expected(request: WinUIXamlStateRequest, state: WinUIXamlSavedElement): String? = when {
             state.kind.startsWith("Participant:") -> "3"
@@ -87,8 +90,14 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
         try {
             EdtTestUtil.runInEdtAndWait<Exception> {
                 ApplicationManager.getApplication().runWriteAction { ProjectRootManager.getInstance(opened).projectSdk = sdk }
-                GradleSettings.getInstance(opened).linkProject(GradleProjectSettings().apply {
-                    externalProjectPath = root.toString().replace('\\', '/'); distributionType = DistributionType.DEFAULT_WRAPPED; gradleJvm = sdk.name
+                val gradle = GradleSettings.getInstance(opened)
+                val projectPath = root.toString().replace('\\', '/')
+                val linked = gradle.getLinkedProjectSettings(projectPath)
+                if (linked != null) {
+                    linked.distributionType = DistributionType.DEFAULT_WRAPPED
+                    linked.gradleJvm = sdk.name
+                } else gradle.linkProject(GradleProjectSettings().apply {
+                    externalProjectPath = projectPath; distributionType = DistributionType.DEFAULT_WRAPPED; gradleJvm = sdk.name
                 })
                 val appModule = module("app", listOf(launch))
                 opened.service<WinRTProjectService>().replaceBuildModels(root.toString(), listOf(appModule, module("controls", emptyList())))
@@ -99,7 +108,7 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
             }
             val before = service.state.value.pid
             var navigation = ""
-            val saved = client().use { connection ->
+            var saved = client().use { connection ->
                 val requests = restartStatePlan(connection.request().roots).requests
                 val values = requests.map { request ->
                     val captured = connection.transferState(request)
@@ -122,10 +131,22 @@ class WinRTNativeRestartIntegrationTest : BasePlatformTestCase() {
             Files.writeString(code, original.replace("Native recovery verified without reconnect", "Native rebuilt and recovered")
                 .replace("frame.navigate(RecoveryPage::class, \"checkpoint route\")", "frame.navigate(RecoveryAlternatePage::class, \"fresh default\")"))
             service.markProjectCodeChanged(code.toString())
+            await("Build while old application stays interactive") { service.state.value.rebuildingCode }
+            assertEquals(before, service.state.value.pid)
+            assertTrue(ProcessHandle.of(requireNotNull(before)).orElseThrow().isAlive)
+            saved = saved.map { (request, updates) -> request to updates.map { state ->
+                if (state.name == "ReloadInput") state.copy(values = listOf(WinUIXamlVisualProperty("Text", "Input entered during the build"))) else state
+            } }
+            client().use { connection ->
+                saved.forEach { (request, updates) ->
+                    assertEquals(WinUIXamlHotReloadProtocol.APPLIED, connection.transferState(request.copy(restore = updates)).status)
+                }
+            }
             await("Native replacement and state recovery") {
                 service.state.value.connected && service.state.value.pid != before && service.state.value.restartOutcome != null
             }
-            println("Native restart outcome: ${service.state.value.restartOutcome}")
+            println("Native restart outcome: ${service.state.value.restartOutcome}; handoff=${service.state.value.startupMillis}ms")
+            assertTrue(io.github.composefluent.winrt.ide.model.WinRTPreparedLaunch.isReplacement(Path.of(launch.executable), Path.of(service.getState().preparedExecutable)))
             assertEquals("Code changes loaded; saved UI and application checkpoints restored.", service.state.value.restartOutcome)
             client().use { connection ->
                 saved.forEach { (request, updates) ->
