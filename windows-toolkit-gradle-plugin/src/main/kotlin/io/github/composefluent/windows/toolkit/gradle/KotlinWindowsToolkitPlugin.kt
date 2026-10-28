@@ -210,9 +210,14 @@ private fun configureWinRTRuntimeDependency(
                 }
             }
             kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
-                val sourceSet = target.compilations.getByName("main").defaultSourceSet
-                if (includeAuthoring) {
-                    addAuthoringDependency(sourceSet.implementationConfigurationName)
+                target.compilations.configureEach { compilation ->
+                    // Named applications may select standalone auxiliary compilations
+                    // which do not inherit the main source set's runtime dependencies.
+                    val sourceSet = compilation.defaultSourceSet
+                    addRuntimeDependency(sourceSet.implementationConfigurationName)
+                    if (includeAuthoring) {
+                        addAuthoringDependency(sourceSet.implementationConfigurationName)
+                    }
                 }
             }
         }
@@ -4284,11 +4289,15 @@ private fun kotlinWinRTCompilerPluginDependency(project: Project): Any {
 }
 
 private fun kotlinWinRTRuntimeDependency(project: Project): Any {
-    return kotlinWinRTLocalOrPluginUnderTestDependency(
+    val dependency = kotlinWinRTLocalOrPluginUnderTestDependency(
         project = project,
         projectPath = ":winrt-runtime",
         moduleName = "winrt-runtime",
     ) ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
+    // Local/TestKit JARs have no POM to supply the split runtime contract transitively.
+    return if (dependency is org.gradle.api.file.FileCollection) {
+        project.files(dependency, kotlinWinRTPluginMetadataArtifact(project, "winrt-runtime-contracts"))
+    } else dependency
 }
 
 private fun kotlinWinRTRuntimeClasspathDependency(project: Project): Any {
