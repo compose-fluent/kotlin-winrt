@@ -208,10 +208,12 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
             .map { it.defaultMessage }.filter { it.contains("XAML x:Name") } }
     }
 
+    // This fixture publishes compiler snapshots explicitly. A missing source hash would
+    // start background harvesting and race those deliberate declaration transitions.
     private fun declaration(name: String) = """{
       "SchemaVersion":3,"Resources":[],"Pages":[{
         "ClassName":"sample.Shell","ResourcePath":"Shell.xaml","BaseTypeName":"Microsoft.UI.Xaml.Controls.Page",
-        "IsApplication":false,"Features":["named-elements"],"Connections":[{
+        "SourceHash":"${io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.sourceFingerprint(name)}","IsApplication":false,"Features":["named-elements"],"Connections":[{
           "Id":1,"TypeName":"Microsoft.UI.Xaml.Controls.Button","FieldName":"$name",
           "Location":{"Line":2,"Column":3},"Events":[]
         }]
