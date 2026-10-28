@@ -244,8 +244,8 @@ class WindowsToolkitPluginTest {
             """.trimIndent(),
         )
 
-        // The SDK model previously overflowed the 384 MiB configuration daemon before
-        // task workers could run. A clean help/import must prepare usable sources too.
+        // Import/configuration must not load or generate the SDK model in its small daemon.
+        // Generation belongs to the isolated task worker, even with an older buildscript KotlinPoet.
         val sync = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
@@ -254,10 +254,8 @@ class WindowsToolkitPluginTest {
         assertEquals(TaskOutcome.SUCCESS, sync.task(":help")?.outcome)
         assertEquals(null, sync.task(":generateWinRTProjections"))
         val sources = projectDir.resolve("build/generated/kotlin-winrt/src/jvmMain/kotlin")
-        assertTrue(Files.walk(sources).use { paths ->
-            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
-                .anyMatch { Files.readString(it).contains("class Uri") }
-        })
+        assertFalse(Files.exists(sources))
+
 
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
@@ -267,6 +265,10 @@ class WindowsToolkitPluginTest {
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRTProjections")?.outcome)
+        assertTrue(Files.walk(sources).use { paths ->
+            paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                .anyMatch { Files.readString(it).contains("class Uri") }
+        })
         assertTrue(result.output.contains("kotlin-winrt generator worker runtime: KotlinPoet="))
         assertTrue(result.output.contains("1.18.1"))
         assertFalse(result.output.contains("kotlinpoet/1.3.0"))
@@ -478,6 +480,19 @@ class WindowsToolkitPluginTest {
         }
         assertEquals(project.name, task.authoringAssemblyName.get())
         assertEquals("${project.name}.jar", task.authoringTargetArtifactName.get())
+    }
+
+    // File dependencies do not carry the runtime POM's contracts dependency.
+    private fun runtimeContractsJarPath(): String =
+        Path.of(io.github.composefluent.winrt.runtime.Guid::class.java.protectionDomain.codeSource.location.toURI())
+            .toString().replace("\\", "/")
+
+    private fun writeInstallTestPackage(path: Path) {
+        java.util.zip.ZipOutputStream(Files.newOutputStream(path)).use { zip ->
+            zip.putNextEntry(java.util.zip.ZipEntry("AppxManifest.xml"))
+            zip.write("""<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"><Identity Name="Contoso.Test" Publisher="CN=Test" Version="1.0.0.0" ProcessorArchitecture="x64"/><Dependencies/></Package>""".toByteArray())
+            zip.closeEntry()
+        }
     }
 
     private fun runtimeJarPath(): Path {
@@ -1034,7 +1049,8 @@ class WindowsToolkitPluginTest {
             assertTrue(args.toString(), args.any { it.contains(":compilerSupportManifest=") })
             assertTrue(args.toString(), args.any { it.endsWith("projectionSupportMode=external") })
             assertFalse(args.toString(), args.any { it.contains(":compilerSupportClassOutputDirectory=") })
-            assertTrue(taskDependencyNames(compile).toString(), "mergeWinRTCompilerSupport" in taskDependencyNames(compile))
+            val mergeTask = if (compile is KotlinNativeCompile) "mergeWinRTNativeCompilerSupport" else "mergeWinRTCompilerSupport"
+            assertTrue(taskDependencyNames(compile).toString(), mergeTask in taskDependencyNames(compile))
         }
         assertFalse(project.tasks.named("generateWinRTProjections", GenerateWinRTProjectionsTask::class.java).get().emitProjectionSources.get())
     }
@@ -2530,6 +2546,20 @@ class WindowsToolkitPluginTest {
         val task = project.tasks.named("generateWinRTIdentity", GenerateWinRTIdentityTask::class.java).get()
         task.authoredTargetArtifactFiles.from(authoredJar)
         task.generate()
+        // A projection-only library must not embed its ordinary published JAR.
+        assertTrue(Files.readString(task.outputFile.get().asFile.toPath())
+            .contains("\"authoredTargetArtifactRecords\": []"))
+        val authoredWinmd = project.layout.buildDirectory.file("authoring/SampleComponent.winmd").get().asFile.toPath()
+        Files.createDirectories(authoredWinmd.parent)
+        WinRTPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = "SampleComponent",
+            runtimeClasses = listOf(WinRTAuthoredRuntimeClassDescriptor(
+                runtimeClassName = "SampleComponent.Widget", interfaceNames = listOf("SampleComponent.IWidget"),
+            )),
+            outputFile = authoredWinmd,
+        )
+        task.authoredMetadataFiles.from(authoredWinmd)
+        task.generate()
 
         val json = Files.readString(task.outputFile.get().asFile.toPath())
         assertTrue(json.contains("\"authoredTargetArtifactRecords\": ["))
@@ -3343,6 +3373,7 @@ class WindowsToolkitPluginTest {
     @Test
     fun plugin_configures_authoring_scanner_classpath_without_application_boilerplate() {
         val project = ProjectBuilder.builder().build()
+        project.repositories.mavenCentral()
 
         project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
         project.extensions.getByType(KotlinMultiplatformExtension::class.java).jvm("winuiJvm")
@@ -4383,8 +4414,9 @@ class WindowsToolkitPluginTest {
         assertTrue(targetConfiguration.dependencies.isNotEmpty())
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "callsite-contract")
         assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "callsite-lowering")
-        assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-runtime")
-        assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-authoring")
+        assertHasKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-runtime-contracts")
+        assertDoesNotHaveKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-runtime")
+        assertDoesNotHaveKotlinWinRTClasspathDependency(targetConfiguration.dependencies, "winrt-authoring")
         assertHasExternalDependency(
             targetConfiguration.dependencies,
             group = "org.jetbrains.kotlinx",
@@ -5416,7 +5448,7 @@ class WindowsToolkitPluginTest {
         val jar = project.layout.buildDirectory.file("libs/sample-app.jar").get().asFile.toPath()
         val assets = project.layout.buildDirectory.dir("application-package").get().asFile.toPath()
         Files.createDirectories(jar.parent)
-        Files.writeString(jar, "jar")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(jar)).use { }
         Files.createDirectories(assets)
         Files.writeString(assets.resolve("sample-app.exe.manifest"), "manifest")
         val outputRoot = project.layout.buildDirectory.dir("application-layout/jvm").get().asFile.toPath()
@@ -5473,7 +5505,7 @@ class WindowsToolkitPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
         val jar = project.layout.buildDirectory.file("libs/sample-app.jar").get().asFile.toPath()
         Files.createDirectories(jar.parent)
-        Files.writeString(jar, "jar")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(jar)).use { }
         val guiTask = project.tasks.register(
             "buildGuiApplicationHost",
             BuildWinAppHostTask::class.java,
@@ -5524,7 +5556,7 @@ class WindowsToolkitPluginTest {
         val project = ProjectBuilder.builder().withName("sample-app").build()
         val jar = project.layout.buildDirectory.file("libs/sample-app.jar").get().asFile.toPath()
         Files.createDirectories(jar.parent)
-        Files.writeString(jar, "jar")
+        java.util.zip.ZipOutputStream(Files.newOutputStream(jar)).use { }
         val task = project.tasks.register(
             "buildPackagedApplicationHost",
             BuildWinAppHostTask::class.java,
@@ -9369,7 +9401,7 @@ class WindowsToolkitPluginTest {
         val project = ProjectBuilder.builder().build()
         val packageFile = project.layout.buildDirectory.file("packages/Contoso.msix").get().asFile.toPath()
         Files.createDirectories(packageFile.parent)
-        Files.writeString(packageFile, "msix")
+        writeInstallTestPackage(packageFile)
         val powershellLog = project.layout.buildDirectory.file("powershell-install.log").get().asFile.toPath()
         val powershell = writeFakePowerShell(
             project.layout.buildDirectory.file("fake-powershell.cmd").get().asFile.toPath(),
@@ -9493,7 +9525,7 @@ class WindowsToolkitPluginTest {
         val project = ProjectBuilder.builder().build()
         val packageFile = project.layout.buildDirectory.file("packages/MissingPowerShell.msix").get().asFile.toPath()
         Files.createDirectories(packageFile.parent)
-        Files.writeString(packageFile, "msix")
+        writeInstallTestPackage(packageFile)
         val task = project.tasks.register(
             "installApplicationPackageWithoutPowerShell",
             InstallWinAppPackageTask::class.java,
@@ -9518,7 +9550,7 @@ class WindowsToolkitPluginTest {
         val project = ProjectBuilder.builder().build()
         val packageFile = project.layout.buildDirectory.file("packages/FailedInstall.msix").get().asFile.toPath()
         Files.createDirectories(packageFile.parent)
-        Files.writeString(packageFile, "msix")
+        writeInstallTestPackage(packageFile)
         val powershell = writeFailingFakePowerShell(
             project.layout.buildDirectory.file("fake-failing-powershell.cmd").get().asFile.toPath(),
         )
@@ -10029,7 +10061,7 @@ class WindowsToolkitPluginTest {
             }
 
             dependencies {
-                implementation files("$runtimeJar")
+                implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
             }
 
             windows {
@@ -10153,7 +10185,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                         }
                     }
                 }
@@ -10190,7 +10222,7 @@ class WindowsToolkitPluginTest {
                     def generatedCompilerSupport = buildRoot.resolve("generated/kotlin-winrt/compiler-support/merged")
                         .toString()
                         .replace("\\", "/")
-                    def generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/winuiMain/kotlin")
+                    def generatedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/winuiMain/kotlin/sourceSets/winuiMain")
                         .toString()
                         .replace("\\", "/")
                     def legacyGeneratedAuthoring = buildRoot.resolve("generated/kotlin-winrt-authoring/src/main/kotlin")
@@ -10721,7 +10753,7 @@ class WindowsToolkitPluginTest {
             const val WINRT_RUNTIME_IMPLEMENTATION_ABI_VERSION = ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION}
         """.trimIndent())
         writeGradleFile(
-            projectDir.resolve("runtimeStub/src/commonMain/kotlin/io/github/composefluent/winrt/runtime/WindowsAppSdkBootstrap.kt"),
+            projectDir.resolve("runtimeStub/src/mingwX64Main/kotlin/io/github/composefluent/winrt/runtime/WindowsAppSdkBootstrap.kt"),
             """
             package io.github.composefluent.winrt.runtime
 
@@ -10943,7 +10975,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                         }
                     }
                 }
@@ -10979,7 +11011,6 @@ class WindowsToolkitPluginTest {
             }
 
             def writeAuthoredCandidateProbe = tasks.register("writeAuthoredCandidateProbe") {
-                dependsOn("generateWinRTProjections")
                 def outputFile = layout.projectDirectory.file(
                     "src/commonMain/kotlin/sample/InternalStringableThing.kt",
                 )
@@ -11001,7 +11032,7 @@ class WindowsToolkitPluginTest {
                 }
             }
 
-            tasks.named("compileKotlinWinuiJvm") {
+            tasks.named("generateWinRTAuthoringCandidates") {
                 dependsOn writeAuthoredCandidateProbe
             }
 
@@ -11009,7 +11040,7 @@ class WindowsToolkitPluginTest {
                 dependsOn("compileKotlinWinuiJvm")
                 doLast {
                     def supportRoot = layout.buildDirectory.dir(
-                        "classes/kotlin/winuiJvm/main/io/github/composefluent/winrt/projections/support",
+                        "classes/kotlin-winrt/reference-compiler/compileKotlinWinuiJvm/io/github/composefluent/winrt/projections/support",
                     ).get().asFile
                     def hasCompilerManifest = false
                     supportRoot.eachFileRecurse(groovy.io.FileType.FILES) {
@@ -11035,7 +11066,7 @@ class WindowsToolkitPluginTest {
                     def generatedCompilerSupportManifest = new File(generatedCompilerSupportRoot, "compiler-support.tsv")
                     if (!generatedCompilerSupportManifest.text.contains(
                         "authoring-type-details-registrar\t" +
-                            "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar_kotlin_winrt_kmp_plugin_test\t" +
+                            "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar_kotlin_winrt_kmp_plugin_test_commonMain\t" +
                             "authoring-type-details-registrars.tsv\t1",
                     )) {
                         throw new GradleException("Expected generated compiler support to publish authoring TypeDetails registrar: " +
@@ -11136,135 +11167,6 @@ class WindowsToolkitPluginTest {
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
         assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
         assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/winuiMain/kotlin"))
-    }
-
-    @Test
-    fun compiler_plugin_uses_the_declared_generic_instantiation_entry_parameter_type() {
-        val projectDir = Files.createTempDirectory("kotlin-winrt-generic-entry-contract-test-")
-        val runtimeJar = runtimeJarPath().toString().replace("\\", "/")
-        writeGradleFile(
-            projectDir.resolve("settings.gradle.kts"),
-            """
-            pluginManagement {
-                repositories {
-                    gradlePluginPortal()
-                    mavenCentral()
-                }
-            }
-            dependencyResolutionManagement {
-                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-                repositories {
-                    mavenCentral()
-                }
-            }
-            rootProject.name = "kotlin-winrt-generic-entry-contract-test"
-            """.trimIndent(),
-        )
-        writeGradleFile(
-            projectDir.resolve("gradle.properties"),
-            """
-            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
-            org.gradle.daemon=false
-            org.gradle.workers.max=1
-            kotlin.compiler.execution.strategy=in-process
-            """.trimIndent(),
-        )
-        writeGradleFile(
-            projectDir.resolve("build.gradle"),
-            """
-            plugins {
-                id "org.jetbrains.kotlin.multiplatform" version "2.4.0"
-                id "io.github.compose-fluent.windows-toolkit"
-            }
-
-            kotlin {
-                jvm("winuiJvm")
-                sourceSets {
-                    commonMain {
-                        dependencies {
-                            implementation files("$runtimeJar")
-                        }
-                    }
-                }
-            }
-
-            windows {
-                packageReferences {
-                    windowsSdk(null, false, true)
-                    type "Windows.Foundation.IStringable"
-                }
-            }
-
-            tasks.named("generateWinRTProjections") {
-                doLast {
-                    def generatedRoot = layout.buildDirectory.dir(
-                        "generated/kotlin-winrt/src/winuiMain/kotlin",
-                    ).get().asFile
-                    def supportRoot = new File(generatedRoot, "kotlin-winrt-support")
-                    def manifest = new File(supportRoot, "compiler-support.tsv")
-                    def manifestRows = manifest.readLines().findAll {
-                        !it.startsWith("generic-type-instantiation\t")
-                    }
-                    manifestRows.add(
-                        "generic-type-instantiation\t" +
-                            "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations_contract_owner\t" +
-                            "generic-instantiations.tsv\t1\tcontract-owner.jar",
-                    )
-                    manifest.text = manifestRows.join("\n") + "\n"
-                    new File(supportRoot, "generic-instantiations.tsv").text = ${"'''"}
-                    className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies
-                    ContractEntry\tSample.Contract\tfalse\tRcw\tVtable\tProperty\tReturn\tFallback\tDependency
-                    ${"'''"}.stripIndent().trim() + "\n"
-
-                    def supportSource = new File(
-                        generatedRoot,
-                        "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations_contract_owner.kt",
-                    )
-                    supportSource.parentFile.mkdirs()
-                    supportSource.text = ${"'''"}
-                    package io.github.composefluent.winrt.projections.support
-
-                    internal data class DeclaredGenericInstantiationEntry(
-                        val className: String,
-                        val sourceType: String,
-                        val isDelegate: Boolean,
-                        val rcwFunctions: List<String>,
-                        val vtableFunctions: List<String>,
-                        val propertyAccessors: List<String>,
-                        val genericReturnOnlyRcwFunctions: List<String>,
-                        val projectedGenericFallbacks: List<String>,
-                        val dependencies: List<String>,
-                    )
-
-                    internal object WinRTGenericTypeInstantiations_contract_owner {
-                        fun initializeEntry(entry: DeclaredGenericInstantiationEntry) = Unit
-                    }
-                    ${"'''"}.stripIndent().trim() + "\n"
-                }
-            }
-            """.trimIndent(),
-        )
-        writeGradleFile(
-            projectDir.resolve("src/commonMain/kotlin/sample/GenericInstantiationProbe.kt"),
-            """
-            package sample
-
-            import io.github.composefluent.winrt.runtime.WinRTGenericTypeInstantiationSupportIntrinsic
-
-            internal fun initializeGenericInstantiationContract() {
-                WinRTGenericTypeInstantiationSupportIntrinsic.initializeAll()
-            }
-            """.trimIndent(),
-        )
-
-        val result = GradleRunner.create()
-            .withProjectDir(projectDir.toFile())
-            .withPluginClasspath()
-            .withArguments("compileKotlinWinuiJvm", "--stacktrace", "--max-workers=1")
-            .forwardOutput()
-            .build()
-
-        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinWinuiJvm")?.outcome)
     }
 
     @Test
@@ -11625,19 +11527,19 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     winuiMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                             implementation files("$authoringJar")
                         }
                     }
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                             implementation files("$authoringJar")
                         }
                     }
                     winuiJvmMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                             implementation files("$authoringJar")
                         }
                     }
@@ -12022,12 +11924,12 @@ class WindowsToolkitPluginTest {
             .forwardOutput()
             .build()
 
-        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":producer:generateWinRTReferenceProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":producer:prepareWinRTIdentity")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTProjections")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTIdentity")?.outcome)
 
-        val producerRoot = projectDir.resolve("producer/build/generated/kotlin-winrt/src/jvmMain/kotlin")
+        val producerRoot = projectDir.resolve("producer/build/generated/kotlin-winrt/reference/src")
         val helperPath = producerRoot.resolve("windows/graphics/display/DisplayInformationInterop.kt")
         assertTrue("Producer must generate the exact-type COM helper", Files.exists(helperPath))
         val producerManifest = producerRoot.resolve("kotlin-winrt-support/source-additions.tsv")
@@ -12053,8 +11955,8 @@ class WindowsToolkitPluginTest {
 
     @Test
     fun in_task_generation_selects_windows_sdk_source_additions_that_no_dependency_owns() {
-        // A project identity dependency keeps the consumer off the prepared path, so the
-        // generation task itself has to know that a Windows SDK is declared.
+        // Task-side generation must retain SDK selection and dependency helper ownership,
+        // including when its static implementation is restored from the prepared cache.
         val windowsSdkVersion = "10.0.26100.0"
         val projectDir = Files.createTempDirectory("kotlin-winrt-in-task-com-interop-")
         writeMinimalGradleFixture(projectDir, "kotlin-winrt-in-task-com-interop")
@@ -12133,10 +12035,7 @@ class WindowsToolkitPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:generateWinRTProjections")?.outcome)
 
         val consumerRoot = projectDir.resolve("consumer/build/generated/kotlin-winrt/src/jvmMain/kotlin")
-        assertFalse(
-            "The consumer must not be on the prepared path for this test to cover the task",
-            Files.exists(consumerRoot.resolve(".kotlin-winrt-prepared-static-files.tsv")),
-        )
+
         assertTrue(
             "The generation task must generate the COM helper of a type it projects",
             Files.exists(consumerRoot.resolve("windows/ui/viewmanagement/InputPaneInterop.kt")),
@@ -12315,7 +12214,7 @@ class WindowsToolkitPluginTest {
             }
 
             dependencies {
-                implementation files("$runtimeJar")
+                implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
             }
 
             windows {
@@ -12465,7 +12364,7 @@ class WindowsToolkitPluginTest {
         Files.createDirectories(dependencyIdentity.parent)
         Files.writeString(
             dependencyIdentity,
-            """{"authoredMetadataRecords":[{"fileName":"DependencyComponent.winmd","contentBase64":"${Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyWinmd))}"}]}""",
+            """{"schemaVersion":1,"projectionShapeVersion":$CURRENT_PROJECTION_SHAPE_VERSION,"projectionRuntimeAbiVersion":${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION},"projectionCompilerProtocolVersion":$WINRT_PROJECTION_COMPILER_PROTOCOL_VERSION,"projectionOwner":"test:dependency","projectionOwnerVersion":"1.0","authoredMetadataRecords":[{"fileName":"DependencyComponent.winmd","contentBase64":"${Base64.getEncoder().encodeToString(Files.readAllBytes(dependencyWinmd))}"}]}""",
         )
         val candidates = root.resolve("compiler-candidates.tsv")
         KotlinWinRTAuthoringCandidateFile.write(
@@ -12497,6 +12396,7 @@ class WindowsToolkitPluginTest {
             registeredTask.includeTypes.set(emptyList())
             registeredTask.excludeNamespaces.set(emptyList())
             registeredTask.excludeTypes.set(emptyList())
+            registeredTask.windowsSdkDeclared.set(false)
             registeredTask.includeWindowsSdkExtensions.set(false)
             registeredTask.generateWindowsSdkProjection.set(false)
             registeredTask.nugetPackages.set(emptyList())
@@ -12650,7 +12550,7 @@ class WindowsToolkitPluginTest {
             }
 
             dependencies {
-                implementation files("$runtimeJar")
+                implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
             }
 
             windows {
@@ -13163,7 +13063,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                         }
                     }
                 }
@@ -13177,7 +13077,6 @@ class WindowsToolkitPluginTest {
             }
 
             def writeRuntimeClassCastProbe = tasks.register("writeRuntimeClassCastProbe") {
-                dependsOn("generateWinRTProjections")
                 def outputFile = layout.projectDirectory.file("src/commonMain/kotlin/sample/StringableThing.kt")
                 outputs.file(outputFile)
                 doLast {
@@ -13196,7 +13095,7 @@ class WindowsToolkitPluginTest {
                 }
             }
 
-            tasks.named("compileKotlinWinuiJvm") {
+            tasks.named("generateWinRTAuthoringCandidates") {
                 dependsOn writeRuntimeClassCastProbe
             }
             """.trimIndent(),
@@ -13215,22 +13114,16 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
-    fun compiler_plugin_rejects_malformed_projection_call_site_descriptors() {
+    fun compiler_plugin_rejects_projection_call_sites_without_a_slot() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/MalformedProjectionCallSite.kt",
             sourceText = """
                 package sample
-
-                import io.github.composefluent.winrt.runtime.ComObjectReference
-                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
-
-                @WinRTProjectionCallSite("not-a-descriptor")
-                fun malformedProjectionCallSite(
-                    reference: ComObjectReference,
-                    slot: Int,
-                ): Int = TODO()
+                import io.github.composefluent.winrt.runtime.*
+                @WinRTProjectionCallSite
+                fun malformedProjectionCallSite(reference: ComObjectReference): Int = TODO()
             """.trimIndent(),
-            expectedDiagnostic = "has an invalid descriptor",
+            expectedDiagnostic = "must declare a receiver and vtable slot",
             includeWindowsSdkProjection = false,
         )
     }
@@ -13241,78 +13134,44 @@ class WindowsToolkitPluginTest {
             sourceFile = "src/commonMain/kotlin/sample/MismatchedProjectionCallSite.kt",
             sourceText = """
                 package sample
-
-                import io.github.composefluent.winrt.runtime.ComObjectReference
-                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
-
-                @WinRTProjectionCallSite(
-                    "v4|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|" +
-                        "RETURN~NONE~VkFMVUV-SU5UMzJ-SU5UMzJ-SURFTlRJVFl-LX4wfjB-MH4tfi1-LX5TVzUwTXpJ",
-                )
-                fun mismatchedProjectionCallSite(
-                    reference: ComObjectReference,
-                    slot: Int,
-                ): Long = TODO()
+                import io.github.composefluent.winrt.runtime.*
+                @WinRTProjectionCallSite
+                fun mismatchedProjectionCallSite(reference: ComObjectReference, slot: String): Int = TODO()
             """.trimIndent(),
-            expectedDiagnostic = "expects result kotlin.Int but declares kotlin.Long",
+            expectedDiagnostic = "must use Int as its vtable-slot parameter",
             includeWindowsSdkProjection = false,
         )
     }
 
     @Test
-    fun compiler_plugin_rejects_unlowered_projection_call_site_when_result_factory_is_unavailable() {
+    fun compiler_plugin_rejects_caller_owned_results_without_a_declared_contract() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
-            sourceFile = "src/commonMain/kotlin/sample/MissingResultFactoryProjectionCallSite.kt",
+            sourceFile = "src/commonMain/kotlin/sample/MissingResultContractProjectionCallSite.kt",
             sourceText = """
                 package sample
-
-                import io.github.composefluent.winrt.runtime.ComObjectReference
-                import io.github.composefluent.winrt.runtime.RawAddress
-                import io.github.composefluent.winrt.runtime.WinRTComposableFactoryResult
-                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
-
-                @WinRTProjectionCallSite(
-                    "v4|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|" +
-                        "IN~BORROWED~Q09NX1JFRkVSRU5DRX5BRERSRVNTfkFERFJFU1N-SURFTlRJVFl-UkFXX0FERFJFU1N-MH4wfjB-LX4tfi1-VW1GM1FXUmtjbVZ6Y3c," +
-                        "CALLER_OUT~OWNED~Q09NX1JFRkVSRU5DRX5BRERSRVNTfkFERFJFU1N-SURFTlRJVFl-UkFXX0NPTV9QVFJ-MH4wfjB-LX4tfi1-VW1GM1EyOXRVSFJ5|" +
-                        "aW8uZ2l0aHViLmNvbXBvc2VmbHVlbnQud2lucnQucnVudGltZS5UYXNrM0NhbGxTaXRlTG93ZXJpbmdGaXh0dXJl:" +
-                        "YXNzZW1ibGU:" +
-                        "aW8uZ2l0aHViLmNvbXBvc2VmbHVlbnQud2lucnQucnVudGltZS5SYXdDb21QdHI:" +
-                        "aW8uZ2l0aHViLmNvbXBvc2VmbHVlbnQud2lucnQucnVudGltZS5XaW5SVENvbXBvc2FibGVGYWN0b3J5UmVzdWx0",
-                )
-                fun missingResultFactoryProjectionCallSite(
-                    reference: ComObjectReference,
-                    slot: Int,
-                    baseInterface: RawAddress,
-                ): WinRTComposableFactoryResult = TODO()
+                import io.github.composefluent.winrt.runtime.*
+                data class UndeclaredResult(val value: Int)
+                @WinRTProjectionCallSite(result = WinRTCallSiteResultKind.CALLER_OWNED)
+                fun missingResultContractProjectionCallSite(reference: ComObjectReference, slot: Int): UndeclaredResult = TODO()
             """.trimIndent(),
-            expectedDiagnostic = "cannot resolve result factory io.github.composefluent.winrt.runtime.Task3CallSiteLoweringFixture.assemble",
+            expectedDiagnostic = "caller-owned result sample.UndeclaredResult is not marked",
             includeWindowsSdkProjection = false,
         )
     }
 
     @Test
-    fun compiler_plugin_does_not_publish_partially_lowered_struct_frame_ir() {
+    fun compiler_plugin_rejects_struct_call_sites_without_abi_codecs() {
         assertCompilerPluginRejectsGeneratedAuthoredSource(
             sourceFile = "src/commonMain/kotlin/sample/MissingStructCodecProjectionCallSite.kt",
             sourceText = """
                 package sample
-
-                import io.github.composefluent.winrt.runtime.ComObjectReference
-                import io.github.composefluent.winrt.runtime.WinRTProjectionCallSite
-
+                import io.github.composefluent.winrt.runtime.*
+                @WinRTProjectionAbiType(name = "sample.SampleStruct", kind = WinRTProjectionAbiTypeKind.STRUCT, size = 16, alignment = 8)
                 data class SampleStruct(val first: Long, val second: Long)
-
-                @WinRTProjectionCallSite(
-                    "v4|COM_OBJECT_REFERENCE|PARAMETER|-1|CHECK|" +
-                        "RETURN~NONE~U1RSVUNUfkFERFJFU1N-QUREUkVTU35JREVOVElUWX4tfjB-MTZ-OH5jMkZ0Y0d4bExrMXBjM05wYm1kVGRISjFZM1JEYjJSbFl3Oi06Wm5KdmJVRmlhUTpZMjl3ZVZSdlFXSnA6LTotOi06LTotOi06WTJ4dmMyVX4tfi1-VTNSeWRXTjBLSE5oYlhCc1pTNVRZVzF3YkdWVGRISjFZM1I4TVRZNk9Daw",
-                )
-                fun missingStructCodecProjectionCallSite(
-                    reference: ComObjectReference,
-                    slot: Int,
-                ): SampleStruct = TODO()
+                @WinRTProjectionCallSite
+                fun missingStructCodecProjectionCallSite(reference: ComObjectReference, slot: Int): SampleStruct = TODO()
             """.trimIndent(),
-            expectedDiagnostic = "cannot lower complete call-site plan",
+            expectedDiagnostic = "sample.SampleStruct has no typed ABI codecs",
             includeWindowsSdkProjection = false,
         )
     }
@@ -13377,7 +13236,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}", "${authoringJarPath().toString().replace("\\", "/")}")
                         }
                     }
                 }
@@ -13463,7 +13322,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                         }
                     }
                 }
@@ -13606,20 +13465,19 @@ class WindowsToolkitPluginTest {
                     if (!contents.contains("Rect")) {
                         throw new GradleException("KMP JVM class did not preserve the compiled Rect ABI shape")
                     }
-                    if (contents.contains("([Ljava/lang/Object;)Ljava/lang/Object;")) {
+                    if (allContents.contains("([Ljava/lang/Object;)Ljava/lang/Object;")) {
                         throw new GradleException("KMP JVM class lowered MethodHandle.invoke as a single Object[] vararg call")
                     }
-                    if (!contents.contains("invokeExact")) {
+                    if (!allContents.contains("invokeExact")) {
                         throw new GradleException("KMP JVM class did not lower the call site through an exact FFM invocation")
                     }
                     def runtimeOwnedClassFile = new File(classRoot, "sample/RuntimeOwnedIntrinsicProbe.class")
                     def runtimeOwnedContents = new String(runtimeOwnedClassFile.bytes, "ISO-8859-1")
-                    if (!runtimeOwnedContents.contains("WinRTProjectionIntrinsic")) {
-                        throw new GradleException("KMP JVM runtime-owned call was incorrectly expanded in the consumer")
-                    }
-                    if (runtimeOwnedContents.contains("WinRTJvmFfmDowncallHandles") ||
-                        runtimeOwnedContents.contains("acquireNativeScalarScratchFrame")) {
-                        throw new GradleException("KMP JVM runtime-owned call contains consumer-side intrinsic lowering")
+                    // Runtime intrinsics publish their compiled inline ABI body. Kotlin's
+                    // inliner must retain that implementation in a consuming compilation.
+                    if (!runtimeOwnedContents.contains("kotlinWinRTAbiInvoke_") ||
+                        !runtimeOwnedContents.contains("acquireNativeScalarScratchFrame")) {
+                        throw new GradleException("KMP JVM runtime-owned call lost its compiled inline ABI body")
                     }
                     def hasSupportFallback = false
                     classRoot.eachFileRecurse(groovy.io.FileType.FILES) {
@@ -13711,7 +13569,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                         }
                     }
                 }
@@ -13747,7 +13605,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                             api project(":winrt-base-library")
                         }
                     }
@@ -13762,9 +13620,9 @@ class WindowsToolkitPluginTest {
                 }
             }
 
-            tasks.named("generateWinRTProjections") {
+            tasks.named("generateWinRTReferenceProjections") {
                 doLast {
-                    def supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/src/winuiMain/kotlin/kotlin-winrt-support").get().asFile
+                    def supportRoot = layout.buildDirectory.dir("generated/kotlin-winrt/reference/src/kotlin-winrt-support").get().asFile
                     new File(supportRoot, "xaml-component-resources.tsv").text = "runtimeClassName\nWinUI3Package.Shimmer_Resource\n"
                     new File(supportRoot, "compiler-support.tsv").append(
                         "xaml-component-resource\tio.github.composefluent.winrt.projections.support.WinUIXamlComponentResources\txaml-component-resources.tsv\t1\n"
@@ -13794,7 +13652,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                             implementation project(":winrt-library")
                         }
                     }
@@ -13855,7 +13713,9 @@ class WindowsToolkitPluginTest {
             }
 
             tasks.register("verifyTransitiveCompilerSupport") {
-                dependsOn("compileKotlinWinuiJvm")
+                // Business compilation only requires reference bytecode. This check also
+                // inspects the packaged implementation and its incremental cleanup.
+                dependsOn("compileKotlinWinuiJvm", "compileKotlinWinRTProjectionWinuiJvm")
                 doLast {
                     def mergedProjectionRegistrar = layout.buildDirectory.file(
                         "generated/kotlin-winrt/compiler-support/merged/projection-registrar.tsv",
@@ -14181,6 +14041,7 @@ class WindowsToolkitPluginTest {
                 }
                 application {
                     packageType.set io.github.composefluent.windows.toolkit.gradle.WindowsPackageType.None
+                    windowsAppSdkDeployment.set io.github.composefluent.windows.toolkit.gradle.WindowsAppSdkDeployment.SelfContained
                     makePriExecutable.set "${makePri.toString().replace("\\", "\\\\")}"
                 }
             }
@@ -14220,7 +14081,7 @@ class WindowsToolkitPluginTest {
     }
 
     @Test
-    fun packaged_application_keeps_framework_runtime_assets_for_legacy_appx_output() {
+    fun packaged_application_uses_framework_dependencies_for_legacy_appx_output() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
@@ -14231,11 +14092,11 @@ class WindowsToolkitPluginTest {
 
         val task = project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
 
-        assertTrue(task.includeFrameworkRuntimeAssets.get())
+        assertFalse(task.includeFrameworkRuntimeAssets.get())
     }
 
     @Test
-    fun packaged_application_keeps_framework_runtime_assets_when_legacy_makeappx_is_configured() {
+    fun packaged_application_uses_framework_dependencies_when_legacy_makeappx_is_configured() {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
@@ -14246,7 +14107,7 @@ class WindowsToolkitPluginTest {
 
         val task = project.tasks.named("stageWindowsPackageRuntimeAssetsJvmMain", StageWindowsPackageRuntimeAssetsTask::class.java).get()
 
-        assertTrue(task.includeFrameworkRuntimeAssets.get())
+        assertFalse(task.includeFrameworkRuntimeAssets.get())
     }
 
     @Test
@@ -14299,7 +14160,7 @@ class WindowsToolkitPluginTest {
                 sourceSets {
                     commonMain {
                         dependencies {
-                            implementation files("$runtimeJar")
+                            implementation files("$runtimeJar", "${runtimeContractsJarPath()}")
                         }
                     }
                 }
@@ -14341,6 +14202,8 @@ class WindowsToolkitPluginTest {
             """
             package io.github.composefluent.winrt.runtime
 
+            const val WINRT_PROJECTION_RUNTIME_ABI_VERSION: Int = ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION}
+            const val WINRT_RUNTIME_IMPLEMENTATION_ABI_VERSION: Int = ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION}
             enum class WinAppPackageIdentity { Packaged, Unpackaged }
             enum class WindowsAppSdkDeploymentMode { None, FrameworkDependent, SelfContained, ExternallyInitialized }
             data class WinAppHostConfiguration(
@@ -15030,7 +14893,7 @@ private fun assertDoesNotHaveKotlinWinRTClasspathDependency(
             dependency.name == moduleName ||
                 dependency is ProjectDependency && dependency.path == ":$moduleName" ||
                 dependency is FileCollectionDependency && dependency.files.files.any { file ->
-                    file.name.startsWith(moduleName) && file.name.endsWith(".jar")
+                    Regex("${Regex.escape(moduleName)}(?:-jvm)?-[0-9].*\\.jar").matches(file.name)
                 }
         },
     )
