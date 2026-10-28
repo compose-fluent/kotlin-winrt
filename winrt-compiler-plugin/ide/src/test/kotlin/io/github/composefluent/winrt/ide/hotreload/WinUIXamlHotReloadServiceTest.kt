@@ -822,4 +822,3 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         }
     }
 }
-
