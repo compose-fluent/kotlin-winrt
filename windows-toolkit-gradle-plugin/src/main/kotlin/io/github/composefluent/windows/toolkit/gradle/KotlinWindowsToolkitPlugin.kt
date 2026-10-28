@@ -3673,7 +3673,11 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
                 val localReference = projectionReference.compileTaskProvider.flatMap { it.outputFile }
                 val demand = project.tasks.register("${binary.name}WinRTDemandImplementation", BuildWinRTNativeDemandTask::class.java) { task ->
                     val reuse = project.gradle.sharedServices.registerIfAbsent(
-                        "kotlinWinRTNativeProjectionCompilation", NativeProjectionCompilationService::class.java) { spec ->
+                        // Sibling projects can load the toolkit in distinct plugin classloaders (for
+                        // example, an app with KSP and its background-task library). A build-wide
+                        // service instance cannot cross that type boundary. Share within the project;
+                        // the locked persistent cache below still allows cross-project reuse.
+                        "kotlinWinRTNativeProjectionCompilation:${project.path}", NativeProjectionCompilationService::class.java) { spec ->
                         spec.parameters.projectIdentity.set(project.rootProject.projectDir.canonicalPath)
                         spec.parameters.cacheDirectory.set(sharedWinRTCacheDirectory(project, "native-projection-compilations-v1").toFile())
                     }
