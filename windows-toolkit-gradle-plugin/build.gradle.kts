@@ -115,8 +115,8 @@ tasks.named<Jar>("jar") {
 tasks.withType<Test>().configureEach {
     maxParallelForks = 1
     minHeapSize = "64m"
-    maxHeapSize = "128m"
-    jvmArgs("-XX:+UseSerialGC")
+    maxHeapSize = "512m"
+    jvmArgs("-XX:+UseSerialGC", "-XX:+ExitOnOutOfMemoryError")
 }
 
 // TestKit may instrument/copy the plugin JAR into its cache. An explicit test-only
