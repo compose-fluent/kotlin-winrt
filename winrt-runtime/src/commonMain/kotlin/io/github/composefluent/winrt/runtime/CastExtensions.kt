@@ -44,9 +44,14 @@ fun <T : Any> winRTCast(
         // the managed type check fails. Kotlin has no IDynamicInterfaceCastable:
         // a cached wrapper supporting the IID is not necessarily a T. Create
         // the requested projection without replacing the canonical identity RCW.
-        val wrapper = ComWrappersSupport.createRcwForComObject(
-            it.pointer.asRawAddress(), typeHandle, tryUseCache = false,
-        )
+        // Runtime-class factories can construct a wrapper without probing its IID.
+        // Validate the cast before invoking one, matching Runtime2's
+        // WindowsRuntimeObjectReference.As -> DerivedTryAsNative contract.
+        val wrapper = it.queryInterface(typeHandle.interfaceId).getOrThrow().use { typed ->
+            ComWrappersSupport.createRcwForComObject(
+                typed.pointer.asRawAddress(), typeHandle, tryUseCache = false,
+            )
+        }
         if (targetType.isInstance(wrapper)) {
             @Suppress("UNCHECKED_CAST")
             return wrapper as T
@@ -69,8 +74,11 @@ fun Any.winrtAs(typeHandle: WinRTTypeHandle): Any {
         )
 
     objRef.use {
-        return ComWrappersSupport.createRcwForComObject(it.pointer.asRawAddress(), typeHandle)
-            ?: throw IllegalArgumentException(
+        // The dynamic handle overload must enforce the same native IID contract
+        // as winRTCast before a factory or cached RCW can satisfy the request.
+        return it.queryInterface(typeHandle.interfaceId).getOrThrow().use { typed ->
+            ComWrappersSupport.createRcwForComObject(typed.pointer.asRawAddress(), typeHandle)
+        } ?: throw IllegalArgumentException(
                 "Unable to create a WinRT wrapper for '${typeHandle.projectedTypeName}'.",
             )
     }

@@ -1,9 +1,37 @@
 # XAML development updates
 
-The development transport documented here applies to JVM WinUI applications.
-UWP AppContainer Hot Reload is not implemented; the shared metadata/property
-engine does not by itself provide a UWP development session. See the
-[UWP guide](../docs/UWP.md) for supported build configuration and remaining checks.
+The development transport applies to JVM and Kotlin/Native mingwX64 desktop WinUI
+applications, and to Kotlin/Native UWP AppContainer applications. UWP package
+activation and session handoff are owned by the Gradle toolkit; see the
+[UWP guide](../docs/UWP.md) for configuration and the remaining JVM limitation.
+
+## Development runs versus production artifacts
+
+Native Preview and Hot Reload are available only in compiler-debug binaries.
+Release returns disabled before processing development environment/activation
+arguments, registering a development session or entering the generated preview host.
+No environment variable or startup argument can turn them back on in that binary.
+
+JVM IDE Run/Debug and Gradle `runWinAppHost...` / `runWinAppPackage...` automatically
+prepare an isolated development runtime copy. **Direct build outputs, dependency
+JARs and packaged/distribution outputs do not enable Preview or Hot Reload.** The
+run tasks never modify those original artifacts. Production staging strips any
+development permission inherited from an input copy. Use the IDE/Gradle run path
+for development rather than directly executing the production host/JAR.
+
+JVM has no Kotlin/Native-style Release binary flag. Its narrow platform adaptation
+reads a permission stamp from the defining runtime JAR's own manifest, never from
+classpath resource lookup, environment variables, JVM properties or application
+arguments. Unstamped JARs and loose classes fail closed. An allowed development
+artifact still needs the IDE's session directory and authentication; normal Run
+opens the application, while Preview opens the explicitly selected designer.
+Do not ship the isolated development run directory. Artifact replacement or
+in-process code injection is outside this protection's boundary.
+
+This development-only adapter has no CsWinRT transport equivalent. Its Native
+compile-time boundary follows the DEBUG-only responsibility split in
+`.cswinrt/src/WinRT.Runtime2/InteropServices/Streams/WindowsRuntimeStreamMapping.cs`;
+ABI, activation and authored object ownership remain unchanged.
 
 The common property engine uses the compiler's existing XAML type/member
 registrations. Property discovery reuses `WinUIAuthoredTypeMetadata.customProperty`,
@@ -18,6 +46,25 @@ are registered only in the member lookup by Kotlin type; they do not advertise S
 classes as authored XAML types or replace the SDK's native type provider. SDK member
 discovery and inherited-member ownership remain in the metadata owner. Applications
 without the development environment variable do not register these accessors.
+
+Attached literal properties use the same transaction and conversion path. The IDE
+resolves the XAML namespace and declaring owner through WinMD and sends a qualified
+member name, such as `Microsoft.UI.Xaml.Controls.Canvas.Left`. Generated development
+member tables reuse CSharpTypeInfoPass2's typed static Get/Set delegates; the runtime
+looks up the declaring owner's table without advertising SDK types as authored types.
+Qualified attached entries remain distinct from same-named instance properties.
+Targets are checked by those typed delegates before mutation. Setter rollback and
+future-instance replay are identical to ordinary properties. Existing resource
+consumer replacement and unnamed SDK fragments use the same attached-member lookup.
+Old binaries without these generated accessors need rebuilding once. Protocol v6
+adds removal of literal dependency-property attributes, including attached ones.
+Generated SDK delegates capture ReadLocalValue before mutation, call ClearValue to
+restore styling/default precedence, and restore the original local value on rollback
+(or clear it again if it was UnsetValue). Successful resets replay after future
+instances load their original XBF. Ordinary CLR/Kotlin properties without a DP
+accessor reject reset; removing binding/resource expressions remains unsupported.
+This SDK adaptation extends XAMLC's typed member delegates rather than adding
+reflection or another runtime property classification table.
 
 Generated application metadata supplies a factory that captures the current
 `DispatcherQueue` on the component's UI thread. Updates use `TryEnqueue`, following
@@ -36,28 +83,37 @@ retained elements; changed connections require their own compiler contract.
 
 Protocol version 2 adds bounded object paths through generated property getters,
 projected dictionary keys and collection indices. An index includes the expected
-collection size; a changed live shape rejects the update. Mutable resource values,
+collection size; live size and baseline identity checks reject a changed shape. Mutable resource values,
 such as a shared SolidColorBrush, receive literal property updates in place,
 preserving StaticResource and ThemeResource consumers' references.
+The IDE also addresses mutable entries in inline merged and theme dictionaries,
+including a compiled ResourceDictionary root. Dictionary keys, group structure
+and collection sizes must remain stable; source dictionaries and sealed values
+still require rebuilding. This path changes the existing resource object, leaving
+the consuming resource expression intact.
 
 Applied WinUI Styles are sealed. Their update constructs a fresh local dictionary
 with the SDK's `XamlReader.Load`, as used by CsWinRT's resource tests in
 `src/Tests/ObjectLifetimeTests/CustomGroupedItemPages.cs`. Generated application
 glue supplies that typed SDK loader; the common runtime never parses XAML or
 implements another projection model. The transaction keeps the original live
-dictionary and controls, replaces values with the same explicit string keys and
+dictionary and controls, replaces explicit string-keyed values and
 reassigns this page's explicit StaticResource consumers. Readbacks inspect effective
 style properties on the UI thread. Prepared replacements also supply subsequent
 literal overrides when a new component finishes loading its original XBF.
 
-The IDE currently recognizes resources on root or connected named owners. Style
-replacement requires a self-contained local dictionary and resolvable named/root
-consumers. Implicit keys, merged/external/theme dictionaries, references captured
+The IDE recognizes resource owners and consumers through connected names or
+compiled property/content paths, including unnamed collection children. Indexed
+paths retain the runtime collection-size and object-identity guards. Style replacement requires a
+self-contained local dictionary and resolvable consumers. Implicit keys, merged/external/theme dictionaries, references captured
 by another dictionary/template, new names, events and binding expressions require
 rebuilding. A ThemeResource consumer cannot be reassigned as a local value without
 losing its theme expression, so it rejects replacement rather than claiming theme
 invalidation. References held outside this page's XAML/connected objects do not
-participate in the update. Changing dictionary keys also requires rebuilding.
+participate in the update. A local explicit dictionary may add or remove keys;
+the previous key set is checked before mutation, and a removed key must have no
+remaining consumers. These dictionary changes use ordered replay for future
+instances, so later replacements validate against the preceding generation.
 Parser, key-shape, getter, conversion or setter failure preserves the previous
 version; attempted mutations roll back dictionary values and consumer properties
 together. Rollback failure still requires restarting.
@@ -67,8 +123,8 @@ property from WinMD ContentPropertyAttribute, and mutable-vector shape from the
 metadata owner's existing collection descriptor and interface closure. It does not
 maintain a list of container controls. A collection update carries its expected live
 size and a new sequence of original indices or bounded SDK markup fragments. Each
-original child may occur only once. Generated SDK glue loads new UIElements through
-XamlReader.Load; common code uses the existing projected MutableList contract.
+original child may occur only once. Generated SDK glue loads new SDK objects through
+XamlReader.Load, including nonvisual collection items such as RowDefinition; common code uses the existing projected MutableList contract.
 IndexOf, RemoveAt and indexed insertion correspond to CsWinRT's IList.net5.cs and
 retain native instances rather than recreating controls. Native IndexOf supplies
 identity comparison even when Kotlin wrappers differ. Overlapping collection paths
@@ -80,12 +136,14 @@ unnamed children by their new index; setters and readbacks participate in the sa
 transaction. Failure restores the original sequence and property values. Graph
 updates and later property/resource updates are replayed in order for new instances
 after their compiled XBF connects, with a 64-entry / 8 MiB history limit. Rebuild
-and restart clears the history. The size guard detects application-added/removed
-children; same-size application reordering is outside the supported contract.
+and restart clears the history. Size and object-identity guards reject application
+additions, removals, same-size reordering, and replacement before indexed mutation.
 
 Existing connected children may move within the same collection. New or removed
 subtrees must use unnamed SDK presentation elements with literal properties and no
-events, bindings, templates, property elements or authored controls. Removing a
+events, bindings, templates or authored controls. Resolved SDK property elements
+(such as Border.Background with a literal SolidColorBrush) are accepted inside
+these new/removed subtrees; their descendants follow the same connection guards. Removing a
 connected child, changing its type/name/parent, or changing a content property to a
 different object requires rebuilding. SDK Loaded/Unloaded callbacks can run during
 remove/insert, so object identity and explicit values are retained but keyboard
@@ -94,6 +152,32 @@ restores the tree and properties; it cannot undo arbitrary user event side effec
 
 Protocol v3 carries no executable code, connection IDs, generated fields or
 subscription replacements. Compiled-connection changes require rebuilding.
+
+## Compiled event routes
+
+Protocol v10 can retarget an ordinary event on an existing named, non-template
+component element to another already compiled compatible handler, or disable and
+restore that route by removing/restoring its XAML attribute. The compiler emits
+typed calls inside the owning page, including private handlers. No reflection,
+executable payload, additional native subscription or class-schema change is used.
+The stable native delegate and mutable managed route follow CsWinRT Runtime2's
+`InteropServices/Events/EventSource{T}.cs`; the original source/token/remover remain
+owned by `WinUIXamlConnectionState`. Non-development execution uses the original
+bound delegate.
+
+The runtime validates source/version, the expected current handler and the compiled
+compatible-handler set before mutations. Route changes join the property transaction,
+roll back on failure, and replay for subsequent component instances and reconnected
+slots. An empty route disables dispatch without releasing the original subscription.
+New handler implementations, new event slots, template events and x:Bind event
+expressions still require rebuilding. This does not replace Kotlin method bodies.
+
+ASC Native acceptance has exercised private-handler retargeting, disabling and
+restoring dispatch while retaining the same process and click counter. An unknown
+handler combined with a Content change was rejected before either mutation, and
+the original handler remained usable. Compiler integration verifies one native
+subscription through retarget/disable, and JVM/Native registry tests cover rollback
+and replay into new instances and reconnected slots.
 
 ## Compiled-connection contract
 
@@ -127,32 +211,215 @@ old bindings. Cleanup failure requires restart; arbitrary handler side effects
 cannot be rolled back. Future instances must receive the same complete artifact
 generation instead of mixing old connector IDs with new XBF.
 
-The current XamlPageBodies event emitter calls typed add methods but does not keep
-their EventRegistrationToken results for a reconnect/disconnect transaction. Its
-binding state does release owned binding listeners, but that does not remove plain
-XAML event handlers or make generated fields dynamically extensible. Subscription
-ownership and a compiler-emitted reconnect surface are prerequisites for such an
-extension; neither is synthesized inside the IDE or hidden in samples.
+The XamlPageBodies event emitter retains ordinary non-template event subscriptions
+in a per-page WinUIXamlConnectionState. Reconnecting a compiled slot first removes
+its previous subscriptions from the original source using the original token (or
+handler for mapped events). Failed cleanup attempts the remaining removers and
+blocks further connection changes. This follows CsWinRT EventSource's paired
+Subscribe/Unsubscribe ownership. Binding tracking remains separately owned.
+Compiled event bindings have a separate connection state on the page binding owner
+or individual template scope. Tracking refresh and recycling retain those event
+connections; replacing a slot or unloading a deferred element releases them.
+Ordinary template events follow their target lifetime, matching CSharpPagePass2's
+page Connect method; binding-scope recycling does not disconnect these handlers.
+A transactional compiler-emitted reconnect artifact also remains separate;
+retaining event subscriptions does not make generated fields extensible.
 
 Adding, removing or renaming x:Name can change generated fields/accessors. A changed
 x:Bind path can change private typed calls, generated callbacks and tracking state.
 Standard JVM [class redefinition](https://docs.oracle.com/en/java/javase/25/docs/specs/jvmti.html#RedefineClasses)
 does not allow arbitrary field/method schema changes, and Kotlin/Native cannot use
 that JVM mechanism. Therefore the shared baseline rebuilds/restarts for these
-changes. Retargeting an event to an already compiled compatible handler could be a
-future ABI-preserving artifact, after subscription ownership exists. Supporting
+changes. Protocol v10 supports the narrower event-route update described below. Supporting
 new field/binding shapes would require a separately designed code-loading boundary;
 Kotlin code Hot Reload and page recreation are outside the current support scope.
 
-The JVM transport starts only when `KOTLIN_WINRT_HOT_RELOAD_DIRECTORY` is supplied
+The development transport starts only when `KOTLIN_WINRT_HOT_RELOAD_DIRECTORY` is supplied
 to a development process. It uses an ephemeral loopback port, a random 256-bit token,
 bounded binary framing and a session file restricted to its owner. Tokens are not
 part of display models. Invalid clients do not propagate errors into application
 code. Shutdown closes sockets, rejects queued updates and removes only the session
 file created by this transport.
 
-The property engine is common Kotlin and is compiled for JVM and `mingwX64`.
-The development transport currently exists only on JVM. Native explicitly rejects
-an enabled development session. Winsock transport, owner-restricted session files,
-shutdown/cancellation and end-to-end Native UI-thread verification remain Native
-parity work; JVM validation does not claim those capabilities.
+The property engine and bounded wire codec are common Kotlin. The JVM stream
+adapter and the mingwX64 Winsock adapter use the same protocol. Native accepts one
+bounded request at a time on a development worker and dispatches mutations through
+the existing UI queue. Closing the transport interrupts socket operations without
+blocking the UI thread; the worker releases its storage after pending work exits.
+Packaged native launches read the reserved development-directory startup argument,
+matching the JVM launcher's environment setup. The native transport test exercises
+authentication, an owner-thread property update, version advancement and cleanup.
+
+Native hosts can select a local named pipe with
+`KOTLIN_WINRT_DEVELOPMENT_TRANSPORT=pipe`. It uses the same authenticated frames,
+bounded overlapped I/O and owner-thread dispatch. Its ACL includes only the current
+user and, when present, the current AppContainer SID. The IDE accepts only the
+process-bound pipe name and restricted LOCAL/AppContainer namespace recorded in
+the session and cancels pending reads
+on session close. A bounded receipt keeps DisconnectNamedPipe from discarding an
+unread reply. Windows Native transport and IDE pipe interoperability tests cover
+this channel. Real UWP Native acceptance also covers package activation, the
+AppContainer namespace, preview rendering, live property updates and rollback.
+
+The native application entry wrapper also reads these arguments before choosing
+the project-code static designer. Preview mode starts the generated Application,
+registers project and dependency XAML types, and retains an offscreen preview Window;
+it does not invoke the user's main or Application constructor. This uses the
+Application.Start/OnLaunched ownership split in CsWinRT's WinUIDesktopSample.
+Project controls still execute their compiled constructors when XamlReader creates
+them. Changing their Kotlin implementation requires rebuilding/restarting the host.
+The IDE marks a connected project designer out of date after Kotlin source edits
+in the project or its imported dependency modules, including external file changes.
+Generated Kotlin outputs are excluded. Further XAML renders retain this warning;
+layout/property writes based on the old compiled tree are disabled until rebuilding.
+The status bar exposes **Rebuild project code**, which uses the existing Gradle
+build/launch path and restores the preview connection. SDK-only previews are excluded.
+Live applications also retain a separate stale-Kotlin warning after XAML updates;
+tracking source changes never restarts or disconnects the application automatically.
+
+CsWinRT has no IDE socket/session counterpart. The Windows transport is a tooling
+adaptation; projection ownership, custom-property accessors, conversion and UI
+dispatch remain in their existing CsWinRT-aligned owners. This does not provide
+Kotlin code replacement or new bindings/connections.
+
+## Storyboard preview clocks
+
+Protocol v7 adds isolated-designer clock commands for explicitly keyed Storyboard
+resources on the preview root or an unambiguous named FrameworkElement. The
+compiler emits SDK Begin/Pause/SeekAlignedToLastTick/Resume/Stop calls through the
+normal generated projection (both WinUI and UWP). The runtime validates bounded
+commands and rejects them for live application components. It does not implement
+animation interpolation. The SDK retains easing, keyframes and dependent-animation
+rules. Seeking reuses the current visual tree; replacing the design document stops
+its old clock. Capture requests never advance or reset the clock themselves.
+
+This tooling adaptation has no CsWinRT IDE transport counterpart. SDK projection
+and TimeSpan-to-Kotlin-Duration ownership stay in the existing metadata/generator
+and runtime mapping. Templates, implicit resource keys and VisualState-owned clocks
+are not guessed from a page-wide name; their realization identity needs a separate
+designer contract. The IDE keyframe editor edits uniquely identified local source
+tracks with undo: Double, Color, Point and Object keyframes, bounded KeyTime and
+attribute values. Existing spline/easing metadata is preserved. New frames use
+linear or discrete interpolation (Object uses discrete). Complex object values,
+ambiguous resource identities and template realizations remain source-only.
+The timeline can create a keyed root storyboard and an SDK keyframe track for a
+selected uniquely named element and writable dependency property. It preserves
+existing dictionary/theme entries, rejects duplicate target tracks, selects the
+created storyboard after preparation, and records the change as one undo command.
+
+Selecting a millisecond keyframe seeks the preview to that frame. Existing frames
+use a separate editable time field; moving the playhead alone never moves a frame.
+Sub-millisecond or symbolic KeyTime values are not silently rounded by the editor.
+
+## DataTemplate realization selection
+
+Protocol v8 reports the SDK ContentControl.ContentTemplateRoot together with the
+visual path of its consuming ContentControl, or its ancestor ItemsControl when
+the actual DataTemplate COM identity matches ItemTemplate. Object comparison
+reuses ComObjectReference.sameIdentity (CsWinRT IUnknown identity ownership);
+visual names alone never establish a realization. The IDE resolves explicit
+inline or StaticResource ContentTemplate/ItemTemplate source, including
+explicit and theme-selected implicit styles with BasedOn inheritance. Selection
+is scoped to the clicked realization. Editing changes the shared template source with one
+undo command, and the property panel identifies that shared scope. Nested template consumers
+are resolved through a bounded source closure, including external dictionaries;
+cyclic references are rejected instead of guessing an owner.
+
+Source-only navigation does not choose between repeated realizations. Protocol v13
+also carries design-copy provenance: source preparation puts a content fingerprint
+and original element path into a reserved local string resource on each template
+root. The generated SDK inspector reads that resource only in an isolated designer.
+This maps actual selector and ContentPresenter realizations without invoking the
+selector again, changing names or Tag values, or assuming visual child positions.
+The IDE requires the current source fingerprint and the clicked realization; stale
+or ambiguous provenance cannot enable editing. Referenced dictionary sources and
+application templates participate in the same bounded source closure. Live
+applications and templates whose source is unavailable keep SDK ownership mapping. This selection
+contract does not itself add live application template replacement or Kotlin reload;
+the separate resource transaction supports the limited template case described below.
+
+The isolated designer restores the previous Window.Content when attaching or
+laying out new markup fails after attachment. Deferred DataTemplate failures
+therefore cannot leave the invalid tree attached for another layout pass. The
+IDE keeps the last successful image with an error status; correcting the markup
+renders in the same host without reconnecting. This does not suppress application
+unhandled exceptions or change live application reload transactions.
+
+Protocol v9 separates visual capture from effective-property reads. The static
+canvas requests its image and SDK visual paths without invoking property getters
+while the inspector is closed. Opening the inspector requests current values for
+the selected realization; ordinary live inspection keeps its existing defaults.
+The shared request flag is encoded on both JVM and Native transports. This is a
+designer scheduling decision, not a change to generated ICustomProperty ownership
+or the live reload transaction.
+Effective-property display is supplied by the generated SDK adapter on both
+JVM and Native. Thickness, corner radii and geometry use invariant component
+order; grid lengths retain Auto/star units; colors and solid brushes use ARGB
+hex, fonts use their source name and weights use their numeric value. Other
+WinRT objects show their runtime type instead of a wrapper address. This is
+read-only inspection, not a serialization contract for editing resources or
+bindings. Getter and formatter failures remain local to a property.
+
+The designer adapter prioritizes inherited layout properties within the existing
+64-property inspection budget. Width/height constraints, alignment, margin and
+padding therefore remain available on controls with many declared properties.
+The shared runtime still resolves each value through generated ICustomProperty
+metadata; omitted properties are not read and the transport limit is unchanged.
+
+Collection baselines are captured at component completion using generated content
+metadata, resource graph accessors, and generated mutable-vector property metadata
+(including non-content collections such as Grid.RowDefinitions and ColumnDefinitions).
+Overlapping owner/name anchors are traversed breadth-first, once per object and projection class, preserving each named anchor's full depth budget. Native identity uses the existing canonical IUnknown key with a leased reference during capture, so pointer reuse cannot alias objects in that walk.
+The compiler and IDE share the WinMD interface-closure classifier; the runtime does
+not probe unrelated application getters. An unavailable collection getter leaves
+only that path uncaptured. Indexed edits and child-collection updates
+check object identities, not only Count. A same-size application reorder or
+replacement is rejected without advancing the source version. Successful writes
+refresh affected owners and collections, preserving unrelated baselines; rollback
+restores the previous baselines. Generated getters recover collections. The
+generated component connection state owns the snapshot objects, like x:Name
+fields; the session registry holds only
+a weak reference to that state and clears it when the session closes. WinUI
+reference tracking can disconnect a weak peer while its visual remains present,
+so weak child identities alone cannot provide this guard. Uncaptured indexed paths
+fail closed with a rebuild diagnostic. This does not preserve Loaded/Unloaded side effects.
+
+ASC Native acceptance covers an ordinary unnamed text update, a same-count
+application reorder rejected without mutating either text control, and successful
+retry after restoring the order in the same running process without reconnecting.
+
+Explicitly keyed local presentation templates can use the resource replacement
+transaction when their markup contains no compiled names, events, bindings, or
+external/theme resource expressions. Generated SDK glue uses
+`XamlReader.LoadWithInitialTemplateValidation` before dictionary mutation; exact
+`StaticResource` consumers receive the replacement through their generated property
+accessors. The existing control instance remains, but template-created child state
+is not migrated. This does not enable arbitrary application template replacement.
+
+
+## Development restart state
+
+Protocol v12 adds source identities to the authenticated capture/restore commands for a single compiled
+component instance. Compiler-connected names below an unambiguous root produce
+stable component keys, including nested repeated UserControls. Capture and restore
+resolve those keys rather than creation order; unnamed, cyclic or ambiguous component
+paths are skipped. COM object matching reuses the generated inspector's IUnknown
+identity comparison, following CsWinRT object ownership. No SDK access occurs while
+producing the connection snapshot. Transfers run on its owning UI dispatcher and match compiled
+names and control kinds. They never enter XAML replay history. Limits bound the
+number of controls, property names, and UTF-8 values; duplicate names are rejected.
+Restore prepares previous values first and attempts rollback on failure.
+
+Generated WinUI/UWP adapters use projection casts and SDK accessors to preserve
+unbound TextBox text and selection, toggle state, selector index when the item count
+still matches, range values clamped to the new bounds, ScrollViewer offsets/zoom,
+and focus. New bindings retain ownership of their values. Missing controls and
+changed control kinds are skipped. Dynamic controls with unique AutomationProperties.AutomationId values are also
+recoverable. Frame navigation uses GetNavigationState/SetNavigationState before
+restoring descendant controls; attached component identities are recomputed after
+each navigation change. Components and DataContexts implementing
+WinUIXamlRestartParticipant can save versioned application state and task checkpoints.
+Missing or ambiguous identities, incompatible schemas and password contents are
+excluded. Arbitrary object graphs, native stacks and coroutine continuations are
+not serialized: applications recreate work from their saved data. This is ephemeral
+development recovery, not application persistence.

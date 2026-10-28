@@ -15,11 +15,15 @@ internal fun xamlPropertyRegistrationSource(
     kotlinType: String,
     convert: (String, String) -> String,
     accessorName: String = property.name,
+    localValueSource: String? = null,
+    isCollection: Boolean = false,
 ): String = buildString {
     appendLine("${runtimePackage}WinUIXamlMemberDefinition(")
     appendLine("  name = ${literal(property.name)}, typeName = ${literal(property.type.xamlStandardTypeName())}, type = ${classLiteral(kotlinType)},")
     appendLine("  isDependencyProperty = ${property.isDependencyProperty}, get = { (it as $owner).`$accessorName` },")
     if (!property.isReadOnly) appendLine("  set = { instance, value -> (instance as $owner).`$accessorName` = ${convert("value", kotlinType)} },")
+    if (isCollection) appendLine("  isCollection = true,")
+    localValueSource?.let { appendLine("  localValue = $it,") }
     val values = xamlValueTypeRegistrationSources(property.type, kotlinType, convert)
     if (values.isNotEmpty()) appendLine("  valueTypes = listOf(${values.joinToString(",\n")}),")
     append(")")
@@ -75,6 +79,9 @@ internal fun xamlAttachedRegistrationSources(
     members: WinUIXamlApplicationTypeMembers,
     accessors: List<XamlStaticAccessor>,
     convert: (String, String) -> String,
+    accessorName: (String) -> String = { it },
+    memberName: (String) -> String = { it },
+    localValueSource: (String) -> String? = { null },
 ): List<String> = accessors.filter { it.method.isStatic && it.method.isPublic &&
     it.method.name.startsWith("Get") && it.method.name.length > 3 &&
     it.method.parameterTypes.size == 1 && !isWinRTVoidTypeName(it.method.returnType.typeName) }.map { getter ->
@@ -84,11 +91,12 @@ internal fun xamlAttachedRegistrationSources(
         isWinRTVoidTypeName(it.method.returnType.typeName) }
     buildString {
         appendLine("${runtimePackage}WinUIXamlMemberDefinition(")
-        appendLine("  name = ${literal(name)}, typeName = ${literal(getter.method.returnType.xamlStandardTypeName())}, type = ${classLiteral(getter.returnType)},")
+        appendLine("  name = ${literal(memberName(name))}, typeName = ${literal(getter.method.returnType.xamlStandardTypeName())}, type = ${classLiteral(getter.returnType)},")
         appendLine("  isAttachable = true, isDependencyProperty = ${members.properties.any { it.isStatic && it.name == "${name}Property" && isXamlTypeName(it.type.qualifiedName, "DependencyProperty") }},")
         appendLine("  targetTypeName = ${literal(getter.method.parameterTypes.single().xamlStandardTypeName())}, targetType = ${classLiteral(getter.parameterTypes.single())},")
-        appendLine("  get = { $owner.`${getter.method.name}`(it as ${getter.parameterTypes.single()}) },")
-        if (setter != null) appendLine("  set = { instance, value -> $owner.`${setter.method.name}`(instance as ${setter.parameterTypes[0]}, ${convert("value", setter.parameterTypes[1])}) },")
+        appendLine("  get = { $owner.`${accessorName(getter.method.name)}`(it as ${getter.parameterTypes.single()}) },")
+        if (setter != null) appendLine("  set = { instance, value -> $owner.`${accessorName(setter.method.name)}`(instance as ${setter.parameterTypes[0]}, ${convert("value", setter.parameterTypes[1])}) },")
+        localValueSource(name)?.let { appendLine("  localValue = $it,") }
         val values = xamlValueTypeRegistrationSources(getter.method.returnType, getter.returnType, convert)
         if (values.isNotEmpty()) appendLine("  valueTypes = listOf(${values.joinToString(",\n")}),")
         append(")")

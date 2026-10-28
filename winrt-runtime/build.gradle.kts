@@ -113,6 +113,35 @@ kotlin {
         }
     }
     mingwX64 {
+        val runtimeMain = compilations.getByName("main")
+        val policyProbe = compilations.create("developmentPolicyProbe") {
+            associateWith(runtimeMain)
+            defaultSourceSet.kotlin.srcDir("src/developmentPolicyProbe/kotlin")
+        }
+        binaries.executable("developmentPolicy", listOf(
+            org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG,
+            org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE,
+        )) {
+            compilation = policyProbe
+            entryPoint = "io.github.composefluent.winrt.runtime.policy.main"
+            val executable = this
+            runtimeMain.cinterops.all {
+                val interop = tasks.named(interopProcessingTaskName)
+                executable.linkTaskProvider.configure { libraries.from(interop) }
+            }
+            val mode = buildType.name.lowercase().replaceFirstChar(Char::uppercase)
+            tasks.register<Exec>("verify${mode}XamlDevelopmentPolicy") {
+                group = "verification"
+                dependsOn(executable.linkTaskProvider)
+                val session = layout.buildDirectory.dir("development-policy/$mode/session")
+                environment("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", session.get().asFile.absolutePath)
+                environment("KOTLIN_WINRT_XAML_PREVIEW", "1")
+                environment("KOTLIN_WINRT_XAML_PREVIEW_THEME", "Dark")
+                commandLine(executable.outputFile.absolutePath, "--kotlin-winrt-xaml-preview",
+                    "--kotlin-winrt-xaml-preview-theme=Dark",
+                    "--kotlin-winrt-hot-reload-directory=${session.get().asFile.absolutePath}")
+            }
+        }
         if (providers.gradleProperty("winrt.callsite.benchmark").orNull == "true") {
             binaries.getTest("DEBUG").apply {
                 optimized = true

@@ -462,9 +462,9 @@ org.gradle.caching=true
 org.gradle.configuration-cache=true
 ```
 
-JVM SDK projection bytecode can be reused across project directories and root project names when the projection module's artifact name, SDK inputs, Kotlin compiler, JVM target, and compiler settings match. The first compilation of a new SDK/compiler combination still compiles the generated declarations; later projects can restore that task's output from the build cache. IDE import prepares XAML analysis and projection sources. The compiled SDK preview host is prepared when a preview is opened, and successful preview compilation removes its temporary class files.
+JVM SDK projection bytecode can be reused across project directories and root project names when the projection module's artifact name, SDK inputs, Kotlin compiler, JVM target, and compiler settings match. The first compilation of a new SDK/compiler combination still compiles the generated declarations; later projects can restore that task's output from the build cache. IDE import registers XAML analysis and generated projection source roots. The compiled SDK preview host is prepared when a preview is opened, and successful preview compilation removes its temporary class files.
 
-XAML compilation retains verified native declarations and XBF per page, reusing unchanged pages when sources change. Reference metadata, compiler tools, and Kotlin semantic symbols are part of the cache context; missing or damaged entries are compiled again. Application resources and shared resource dictionaries retain full native batch compilation because the compiler protocol does not export their dependency graph. First IDE sync still prepares projection sources for completion without a manual build.
+XAML compilation retains verified native declarations and XBF per page, reusing unchanged pages when sources change. Reference metadata, compiler tools, and Kotlin semantic symbols are part of the cache context; missing or damaged entries are compiled again. Application resources and shared resource dictionaries retain full native batch compilation because the compiler protocol does not export their dependency graph. Projection sources are prepared by the generation task; a model-only Gradle sync does not run that task.
 
 ## WinApp CLI and NuGet Restore
 
@@ -478,7 +478,7 @@ windows {
 }
 ```
 
-The plugin keeps static projection sources available during IDE import, so projection completion does not require a preceding compilation. Prepared sources are shared in the Gradle user home; warm imports reuse unchanged content checks and preserve generated source timestamps. Missing or modified generated files are repaired during import.
+The plugin registers generated projection source roots during IDE import. Projection generation runs in the Gradle task graph, and its prepared sources are shared in the Gradle user home. Generation reuses unchanged content and repairs missing or modified files; a model-only import does not generate or repair sources.
 
 The plugin's `winapp restore`, `winapp package`, and `winapp tool makeappx` paths do not invoke MSBuild and do not require an MSBuild project. JVM and `mingwX64` compilation still require their normal JDK, Kotlin/Native, C/C++, and Windows SDK prerequisites.
 
@@ -812,3 +812,19 @@ Build and validate this repository on Windows.
 - [CsWinRT](https://github.com/microsoft/CsWinRT)
 
 When local behavior disagrees with those projections, the intent is to change `kotlin-winrt` to match the reference projection model instead of inventing project-specific rules.
+
+## XAML development permissions in built artifacts
+
+JVM IDE Run/Debug and Gradle `runWinAppHost...` / `runWinAppPackage...` enable
+Preview/Hot Reload capability automatically in a separate development runtime copy.
+Building the host/JAR or producing a package does **not** enable those capabilities.
+Directly launching that production output cannot enable them through environment
+variables, JVM properties or startup arguments. Use the development run tasks to
+retain the normal editing workflow, and distribute the build/package output, not
+the isolated run directory. Ordinary Run still opens your application; Preview is
+an explicit designer launch.
+
+Native Debug retains development support. Native Release permanently denies these
+entry points for that binary, including attempts through packaged activation
+arguments. See [runtime development security](../winrt-runtime/HOT_RELOAD.md#development-runs-versus-production-artifacts)
+for the artifact boundary and authentication requirements.

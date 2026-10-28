@@ -5,7 +5,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Path
 import java.util.Locale
-import kotlin.io.path.inputStream
 import kotlin.io.path.name
 
 object WinRTMetadataLoader {
@@ -157,22 +156,16 @@ private class WinRTCliMetadataFile private constructor(
         private const val SECTION_POINTER_TO_RAW_DATA_OFFSET = 20
         private const val CLI_METADATA_RVA_OFFSET = 8
 
-        fun parse(path: Path): List<WinRTTypeDefinition> {
-            path.inputStream().use { input ->
-                val bytes = input.readAllBytes()
-                return parseMetadata(path, bytes) { it.parseTypes() }
-            }
-        }
+        // Parse an owned snapshot after closing the source handle. IDE metadata
+        // discovery may overlap regeneration of the same development WinMD.
+        fun parse(path: Path): List<WinRTTypeDefinition> =
+            parseMetadata(path, java.nio.file.Files.readAllBytes(path)) { it.parseTypes() }
 
         fun parseTypeAssemblyNames(path: Path): Map<String, String> =
             parseMetadata(path, java.nio.file.Files.readAllBytes(path)) { it.parseTables().typeAssemblyNames() }
 
-        fun parseAuxiliaryTableInventory(path: Path): WinRTMetadataFileAuxiliaryTableInventory {
-            path.inputStream().use { input ->
-                val bytes = input.readAllBytes()
-                return parseMetadata(path, bytes) { it.parseAuxiliaryTableInventory() }
-            }
-        }
+        fun parseAuxiliaryTableInventory(path: Path): WinRTMetadataFileAuxiliaryTableInventory =
+            parseMetadata(path, java.nio.file.Files.readAllBytes(path)) { it.parseAuxiliaryTableInventory() }
 
         private fun <T> parseMetadata(
             path: Path,

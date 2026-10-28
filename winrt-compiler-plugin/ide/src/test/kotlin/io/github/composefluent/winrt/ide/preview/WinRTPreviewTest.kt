@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.preview
 
 import io.github.composefluent.winrt.runtime.*
@@ -11,6 +13,77 @@ import org.jetbrains.jewel.foundation.ExperimentalJewelApi
 
 class WinRTPreviewTest {
     private val namespaces = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
+
+    @Test fun binding_source_fingerprint_uses_captured_text_and_keeps_the_package_path() {
+        val directory = java.nio.file.Files.createTempDirectory("xaml-binding-source")
+        val original = directory.resolve("Page.xaml").toString()
+        val input = kotlinx.serialization.json.buildJsonObject {
+            put("XamlPages", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.buildJsonObject {
+                put("FullPath", kotlinx.serialization.json.JsonPrimitive(original)); put("MSBuild_Link", kotlinx.serialization.json.JsonPrimitive("UI/Page.xaml"))
+            }) })
+        }
+        val text = "<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>"
+        val page = io.github.composefluent.winrt.metadata.WinUIXamlPageDeclaration("sample.Page", "UI/Page.xaml", "Microsoft.UI.Xaml.Controls.Page", false, emptyList(), emptyList())
+        val index = io.github.composefluent.winrt.metadata.WinUIXamlDeclarationIndex(3, listOf(page), emptyList())
+        val stamped = io.github.composefluent.winrt.ide.analysis.WinUIXamlDocumentCompiler.stampSourceHashes(index, input, listOf(io.github.composefluent.winrt.ide.analysis.WinUIXamlDocument(original, text, 1)))
+        assertEquals(io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.sourceFingerprint(text), stamped.pages.single().sourceHash)
+    }
+    @Test fun project_binding_markers_preserve_compiled_identity_and_design_overrides() {
+        val text = """<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="sample.Page"><TextBox x:Name="Input" Text="{x:Bind Value}" d:Text="Design value"/></Page>"""
+        val location = io.github.composefluent.winrt.metadata.WinUIXamlSourceLocation(1, text.indexOf("<TextBox") + 2)
+        val connection = io.github.composefluent.winrt.metadata.WinUIXamlConnectionDeclaration(7, "Microsoft.UI.Xaml.Controls.TextBox", "Input", location,
+            emptyList(), elementName = "Input", bindings = listOf(io.github.composefluent.winrt.metadata.WinUIXamlBindingDeclaration(
+                "Text", "Microsoft.UI.Xaml.Controls.TextBox", "String", "OneTime",
+                io.github.composefluent.winrt.metadata.WinUIXamlBindingExpression("member", "Value", receiver = io.github.composefluent.winrt.metadata.WinUIXamlBindingExpression("root")), location)))
+        val page = io.github.composefluent.winrt.metadata.WinUIXamlPageDeclaration("sample.Page", "Page.xaml", "Microsoft.UI.Xaml.Controls.Page", false, listOf("compiled-bindings"), listOf(connection))
+        val document = WinUIXamlDesignDocument.prepare(text, projectBindings = true, bindingPage = page)
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_COMPONENT_KEY))
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_CONNECTION_KEY))
+        assertTrue(document.markup.contains("7:${io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.designConnectionSignature(connection)}:Text"))
+        assertTrue(document.markup.contains("Text=\"Design value\""))
+        assertFalse(document.markup.contains("{x:Bind"))
+    }
+    @Test fun project_popup_children_keep_source_provenance_when_opening_is_deferred() {
+        val text = """<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" x:Class="sample.Page"><Grid><Popup IsOpen="False" d:IsOpen="True"><Border><TextBlock Text="Layer"/></Border></Popup><Border/></Grid></Page>"""
+        val document = WinUIXamlDesignDocument.prepare(text, projectBindings = true,
+            visualType = { _, name -> name in setOf("Page", "Grid", "Popup", "Border", "TextBlock") })
+        val dom = parse(document.markup)
+        val markers = dom.getElementsByTagNameNS("http://schemas.microsoft.com/winfx/2006/xaml", "String")
+        val sourceIds = (0 until markers.length).map { markers.item(it) as org.w3c.dom.Element }
+            .filter { it.getAttributeNS("http://schemas.microsoft.com/winfx/2006/xaml", "Key") == WinUIXamlHotReloadProtocol.PREVIEW_SOURCE_KEY }
+            .map { it.textContent }
+        assertEquals(6, sourceIds.size)
+        assertEquals(6, sourceIds.distinct().size)
+        assertTrue("Popup resources must not shift its child's original source path", sourceIds.any { it.endsWith(":0.0.0") })
+        assertTrue(sourceIds.any { it.endsWith(":0.0.0.0") })
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_POPUP_OPEN_KEY))
+    }
+
+    @Test fun compiled_dictionary_bindings_keep_their_own_generated_owner() {
+        val document = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="Data.xaml"/></Page.Resources><TextBlock/></Page>""",
+            projectBindings = true, resource = { _, _ -> WinUIXamlDesignResource("""<ResourceDictionary $namespaces x:Class="sample.Data"><DataTemplate x:Key="Row"><TextBlock Text="{x:Bind Name}"/></DataTemplate></ResourceDictionary>""", "Styles/Data.xaml") })
+        assertTrue(document.markup.contains("ms-appx:///Styles/Data.xaml"))
+        assertFalse(document.markup.contains("<DataTemplate"))
+        assertTrue(document.notes.any { it.contains("retain their generated bindings") })
+    }
+
+    @Test fun projectResourcesExpandEditableSourcesAndRetainUnavailableCompiledDictionaries() {
+        val document = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="Editable.xaml"/><ResourceDictionary Source="Binary.xaml"/>
+            </ResourceDictionary.MergedDictionaries></ResourceDictionary></Page.Resources><TextBlock/></Page>""",
+            packagePath = "UI/Page.xaml", compiledResourceFallback = true,
+            resource = { uri, _ -> if (uri == "Editable.xaml") WinUIXamlDesignResource(
+                """<ResourceDictionary $namespaces xmlns:local="using:sample"><local:Converter x:Key="Converter"/><Style TargetType="TextBlock"><Setter Property="FontSize" Value="42"/></Style></ResourceDictionary>""", "UI/Editable.xaml") else null })
+        assertTrue(document.markup.contains("Value=\"42\""))
+        assertTrue(document.markup.contains("local:Converter"))
+        assertFalse(document.markup.contains("Source=\"Editable.xaml\""))
+        assertTrue(document.markup.contains("ms-appx:///UI/Binary.xaml"))
+        assertTrue(document.notes.any { it.contains("compiled package") })
+        assertTrue(runCatching { WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="Cycle.xaml"/></Page.Resources></Page>""",
+            compiledResourceFallback = true, resource = { _, _ -> WinUIXamlDesignResource("""<ResourceDictionary $namespaces Source="Cycle.xaml"/>""", "Cycle.xaml") }) }
+            .exceptionOrNull()!!.message!!.contains("cycle"))
+    }
+
     @Test fun visual_tree_selects_the_main_window_without_requiring_a_picker_and_preserves_an_explicit_choice() {
         val primary = WinUIXamlHotReloadRoot("sample.MainWindow", "MainWindow.xaml", "hash", 0, emptyList())
         val secondary = primary.copy(className = "sample.SettingsWindow", resourcePath = "SettingsWindow.xaml")
@@ -43,7 +116,81 @@ class WinRTPreviewTest {
         assertTrue(result.markup.contains("{ThemeResource TextFillColorPrimaryBrush}"))
         assertTrue(result.markup.contains("{Binding Message}"))
         assertFalse(result.markup.contains("x:Class"))
-        assertEquals(2, result.notes.size)
+        assertEquals(listOf("Event handlers are excluded from static preview."), result.notes)
+    }
+    @Test fun design_properties_override_runtime_values_before_normalizing_resources() {
+        // Microsoft XAML Designer: d: can override any ordinary property;
+        // the IDE owns this markup transformation, not the WinRT projection.
+        val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" d:DesignWidth="400" Width="300" d:DesignHeight="200">
+          <StackPanel><Image Source="{x:Bind Picture}" d:Source="../Assets/Design picture.png"/>
+          <TextBlock Text="{Binding Name}" d:Text="Preview" d:Foreground="Red" d:FontSize="24"/>
+          <Button d:IsHidden="True"/></StackPanel></Page>""", packagePath = "UI/Page.xaml")
+        val document = parse(result.markup)
+        val page = document.getElementsByTagNameNS("*", "Page").item(0) as org.w3c.dom.Element
+        assertEquals("300", page.getAttribute("Width"))
+        assertEquals("200", page.getAttribute("Height"))
+        val image = document.getElementsByTagNameNS("*", "Image").item(0) as org.w3c.dom.Element
+        assertEquals("ms-appx:///Assets/Design%20picture.png", image.getAttribute("Source"))
+        val text = document.getElementsByTagNameNS("*", "TextBlock").item(0) as org.w3c.dom.Element
+        assertEquals("Preview", text.getAttribute("Text"))
+        assertEquals("Red", text.getAttribute("Foreground"))
+        assertEquals("24", text.getAttribute("FontSize"))
+        assertEquals("Collapsed", (document.getElementsByTagNameNS("*", "Button").item(0) as org.w3c.dom.Element).getAttribute("Visibility"))
+        assertTrue(result.notes.isEmpty())
+    }
+    @Test fun design_collection_replaces_runtime_items_and_binding() {
+        val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008">
+          <ListView ItemsSource="{Binding Rows}"><ListView.Items><TextBlock Text="Runtime"/></ListView.Items>
+          <d:ListView.Items><TextBlock Text="Design"/></d:ListView.Items></ListView></Page>""")
+        val document = parse(result.markup)
+        val list = document.getElementsByTagNameNS("*", "ListView").item(0) as org.w3c.dom.Element
+        assertFalse(list.hasAttribute("ItemsSource"))
+        assertEquals(1, document.getElementsByTagNameNS("*", "ListView.Items").length)
+        assertFalse(result.markup.contains("Runtime"))
+        assertTrue(result.markup.contains("Design"))
+    }
+    @Test fun serialized_design_data_resolves_plain_bindings_without_constructing_project_types() {
+        val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:local="using:sample" d:DataContext="{d:DesignData Source=../Data/Sample.xaml}">
+          <StackPanel><TextBlock x:Name="Title" Text="{Binding Title}"/>
+          <TextBlock x:Name="Nested" Text="{Binding Path=Person.Name}"/>
+          <TextBlock x:Name="Compiled" Text="{x:Bind Title}"/>
+          <StackPanel><d:DataContext><local:Model Title="Inner"/></d:DataContext><TextBlock x:Name="Inner" Text="{Binding Title}"/></StackPanel>
+          <StackPanel><d:StackPanel.DataContext><local:Model Title="Qualified"/></d:StackPanel.DataContext><TextBlock x:Name="Qualified" Text="{Binding Title}"/></StackPanel>
+          <ListView><ListView.ItemTemplate><DataTemplate><TextBlock x:Name="Item" Text="{Binding Title}"/></DataTemplate></ListView.ItemTemplate></ListView>
+          </StackPanel></Page>""", packagePath = "UI/Page.xaml", resource = { uri, origin ->
+            assertEquals("../Data/Sample.xaml", uri); assertEquals("UI/Page.xaml", origin)
+            WinUIXamlDesignResource("""<local:Model $namespaces xmlns:local="using:sample" Title="Sample"><local:Model.Person><local:Person Name="Ada"/></local:Model.Person></local:Model>""", "Data/Sample.xaml")
+        }, sdkType = { _, _ -> false })
+        val document = parse(result.markup)
+        val texts = document.getElementsByTagNameNS("*", "TextBlock")
+        val values = (0 until texts.length).map { texts.item(it) as org.w3c.dom.Element }.associate {
+            it.getAttributeNS("http://schemas.microsoft.com/winfx/2006/xaml", "Name") to it.getAttribute("Text")
+        }
+        assertEquals("Sample", values["Title"])
+        assertEquals("Ada", values["Nested"])
+        assertEquals("Inner", values["Inner"])
+        assertEquals("Qualified", values["Qualified"])
+        assertEquals("", values["Compiled"])
+        assertEquals("{Binding Title}", values["Item"])
+        assertFalse(result.markup.contains("local:Model"))
+    }
+    @Test fun control_theme_follows_application_declaration_and_removal() {
+        // CsWinRT's WinUI3CppApp/App.xaml opts into XamlControlsResources explicitly.
+        val page = """<Page $namespaces><Button Content="Theme probe"/></Page>"""
+        val plain = """<Application $namespaces/>"""
+        val themed = """<Application $namespaces><Application.Resources><ResourceDictionary>
+          <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Styles/Controls.xaml"/>
+          </ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources></Application>"""
+        for (application in listOf(null, plain, themed, plain)) {
+            val result = WinUIXamlDesignDocument.prepare(page, application, resource = { uri, _ ->
+                assertEquals("Styles/Controls.xaml", uri)
+                WinUIXamlDesignResource("""<ResourceDictionary $namespaces><ResourceDictionary.MergedDictionaries>
+                  <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/>
+                  </ResourceDictionary.MergedDictionaries></ResourceDictionary>""", "Styles/Controls.xaml")
+            })
+            assertEquals(if (application == themed) 1 else 0,
+                parse(result.markup).getElementsByTagNameNS("using:Microsoft.UI.Xaml.Controls", "XamlControlsResources").length)
+        }
     }
     @Test fun application_resources_and_relative_dictionaries_keep_their_original_package_scope() {
         val result = WinUIXamlDesignDocument.prepare("""<Page $namespaces><Page.Resources><ResourceDictionary Source="../Styles/Page.xaml"/></Page.Resources><TextBlock/></Page>""",
@@ -140,6 +287,15 @@ class WinRTPreviewTest {
         val tree = visualInspectionTree(nodes).walkDepthFirst().toList()
         assertEquals(nodes.map { it.path }, tree.map { it.id })
         assertEquals(listOf(0), tree.last().parent!!.id)
+    }
+    @Test fun open_popups_are_deferred_until_the_sdk_attaches_the_design_tree() {
+        val document = WinUIXamlDesignDocument.prepare("""<Grid $namespaces xmlns:d="http://schemas.microsoft.com/expression/blend/2008"><Popup x:Name="Layer" IsOpen="False" d:IsOpen="True"><Border/></Popup><Popup IsOpen="False"><Border/></Popup></Grid>""")
+        val dom = parse(document.markup)
+        val popups = dom.getElementsByTagNameNS("*", "Popup")
+        assertEquals("False", (popups.item(0) as org.w3c.dom.Element).getAttribute("IsOpen"))
+        assertTrue((popups.item(0) as org.w3c.dom.Element).textContent.contains("True"))
+        assertTrue(document.markup.contains(WinUIXamlHotReloadProtocol.PREVIEW_POPUP_OPEN_KEY))
+        assertFalse((popups.item(1) as org.w3c.dom.Element).textContent.contains("True"))
     }
     private fun parse(value: String) = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         .newDocumentBuilder().parse(InputSource(StringReader(value)))

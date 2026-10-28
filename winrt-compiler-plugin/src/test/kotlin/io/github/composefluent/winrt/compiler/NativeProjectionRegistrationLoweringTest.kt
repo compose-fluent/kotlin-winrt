@@ -12,8 +12,6 @@ import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.IrBlockBody
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.ir.builders.irString
-import io.github.composefluent.winrt.compiler.xaml.JVM_XAML_DEVELOPMENT_ACCESSORS
-import io.github.composefluent.winrt.compiler.xaml.lowerNativeXamlDevelopmentAccessors
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.junit.Assert.*
 import org.junit.Test
@@ -78,10 +76,9 @@ class NativeProjectionRegistrationLoweringTest {
                 package demand
                 fun <T : SignatureOnly> signature(value: T): T = value
                 fun staticOnly(): Int = StaticOnly.answer()
-                @Suppress("$JVM_XAML_DEVELOPMENT_ACCESSORS")
                 private fun sdkDevelopmentMetadata() {
                     StaticOnly.unused()
-                    error("Native must omit JVM SDK development callbacks")
+                    // Native must retain these SDK accessors for live XAML updates.
                 }
                 fun constructorReference() = ::StaticOnly
                 fun factoryReference() = NamedOnly.ActivationFactory.acquire()
@@ -165,7 +162,6 @@ class NativeRegistrationTestRegistrar : CompilerPluginRegistrar() {
                         if (it in listOf("Used", "Choice", "XamlOnly")) "demand.$it.Metadata" else "", "")
                 }
                 check("Demand.StaticOnly\tunused" in NativeProjectionUseCollector(entries).collectStaticMembers(moduleFragment))
-                lowerNativeXamlDevelopmentAccessors(moduleFragment, pluginContext)
                 val demand = NativeProjectionUseCollector(entries).collect(moduleFragment, includeDeclarations = true)
                     .map { it.projectedTypeName }.toSet()
                 check(demand.containsAll(listOf("Demand.SignatureOnly", "Demand.StaticOnly", "Demand.GenericOnly", "Demand.Base"))) {
@@ -187,7 +183,7 @@ class NativeRegistrationTestRegistrar : CompilerPluginRegistrar() {
                 check("Demand.StaticOnly\tsetting" in members && "Demand.StaticOnly\treferencedOnly" in members) {
                     "Callable/property references must retain their member family: $members"
                 }
-                check("Demand.StaticOnly\tunused" !in members) { "Declarations must not root unused members: $members" }
+                check("Demand.StaticOnly\tunused" in members) { "Development accessors must retain their SDK member demand: $members" }
                 check("Demand.MetadataOnly\ttypedCall" in members) { "Typed metadata callbacks must still be scanned: $members" }
                 check(listOf("Demand.MetadataOnly\t*", "Demand.SignatureOnly\t*", "Demand.GenericOnly\t*").none { it in members }) {
                     "Typed metadata labels must not root every static member: $members"

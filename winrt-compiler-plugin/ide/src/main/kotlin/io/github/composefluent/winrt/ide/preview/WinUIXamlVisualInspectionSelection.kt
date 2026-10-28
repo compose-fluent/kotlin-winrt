@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.preview
 
 import com.intellij.openapi.components.Service
@@ -19,6 +21,6 @@ internal class WinUIXamlVisualInspectionSelection {
         fun hit(nodes: List<WinUIXamlVisualNode>, x: Double, y: Double): WinUIXamlVisualNode? = nodes.filter { node ->
             val r = node.bounds
             r.width > 0 && r.height > 0 && x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height
-        }.maxWithOrNull(compareBy<WinUIXamlVisualNode> { it.path.size }.thenBy { nodes.indexOf(it) })
+        }.maxWithOrNull(compareBy<WinUIXamlVisualNode> { it.layer }.thenBy { it.path.size }.thenBy { nodes.indexOf(it) })
     }
 }

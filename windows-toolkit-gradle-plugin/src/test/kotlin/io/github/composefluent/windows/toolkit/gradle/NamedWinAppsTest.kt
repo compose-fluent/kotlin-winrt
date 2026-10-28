@@ -224,6 +224,7 @@ class NamedWinAppsTest {
         val makeAppx = findWindowsSdk()?.tool("makeappx.exe", "x64")
         assumeNotNull(makeAppx)
         val root = fixture("native-format-repack")
+        writeRuntimeAbiFixture(root)
         val suffix = "DesktopMainAppDebugExecutable"
         val variantId = "desktop_main_appDebugExecutable"
         val script = """
@@ -290,6 +291,7 @@ class NamedWinAppsTest {
         // TestKit supplies the local runtime as a file dependency, without its published POM.
         val runtimeLibraries = listOf(
             kotlin.Unit::class.java,
+            io.github.composefluent.winrt.runtime.Guid::class.java,
             kotlinx.io.files.Path::class.java,
             kotlinx.io.bytestring.ByteString::class.java,
             kotlinx.coroutines.Job::class.java,
@@ -323,11 +325,13 @@ class NamedWinAppsTest {
         val result = runner(root, "buildWinAppHostJvmMain").build()
         assertEquals(TaskOutcome.SUCCESS, result.task(":compileWinAppLauncherJvmMain")?.outcome)
         val packageRoot = root.resolve("build/kotlin-winrt/application-layout/jvm_main/jvm-host")
+        val outputFile = root.resolve("launcher.log").toFile()
         val process = ProcessBuilder(packageRoot.resolve("staged-jvm-host.exe").toString())
-            .directory(packageRoot.toFile()).redirectErrorStream(true).start()
+            .directory(packageRoot.toFile()).redirectErrorStream(true).redirectOutput(outputFile).start()
         try {
-            assertTrue(process.waitFor(30, TimeUnit.SECONDS))
-            val output = process.inputStream.bufferedReader().readText()
+            val finished = process.waitFor(30, TimeUnit.SECONDS)
+            assertTrue("Launcher timed out: ${outputFile.readText()}", finished)
+            val output = outputFile.readText()
             assertEquals(output, 0, process.exitValue())
             assertTrue(output, output.contains("staged-host-started"))
         } finally {
@@ -340,6 +344,7 @@ class NamedWinAppsTest {
         val makeAppx = findWindowsSdk()?.tool("makeappx.exe", "x64")
         assumeNotNull(makeAppx)
         val root = fixture("native-variants")
+        writeRuntimeAbiFixture(root)
         writeGradleFile(root.resolve("build.gradle"), nativeBuildScript + """
             windows { application {
                 packageType = io.github.composefluent.windows.toolkit.gradle.WindowsPackageType.Packaged
@@ -636,6 +641,16 @@ class NamedWinAppsTest {
         """.trimIndent())
         val result = runner(root, "help").buildAndFail()
         assertTrue(result.output, result.output.contains("share package output"))
+    }
+
+    private fun writeRuntimeAbiFixture(root: Path) {
+        // These packaging fixtures intentionally replace the runtime with host stubs.
+        // Preserve the compiler's resolved-runtime ABI contract in that test-only module.
+        writeGradleFile(root.resolve("src/commonMain/kotlin/io/github/composefluent/winrt/runtime/RuntimeAbi.kt"), """
+            package io.github.composefluent.winrt.runtime
+            const val WINRT_PROJECTION_RUNTIME_ABI_VERSION: Int = ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION}
+            const val WINRT_RUNTIME_IMPLEMENTATION_ABI_VERSION: Int = ${io.github.composefluent.winrt.runtime.WINRT_PROJECTION_RUNTIME_ABI_VERSION}
+        """.trimIndent())
     }
 
     private fun fixture(name: String): Path = Files.createTempDirectory("kotlin-winrt-$name-").also { root ->

@@ -20,6 +20,17 @@ class WinUIXamlReferenceContributor : PsiReferenceContributor() {
                         WinUIXamlSymbols.kotlinClass(value.containingFile, value.value)
                     }
                     WinUIXamlSymbols.isDirective(attribute, "Name") -> null // Definition, not a reference to a user Kotlin field.
+                    tag.namespace == WinUIXamlCatalog.PRESENTATION && tag.localName == "VisualTransition" &&
+                        attribute.localName in setOf("From", "To") -> ValueReference(value, range) {
+                        // State transitions resolve within their owning group, not
+                        // the page's broader element namescope.
+                        generateSequence(tag.parentTag) { it.parentTag }.firstOrNull {
+                            it.namespace == WinUIXamlCatalog.PRESENTATION && it.localName == "VisualStateGroup"
+                        }?.subTags?.filter {
+                            it.namespace == WinUIXamlCatalog.PRESENTATION && it.localName == "VisualState" &&
+                                it.getAttributeValue("Name", WinUIXamlCatalog.XAML) == value.value
+                        }?.singleOrNull()?.getAttribute("Name", WinUIXamlCatalog.XAML)?.valueElement
+                    }
                     attribute.localName == "ElementName" -> ValueReference(value, range) {
                         WinUIXamlReferences.namedElements(tag).firstOrNull { it.first == value.value }?.second
                     }

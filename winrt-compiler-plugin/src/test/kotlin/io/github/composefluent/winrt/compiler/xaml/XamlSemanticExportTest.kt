@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.compiler.xaml
 
 import io.github.composefluent.winrt.metadata.*
@@ -21,6 +23,51 @@ class XamlSemanticExportTest {
         Unit::class.java, WinUIXamlLoadState::class.java, io.github.composefluent.winrt.runtime.Guid::class.java,
     ).map { File(it.protectionDomain.codeSource.location.toURI()).absolutePath }
         .distinct().joinToString(File.pathSeparator)
+
+    @Test
+    fun generated_design_overrides_keep_the_internal_api_boundary() {
+        val root = Files.createTempDirectory("xaml-internal-overrides-").toFile()
+        try {
+            val input = File(root, "declarations.json").apply {
+                writeText(WinUIXamlDeclarations.canonicalText(WinUIXamlDeclarationIndex(
+                    WinUIXamlDeclarations.SCHEMA_VERSION, listOf(WinUIXamlPageDeclaration(
+                        "probe.MainPage", "MainPage.xaml", "Microsoft.UI.Xaml.Controls.Page",
+                        false, emptyList(), emptyList())), emptyList())))
+            }
+            val index = File(root, "metadata.tsv").apply { writeText("Microsoft.UI.Xaml.Controls.Page\tRuntimeClass\t\tSystem.Object\n") }
+            val references = File(root, "references.txt").apply { writeText("") }
+            File(root, "MainPage.xaml").writeText("<Page />")
+            File(root, "UI.kt").writeText("package microsoft.ui.xaml.controls; open class Page")
+            File(root, "Connector.kt").writeText("""
+                package microsoft.ui.xaml.markup
+                interface IComponentConnector {
+                    fun connect(connectionId: Int, target: Any?)
+                    fun getBindingConnector(connectionId: Int, target: Any?): IComponentConnector?
+                }
+            """.trimIndent())
+            val source = File(root, "MainPage.kt")
+            val body = """
+                package probe
+                class MainPage : microsoft.ui.xaml.controls.Page()
+                fun inspect(page: MainPage) = page._kotlinXamlDesignConnections()
+            """.trimIndent()
+            source.writeText(body)
+            val options = mapOf("xamlDeclarations" to input.absolutePath, "metadataIndex" to index.absolutePath,
+                "xamlSemanticOutput" to File(root, "symbols.json").absolutePath,
+                "xamlReferencesFile" to references.absolutePath)
+            val args = listOf("-no-stdlib", "-no-reflect", "-classpath", compilerRuntimeClasspath(),
+                "-Xplugin=${System.getProperty("winrt.test.fullPluginJar")}", "-d", File(root, "output").absolutePath) +
+                root.listFiles()!!.filter { it.extension == "kt" }.map { it.absolutePath } +
+                options.flatMap { (key, value) -> listOf("-P", "plugin:io.github.composefluent.winrt.compiler:$key=$value") }
+            val diagnostics = ByteArrayOutputStream()
+            fun compile() = PrintStream(diagnostics).use { K2JVMCompiler().exec(it, *args.toTypedArray()) }
+            assertEquals(ExitCode.COMPILATION_ERROR, compile())
+            assertTrue(diagnostics.toString(), diagnostics.toString().contains("Internal Kotlin WinRT infrastructure API", ignoreCase = true))
+            assertTrue(diagnostics.toString(), diagnostics.toString().contains("page._kotlinXamlDesignConnections()"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 
     @Test
     fun semantic_only_compilation_exports_symbols_without_business_class_files() {
@@ -141,6 +188,58 @@ class XamlSemanticExportTest {
     }
 
     @Test
+    fun sdk_non_content_vectors_emit_collection_shape_for_both_frameworks() {
+        for (framework in listOf(io.github.composefluent.winrt.runtime.XamlFramework.WinUI,
+            io.github.composefluent.winrt.runtime.XamlFramework.UWP)) {
+            val ns = framework.xamlNamespace + ".Controls"
+            val rows = WinRTTypeDefinition(ns, "Rows", WinRTTypeKind.RuntimeClass,
+                implementedInterfaces = listOf(WinRTInterfaceImplementationDefinition(
+                    "Windows.Foundation.Collections.IVector<$ns.Row>")))
+            val contract = WinRTTypeDefinition(ns, "ILayout", WinRTTypeKind.Interface,
+                methods = listOf(WinRTMethodDefinition("get_RowDefinitions", "$ns.Rows")),
+                properties = listOf(WinRTPropertyDefinition("RowDefinitions", "$ns.Rows", getterMethodName = "get_RowDefinitions")))
+            val layout = WinRTTypeDefinition(ns, "Layout", WinRTTypeKind.RuntimeClass,
+                defaultInterfaceName = contract.qualifiedName,
+                implementedInterfaces = listOf(WinRTInterfaceImplementationDefinition(contract.qualifiedName, isDefault = true)))
+            val model = WinRTMetadataModel(listOf(WinRTNamespace(ns, listOf(rows, contract, layout))))
+            val root = Files.createTempDirectory("xaml-vector-accessors").toFile()
+            try {
+                assertNotNull(writeXamlProjectedTypeRegistrationSource(root.toPath(), model,
+                    setOf(layout.qualifiedName), "Vectors", framework))
+                val source = root.walkTopDown().single { it.extension == "kt" }.readText()
+                val member = source.substringAfter("name = \"RowDefinitions\"").substringBefore("    ),")
+                assertTrue(source, member.contains("isCollection = true"))
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun projected_attached_accessors_use_typed_static_calls_and_distinct_member_identity() {
+        // CSharpTypeInfoPass2 attached getters/setters remain compiler-generated;
+        // runtime lookup must not confuse ScrollViewer's same-named instance member.
+        val ns = "Microsoft.UI.Xaml.Controls"
+        val target = WinRTParameterDefinition("target", "Microsoft.UI.Xaml.DependencyObject")
+        val type = WinRTTypeDefinition(ns, "Layout", WinRTTypeKind.RuntimeClass, baseTypeName = "System.Object",
+            properties = listOf(WinRTPropertyDefinition("RowProperty", "Microsoft.UI.Xaml.DependencyProperty", isStatic = true)),
+            methods = listOf(
+                WinRTMethodDefinition("GetRow", "Int32", listOf(target), isStatic = true),
+                WinRTMethodDefinition("SetRow", "Void", listOf(target, WinRTParameterDefinition("value", "Int32")), isStatic = true)))
+        val model = WinRTMetadataModel(listOf(WinRTNamespace(ns, listOf(type))))
+        val root = Files.createTempDirectory("xaml-attached-accessors").toFile()
+        try {
+            assertNotNull(writeXamlProjectedTypeRegistrationSource(root.toPath(), model, setOf(type.qualifiedName), "Attached"))
+            val source = root.walkTopDown().single { it.extension == "kt" }.readText()
+            assertTrue(source, source.contains("name = \"Microsoft.UI.Xaml.Controls.Layout.Row\""))
+            assertTrue(source, source.contains("`getRow`"))
+            assertTrue(source, source.contains("`setRow`"))
+            assertTrue(source, source.contains("isAttachable = true"))
+            assertTrue(source, source.contains("target.readLocalValue(property)"))
+            assertTrue(source, source.contains("target.clearValue(property)"))
+            assertTrue(source, source.contains("Layout.`rowProperty`"))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
     fun xaml_sdk_rcw_metadata_is_available_without_hot_reload() {
         // Runtime2 WindowsRuntimeComWrappers.CreateObject uses the external type map
         // even for objects created by XAML rather than projected Kotlin constructors.
@@ -149,7 +248,10 @@ class XamlSemanticExportTest {
             val namespace = framework.xamlNamespace
             val types = listOf(
                 WinRTTypeDefinition(namespace, "UIElement", WinRTTypeKind.RuntimeClass,
-                    baseTypeName = "System.Object"),
+                    baseTypeName = "System.Object", customAttributes = listOf(
+                        WinRTCustomAttributeDefinition(framework.xamlTypeName("Markup.ContentPropertyAttribute"),
+                            namedArguments = listOf(WinRTCustomAttributeNamedArgument("Name",
+                                WinRTCustomAttributeValue.StringValue("Content")))))),
                 WinRTTypeDefinition("$namespace.Shapes", "Shape", WinRTTypeKind.RuntimeClass,
                     baseTypeName = "$namespace.UIElement"),
                 WinRTTypeDefinition("$namespace.Shapes", "Rectangle", WinRTTypeKind.RuntimeClass,
@@ -165,12 +267,13 @@ class XamlSemanticExportTest {
                 assertNotNull(writeXamlProjectedTypeRegistrationSource(root.toPath(), model,
                     setOf("$namespace.Shapes.Rectangle"), "Application", framework))
                 val source = root.walkTopDown().single { it.extension == "kt" }.readText()
-                assertTrue(source.contains("@Suppress(\"$JVM_XAML_DEVELOPMENT_ACCESSORS\")"))
+                assertFalse(source.contains("KOTLIN_WINRT_JVM_XAML_DEVELOPMENT_ACCESSORS"))
                 val startup = source.substringAfter("internal fun registerKotlinWinUIXamlProjectedTypes_Application() {")
                     .substringBefore("if (io.github.composefluent.winrt.runtime.isWinUIXamlHotReloadEnabled())")
                 listOf("$namespace.UIElement", "$namespace.Shapes.Shape", "$namespace.Shapes.Rectangle").forEach { name ->
                     assertTrue(startup, startup.contains("${xamlTypeClassId(name).asSingleFqName().asString()}::class"))
                 }
+                assertTrue(source.contains("contentProperty = \"Content\""))
                 assertFalse(source.contains("Unused"))
                 assertFalse(source.contains("activate ="))
             } finally {
@@ -485,8 +588,11 @@ class XamlSemanticExportTest {
                     check(tag != "failHook") { "hook failed" }
                 }
                 private fun onClick(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { myButton.text += "clicked" }
+                private fun onAlternate(sender: Any?, args: microsoft.ui.xaml.RoutedEventArgs) { myButton.text += "alternate" }
+                private fun onWrong(sender: String, args: microsoft.ui.xaml.RoutedEventArgs) { error("incompatible handler must never run") }
                 fun changeCounter(value: Int) { Counter = value }
             }
+            fun createForReload() = MainPage()
             fun exercise(): String {
                 val first = MainPage()
                 check(first.initializationCount == 1)
@@ -508,6 +614,14 @@ class XamlSemanticExportTest {
                 check(calls.size == 2)
                 first.initializeComponent()
                 check(first.Counter == 5)
+                val connected = first.myButton
+                first.connect(${declarations.pages.single().connections.single { it.fieldName == "myButton" }.id}, connected)
+                check(connected.subscriptionCount == 1)
+                val replacement = microsoft.ui.xaml.controls.Button()
+                first.connect(${declarations.pages.single().connections.single { it.fieldName == "myButton" }.id}, replacement)
+                check(connected.subscriptionCount == 0 && replacement.subscriptionCount == 1)
+                connected.raise()
+                check(replacement.text.isEmpty())
                 first.myButton.raise()
                 first.initializeComponent()
                 first.myButton.raise()
@@ -541,9 +655,12 @@ class XamlSemanticExportTest {
         val button = File(root, "ButtonBase.kt").apply { writeText("""
             package microsoft.ui.xaml.controls.primitives
             open class ButtonBase {
-                private val handlers = mutableListOf<microsoft.ui.xaml.RoutedEventHandler>()
-                fun addClick(handler: microsoft.ui.xaml.RoutedEventHandler) { handlers.add(handler) }
-                fun raise() { handlers.forEach { it.invoke(this, microsoft.ui.xaml.RoutedEventArgs()) } }
+                private val handlers = mutableMapOf<Long, microsoft.ui.xaml.RoutedEventHandler>()
+                private var nextToken = 0L
+                val subscriptionCount get() = handlers.size
+                fun addClick(handler: microsoft.ui.xaml.RoutedEventHandler): Long = (++nextToken).also { handlers[it] = handler }
+                fun removeClick(token: Long) { check(handlers.remove(token) != null) }
+                fun raise() { handlers.values.toList().forEach { it.invoke(this, microsoft.ui.xaml.RoutedEventArgs()) } }
             }
         """.trimIndent()) }
         val buttonId = declarations.pages.single().connections.single { it.fieldName == "myButton" }.id
@@ -595,7 +712,7 @@ class XamlSemanticExportTest {
         """.trimIndent()) }
         fun compile(final: Boolean = false): Pair<ExitCode, String> {
             val classpath = compilerRuntimeClasspath()
-            val options = mapOf("xamlDeclarations" to input.absolutePath) + if (final)
+            val options = mapOf("xamlDeclarations" to (if (final) File(root, "runtime-declarations.json") else input).absolutePath) + if (final)
                 mapOf("xamlImplementation" to File(root, "final.output.json").absolutePath)
             else mapOf("metadataIndex" to index.absolutePath, "xamlSemanticOutput" to symbols.absolutePath, "xamlReferencesFile" to referenceFile.absolutePath,
                 "xamlApplicationHeader" to header.absolutePath)
@@ -635,6 +752,18 @@ class XamlSemanticExportTest {
         val rewritten = File(finalOutput.getValue("GeneratedXamlFiles").jsonArray.single().jsonPrimitive.content).readText()
         assertTrue(rewritten.contains("ConnectionId"))
         assertFalse(rewritten.contains("Click=\"onClick\""))
+        // Match CompileWinUIXamlTask: semantic declarations remain compiler-owned,
+        // while runtime declarations and the implementation carry the source fingerprint.
+        val fingerprinted = declarations.copy(pages = declarations.pages.map {
+            it.copy(sourceHash = WinUIXamlDeclarations.sourceFingerprint(xaml.readText()))
+        })
+        val runtimeDeclarations = WinUIXamlDeclarations.canonicalText(fingerprinted)
+        File(root, "runtime-declarations.json").writeText(runtimeDeclarations)
+        File(root, "final.output.json").writeText(JsonObject(finalOutput + mapOf(
+            "KotlinDeclarations" to Json.parseToJsonElement(runtimeDeclarations),
+            "KotlinImplementation" to JsonObject(finalOutput.getValue("KotlinImplementation").jsonObject +
+                ("DeclarationFingerprint" to JsonPrimitive(WinUIXamlDeclarations.fingerprint(fingerprinted)))),
+        )).toString())
         val (finalResult, finalDiagnostics) = compile(final = true)
         assertEquals(finalDiagnostics, ExitCode.OK, finalResult)
         val consumerSource = File(root, "Consumer.kt").apply { writeText("""
@@ -667,6 +796,49 @@ class XamlSemanticExportTest {
             assertTrue(pageClass.methods.none { it.name == "setMyButton" })
             assertTrue(pageClass.methods.none { it.name == "setReadOnlyCount" })
             assertEquals("external:reference", loader.loadClass("consumer.ConsumerKt").getMethod("exercise").invoke(null))
+            // Test-only access installs an in-memory transport registry. Production
+            // event forwarding uses only compiler-generated typed calls, never reflection.
+            val registryClass = Class.forName("io.github.composefluent.winrt.runtime.WinUIXamlHotReloadRegistry")
+            val registry = registryClass.constructors.single { it.parameterCount == 5 }.newInstance(
+                { { task: () -> Unit -> task(); true } },
+                { _: kotlin.reflect.KClass<*>, text: String -> text },
+                { _: String -> emptyMap<Any?, Any?>() }, { _: String -> Any() }, null)
+            val configuration = Class.forName("io.github.composefluent.winrt.runtime.WinUIXamlHotReloadConfiguration")
+            val instance = configuration.getDeclaredField("INSTANCE").apply { isAccessible = true }.get(null)
+            val field = configuration.getDeclaredField("registry").apply { isAccessible = true }
+            val previous = field.get(instance)
+            try {
+                field.set(instance, registry)
+                val reloaded = loader.loadClass("probe.MainPageKt").getMethod("createForReload").invoke(null)
+                val control = pageClass.getMethod("getKotlinWinUIXaml_myButton").invoke(reloaded)
+                fun snapshot() = registryClass.getMethod("snapshot").invoke(registry) as io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply
+                fun retarget(expected: String, handler: String): io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply {
+                    val loaded = snapshot().roots.single()
+                    val patch = io.github.composefluent.winrt.runtime.WinUIXamlHotReloadPatch(loaded.className, loaded.resourcePath,
+                        loaded.sourceHash, "b".repeat(64), loaded.version + 1, emptyList(), events = listOf(
+                            io.github.composefluent.winrt.runtime.WinUIXamlHotReloadEvent("myButton", "Click", expected, handler)))
+                    var result: io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply? = null
+                    registryClass.getMethod("submit", io.github.composefluent.winrt.runtime.WinUIXamlHotReloadPatch::class.java,
+                        kotlin.jvm.functions.Function1::class.java).invoke(registry, patch,
+                        { reply: io.github.composefluent.winrt.runtime.WinUIXamlHotReloadReply -> result = reply })
+                    return requireNotNull(result)
+                }
+                assertEquals(1, control.javaClass.getMethod("getSubscriptionCount").invoke(control))
+                retarget("onClick", "onAlternate").let { assertEquals(it.message, 0, it.status) }
+                control.javaClass.getMethod("raise").invoke(control)
+                assertEquals("alternate", control.javaClass.getMethod("getText").invoke(control))
+                assertEquals(1, retarget("onAlternate", "onWrong").status)
+                retarget("onAlternate", "").let { assertEquals(it.message, 0, it.status) }
+                control.javaClass.getMethod("raise").invoke(control)
+                assertEquals("alternate", control.javaClass.getMethod("getText").invoke(control))
+                assertEquals(1, control.javaClass.getMethod("getSubscriptionCount").invoke(control))
+                assertTrue(java.lang.reflect.Modifier.isPrivate(pageClass.getDeclaredMethod("onAlternate",
+                    Any::class.java, loader.loadClass("microsoft.ui.xaml.RoutedEventArgs")).modifiers))
+            } finally {
+                field.set(instance, previous)
+                registryClass.getMethod("close").invoke(registry)
+            }
+
         }
         val validSource = source.readText()
         val validArgs = argsType.readText()

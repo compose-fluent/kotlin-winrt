@@ -10,6 +10,10 @@ import io.github.composefluent.winrt.ide.project.WinRTProjectService
 import io.github.composefluent.winrt.ide.resources.WinRTResourceIndex
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.OpenOption
+import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.FileTime
+import com.sun.nio.file.ExtendedOpenOption
 
 class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
     override fun createTempDirTestFixture() = com.intellij.testFramework.fixtures.impl.TempDirTestFixtureImpl()
@@ -19,7 +23,38 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
         finally { super.tearDown() }
     }
 
-    fun testUnbuiltSourcesUnsavedDictionariesAndPassiveAssetsUseTheOwnedDesignerDirectory() {
+    fun testUnbuiltSourcesUnsavedDictionariesAndPassiveAssetsUseTheOwnedDesignerDirectory() = verifySources("host")
+
+    fun testUwpDesignerStagesPassiveAssetsInItsIndependentPackage() = verifySources("AppX")
+
+    fun testDependentControlUsesOnlySelectedApplicationsUnsavedResources() {
+        val ns = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
+        val page = myFixture.addFileToProject("controls/src/Control.xaml", """<UserControl $ns><TextBlock/></UserControl>""").virtualFile
+        val app = myFixture.addFileToProject("app/src/UI/App.xaml", """<Application $ns><Application.Resources><ResourceDictionary Source="../Styles.xaml"/></Application.Resources></Application>""").virtualFile
+        val styles = myFixture.addFileToProject("app/src/Styles.xaml", """<ResourceDictionary $ns><Style TargetType="TextBlock"><Setter Property="FontSize" Value="32"/></Style></ResourceDictionary>""").virtualFile
+        myFixture.addFileToProject("other/src/App.xaml", """<Application $ns/>""")
+        val root = myFixture.tempDirFixture.getFile("")!!.path
+        importedRoot = root
+        fun module(name: String) = WinRTModuleData(":$name", "$root/$name", "$root/$name/build", "2.4.0", "",
+            listOf(WinRTSourceSetData("main", listOf("$root/$name/src"), emptyList(), emptyList())), emptyList(), emptyList(), emptyList())
+        val controls = module("controls"); val host = module("app"); val other = module("other")
+        val index = project.service<WinRTResourceIndex>()
+        project.service<WinRTProjectService>().replaceBuildModels(root, listOf(controls, host, other))
+        PlatformTestUtil.waitWithEventsDispatching("Application context indexed", { index.forFile(app.path)?.xamlFiles?.isNotEmpty() == true }, 10)
+        val sources = WinUIXamlPreviewSources(project, controls, listOf(page.path), page.path, host)
+        assertEquals(app.path, sources.application()?.replace('\\', '/'))
+        assertEquals("UI/App.xaml", sources.target(app.path))
+        val document = FileDocumentManager.getInstance().getDocument(styles)!!
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(document.text.replace("32", "48")) }
+        assertTrue(sources.resolve("../Styles.xaml", sources.target(app.path))!!.text.contains("48"))
+        assertNull(WinUIXamlPreviewSources(project, controls, listOf(page.path), page.path).application())
+        val prepared = WinUIXamlDesignDocument.prepare(sources.read(page.path), sources.read(app.path),
+            sources.target(page.path), sources.target(app.path), resource = sources::resolve) { _, _, _ -> false }
+        assertTrue(prepared.markup.contains("48"))
+        assertFalse(prepared.markup.contains("Source="))
+    }
+
+    private fun verifySources(directory: String) {
         val ns = """xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" """
         val page = myFixture.addFileToProject("src/main/kotlin/UI/Page.xaml", """<Page $ns/>""").virtualFile
         val colors = myFixture.addFileToProject("src/main/kotlin/Styles/Colors.xaml", """<ResourceDictionary $ns x:Class="sample.Colors"><SolidColorBrush x:Key="Accent" Color="Blue"/></ResourceDictionary>""").virtualFile
@@ -27,7 +62,7 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
         val asset = myFixture.addFileToProject("src/main/appxResources/Assets/Logo.png", "passive asset").virtualFile
         val root = myFixture.tempDirFixture.getFile("")!!.path
         importedRoot = root
-        val host = "$root/build/kotlin-winrt/xaml-sdk-preview/host"
+        val host = "$root/build/kotlin-winrt/xaml-sdk-preview/$directory"
         val module = WinRTModuleData(":app", root, "$root/build", "2.4.0", "", listOf(
             WinRTSourceSetData("main", listOf("$root/src/main/kotlin"), emptyList(), listOf("$root/src/main/appxResources"))),
             emptyList(), emptyList(), emptyList(), staticPreview = WinRTStaticPreviewData("runWinRTXamlSdkPreview", "$host/KotlinWinUIXamlPreview.exe", host, "$host/../references.json"))
@@ -45,7 +80,54 @@ class WinUIXamlPreviewSourcesTest : BasePlatformTestCase() {
         assertEquals(relative, sources.resolve("using:sample.Colors", "UI/Page.xaml"))
         assertNull(sources.resolve("../../../outside.xaml", "UI/Page.xaml"))
         sources.stageAssets()
-        assertEquals("passive asset", Files.readString(Path.of(host, "Assets/Logo.png")))
+        val staged = Path.of(host, "Assets/Logo.png")
+        assertEquals("passive asset", Files.readString(staged))
+        // Simulate an existing deployment and WinUI retaining its package icon.
+        // A timestamp difference must not rewrite unchanged, locked bytes.
+        val deploymentTime = FileTime.fromMillis(1_000)
+        Files.setLastModifiedTime(staged, deploymentTime)
+        Files.newByteChannel(staged, setOf<OpenOption>(StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE)).use {
+            sources.stageAssets()
+            assertEquals(deploymentTime, Files.getLastModifiedTime(staged))
+            assertEquals("passive asset", Files.readString(staged))
+        }
+        // The content check must also detect changes hidden by matching metadata.
+        val input = Path.of(asset.path)
+        Files.writeString(input, "changed asset")
+        Files.setLastModifiedTime(input, deploymentTime)
+        Files.newByteChannel(staged, setOf<OpenOption>(StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE)).use {
+            val failure = runCatching { sources.stageAssets() }.exceptionOrNull()
+            assertTrue("A changed, locked asset must report its write failure", failure is java.nio.file.FileSystemException)
+        }
+        sources.stageAssets()
+        assertEquals("changed asset", Files.readString(staged))
         assertFalse(Files.exists(Path.of(root, "build/classes/kotlin")))
+        // Cache validity includes editor buffers and WinMD bytes, even before
+        // the asynchronous source enumeration has supplied its file list.
+        val metadata = Path.of(root, "preview.winmd")
+        Files.writeString(metadata, "first metadata")
+        val references = Path.of(root, "preview-references.json")
+        Files.writeString(references, kotlinx.serialization.json.buildJsonObject {
+            put("ReferenceAssemblies", kotlinx.serialization.json.buildJsonArray {
+                add(kotlinx.serialization.json.buildJsonObject {
+                    put("FullPath", kotlinx.serialization.json.JsonPrimitive(metadata.toString()))
+                })
+            })
+        }.toString())
+        val cachedModule = module.copy(xamlCompilations = listOf(WinUIXamlCompilationData(
+            "compileXaml", listOf("$root/src/main/kotlin"), "", references.toString(), "", "")))
+        fun cacheKey() = WinUIXamlPreviewSources(project, cachedModule, emptyList(), page.path).projectDocumentKey()
+        val originalKey = cacheKey()
+        assertNotNull(originalKey)
+        val pageDocument = FileDocumentManager.getInstance().getDocument(page)!!
+        val originalText = pageDocument.text
+        WriteCommandAction.runWriteCommandAction(project) { pageDocument.setText(originalText.replace("/>", " Width=\"123\"/>")) }
+        assertFalse(originalKey == cacheKey())
+        WriteCommandAction.runWriteCommandAction(project) { pageDocument.setText(originalText) }
+        assertEquals(originalKey, cacheKey())
+        val metadataTime = Files.getLastModifiedTime(metadata)
+        Files.writeString(metadata, "other metadata")
+        Files.setLastModifiedTime(metadata, metadataTime)
+        assertFalse("Equal-length metadata with unchanged timestamps must invalidate the document", originalKey == cacheKey())
     }
 }

@@ -15,6 +15,7 @@ internal object WinUIAuthoredTypeMetadata {
     private val types = ConcurrentCacheMap<String, Type>()
     private val definitions = ConcurrentCacheMap<String, WinUIXamlTypeDefinition>()
     private val definitionsByType = ConcurrentCacheMap<KClass<*>, WinUIXamlTypeDefinition>()
+    private val accessorDefinitions = ConcurrentCacheMap<String, WinUIXamlTypeDefinition>()
     private val projectedDefinitions = ConcurrentCacheMap<String, Unit>()
     private val valueTypeDefinitions = ConcurrentCacheMap<String, WinUIXamlValueTypeDefinition>()
     private data class EnumType(val type: KClass<*>, val parse: (String) -> Any)
@@ -28,6 +29,8 @@ internal object WinUIAuthoredTypeMetadata {
      * factories and enum parsers before falling back to the SDK converter. */
     fun literalParser(type: KClass<*>): ((String) -> Any)? =
         definitionsByType[type]?.createFromString ?: enumTypes.values.firstOrNull { it.type == type }?.parse
+
+    internal fun designDefinition(name: String): WinUIXamlTypeDefinition? = definitions[name]
 
     fun registerDefinition(definition: WinUIXamlTypeDefinition) {
         definitions.putIfAbsent(definition.name, definition)
@@ -54,7 +57,8 @@ internal object WinUIAuthoredTypeMetadata {
     }
 
     /** Development accessors do not advertise SDK classes as authored XAML types. */
-    fun registerPropertyAccessors(definition: WinUIXamlTypeDefinition) {
+    internal fun registerPropertyAccessors(definition: WinUIXamlTypeDefinition) {
+        accessorDefinitions.putIfAbsent(definition.name, definition)
         definitionsByType.putIfAbsent(definition.type, definition)
     }
 
@@ -71,25 +75,67 @@ internal object WinUIAuthoredTypeMetadata {
         types.putIfAbsent(name, Type(type, name, baseName))
     }
 
+    /** Exact generated XAML identity; development accessors alone do not define a type. */
+    fun registeredTypeName(source: Any): String? = definitionsByType[source::class]
+        ?.takeIf { definitions[it.name]?.type == source::class }?.name
+
     fun clearForTests() {
         types.clear(); definitions.clear(); definitionsByType.clear(); valueTypeDefinitions.clear(); enumTypes.clear()
-        projectedDefinitions.clear()
+        projectedDefinitions.clear(); accessorDefinitions.clear()
     }
 
     /** Reuses generated accessors for CsWinRT's source-generated ICustomProperty path.
      * No reflection or platform-specific property discovery is required. */
     fun customProperty(source: Any, name: String): microsoft.ui.xaml.data.ICustomProperty? {
+        val member = memberDefinition(source, name) ?: return null
+        return WinRTBindableCustomProperty(
+            canRead = true, canWrite = member.set != null, name = name, type = member.type,
+            getValueCallback = { member.get(requireNotNull(it)) },
+            setValueCallback = member.set?.let { setter -> { target, value -> setter(requireNotNull(target), value) } },
+        )
+    }
+
+    internal fun memberDefinition(source: Any, name: String): WinUIXamlMemberDefinition? {
+        if ('.' in name) {
+            val owner = name.substringBeforeLast('.')
+            val members = (accessorDefinitions[owner] ?: definitions[owner])?.members ?: return null
+            return (members[name] ?: members[name.substringAfterLast('.')])?.takeIf { it.isAttachable }
+        }
         var definition = definitionsByType[source::class]
-        while (definition != null) {
-            val member = definition.members[name]
-            if (member != null && !member.isAttachable) return WinRTBindableCustomProperty(
-                canRead = true, canWrite = member.set != null, name = name, type = member.type,
-                getValueCallback = { member.get(requireNotNull(it)) },
-                setValueCallback = member.set?.let { setter -> { target, value -> setter(requireNotNull(target), value) } },
-            )
+        val seen = mutableSetOf<String>()
+        while (definition != null && seen.add(definition.name)) {
+            definition.members[name]?.takeIf { !it.isAttachable }?.let { return it }
             definition = definition.baseType?.let { definitionsByType[it] } ?: definitions[definition.baseName]
         }
         return null
+    }
+
+    /** Content traversal follows generated IXamlType metadata, including inherited content. */
+    internal fun contentProperty(source: Any): String? {
+        var definition = definitionsByType[source::class]
+        val seen = mutableSetOf<String>()
+        while (definition != null && seen.add(definition.name)) {
+            definition.contentProperty?.let { return it }
+            definition = definition.baseType?.let { definitionsByType[it] } ?: definitions[definition.baseName]
+        }
+        return null
+    }
+
+    /** Enumerate generated vector accessors, respecting derived member shadowing.
+     * Runtime2's generated custom-property provider owns access; collection shape
+     * comes from the same metadata closure as projection emission. */
+    internal fun collectionProperties(source: Any): List<String> {
+        val names = linkedSetOf<String>()
+        val collections = mutableListOf<String>()
+        var definition = definitionsByType[source::class]
+        val seen = mutableSetOf<String>()
+        while (definition != null && seen.add(definition.name)) {
+            definition.members.values.filterNot { it.isAttachable }.forEach {
+                if (names.add(it.name) && it.isCollection) collections += it.name
+            }
+            definition = definition.baseType?.let { definitionsByType[it] } ?: definitions[definition.baseName]
+        }
+        return collections
     }
 
     fun customProperties(source: Any): List<microsoft.ui.xaml.data.ICustomProperty> {

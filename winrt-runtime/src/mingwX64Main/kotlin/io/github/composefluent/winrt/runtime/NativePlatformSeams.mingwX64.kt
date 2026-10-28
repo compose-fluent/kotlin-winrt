@@ -9,6 +9,9 @@ package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_supports_interface
 import io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_try_query_interface
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
+import platform.posix.memcpy
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.COpaque
@@ -823,6 +826,15 @@ actual object PlatformAbi {
     actual fun readPointerAt(array: RawAddress, index: Int): RawAddress =
         array.asCPointer<COpaquePointerVar>()[index].asRawAddress()
 
+    actual fun readBytes(address: RawAddress, size: Int): ByteArray {
+        require(size >= 0)
+        if (size == 0) return byteArrayOf()
+        val source = address.asCPointer<ByteVar>()
+        return ByteArray(size).also { bytes ->
+            bytes.usePinned { memcpy(it.addressOf(0), source, size.toULong()) }
+        }
+    }
+
     actual fun readInt8(slot: RawAddress): Byte =
         slot.asCPointer<ByteVar>().pointed.value
 
@@ -1053,6 +1065,12 @@ private fun RawAddress.writeBytes(values: ByteArray) {
 }
 
 actual object WinRTPlatformApi {
+    init {
+        if (kotlin.native.Platform.isDebugBinary) {
+            io.github.composefluent.winrt.runtime.nativeapi.kotlin_winrt_retain_debug_api()
+        }
+    }
+
     private val combaseModule by lazy {
         LoadLibraryA("combase.dll")
     }

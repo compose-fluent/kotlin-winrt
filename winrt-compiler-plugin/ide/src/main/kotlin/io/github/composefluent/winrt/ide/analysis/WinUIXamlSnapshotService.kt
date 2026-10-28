@@ -128,7 +128,7 @@ class WinUIXamlSnapshotService(private val project: Project, private val scope: 
         snapshots.value = next
         if (previous.mapValues { it.value.text } != next.mapValues { it.value.text }) invalidate(previous.hashCode(), next.hashCode())
         documents.keys.removeIf { !owns(it) }
-        queueEdit(documents.isNotEmpty())
+        queueEdit(documents.isNotEmpty() || next.values.any { value -> value.declarations.pages.any { it.sourceHash.isEmpty() } })
         // The service may start after a XAML editor has already been modified,
         // or after sync assigns an existing document to a new source root.
         ApplicationManager.getApplication().invokeLater {

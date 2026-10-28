@@ -561,6 +561,13 @@ actual object PlatformAbi {
             .asRawAddress()
     }
 
+    actual fun readBytes(address: RawAddress, size: Int): ByteArray {
+        require(size >= 0)
+        if (size == 0) return byteArrayOf()
+        check(!isNull(address)) { "Cannot dereference a null native pointer." }
+        return address.asMemorySegment().reinterpret(size.toLong()).toArray(ValueLayout.JAVA_BYTE)
+    }
+
     actual fun readInt8(slot: RawAddress): Byte =
         slot.asMemorySegment().reinterpret(ValueLayout.JAVA_BYTE.byteSize()).get(ValueLayout.JAVA_BYTE, 0)
 

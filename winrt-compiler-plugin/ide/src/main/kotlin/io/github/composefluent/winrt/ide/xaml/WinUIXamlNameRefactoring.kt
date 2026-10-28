@@ -24,6 +24,7 @@ import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.xml.XmlAttribute
 import com.intellij.psi.xml.XmlAttributeValue
+import com.intellij.psi.xml.XmlTag
 import com.intellij.refactoring.listeners.RefactoringElementListener
 import com.intellij.refactoring.rename.RenameHandler
 import com.intellij.refactoring.rename.RenameHandlerRegistry
@@ -87,6 +88,20 @@ class WinUIXamlNameReferencesSearch : QueryExecutor<PsiReference, ReferencesSear
     }
 }
 
+/** Name creation and rename share the same compiler name-scope constraints. */
+internal fun xamlNameConflicts(tag: XmlTag, newName: String, definition: XmlAttributeValue? = null): List<String> {
+    if (!Regex("[\\p{L}_][\\p{L}\\p{N}_]*").matches(newName))
+        return listOf("An x:Name must be a XAML identifier.")
+    return buildList {
+        if (WinUIXamlScopes.namedElements(tag).any { it.first == newName && it.second != definition })
+            add("An element named '$newName' already exists in this XAML name scope.")
+        val context = WinUIXamlScopes.context(tag)
+        if (context?.boundary == (tag.containingFile as? com.intellij.psi.xml.XmlFile)?.rootTag &&
+            WinUIXamlSymbols.ownerClass(tag)?.declarations?.filterIsInstance<KtNamedDeclaration>()?.any { it.name == newName } == true)
+            add("A Kotlin declaration named '$newName' already exists in the owning class.")
+    }
+}
+
 class WinUIXamlNameRenameProcessor : RenamePsiElementProcessor() {
     override fun canProcessElement(element: PsiElement) = nameDefinition(element) == element
     override fun isInplaceRenameSupported() = false
@@ -95,17 +110,9 @@ class WinUIXamlNameRenameProcessor : RenamePsiElementProcessor() {
     override fun findExistingNameConflicts(element: PsiElement, newName: String, conflicts: MultiMap<PsiElement, String>) {
         val definition = nameDefinition(element) ?: return
         val tag = (definition.parent as XmlAttribute).parent
-        if (!Regex("[\\p{L}_][\\p{L}\\p{N}_]*").matches(newName)) {
-            conflicts.putValue(element, "An x:Name must be a XAML identifier.")
-            return
-        }
-        if (WinUIXamlScopes.namedElements(tag).any { it.first == newName && it.second != definition })
-            conflicts.putValue(element, "An element named '$newName' already exists in this XAML name scope.")
-        val context = WinUIXamlScopes.context(tag)
-        if (context?.boundary == (tag.containingFile as? com.intellij.psi.xml.XmlFile)?.rootTag &&
-            WinUIXamlSymbols.ownerClass(tag)?.declarations?.filterIsInstance<KtNamedDeclaration>()?.any { it.name == newName } == true)
-            conflicts.putValue(element, "A Kotlin declaration named '$newName' already exists in the owning class.")
+        xamlNameConflicts(tag, newName, definition).forEach { conflicts.putValue(element, it) }
     }
+
     override fun renameElement(element: PsiElement, newName: String, usages: Array<out UsageInfo>, listener: RefactoringElementListener?) {
         val definition = nameDefinition(element) ?: throw IncorrectOperationException("Not an x:Name definition")
         usages.mapNotNull { it.reference }.sortedByDescending { it.element.textRange.startOffset + it.rangeInElement.startOffset }

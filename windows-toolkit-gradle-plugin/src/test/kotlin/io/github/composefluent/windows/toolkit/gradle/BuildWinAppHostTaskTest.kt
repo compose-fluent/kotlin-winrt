@@ -13,6 +13,8 @@ class BuildWinAppHostTaskTest {
         assertTrue(source.contains("--kotlin-winrt-xaml-preview"))
         assertTrue(source.contains("io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost"))
         assertTrue(source.contains("kotlin_winrt_preview_requested ?"))
+        assertTrue(source.contains("WinUIXamlDevelopmentBuildPolicy"))
+        assertTrue(source.contains("isWinUIXamlDevelopmentBuild"))
     }
     @Test
     fun generated_host_uses_c_integer_condition_for_bundled_runtime() {

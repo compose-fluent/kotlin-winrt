@@ -72,6 +72,42 @@ class WinRTMetadataClosureResolver private constructor(
                 resolveRuntimeClass(candidate).instanceInterfaceClosure.any { it.interfaceName == interfaceName }
         }
 
+    /** XAMLC XamlTypeExtensions.IsDependencyProperty discovers static NameProperty
+     * metadata through the declaring hierarchy. WinMD statics live on factory
+     * interfaces; keep that projection detail shared by the compiler and IDE. */
+    fun xamlDependencyPropertyOwner(type: WinRTTypeDefinition, property: String): WinRTTypeDefinition? =
+        (sequenceOf(type) + baseTypes(type).mapNotNull { it.definitionType }).firstOrNull { candidate ->
+            candidate.kind == WinRTTypeKind.RuntimeClass && run {
+                val statics = resolveRuntimeClass(candidate).activation.staticInterfaces.mapNotNull { it.definitionType }
+                (candidate.properties.filter { it.isStatic } + statics.flatMap { it.properties }).any {
+                    it.hasValidAccessors && it.name == "${property}Property" && isXamlTypeName(it.typeName, "DependencyProperty")
+                }
+            }
+        }
+
+    /** CsWinRT projects a runtime class implementing IVector through its collection
+     * interface. Share this decision between XAML accessors and designer traversal. */
+    fun mutableVectorElementType(type: WinRTTypeRef, currentNamespace: String,
+        specialTypes: WinRTMetadataSpecialTypeResolver): WinRTTypeRef? {
+        fun element(reference: WinRTTypeRef, namespace: String): WinRTTypeRef? =
+            when (val shape = specialTypes.resolveType(reference, namespace)) {
+                is WinRTCollectionTypeDescriptor -> shape.elementType?.type
+                    ?.takeIf { shape.kind == WinRTCollectionInterfaceKind.Vector }
+                is WinRTBindableCollectionTypeDescriptor -> WinRTTypeRef.named("Object")
+                    .takeIf { shape.kind == WinRTBindableCollectionKind.Vector }
+                else -> null
+            }
+        element(type, currentNamespace)?.let { return it }
+        val definition = resolveTypeReference(type, currentNamespace, typesByQualifiedName).definitionType
+            ?.takeIf { it.kind == WinRTTypeKind.RuntimeClass } ?: return null
+        return (sequenceOf(definition) + baseTypes(definition).mapNotNull { it.definitionType })
+            .firstNotNullOfOrNull { candidate ->
+                resolveRuntimeClass(candidate).instanceInterfaceClosure.firstNotNullOfOrNull {
+                    element(it.interfaceType, candidate.namespace)
+                }
+            }
+    }
+
     private fun baseTypes(type: WinRTTypeDefinition) = sequence {
         val seen = mutableSetOf(type.qualifiedName)
         var current = type

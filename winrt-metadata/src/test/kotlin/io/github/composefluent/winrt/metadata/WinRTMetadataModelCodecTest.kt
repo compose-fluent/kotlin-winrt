@@ -121,6 +121,25 @@ class WinRTMetadataModelCodecTest {
     }
 
     @Test
+    fun normalized_snapshot_is_reused_but_copies_and_decoded_models_are_normalized() {
+        // cswinrt/main.cpp's cache owns the merged input for all resolver queries.
+        val raw = WinRTMetadataModel(listOf(WinRTNamespace(" Sample ", listOf(
+            WinRTTypeDefinition(" Sample ", " Widget ", WinRTTypeKind.RuntimeClass),
+        ))))
+        val normalized = raw.normalized()
+        org.junit.Assert.assertSame(normalized, normalized.normalized())
+        val edited = normalized.copy(namespaces = listOf(WinRTNamespace(" Other ", emptyList())))
+        assertEquals("Other", edited.normalized().namespaces.single().name)
+        org.junit.Assert.assertNotSame(edited, edited.normalized())
+        val path = Files.createTempDirectory("winrt-model-normalized-").resolve("model.json")
+        WinRTMetadataModelCodec.writeAtomic(path, normalized)
+        org.junit.Assert.assertFalse(Files.readString(path).contains("normalizedSnapshot"))
+        val decoded = WinRTMetadataModelCodec.read(path)
+        assertEquals(normalized, decoded)
+        org.junit.Assert.assertSame(decoded, decoded.normalized())
+    }
+
+    @Test
     fun cache_key_changes_when_same_path_metadata_content_changes() {
         val directory = Files.createTempDirectory("winrt-model-codec-key-")
         val input = directory.resolve("sample.winmd")

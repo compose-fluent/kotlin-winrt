@@ -13,6 +13,40 @@ import kotlin.test.assertTrue
  */
 class WinUIXamlBindingLifecycleTest {
     @Test
+    fun compiled_event_slots_are_isolated_per_template_and_survive_recycling() {
+        // CSharpPagePass2 separates StopTracking from DisconnectUnloadedObject.
+        val removed = mutableListOf<Any>()
+        val owner = object : WinUIXamlBindingScopeOwner {
+            override fun _kotlinXamlConnectScope(scope: WinUIXamlBindingScope, connectionId: Int, target: Any?) {
+                scope.state.eventConnections.trackEvent(connectionId, requireNotNull(target), 7) { source, token ->
+                    assertEquals(7, token)
+                    removed += source
+                }
+            }
+            override fun _kotlinXamlUpdateScope(scope: WinUIXamlBindingScope, initial: Boolean) { }
+            override fun _kotlinXamlWriteBackScope(scope: WinUIXamlBindingScope, bindingId: Int) { }
+            override fun _kotlinXamlCreateScopeConnector(connectionId: Int, target: Any?): Any? = null
+        }
+        val first = WinUIXamlBindingScope(owner, 1)
+        val second = WinUIXamlBindingScope(owner, 1)
+        val old = Any()
+        val replacement = Any()
+        val other = Any()
+        first.connect(2, old)
+        second.connect(2, other)
+        first.recycle()
+        assertTrue(removed.isEmpty())
+        first.connect(2, replacement)
+        assertEquals(listOf(old), removed)
+        first.disconnect(2)
+        assertNull(first.targetOrNull(2))
+        assertSame(other, second.target(2))
+        assertEquals(listOf(old, replacement), removed)
+        second.disconnect(2)
+        assertEquals(listOf(old, replacement, other), removed)
+    }
+
+    @Test
     fun initialization_is_per_instance_and_reloading_installs_one_subscription() {
         val first = WinUIXamlBindingState()
         val second = WinUIXamlBindingState()

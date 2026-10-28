@@ -19,6 +19,11 @@ internal fun GradleRunner.withProjectionTestEnvironment(): GradleRunner {
                 $marker
                 repositories { maven { url = uri("$repository") } }
                 plugins { id("io.github.compose-fluent.windows-toolkit").version("$version") }
+        """.trimIndent() + "\n").replaceFirst("dependencyResolutionManagement {", """
+            dependencyResolutionManagement {
+                // Generator/compiler configurations resolve project dependencies,
+                // independently of the pluginManagement repository above.
+                repositories { maven { url = uri("$repository") } }
         """.trimIndent() + "\n"))
     }
     return this

@@ -14,7 +14,8 @@ import java.nio.file.Path
 
 /** A single IDE execution owns its transport directory; saved run settings do
  * not retain it. Gradle still owns launch, debugging, logs and cancellation. */
-internal data class WinRTApplicationHotReload(val module: WinRTModuleData, val launch: WinUIXamlHotReloadLaunchData, val directory: Path) {
+internal data class WinRTApplicationHotReload(val module: WinRTModuleData, val launch: WinUIXamlHotReloadLaunchData, val directory: Path,
+    val launchEnvironment: Map<String, String> = emptyMap(), val launchArguments: String = "", val passParentEnvironment: Boolean = true) {
     companion object {
         val KEY = Key.create<WinRTApplicationHotReload>("KotlinWinRT.ApplicationHotReload")
         val ACTIVE_KEY = Key.create<WinRTApplicationHotReload>("KotlinWinRT.ActiveApplicationHotReload")
@@ -30,7 +31,10 @@ class WinRTApplicationExecutionListener : ExecutionListener {
         if (project.isDisposed) return
         project.service<WinRTProjectService>().selectedModuleDirectory.value = launch.module.projectDirectory
         project.service<WinUIXamlVisualInspectionSelection>().reset()
-        project.service<WinUIXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory)
+        project.service<WinUIXamlHotReloadService>().attach(launch.module, launch.launch, launch.directory, building = { !((handler as? WinRTDevelopmentProcessHandler)?.build ?: handler).isProcessTerminated },
+            runProcess = handler as? WinRTDevelopmentProcessHandler,
+            launchEnvironment = launch.launchEnvironment, launchArguments = launch.launchArguments,
+            passParentEnvironment = launch.passParentEnvironment)
     }
 
     override fun processTerminated(executorId: String, environment: ExecutionEnvironment, handler: ProcessHandler, exitCode: Int) {

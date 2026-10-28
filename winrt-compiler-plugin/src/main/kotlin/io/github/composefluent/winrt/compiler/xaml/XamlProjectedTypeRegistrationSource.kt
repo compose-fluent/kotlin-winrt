@@ -42,6 +42,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
     names: Set<String>, assemblyName: String?, framework: XamlFramework = XamlFramework.WinUI): String? {
     if (names.isEmpty()) return null
     val semantics = model.semanticHelpers()
+    val closure = model.closureResolver()
     val specialTypes = model.specialTypeResolver()
     val definitions = model.namespaces.flatMap { it.types }.associateBy { it.qualifiedName }
     val sdkNamespaces = WinUIXamlNamespaces.namespaces(WinUIXamlNamespaces.PRESENTATION, framework).toSet()
@@ -55,7 +56,8 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
         type.qualifiedName in requested && type.kind == WinRTTypeKind.RuntimeClass &&
             // The projection emits the parameterless ActivationFactory constructor
             // from WinMD activation metadata, rather than a physical .ctor method.
-            !type.isStaticType && type.genericParameterCount == 0 && (sdk(type) ||
+            type.genericParameterCount == 0 && (sdk(type) ||
+                !type.isStaticType &&
                 type.activation.isActivatable && type.customAttributes.none { it.typeName.substringAfterLast('.') == "BindableAttribute" })
     }.sortedBy { it.qualifiedName }
     if (types.isEmpty()) return null
@@ -67,7 +69,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
     fun literal(value: String) = JsonPrimitive(value).toString()
     file.writeText(buildString {
         appendLine("@file:Suppress(\"UNCHECKED_CAST\", \"DEPRECATION\")")
-        appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class)")
+        appendLine("@file:OptIn(kotlin.ExperimentalUnsignedTypes::class, io.github.composefluent.winrt.runtime.InternalWinRTApi::class)")
         appendLine("package $packageName")
         fun emit(type: WinRTTypeDefinition, development: Boolean) {
             val name = type.qualifiedName
@@ -78,11 +80,31 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
             appendLine("  io.github.composefluent.winrt.runtime.$registration(io.github.composefluent.winrt.runtime.WinUIXamlTypeDefinition(")
             appendLine("    type = $owner::class, name = ${literal(name)},")
             appendLine("    baseName = ${literal(baseName)}, baseType = $base::class,")
+            type.customAttributes.firstOrNull { it.typeName == framework.xamlTypeName("Markup.ContentPropertyAttribute") }
+                ?.namedArguments?.firstOrNull { it.name == "Name" }?.value?.stringValue?.let {
+                    appendLine("    contentProperty = ${literal(it)},")
+                }
             if (!development) appendLine("    activate = { $owner() },")
             else appendLine("    isWinRTComponent = false,")
             appendLine("    isBindable = false,")
             appendLine("    members = listOf(")
             val convert: (String, String) -> String = { value, target -> "kotlinWinUIXamlMemberValue<$target>($value)" }
+            fun localValueSource(property: String): String? {
+                if (!development) return null
+                val declaring = closure.xamlDependencyPropertyOwner(type, property) ?: return null
+                val declaringOwner = xamlTypeClassId(declaring.qualifiedName).asSingleFqName().asString()
+                val sdk = framework.xamlKotlinNamespace
+                val accessor = (property + "Property").replaceFirstChar(Char::lowercase)
+                return """{ instance ->
+                    val target = instance as $sdk.DependencyObject
+                    val property = requireNotNull($declaringOwner.`$accessor`)
+                    val previous = target.readLocalValue(property)
+                    val unset = previous == $sdk.DependencyProperty.unsetValue
+                    io.github.composefluent.winrt.runtime.WinUIXamlLocalValue(
+                        clear = { target.clearValue(property) },
+                        restore = { if (unset) target.clearValue(property) else target.setValue(property, previous) })
+                }""".trimIndent()
+            }
             val inherited = definitions[type.baseTypeName]?.let { semantics.classMemberMergeDescriptor(it).mergedProperties }
                 .orEmpty().associateBy { it.propertyName }
             for (member in semantics.classMemberMergeDescriptor(type).mergedProperties.filter { it.isPublic && !it.isPrivate && it.getterTarget != null }) {
@@ -98,7 +120,28 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
                     .isNullablePropertyProjection(name, definitions)
                 val kotlinType = xamlProjectedPropertySourceType(ref, specialTypes, semantics).let { if (nullable && !it.endsWith('?')) "$it?" else it }
                 appendLine(xamlPropertyRegistrationSource(owner, property, kotlinType, convert,
-                    accessorName = member.propertyName.replaceFirstChar(Char::lowercase)).prependIndent("      ") + ",")
+                    accessorName = member.propertyName.replaceFirstChar(Char::lowercase),
+                    localValueSource = localValueSource(member.propertyName),
+                    isCollection = closure.mutableVectorElementType(ref, type.namespace, specialTypes) != null).prependIndent("      ") + ",")
+            }
+            if (development) {
+                val staticTypes = closure.resolveRuntimeClass(type).activation.staticInterfaces.mapNotNull { it.definitionType }
+                val methods = (type.methods.filter { it.isStatic } + staticTypes.flatMap { it.methods })
+                    .distinctBy { it.name to it.parameters.map { p -> p.typeName } }
+                val accessors = methods.map { method ->
+                    val signature = WinUIXamlApplicationMethod(method.name, WinRTTypeRef.fromDisplayName(method.returnTypeName),
+                        method.parameters.map { WinRTTypeRef.fromDisplayName(it.typeName) }, isStatic = true)
+                    XamlStaticAccessor(signature, xamlProjectedPropertySourceType(signature.returnType, specialTypes, semantics),
+                        signature.parameterTypes.map { xamlProjectedPropertySourceType(it, specialTypes, semantics) })
+                }
+                val properties = (type.properties.filter { it.isStatic } + staticTypes.flatMap { it.properties }).distinctBy { it.name }
+                val schema = WinUIXamlApplicationTypeMembers(properties = properties.map {
+                    WinUIXamlApplicationProperty(it.name, WinRTTypeRef.fromDisplayName(it.typeName), isStatic = true)
+                })
+                xamlAttachedRegistrationSources(owner, schema, accessors, convert,
+                    accessorName = { it.replaceFirstChar(Char::lowercase) }, memberName = { "$name.$it" }, localValueSource = ::localValueSource).forEach {
+                    appendLine(it.prependIndent("      ") + ",")
+                }
             }
             appendLine("    )," )
             appendLine("  ))")
@@ -106,9 +149,7 @@ internal fun writeXamlProjectedTypeRegistrationSource(root: Path, model: WinRTMe
         // Keep SDK-wide registration below JVM method limits. Each helper owns
         // one type, just as generated XamlTypeInfo owns its member table.
         types.forEachIndexed { index, type ->
-            // Native has no development transport. Its compiler removes only these
-            // private bodies before collecting demand; the identity edges below remain.
-            if (sdk(type)) appendLine("@Suppress(\"$JVM_XAML_DEVELOPMENT_ACCESSORS\")")
+            // Development accessors serve both JVM and Native sessions.
             appendLine("private fun ${register}_$index() {")
             emit(type, sdk(type))
             appendLine("}")

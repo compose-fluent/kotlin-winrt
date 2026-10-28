@@ -227,8 +227,42 @@ JVM WinUI 2 execution still requires resolving the JDK startup limitation above.
 Installing framework dependencies on a clean machine also remains an integration
 check; the current machine already had a compatible WinUI 2 framework installed.
 
-UWP designer/preview, Hot Reload, and the packaged runner's `--debug-output` capture
-are not implemented. Use application-data logs and attach an external debugger to
-the reported PID when needed. Existing WinUI IDE features do not establish UWP
-support. See the [XAML compiler guide](../windows-toolkit-gradle-plugin/XAML.md)
-and [runtime ABI contract](../winrt-runtime/XAML_CONTRACT.md) for the shared portions.
+Native UWP development launches support the IDE's project-code XAML preview and
+live property Hot Reload. Synchronize Gradle, select the Native packaged launch,
+and enable project code for preview. The isolated `.preview` package starts the
+generated Application instead of the user's main/Application constructor; custom
+controls still execute their compiled constructors. UWP uses its activated
+CoreWindow. With project code disabled, `runWinRTXamlSdkPreviewUwp` prepares an
+independent UWP designer package containing a fixed Kotlin/Native SDK host.
+It does not compile the application or run its main/Application constructor.
+The IDE supplies current XAML and passive image/font assets to that package.
+
+The launcher supplies development settings through `IPackageDebugSettings`, using
+the Windows startup-thread resume contract, and transfers the session descriptor
+from the package's LocalState into the IDE session directory. Authenticated named
+pipes use the actual AppContainer namespace and an ACL restricted to the user and
+that package SID. No loopback exemption is needed. A separate process restores
+normal package lifecycle and removes its helper/session when the application exits,
+including after the Gradle launcher has detached. Concurrent preview and live
+packages retain independent lifecycle ownership.
+
+Windows acceptance covers Native UWP activation, light/dark previews, unsaved
+markup, actual templates/pixels/property readback, live text/button updates,
+transaction rollback and process-exit cleanup. IDE runtime tests accept
+`-Pwinrt.ide.uwpPreviewSession=<directory>` and
+`-Pwinrt.ide.uwpHotReloadSession=<directory>` for these real application sessions.
+Native IDE **Debug** builds and activates the selected Native Debug executable,
+attaches LLDB before application code and supports source breakpoints, stepping,
+thread stacks and Kotlin object fields. Configure LLDB under Kotlin WinRT settings;
+the Gradle model supplies the matching Kotlin/Native compiler formatter.
+
+`runWinAppPackage... --debug-output` captures Windows `OutputDebugString` messages
+(including Unicode), first/second-chance exception notifications and process exit.
+Application exception handlers still receive their exceptions. Output streams to
+the Gradle console and is retained at `build/tmp/<run-task>/native-debug-output.log`.
+With `--detach`, capture continues in the activation helper and the task prints the
+log path. This captures native debugger output, not ordinary stdout/stderr.
+Windows permits one debugger per process, so `--debug-output` and IDE LLDB Debug
+are separate launch modes. The helper and package debug lease end with the app.
+See the [XAML compiler guide](../windows-toolkit-gradle-plugin/XAML.md) and
+[runtime ABI contract](../winrt-runtime/XAML_CONTRACT.md) for shared contracts.

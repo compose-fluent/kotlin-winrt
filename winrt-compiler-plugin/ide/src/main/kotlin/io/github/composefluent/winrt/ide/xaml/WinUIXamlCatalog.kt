@@ -2,7 +2,7 @@ package io.github.composefluent.winrt.ide.xaml
 
 import io.github.composefluent.winrt.metadata.*
 
-data class WinUIXamlMember(val name: String, val typeName: String, val owner: String, val isEvent: Boolean = false)
+data class WinUIXamlMember(val name: String, val typeName: String, val owner: String, val isEvent: Boolean = false, val isWritable: Boolean = false)
 data class WinUIXamlContentMember(val name: String, val collection: Boolean)
 
 /** An editor view of normalized WinMD, not a second control or projection registry. */
@@ -49,15 +49,37 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
     fun propertyContent(type: WinRTTypeDefinition, name: String): WinUIXamlContentMember? {
         val member = members(type).firstOrNull { it.name == name && !it.isEvent } ?: return null
         val reference = WinRTTypeRef.fromDisplayName(member.typeName)
-        fun mutable(ref: WinRTTypeRef) = when (val shape = specialTypes.resolveType(ref, type.namespace)) {
-            is WinRTCollectionTypeDescriptor -> shape.kind == WinRTCollectionInterfaceKind.Vector
-            is WinRTBindableCollectionTypeDescriptor -> shape.kind == WinRTBindableCollectionKind.Vector
-            else -> false
-        }
-        val definition = types[reference.qualifiedName]
-        val collection = mutable(reference) || definition?.takeIf { it.kind == WinRTTypeKind.RuntimeClass }
-            ?.let { closure.resolveRuntimeClass(it).instanceInterfaceClosure.any { contract -> mutable(contract.interfaceType) } } == true
+        val collection = closure.mutableVectorElementType(reference, type.namespace, specialTypes) != null
         return WinUIXamlContentMember(name, collection)
+    }
+
+    /** Uses the same normalized vector element contract as CsWinRT collection emission. */
+    fun acceptsContent(owner: WinRTTypeDefinition, child: WinRTTypeDefinition): Boolean {
+        val content = contentMember(owner) ?: return false
+        val member = members(owner).firstOrNull { it.name == content.name && !it.isEvent } ?: return false
+        val reference = WinRTTypeRef.fromDisplayName(member.typeName)
+        val expected = if (content.collection)
+            closure.mutableVectorElementType(reference, owner.namespace, specialTypes)?.qualifiedName ?: return false
+        else if (member.isWritable) reference.qualifiedName else return false
+        return acceptsType(expected ?: return false, child)
+    }
+
+    fun propertyValueType(type: WinRTTypeDefinition, name: String): String? = members(type)
+        .firstOrNull { it.name == name && !it.isEvent }?.let { member ->
+            val reference = WinRTTypeRef.fromDisplayName(member.typeName)
+            closure.mutableVectorElementType(reference, type.namespace, specialTypes)?.qualifiedName ?: reference.qualifiedName
+        }
+
+    fun acceptsType(expected: String, child: WinRTTypeDefinition): Boolean {
+        if (expected in setOf("Object", "System.Object")) return true
+        val seen = hashSetOf<String>()
+        var current: WinRTTypeDefinition? = child
+        while (current != null && seen.add(current.qualifiedName)) {
+            if (current.qualifiedName == expected) return true
+            if (current.kind == WinRTTypeKind.RuntimeClass && closure.resolveRuntimeClass(current).instanceInterfaceClosure.any { it.interfaceType.qualifiedName == expected }) return true
+            current = current.baseTypeName?.let(types::get)
+        }
+        return false
     }
 
     fun members(type: WinRTTypeDefinition): List<WinUIXamlMember> = buildList {
@@ -71,7 +93,7 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
                 closure.resolveRuntimeClass(owner).instanceInterfaceClosure.mapNotNull { it.definitionType } else emptyList()
             definitions.forEach { definition ->
                 definition.properties.filter { !it.isStatic && it.hasValidAccessors }.forEach {
-                    add(WinUIXamlMember(it.name, it.typeName, owner.qualifiedName))
+                    add(WinUIXamlMember(it.name, it.typeName, owner.qualifiedName, isWritable = !it.isReadOnly))
                 }
                 definition.events.filter { !it.isStatic && it.hasValidAccessors }.forEach {
                     add(WinUIXamlMember(it.name, it.delegateTypeName, owner.qualifiedName, true))
@@ -80,6 +102,10 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
             current = owner.baseTypeName?.let { types[it] }
         }
     }.distinctBy { it.name }
+
+    fun isDependencyProperty(member: WinUIXamlMember): Boolean = types[member.owner]?.let {
+        closure.xamlDependencyPropertyOwner(it, member.name.substringAfterLast('.')) != null
+    } == true
 
     fun attachedMembers(type: WinRTTypeDefinition): List<WinUIXamlMember> {
         val staticInterfaces = if (type.kind == WinRTTypeKind.RuntimeClass)
@@ -93,7 +119,7 @@ class WinUIXamlCatalog(val model: WinRTMetadataModel) {
             val name = getter.name.removePrefix("Get")
             val setter = methods.firstOrNull { it.name == "Set$name" && it.parameters.size == 2 }
             if (setter != null && getter.returnTypeName != setter.parameters[1].typeName) return@mapNotNull null
-            WinUIXamlMember(name, getter.returnTypeName, type.qualifiedName)
+            WinUIXamlMember(name, getter.returnTypeName, type.qualifiedName, isWritable = setter != null)
         }.distinctBy { it.name }
     }
 

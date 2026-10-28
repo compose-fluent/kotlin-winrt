@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.hotreload
 
 import com.intellij.openapi.components.service
@@ -33,6 +35,60 @@ import java.util.concurrent.atomic.AtomicReference
 class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
     private val markup = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><TextBlock x:Name="Greeting" Text="Hello"/></Window>"""
 
+    fun testRestartStateNeverUsesProcessLocalInstanceOrdinals() {
+        val first = WinUIXamlHotReloadRoot("First", "First.xaml", "hash", 0, emptyList())
+        val second = first.copy(className = "Second", resourcePath = "Second.xaml")
+        assertEquals(listOf(WinUIXamlStateRequest("First", "First.xaml"),
+            WinUIXamlStateRequest("Second", "Second.xaml")), restartStatePlan(listOf(first, second)).requests)
+        assertTrue(restartStatePlan(listOf(first.copy(instances = 0))).requests.isEmpty())
+        val plan = restartStatePlan(listOf(first, second.copy(instances = 2)))
+        assertEquals(listOf(WinUIXamlStateRequest("First", "First.xaml")), plan.requests)
+        assertEquals(listOf("Second (Second.xaml)"), plan.skippedComponents)
+    }
+
+    fun testRestartStateUsesUniqueCompiledNamesForRepeatedComponents() {
+        val root = WinUIXamlHotReloadRoot("Repeated", "Control.xaml", "hash", 0, emptyList(), 3,
+            listOf("Window/Left", "", "Window/Right"))
+        val plan = restartStatePlan(listOf(root))
+        assertEquals(listOf("Window/Left", "Window/Right"), plan.requests.map { it.componentKey })
+        assertTrue(plan.requests.all { it.instance == 0 })
+        assertEquals(listOf("Repeated (Control.xaml)"), plan.skippedComponents)
+        assertTrue(restartStatePlan(listOf(root.copy(instances = 2, stateKeys = listOf("Window/Right", "Window/Left")))).skippedComponents.isEmpty())
+    }
+
+    fun testRestartWaitsForParentNamesWithoutRetainingATransientSkippedWarning() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val reads = AtomicInteger()
+        val root = service.state.value.roots.single().copy(instances = 2)
+        fixture.beforeHandshake.set {
+            fixture.rootsReply.set(listOf(root.copy(stateKeys = if (reads.incrementAndGet() == 1) listOf("", "") else listOf("Window/Left", "Window/Right"))))
+        }
+        val saved = listOf("Window/Left", "Window/Right").map { key ->
+            WinUIXamlStateRequest(root.className, root.resourcePath, componentKey = key,
+                restore = listOf(WinUIXamlSavedElement("Input", "TextBox", listOf(WinUIXamlVisualProperty("Text", key)))))
+        }
+        val generation = (WinRTDevelopmentSession::class.java.getDeclaredField("generation").apply { isAccessible = true }
+            .get(service) as java.util.concurrent.atomic.AtomicLong).get()
+        val method = WinRTDevelopmentSession::class.java.declaredMethods.single { it.name == "restoreAfterRestart" }.apply { isAccessible = true }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val restored = scope.async {
+                kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn<Unit> { continuation ->
+                    method.invoke(service, generation, saved, emptyList<String>(), continuation)
+                }
+            }
+            PlatformTestUtil.waitWithEventsDispatching("Named components become ready", { restored.isCompleted }, 10)
+            runBlocking { restored.await() }
+            assertTrue(reads.get() >= 2)
+            assertEquals(saved, fixture.states.toList())
+            assertEquals("Code changes loaded; saved UI and application checkpoints restored.", service.state.value.restartOutcome)
+            val outcome = service.state.value.restartOutcome
+            service.apply()
+            PlatformTestUtil.waitWithEventsDispatching("Ordinary polling keeps the result", { !service.state.value.busy }, 10)
+            assertEquals(outcome, service.state.value.restartOutcome)
+        } finally { scope.cancel() }
+    }
+
     fun testIdeLaunchAttachesWithoutAnEarlierToolWindowSessionAndAutomaticallyAppliesEditorChanges() = session { fixture ->
         val service = fixture.service(WinUIXamlHotReloadLaunchState())
         service.attach(fixture.module, fixture.module.hotReloadLaunches.single(), fixture.directory)
@@ -52,6 +108,135 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(1, fixture.patches.get())
     }
 
+    fun testExternalLoadedXamlChangesApplyWithoutAnOpenEditor() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        Files.writeString(fixture.source, markup.replace("Hello", "External edit"))
+        service.markXamlChanged(fixture.source.toRealPath().toString())
+        PlatformTestUtil.waitWithEventsDispatching("External XAML edit reaches the live root", {
+            fixture.lastPatch.get()?.changes?.singleOrNull()?.literal == "External edit"
+        }, 10)
+        assertFalse(service.state.value.projectCodeChanged)
+    }
+
+    fun testDictionaryChangesRequireBuildAndRespectManualMode() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        service.setAutomatic(false)
+        val dictionary = fixture.source.parent.resolve("Resources.xaml")
+        Files.writeString(dictionary, """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"/>""")
+        service.markXamlChanged(dictionary.toString())
+        assertTrue(service.state.value.projectCodeChanged)
+        assertTrue(service.state.value.connected)
+        assertFalse(service.state.value.rebuildingCode)
+        assertEquals(0, fixture.patches.get())
+    }
+
+    fun testCompiledPreviewBecomesOutdatedAfterDependencyKotlinEditAndStaysOutdatedAfterRender() = session { fixture ->
+        val dependency = fixture.root.resolve("controls")
+        val generated = dependency.resolve("generated")
+        val dependencyModule = fixture.module.copy(projectDirectory = dependency.toString(),
+            sourceSets = listOf(io.github.composefluent.winrt.ide.gradle.WinRTSourceSetData("main",
+                listOf(dependency.toString()), emptyList(), emptyList(), generatedKotlinRoots = listOf(generated.toString()))))
+        project.service<WinRTProjectService>().replaceBuildModels(fixture.root.toString(), listOf(fixture.module, dependencyModule))
+        val service = fixture.previewService()
+        service.reconnect(); fixture.connected(service)
+        service.markProjectCodeChanged(generated.resolve("Generated.kt").toString())
+        service.markProjectCodeChanged(fixture.root.resolve("build/Generated.kt").toString())
+        service.markProjectCodeChanged(fixture.root.resolve("Page.xaml").toString())
+        service.markProjectCodeChanged(fixture.root.resolveSibling("outside/Other.kt").toString())
+        assertFalse(service.state.value.projectCodeChanged)
+        service.markProjectCodeChanged(dependency.resolve("Control.kt").toString())
+        assertTrue(service.state.value.projectCodeChanged)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", capture = true))
+        PlatformTestUtil.waitWithEventsDispatching("Inspection completes", { service.state.value.inspection != null }, 10)
+        assertTrue("A successful XAML render does not update compiled Kotlin", service.state.value.projectCodeChanged)
+        val live = fixture.service()
+        live.reconnect(); fixture.connected(live)
+        live.markProjectCodeChanged(dependency.resolve("Control.kt").toString())
+        assertTrue("Live applications must also report stale compiled Kotlin", live.state.value.projectCodeChanged)
+        assertTrue("Tracking Kotlin edits must not disconnect the live application", live.state.value.connected)
+        val process = live.state.value.pid
+        live.apply()
+        PlatformTestUtil.waitWithEventsDispatching("The XAML check completes", {
+            live.state.value.message == "XAML matches the running components."
+        }, 10)
+        assertTrue("Matching XAML does not certify Kotlin changes", live.state.value.projectCodeChanged)
+        assertEquals("Tracking edits must not restart the application", process, live.state.value.pid)
+        live.disconnect()
+        assertTrue(live.state.value.projectCodeChanged)
+        live.reconnect(); fixture.connected(live)
+        assertTrue("Reconnection does not replace compiled code", live.state.value.projectCodeChanged)
+        val restored = fixture.service(live.getState())
+        restored.reconnect(); fixture.connected(restored)
+        assertTrue("Restoring the same process must retain the source warning", restored.state.value.projectCodeChanged)
+    }
+
+    fun testLoadedSourceReusesOnlyTheConnectedHostThatExposesItsType() = session { fixture ->
+        val unknown = fixture.root.resolve("Unknown.xaml")
+        Files.writeString(unknown, markup.replace("probe.Window", "dependency.Unknown"))
+        val service = fixture.service()
+        assertNull(service.loadedSourceLaunch(fixture.source.toString()))
+        service.reconnect(); fixture.connected(service)
+        assertEquals(fixture.module to fixture.module.hotReloadLaunches.single(),
+            service.loadedSourceLaunch(fixture.source.toString()))
+        assertNull("An indexed source does not prove the running host contains its type",
+            service.loadedSourceLaunch(unknown.toString()))
+        service.disconnect()
+        assertNull(service.loadedSourceLaunch(fixture.source.toString()))
+    }
+
+    fun testConnectedHostMatchesItsApplicationAndLaunchOnly() = session { fixture ->
+        val service = fixture.service()
+        val launch = fixture.module.hotReloadLaunches.single()
+        assertFalse(service.usesLaunch(fixture.module, launch))
+        service.reconnect(); fixture.connected(service)
+        assertTrue(service.usesLaunch(fixture.module, launch))
+        assertFalse(service.usesLaunch(fixture.module.copy(projectDirectory = fixture.root.resolve("other-app").toString()), launch))
+        assertFalse(service.usesLaunch(fixture.module, launch.copy(taskName = "otherLaunch")))
+    }
+
+    fun testLeavingTheEditorCancelsPendingApplicationSwitch() = session { fixture ->
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fixture.beforeHandshake.set { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
+        val service = fixture.service()
+        service.reconnect()
+        fixture.await("Original host is connecting", entered)
+        try {
+            runBlocking {
+                val pending = launch(start = CoroutineStart.UNDISPATCHED) {
+                    service.ensurePreviewReady(fixture.module.copy(projectDirectory = fixture.root.resolve("other").toString()),
+                        fixture.module.hotReloadLaunches.single())
+                    fail("A busy other host must not be treated as the requested application")
+                }
+                assertTrue(pending.isActive)
+                pending.cancelAndJoin()
+            }
+        } finally { release.countDown() }
+        fixture.connected(service)
+        assertTrue(service.usesLaunch(fixture.module, fixture.module.hotReloadLaunches.single()))
+        assertEquals(fixture.directory.toString(), service.getState().sessionDirectory)
+    }
+
+    fun testProvenSourceHostSurvivesWorkspaceReloadButNotRemovedGradleModels() = session { fixture ->
+        val service = fixture.service()
+        assertNull(service.sourcePreviewLaunch(fixture.source.toString()))
+        service.reconnect(); fixture.connected(service)
+        val expected = fixture.module to fixture.module.hotReloadLaunches.single()
+        assertEquals(expected, service.sourcePreviewLaunch(fixture.source.toString()))
+        val hosts = project.service<WinRTPreviewSourceHosts>()
+        val xml = XmlSerializer.serialize(hosts.getState())
+        val restored = WinRTPreviewSourceHosts()
+        restored.loadState(XmlSerializer.deserialize(xml, WinRTPreviewSourceHosts.State::class.java))
+        service.disconnect()
+        assertEquals(expected, restored.resolve(fixture.source.toString(), listOf(fixture.module)))
+        assertNull(restored.resolve(fixture.source.toString(), emptyList()))
+        assertNull(restored.resolve(fixture.source.toString(), listOf(fixture.module.copy(hotReloadLaunches = emptyList()))))
+        assertNull(restored.resolve(fixture.source.toString(), listOf(fixture.module.copy(xamlCompilations = emptyList()))))
+        assertNull(restored.resolve(fixture.root.resolve("Unknown.xaml").toString(), listOf(fixture.module)))
+    }
+
     fun testFailedIdeLaunchCancelsOnlyItsOwnPendingConnection() = session { fixture ->
         val service = fixture.service(WinUIXamlHotReloadLaunchState())
         val folder = fixture.directory.parent.resolve(UUID.randomUUID().toString())
@@ -65,6 +250,60 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         assertEquals(0, fixture.requests.get())
     }
 
+    fun testNativeDebuggerDrainsInspectionAndResumesEditorUpdatesAfterDetach() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+        fixture.await("Inspection is in progress", entered)
+        val pid = ProcessHandle.current().pid()
+        val drained = service.suspendForDebugger(pid)
+        assertFalse("Do not attach LLDB in the middle of a UI transaction", drained.isDone)
+        release.countDown()
+        PlatformTestUtil.waitWithEventsDispatching("Drain before attach", { drained.isDone }, 10)
+        drained.get(1, TimeUnit.SECONDS)
+        val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(fixture.source)!!
+        val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)!!
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            document.setText(markup.replace("Hello", "Edited while debugging"))
+        }
+        service.apply()
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+        assertEquals(0, fixture.patches.get())
+        assertEquals(1, fixture.inspections.size)
+        service.resumeAfterDebugger(pid + 1)
+        assertEquals(0, fixture.patches.get())
+        service.resumeAfterDebugger(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Apply after debugger detaches", { fixture.patches.get() == 1 }, 10)
+        assertEquals("Edited while debugging", fixture.lastPatch.get()!!.changes.single().literal)
+    }
+
+    fun testRunningDebuggerAppliesXamlAndPausedDebuggerRetainsLatestInspection() = session { fixture ->
+        val service = fixture.service()
+        service.reconnect(); fixture.connected(service)
+        val pid = ProcessHandle.current().pid()
+        val drain = service.suspendForDebugger(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Debugger drain", { drain.isDone }, 10)
+        drain.get(1, TimeUnit.SECONDS)
+        val file = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByNioFile(fixture.source)!!
+        val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)!!
+        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            document.setText(markup.replace("Hello", "Running with debugger"))
+        }
+        service.debuggerRunning(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Apply while debugger is running", { fixture.patches.get() == 1 }, 10)
+        service.debuggerPaused(pid)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(1)))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(2)))
+        assertTrue(fixture.inspections.isEmpty())
+        service.debuggerRunning(pid + 1)
+        assertTrue(fixture.inspections.isEmpty())
+        service.debuggerRunning(pid)
+        PlatformTestUtil.waitWithEventsDispatching("Inspect latest selection after Resume", { fixture.inspections.size == 1 }, 10)
+        assertEquals(listOf(2), fixture.inspections.single().selectedPath)
+    }
+
     fun testInspectionCoalescesNewSelectionsAndKeepsThePendingDesignDocument() = session { fixture ->
         val service = fixture.service()
         service.reconnect(); fixture.connected(service)
@@ -72,17 +311,137 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
         service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
         fixture.await("First inspection reached peer", entered)
-        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", width = 640))
-        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0)))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", width = 640, renderScale = 2.5))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0), capture = false))
         fixture.beforeInspection.set(null); release.countDown()
         PlatformTestUtil.waitWithEventsDispatching("Latest design inspection completes", {
             fixture.inspections.size == 2 && !service.state.value.inspecting
         }, 10)
         val next = fixture.inspections.last()
-        assertEquals("<Grid/>", next.previewMarkup); assertEquals(640, next.width)
+        assertEquals("<Grid/>", next.previewMarkup); assertEquals(640, next.width); assertEquals(2.5, next.renderScale)
         assertEquals(listOf(0), next.selectedPath)
+        assertTrue("Selection must not discard the pending high-density capture", next.capture)
         assertEquals("Greeting", service.state.value.inspection!!.properties.single().value)
         assertEquals(0, fixture.patches.get())
+    }
+
+    fun testFirstImagePrecedesTreeAndDirectPropertyReadsKeepTheCompleteTree() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val root = WinUIXamlVisualNode(emptyList(), "Grid", "Root", WinUIXamlVisualBounds(0.0, 0.0, 800.0, 600.0))
+        val child = root.copy(path = listOf(0), typeName = "TextBlock", name = "Greeting")
+        val sibling = child.copy(path = listOf(1), name = "Sibling")
+        fun inspect(request: WinUIXamlInspectionRequest, snapshot: WinUIXamlVisualSnapshot) {
+            fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "ready", inspection = snapshot))
+            val count = fixture.inspections.size
+            service.inspect(request)
+            PlatformTestUtil.waitWithEventsDispatching("Inspection response is published", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        val picture = WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = "<Grid/>", readProperties = false, readTree = false)
+        fun firstImageThenTree(request: WinUIXamlInspectionRequest): WinUIXamlVisualImage {
+            val entered = CountDownLatch(1); val release = CountDownLatch(1)
+            val count = fixture.inspections.size
+            fixture.beforeInspection.set {
+                if (fixture.inspections.last().readTree) {
+                    entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS))
+                    fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "tree", inspection =
+                        WinUIXamlVisualSnapshot(listOf(root, child, sibling), emptyList(), treeToken = 42)))
+                } else fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "picture", inspection =
+                    WinUIXamlVisualSnapshot(listOf(root), emptyList(), WinUIXamlVisualImage(1, 1, ByteArray(4)))))
+            }
+            service.inspect(request)
+            fixture.await("The session requests a complete tree after the image", entered)
+            val image = service.state.value.inspection!!.image!!
+            assertFalse("The picture is already available while traversal is pending", service.state.value.inspectionTreeRead)
+            assertEquals("Previous source editing bounds are discarded", listOf(root), service.state.value.inspection!!.nodes)
+            fixture.beforeInspection.set(null); release.countDown()
+            PlatformTestUtil.waitWithEventsDispatching("Complete tree becomes ready", {
+                fixture.inspections.size == count + 2 && !service.state.value.inspecting
+            }, 10)
+            assertTrue(service.state.value.inspectionTreeRead)
+            assertSame(image, service.state.value.inspection!!.image)
+            assertEquals(listOf(root, child, sibling), service.state.value.inspection!!.nodes)
+            val treeRequest = fixture.inspections.last()
+            assertFalse(treeRequest.capture); assertFalse(treeRequest.readProperties)
+            assertEquals("", treeRequest.previewMarkup)
+            return image
+        }
+        val image = firstImageThenTree(picture)
+        val properties = listOf(WinUIXamlVisualProperty("Text", "Selected value"))
+        inspect(picture.copy(previewMarkup = "", capture = false, readProperties = true, selectedPath = listOf(0)),
+            WinUIXamlVisualSnapshot(listOf(root, child), properties))
+        assertTrue(service.state.value.inspectionTreeRead)
+        assertTrue(service.state.value.inspectionPropertiesRead)
+        assertEquals(listOf(root, child, sibling), service.state.value.inspection!!.nodes)
+        assertSame(image, service.state.value.inspection!!.image)
+        assertEquals(properties, service.state.value.inspection!!.properties)
+        assertEquals("The counter describes the retained complete tree", "3 visual nodes", service.state.value.message)
+        assertEquals("Instance commands retain the generation of the complete tree", 42L, service.state.value.inspection!!.treeToken)
+        val replacement = child.copy(name = "Replacement", sourceId = "new-template")
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set {
+            if (fixture.inspections.last().readTree) {
+                entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS))
+            }
+            fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "replacement", inspection =
+                WinUIXamlVisualSnapshot(listOf(root, replacement), properties)))
+        }
+        service.inspect(picture.copy(previewMarkup = "", capture = false, readProperties = true, selectedPath = listOf(0)))
+        fixture.await("Changed template provenance requests a new tree", entered)
+        assertFalse("Old template provenance cannot authorize editing", service.state.value.inspectionTreeRead)
+        fixture.beforeInspection.set(null); release.countDown()
+        PlatformTestUtil.waitWithEventsDispatching("Replacement template tree completes", { !service.state.value.inspecting }, 10)
+        assertTrue(service.state.value.inspectionTreeRead)
+        assertEquals(replacement, service.state.value.inspection!!.nodes.last())
+        assertSame(image, service.state.value.inspection!!.image)
+        firstImageThenTree(picture.copy(previewMarkup = "<Border/>"))
+        inspect(picture.copy(className = "Other", previewMarkup = "", capture = false), WinUIXamlVisualSnapshot(listOf(root), emptyList()))
+        assertFalse(service.state.value.inspectionTreeRead)
+        assertNull("A different component must not inherit another image", service.state.value.inspection!!.image)
+    }
+
+    fun testSelectionKeepsAPendingCompleteTreeRequest() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", readProperties = false, readTree = false))
+        fixture.await("First image reaches peer", entered)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", capture = false, readProperties = false))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0), capture = false, readTree = false))
+        fixture.beforeInspection.set(null); release.countDown()
+        PlatformTestUtil.waitWithEventsDispatching("Tree and current selection complete together", {
+            fixture.inspections.size == 2 && !service.state.value.inspecting
+        }, 10)
+        assertTrue(fixture.inspections.last().readTree)
+        assertEquals(listOf(0), fixture.inspections.last().selectedPath)
+        assertTrue(service.state.value.inspectionTreeRead)
+    }
+
+    fun testSelectionCannotDiscardPendingClockCommandAndClockFailureKeepsTheCanvas() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        fixture.beforeInspection.set { entered.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)) }
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+        fixture.await("Capture reached peer", entered)
+        val clock = WinUIXamlPreviewAnimation("", "Motion", 2000)
+        try {
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", animation = clock))
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", selectedPath = listOf(0), capture = false))
+        } finally { fixture.beforeInspection.set(null); release.countDown() }
+        PlatformTestUtil.waitWithEventsDispatching("Pending clock completes", { fixture.inspections.size == 2 && !service.state.value.inspecting }, 10)
+        assertEquals(clock, fixture.inspections.last().animation)
+        assertTrue(fixture.inspections.last().capture)
+        val previous = service.state.value.inspection
+        fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Missing storyboard"))
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", animation = clock))
+        PlatformTestUtil.waitWithEventsDispatching("Clock failure displayed", { service.state.value.animationError != null && !service.state.value.inspecting }, 10)
+        assertEquals("Missing storyboard", service.state.value.animationError)
+        assertSame(previous, service.state.value.inspection)
+        assertNull(service.state.value.inspectionError)
+        fixture.inspectionReply.set(null)
+        service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", animation = clock))
+        PlatformTestUtil.waitWithEventsDispatching("Clock retry recovers", { service.state.value.animationError == null && !service.state.value.inspecting }, 10)
     }
 
     fun testDisconnectClosesAnInspectionSocketAndDiscardsItsLateResult() = session { fixture ->
@@ -108,6 +467,10 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         }
         inspect("<Grid/>")
         assertNotNull(service.state.value.inspection!!.image)
+        val renderedDocument = service.state.value.inspectionDocument
+        assertEquals("<Grid/>", renderedDocument?.previewMarkup)
+        inspect()
+        assertEquals("Selection-only replies retain the image's actual document", renderedDocument, service.state.value.inspectionDocument)
         fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Missing theme resource"))
         inspect("<Invalid/>")
         assertNull(service.state.value.inspection)
@@ -120,6 +483,85 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         inspect("<Grid/>")
         assertNull(service.state.value.inspectionError)
         assertNotNull(service.state.value.inspection!!.image)
+    }
+
+    fun testLostDesignReplyInvalidatesOldImageUntilAFullDocumentRecovers() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        fun inspect(markup: String) {
+            val count = fixture.inspections.size
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = markup))
+            PlatformTestUtil.waitWithEventsDispatching("Inspection completes", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        inspect("<Grid/>")
+        assertNotNull(service.state.value.inspection!!.image)
+        fixture.beforeInspection.set { it.close() }
+        inspect("<Border/>")
+        assertNotNull(service.state.value.inspectionError)
+        assertNull(service.state.value.inspection)
+        fixture.beforeInspection.set(null)
+        inspect("")
+        assertNotNull("A selection cannot certify which document was committed", service.state.value.inspectionError)
+        assertNull(service.state.value.inspection)
+        inspect("<Border/>")
+        assertNull(service.state.value.inspectionError)
+        assertNotNull(service.state.value.inspection!!.image)
+    }
+
+    fun testRejectedSelectionIsReportedAndSuccessfulInspectionCanRecover() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        fun inspect() {
+            val count = fixture.inspections.size
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml"))
+            PlatformTestUtil.waitWithEventsDispatching("Selection completes", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        inspect()
+        val previous = service.state.value.inspection
+        fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Selected visual was removed"))
+        inspect()
+        assertEquals("Selected visual was removed", service.state.value.inspectionError)
+        assertSame(previous, service.state.value.inspection)
+        assertFalse(service.state.value.inspectionPropertiesRead)
+        fixture.inspectionReply.set(null)
+        inspect()
+        assertNull(service.state.value.inspectionError)
+        assertTrue(service.state.value.inspectionPropertiesRead)
+    }
+
+    fun testSdkReceiptWaitsForSuccessfulDocumentCaptureAfterAssetsAreStaged() = session { fixture ->
+        val service = fixture.service(); service.reconnect(); fixture.connected(service)
+        val host = Files.createDirectories(Path.of(fixture.module.buildDirectory, "sdk-host"))
+        val executable = Files.write(host.resolve("preview.exe"), byteArrayOf(1))
+        val references = Files.writeString(host.resolve("references.json"), "{}")
+        val sdk = io.github.composefluent.winrt.ide.gradle.WinRTStaticPreviewData(
+            "runWinRTXamlSdkPreview", executable.toString(), host.toString(), references.toString())
+        val module = fixture.module.copy(staticPreview = sdk)
+        val cache = WinRTPreviewLaunchCache(fixture.root, listOf(module), module, sdk.launch())
+        val inputs = cache.inputs()
+        cache.remember(inputs)
+        // The SDK host connected before the document staged its project assets.
+        val asset = Files.writeString(host.resolve("Logo.png"), "project asset")
+        assertFalse(cache.reusable(inputs))
+        WinRTDevelopmentSession::class.java.getDeclaredField("pendingPreviewCache").apply { isAccessible = true }
+            .set(service, cache to inputs)
+        fun inspect(markup: String) {
+            val count = fixture.inspections.size
+            service.inspect(WinUIXamlInspectionRequest("probe.Window", "Window.xaml", previewMarkup = markup))
+            PlatformTestUtil.waitWithEventsDispatching("SDK document capture completes", {
+                fixture.inspections.size == count + 1 && !service.state.value.inspecting
+            }, 10)
+        }
+        fixture.inspectionReply.set(WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.REJECTED, "Invalid document"))
+        inspect("<Invalid/>")
+        assertFalse("A failed capture must not bless the deployment", cache.reusable(cache.inputs()))
+        fixture.inspectionReply.set(null)
+        inspect("<Grid/>")
+        assertTrue("Successful capture records the staged deployment", cache.reusable(cache.inputs()))
+        Files.writeString(asset, "a later deployment change")
+        assertFalse("Subsequent deployment changes still require validation", cache.reusable(cache.inputs()))
     }
 
     fun testWorkspaceRoundTripRestoresAnExistingConnectionAndPropertyUpdates() = session { fixture ->
@@ -270,9 +712,11 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
         val beforeInspection = AtomicReference<((java.net.Socket) -> Unit)?>()
         val inspections = java.util.concurrent.CopyOnWriteArrayList<WinUIXamlInspectionRequest>()
         val inspectionReply = AtomicReference<WinUIXamlHotReloadReply?>()
+        val rootsReply = AtomicReference<List<WinUIXamlHotReloadRoot>?>()
+        val states = java.util.concurrent.CopyOnWriteArrayList<WinUIXamlStateRequest>()
         private val server = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
         private val executor = Executors.newCachedThreadPool()
-        private val services = linkedMapOf<WinUIXamlHotReloadService, CoroutineScope>()
+        private val services = linkedMapOf<WinRTDevelopmentSession, CoroutineScope>()
         private val activeRequests = AtomicInteger()
         private val liveRoot = AtomicReference(WinUIXamlHotReloadRoot("probe.Window", "Window.xaml",
             WinUIXamlHotReloadMarkup.parse(markup).hash, 0, listOf("Greeting")))
@@ -305,7 +749,8 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
                             if (command.inspection != null) {
                                 inspections += command.inspection
                                 beforeInspection.get()?.invoke(socket)
-                            } else if (patch == null) beforeHandshake.get()?.invoke(socket)
+                            } else if (command.state != null) states += command.state
+                            else if (patch == null) beforeHandshake.get()?.invoke(socket)
                             else {
                                 val before = liveRoot.get()
                                 assertEquals(before.sourceHash, patch.expectedHash)
@@ -315,7 +760,7 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
                                 afterPatch.get()?.invoke(socket)
                             }
                             runCatching { WinUIXamlHotReloadWire.writeReply(socket.getOutputStream(),
-                                (if (command.inspection != null) inspectionReply.get() else null) ?: WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "connected", listOf(liveRoot.get()),
+                                (if (command.inspection != null) inspectionReply.get() else null) ?: WinUIXamlHotReloadReply(WinUIXamlHotReloadProtocol.APPLIED, "connected", rootsReply.get() ?: listOf(liveRoot.get()),
                                     inspection = command.inspection?.let { WinUIXamlVisualSnapshot(emptyList(), listOf(WinUIXamlVisualProperty("Name", "Greeting")),
                                         if (it.capture) WinUIXamlVisualImage(1, 1, byteArrayOf(0, 0, 0, -1)) else null) })) }
                         } } catch (error: Throwable) { failure.compareAndSet(null, error) }
@@ -337,7 +782,16 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
             }
         }
 
-        fun connected(service: WinUIXamlHotReloadService) = PlatformTestUtil.waitWithEventsDispatching("Development handshake", {
+        fun previewService(): WinRTDevelopmentSession {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            return WinRTDevelopmentSession(project, scope, isolatedPreview = true).also {
+                services[it] = scope
+                Disposer.register(testRootDisposable, it)
+                it.loadState(savedState())
+            }
+        }
+
+        fun connected(service: WinRTDevelopmentSession) = PlatformTestUtil.waitWithEventsDispatching("Development handshake", {
             service.state.value.connected && !service.state.value.busy
         }, 10)
 
@@ -347,7 +801,12 @@ class WinUIXamlHotReloadServiceTest : BasePlatformTestCase() {
             activeRequests.get() == 0 && services.values.none { scope -> scope.coroutineContext[Job]!!.children.any { it.isCancelled && !it.isCompleted } }
         }, 10)
 
-        fun dispose(service: WinUIXamlHotReloadService) {
+        fun dispose(service: WinRTDevelopmentSession) {
+            if (service !is WinUIXamlHotReloadService) {
+                // This wire peer runs in the test JVM, not an owned designer child.
+                service.disconnect()
+                WinRTDevelopmentSession::class.java.getDeclaredField("owned").apply { isAccessible = true }.set(service, null)
+            }
             Disposer.dispose(service)
             services.getValue(service).cancel()
         }

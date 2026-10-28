@@ -1,161 +1,32 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
-import java.io.*
+import java.io.DataInputStream
+import java.io.InputStream
+import java.io.OutputStream
 
-/** Bounded framing shared verbatim with the IDE; the authentication token is never a display DTO. */
+/** Stream adapter; JVM and Native share the bounded development wire codec. */
+@InternalWinRTApi
 object WinUIXamlHotReloadWire {
-    private const val MAX_FRAME = 8 * 1024 * 1024
-    private const val MAX_STRING = 128 * 1024
-    private fun DataOutputStream.string(value: String) {
-        val bytes = value.toByteArray(Charsets.UTF_8)
-        require(bytes.size <= MAX_STRING) { "Hot Reload string exceeds its protocol limit." }
-        writeInt(bytes.size); write(bytes)
-    }
-    private fun DataInputStream.string(): String {
-        val length = readInt(); require(length in 0..MAX_STRING) { "Invalid Hot Reload string length." }
-        return ByteArray(length).also(::readFully).toString(Charsets.UTF_8)
-    }
-    private fun DataInputStream.count(max: Int): Int = readInt().also { require(it in 0..max) { "Invalid Hot Reload item count." } }
-    private fun DataOutputStream.path(steps: List<WinUIXamlHotReloadStep>) {
-        require(steps.size <= 64) { "Hot Reload object path is too long." }
-        writeInt(steps.size)
-        steps.forEach { step -> when (step) {
-            is WinUIXamlHotReloadStep.Property -> { writeByte(0); string(step.name) }
-            is WinUIXamlHotReloadStep.Key -> { writeByte(1); string(step.name) }
-            is WinUIXamlHotReloadStep.Index -> { writeByte(2); writeInt(step.index); writeInt(step.expectedSize) }
-        } }
-    }
-    private fun DataInputStream.path(): List<WinUIXamlHotReloadStep> = List(count(64)) {
-        when (readUnsignedByte()) {
-            0 -> WinUIXamlHotReloadStep.Property(string())
-            1 -> WinUIXamlHotReloadStep.Key(string())
-            2 -> WinUIXamlHotReloadStep.Index(count(4096), count(4096))
-            else -> error("Invalid Hot Reload object path step.")
-        }
-    }
-    private fun DataOutputStream.target(target: WinUIXamlHotReloadTarget) { string(target.element); path(target.path) }
-    private fun DataInputStream.target() = WinUIXamlHotReloadTarget(string(), path())
-    private fun write(stream: OutputStream, body: DataOutputStream.() -> Unit) {
-        val bytes = ByteArrayOutputStream().also { DataOutputStream(it).use(body) }.toByteArray()
-        require(bytes.size <= MAX_FRAME) { "Hot Reload frame exceeds its protocol limit." }
-        DataOutputStream(stream).apply { writeInt(WinUIXamlHotReloadProtocol.MAGIC); writeInt(WinUIXamlHotReloadProtocol.VERSION)
-            writeInt(bytes.size); write(bytes); flush() }
-    }
-    private fun <T> read(stream: InputStream, body: DataInputStream.() -> T): T {
+    private fun read(stream: InputStream): ByteArray {
         val input = DataInputStream(stream)
-        require(input.readInt() == WinUIXamlHotReloadProtocol.MAGIC && input.readInt() == WinUIXamlHotReloadProtocol.VERSION) { "Unsupported Hot Reload protocol." }
-        val bytes = ByteArray(input.count(MAX_FRAME)).also(input::readFully)
-        return DataInputStream(ByteArrayInputStream(bytes)).use { bounded -> body(bounded).also {
-            require(bounded.available() == 0) { "Unexpected Hot Reload payload." }
-        } }
-    }
-    fun writeRequest(stream: OutputStream, token: String, patch: WinUIXamlHotReloadPatch?) = write(stream) {
-        string(token); writeBoolean(patch != null)
-        patch?.let { string(it.className); string(it.resourcePath); string(it.expectedHash); string(it.sourceHash); writeLong(it.version)
-            writeInt(it.changes.size); it.changes.forEach { change -> string(change.element); string(change.property); string(change.literal); path(change.path) }
-            writeInt(it.resources.size); it.resources.forEach { resources ->
-                target(resources.target); string(resources.xaml)
-                writeInt(resources.expectedKeys.size); resources.expectedKeys.forEach { key -> string(key) }
-                writeInt(resources.references.size); resources.references.forEach { reference ->
-                    target(reference.target); string(reference.property); string(reference.key)
-                }
-            }
-            writeInt(it.reads.size); it.reads.forEach { read -> target(read.target); string(read.property) }
-            writeInt(it.children.size); it.children.forEach { children ->
-                target(children.target); writeInt(children.expectedSize); writeInt(children.items.size)
-                children.items.forEach { item -> when (item) {
-                    is WinUIXamlHotReloadItem.Existing -> { writeByte(0); writeInt(item.index) }
-                    is WinUIXamlHotReloadItem.Markup -> { writeByte(1); string(item.xaml) }
-                } }
-            }
+        val header = ByteArray(12).also(input::readFully)
+        val bodySize = WinUIXamlHotReloadCodec.frameSize(header)
+        return ByteArray(12 + bodySize).also { frame ->
+            header.copyInto(frame)
+            input.readFully(frame, 12, bodySize)
         }
     }
-    internal data class Request(val token: String, val patch: WinUIXamlHotReloadPatch? = null, val inspection: WinUIXamlInspectionRequest? = null)
-    fun writeInspectionRequest(stream: OutputStream, token: String, request: WinUIXamlInspectionRequest) = write(stream) {
-        string(token); writeByte(2); string(request.className); string(request.resourcePath); writeInt(request.instance)
-        require(request.selectedPath.size <= 64 && request.selectedPath.all { it in 0..2048 })
-        writeInt(request.selectedPath.size); request.selectedPath.forEach { writeInt(it) }; writeBoolean(request.capture)
-        string(request.previewMarkup); writeInt(request.width); writeInt(request.height); string(request.theme)
-    }
-    fun readRequest(stream: InputStream): Pair<String, WinUIXamlHotReloadPatch?> = readCommand(stream).let {
-        require(it.inspection == null) { "Use the visual inspection command reader." }; it.token to it.patch
-    }
-    internal fun readCommand(stream: InputStream): Request = read(stream) {
-        val token = string()
-        val operation = readUnsignedByte()
-        if (operation == 2) {
-            val name = string(); val resource = string(); val instance = count(1024)
-            val path = List(count(64)) { count(2048) }; val capture = readBoolean()
-            val markup = string(); val width = count(4096); val height = count(4096); val theme = string()
-            return@read Request(token, inspection = WinUIXamlInspectionRequest(name, resource, instance, path, capture, markup, width, height, theme))
-        }
-        require(operation == 0 || operation == 1) { "Invalid development command." }
-        val patch = if (operation == 0) null else {
-            val name = string(); val path = string(); val expected = string(); val hash = string(); val version = readLong()
-            val changes = List(count(512)) { WinUIXamlHotReloadChange(string(), string(), string(), path()) }
-            val resources = List(count(64)) {
-                val target = target(); val xaml = string(); val keys = List(count(4096)) { string() }
-                WinUIXamlHotReloadResources(target, xaml, keys, List(count(512)) {
-                    WinUIXamlHotReloadResourceReference(target(), string(), string())
-                })
-            }
-            val reads = List(count(512)) { WinUIXamlHotReloadRead(target(), string()) }
-            val children = List(count(64)) {
-                val target = target(); val size = count(4096)
-                WinUIXamlHotReloadChildren(target, size, List(count(512)) {
-                    when (readUnsignedByte()) {
-                        0 -> WinUIXamlHotReloadItem.Existing(count(4096))
-                        1 -> WinUIXamlHotReloadItem.Markup(string())
-                        else -> error("Invalid Hot Reload child operation.")
-                    }
-                })
-            }
-            WinUIXamlHotReloadPatch(name, path, expected, hash, version, changes, resources, reads, children)
-        }
-        Request(token, patch)
-    }
-    fun writeReply(stream: OutputStream, reply: WinUIXamlHotReloadReply) = write(stream) {
-        writeInt(reply.status); string(reply.message); writeInt(reply.roots.size)
-        reply.roots.forEach { string(it.className); string(it.resourcePath); string(it.sourceHash); writeLong(it.version)
-            writeInt(it.instances)
-            writeInt(it.elements.size); it.elements.forEach { name -> string(name) } }
-        writeInt(reply.values.size); reply.values.forEach { string(it.element); string(it.property); string(it.value); path(it.path) }
-        writeBoolean(reply.inspection != null)
-        reply.inspection?.let { view ->
-            require(view.nodes.size <= 2048 && view.properties.size <= 64)
-            writeInt(view.nodes.size)
-            view.nodes.forEach { node ->
-                require(node.path.size <= 64); writeInt(node.path.size); node.path.forEach { writeInt(it) }
-                string(node.typeName); string(node.name)
-                with(node.bounds) { writeDouble(x); writeDouble(y); writeDouble(width); writeDouble(height) }
-            }
-            writeInt(view.properties.size); view.properties.forEach { string(it.name); string(it.value) }
-            writeBoolean(view.image != null)
-            view.image?.let { image ->
-                require(image.width in 1..768 && image.height in 1..768 && image.pixels.size == 4 * image.width * image.height)
-                writeInt(image.width); writeInt(image.height); write(image.pixels)
-            }
-        }
-    }
-    fun readReply(stream: InputStream): WinUIXamlHotReloadReply = read(stream) {
-        val status = readInt(); val message = string()
-        val roots = List(count(1024)) { val name = string(); val path = string(); val hash = string(); val version = readLong()
-            val instances = count(1024)
-            WinUIXamlHotReloadRoot(name, path, hash, version, List(count(4096)) { string() }, instances) }
-        val values = List(count(512)) { WinUIXamlHotReloadValue(string(), string(), string(), path()) }
-        val inspection = if (!readBoolean()) null else {
-            val nodes = List(count(2048)) {
-                val path = List(count(64)) { count(2048) }
-                val type = string(); val name = string()
-                WinUIXamlVisualNode(path, type, name, WinUIXamlVisualBounds(readDouble(), readDouble(), readDouble(), readDouble()))
-            }
-            val properties = List(count(64)) { WinUIXamlVisualProperty(string(), string()) }
-            val image = if (!readBoolean()) null else {
-                val width = count(768); val height = count(768); require(width > 0 && height > 0)
-                WinUIXamlVisualImage(width, height, ByteArray(4 * width * height).also(::readFully))
-            }
-            WinUIXamlVisualSnapshot(nodes, properties, image)
-        }
-        WinUIXamlHotReloadReply(status, message, roots, values, inspection)
-    }
+    private fun write(stream: OutputStream, bytes: ByteArray) { stream.write(bytes); stream.flush() }
+    fun writeRequest(stream: OutputStream, token: String, patch: WinUIXamlHotReloadPatch?) =
+        write(stream, WinUIXamlHotReloadCodec.writeRequest(token, patch))
+    fun writeInspectionRequest(stream: OutputStream, token: String, request: WinUIXamlInspectionRequest) =
+        write(stream, WinUIXamlHotReloadCodec.writeInspectionRequest(token, request))
+    fun writeStateRequest(stream: OutputStream, token: String, request: WinUIXamlStateRequest) =
+        write(stream, WinUIXamlHotReloadCodec.writeStateRequest(token, request))
+    fun readRequest(stream: InputStream): Pair<String, WinUIXamlHotReloadPatch?> = WinUIXamlHotReloadCodec.readRequest(read(stream))
+    internal fun readCommand(stream: InputStream): WinUIXamlHotReloadCodec.Request = WinUIXamlHotReloadCodec.readCommand(read(stream))
+    fun writeReply(stream: OutputStream, reply: WinUIXamlHotReloadReply) = write(stream, WinUIXamlHotReloadCodec.writeReply(reply))
+    fun readReply(stream: InputStream): WinUIXamlHotReloadReply = WinUIXamlHotReloadCodec.readReply(read(stream))
 }

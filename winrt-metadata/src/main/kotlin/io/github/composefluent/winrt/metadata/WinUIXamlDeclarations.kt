@@ -114,6 +114,16 @@ data class WinUIXamlSourceLocation(
 )
 
 object WinUIXamlDeclarations {
+    /** Connection compatibility excludes diagnostic source locations. */
+    fun designConnectionSignature(connection: WinUIXamlConnectionDeclaration): String {
+        fun contract(value: JsonElement): JsonElement = when (value) {
+            is JsonObject -> JsonObject(value.filterKeys { it != "Location" }.mapValues { contract(it.value) })
+            is JsonArray -> JsonArray(value.map(::contract))
+            else -> value
+        }
+        return sourceFingerprint(contract(Json.encodeToJsonElement(connection)).toString())
+    }
+
     const val SCHEMA_VERSION = 3
     private val json = Json { encodeDefaults = true }
     private val supportedFeatures = setOf("named-elements", "events", "compiled-bindings", "templates", "phased-bindings", "deferred-elements", "properties")

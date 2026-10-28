@@ -28,6 +28,45 @@ class WinRTRunConfigurationNamesTest : BasePlatformTestCase() {
         emptyList(), listOf(WinRTTargetData("winuiJvm", "jvm", emptyList()), WinRTTargetData("mingwX64", "native", emptyList())),
         emptyList(), emptyList())
 
+    fun testNativeDebugSelectsLldbRunnerAndLeavesGradleJvmUndebugged() {
+        val debugger = java.nio.file.Files.createTempFile("native-debugger-", ".exe")
+        val settings = service<io.github.composefluent.winrt.ide.settings.WinRTIdeSettings>()
+        val previousDebugger = settings.nativeDebuggerExecutable
+        val previousReload = settings.hotReloadEnabled
+        try {
+            settings.nativeDebuggerExecutable = debugger.toString()
+            settings.hotReloadEnabled = false
+            val launch = WinUIXamlHotReloadLaunchData("runWinAppNativeMingwX64MainDebugExecutable", "$root/app.exe", root,
+                nativeCompilerHome = "$root/konan")
+            project.service<WinRTProjectService>().replaceBuildModels(root, listOf(moduleData.copy(
+                hotReloadLaunches = listOf(launch), runTasks = listOf(launch.taskName))))
+            val saved = WinRTApplicationConfigurationType.create(project, ExternalSystemTaskExecutionSettings().apply {
+                externalProjectPath = root
+                externalSystemIdString = GradleConstants.SYSTEM_ID.id
+                taskNames = listOf(":winui-gallery:runDebugExecutableMingwX64")
+                executionName = "Native debug"
+                env = mapOf("KEEP" to "value")
+            })
+            val configuration = saved.configuration as WinRTApplicationRunConfiguration
+            val runner = ProgramRunner.getRunner(DefaultDebugExecutor.EXECUTOR_ID, configuration)
+            assertInstanceOf(runner, io.github.composefluent.winrt.ide.debug.WinRTNativeDebugRunner::class.java)
+            val executor = DefaultDebugExecutor.getDebugExecutorInstance()
+            val environment = com.intellij.execution.runners.ExecutionEnvironmentBuilder.create(executor, saved).build()
+            val state = configuration.getState(executor, environment) as com.intellij.openapi.externalSystem.service.execution.ExternalSystemRunnableState
+            assertTrue("Gradle must run without a JVM debug listener", state.debugPort <= 0)
+            val startup = environment.getUserData(io.github.composefluent.winrt.ide.debug.WinRTNativeDebugLaunch.KEY)!!
+            assertEquals(debugger, startup.lldb)
+            assertEquals(java.nio.file.Path.of(launch.nativeCompilerHome), startup.konanHome)
+            assertNotNull(environment.getUserData(io.github.composefluent.winrt.ide.run.WinRTApplicationHotReload.KEY))
+            assertEquals(mapOf("KEEP" to "value"), configuration.settings.env)
+            assertEquals(listOf(":winui-gallery:runDebugExecutableMingwX64"), configuration.settings.taskNames)
+        } finally {
+            settings.nativeDebuggerExecutable = previousDebugger
+            settings.hotReloadEnabled = previousReload
+            java.nio.file.Files.deleteIfExists(debugger)
+        }
+    }
+
     private fun configuration(task: String) = ExternalSystemUtil.createExternalSystemRunnerAndConfigurationSettings(
         ExternalSystemTaskExecutionSettings().apply {
             externalProjectPath = root

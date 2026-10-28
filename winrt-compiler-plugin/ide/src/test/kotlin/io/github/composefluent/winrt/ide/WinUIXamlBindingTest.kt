@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide
 
 import com.intellij.codeInsight.completion.CompletionType
@@ -232,6 +234,51 @@ class WinUIXamlBindingTest : BasePlatformTestCase() {
         assertTrue(first.text, first.text.contains("x:Name=\"Renamed\"") && first.text.contains("ElementName=Renamed"))
         val second = file.rootTag!!.findSubTags("DataTemplate")[1]
         assertTrue(second.text, second.text.contains("x:Name=\"Same\"") && second.text.contains("ElementName=Same"))
+    }
+
+    fun testDesignerNameRenameUpdatesScopedReferencesAndRejectsReferencedReset() {
+        val file = configure("""<Button x:Name="Greeting"/><Button Content="{Binding ElementName=Greeting}"/>""")
+        val tag = file.rootTag!!.subTags.first()
+        fun selection() = io.github.composefluent.winrt.ide.preview.DesignerSelection(
+            com.intellij.psi.SmartPointerManager.createPointer(tag), tag.text,
+            listOf(io.github.composefluent.winrt.ide.preview.DesignerProperty("Name", "String",
+                tag.getAttributeValue("Name", WinUIXamlCatalog.XAML), emptyList(), true, false)),
+            io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(0.0, 0.0, 100.0, 40.0), "Panel", emptyMap())
+        allowAnalysisOnEdt {
+            assertTrue(runCatching { io.github.composefluent.winrt.ide.preview.WinUIXamlDesignerEditing.apply(
+                project, selection(), mapOf("Name" to null), "Reset Name") }.isFailure)
+            io.github.composefluent.winrt.ide.preview.WinUIXamlDesignerEditing.apply(
+                project, selection(), mapOf("Name" to "Renamed"), "Rename Name")
+        }
+        assertTrue(file.text, file.text.contains("x:Name=\"Renamed\""))
+        assertTrue(file.text, file.text.contains("ElementName=Renamed"))
+        assertNull(tag.getAttribute("Name"))
+        val other = file.rootTag!!.subTags[1]
+        val unnamed = selection().copy(pointer = com.intellij.psi.SmartPointerManager.createPointer(other),
+            text = other.text, properties = selection().properties.map { it.copy(value = null) })
+        allowAnalysisOnEdt {
+            assertTrue(runCatching { io.github.composefluent.winrt.ide.preview.WinUIXamlDesignerEditing.apply(
+                project, unnamed, mapOf("Name" to "Renamed"), "Name element") }.isFailure)
+        }
+        assertNull(other.getAttributeValue("Name", WinUIXamlCatalog.XAML))
+    }
+
+    fun testStateRenameUpdatesOnlyTransitionsInItsGroup() {
+        val file = configure("""<VisualStateManager.VisualStateGroups>
+          <VisualStateGroup x:Name="First"><VisualState x:Name="Normal"/><VisualState x:Name="Pressed"/>
+            <VisualStateGroup.Transitions><VisualTransition From="Normal" To="Pressed"/><VisualTransition To="Normal"/></VisualStateGroup.Transitions>
+          </VisualStateGroup>
+          <VisualStateGroup x:Name="Second"><VisualState x:Name="Normal"/>
+            <VisualStateGroup.Transitions><VisualTransition To="Normal"/></VisualStateGroup.Transitions>
+          </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>""")
+        val groups = file.rootTag!!.subTags.single().subTags
+        val definition = groups[0].subTags[0].getAttribute("Name", WinUIXamlCatalog.XAML)!!.valueElement!!
+        val refs = allowAnalysisOnEdt { ReferencesSearch.search(definition).findAll() }
+        assertEquals(refs.toString(), 2, refs.size)
+        allowAnalysisOnEdt { RenameProcessor(project, definition, "Resting", false, false).run() }
+        assertTrue(groups[0].text, groups[0].text.contains("From=\"Resting\"") && groups[0].text.contains("To=\"Resting\""))
+        assertTrue(groups[1].text, groups[1].text.contains("x:Name=\"Normal\"") && groups[1].text.contains("To=\"Normal\""))
     }
 
     override fun tearDown() {

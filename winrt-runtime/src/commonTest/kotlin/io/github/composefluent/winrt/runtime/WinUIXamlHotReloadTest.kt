@@ -1,9 +1,12 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 import kotlin.test.*
 
 class WinUIXamlHotReloadTest {
     private class Element(var text: String = "original", var size: Int = 1, var style: Element? = null, var rejectStyle: Boolean = false)
+    private class Caption(val inlines: MutableList<Element> = mutableListOf(Element("caption")))
     private class Page(val resources: MutableMap<Any?, Any?>, val children: MutableList<Element> = mutableListOf())
     private val hash = "a".repeat(64)
     private val next = "b".repeat(64)
@@ -24,7 +27,7 @@ class WinUIXamlHotReloadTest {
                     if (element.rejectStyle && value.text == "reloaded style") error("style setter failed after mutation")
                 }),
             )))
-        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Page::class, "probe.Page", "System.Object", isWinRTComponent = false,
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Page::class, "probe.Page", "System.Object", isWinRTComponent = false, contentProperty = "Children",
             members = listOf(
                 WinUIXamlMemberDefinition("Resources", "Map", MutableMap::class, { (it as Page).resources }),
                 WinUIXamlMemberDefinition("Children", "List", MutableList::class, { (it as Page).children }),
@@ -32,6 +35,126 @@ class WinUIXamlHotReloadTest {
         return WinUIXamlHotReloadRegistry({ { task -> queue += task; true } }, { type, text -> if (type == Int::class) text.toInt() else text }, load, element)
     }
     private fun patch(vararg changes: WinUIXamlHotReloadChange) = WinUIXamlHotReloadPatch("probe.Page", "Page.xaml", hash, next, 1, changes.toList())
+
+    @Test fun compiled_event_routes_validate_atomically_and_replay_for_new_instances() {
+        // CsWinRT EventSource keeps a stable native invoker while its managed handler
+        // state changes. The compiler emits the typed forwarding body, not the IDE.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        val owner = Any(); val element = Element()
+        val route = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        registry.observeEvent(owner, "probe.Page", "Page.xaml", hash, "Greeting", element, "Click", route)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        fun change(name: String) = patch(WinUIXamlHotReloadChange("Greeting", "Text", "updated"))
+            .copy(events = listOf(WinUIXamlHotReloadEvent("Greeting", "Click", "First", name)))
+        val valid = change("Second")
+        assertEquals(valid, WinUIXamlHotReloadCodec.readRequest(WinUIXamlHotReloadCodec.writeRequest("token", valid)).second)
+        var reply: WinUIXamlHotReloadReply? = null
+        registry.submit(change("Uncompiled")) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, reply?.status)
+        assertEquals("First", route.handlerName); assertEquals("original", element.text)
+        registry.submit(valid) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, reply?.status)
+        assertEquals("Second", route.handlerName); assertEquals("updated", element.text)
+        val laterOwner = Any(); val laterElement = Element()
+        val later = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        registry.observeEvent(laterOwner, "probe.Page", "Page.xaml", hash, "Greeting", laterElement, "Click", later)
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, null, null)
+        assertEquals("Second", later.handlerName); assertEquals("updated", laterElement.text)
+        val disable = valid.copy(expectedHash = next, sourceHash = "c".repeat(64), version = 2, changes = emptyList(),
+            events = listOf(WinUIXamlHotReloadEvent("Greeting", "Click", "Second", "")))
+        registry.submit(disable) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, reply?.status)
+        assertEquals("", route.handlerName); assertEquals("", later.handlerName)
+        val reconnected = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        registry.observeEvent(owner, "probe.Page", "Page.xaml", hash, "Greeting", Element(), "Click", reconnected)
+        assertEquals("", reconnected.handlerName)
+    }
+
+    @Test fun event_route_is_restored_when_post_commit_readback_fails() {
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        val owner = Any(); val element = Element()
+        val route = WinUIXamlEventRoute("First", arrayOf("First", "Second"))
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Element::class,
+            "probe.Element", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("Readback", "String", String::class, {
+                    check(route.handlerName == "First") { "readback failed" }; "ready"
+                }))))
+        registry.observeEvent(owner, "probe.Page", "Page.xaml", hash, "Greeting", element, "Click", route)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        var reply: WinUIXamlHotReloadReply? = null
+        registry.submit(patch().copy(events = listOf(WinUIXamlHotReloadEvent("Greeting", "Click", "First", "Second")),
+            reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("Greeting"), "Readback")))) { reply = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, reply?.status)
+        assertEquals("First", route.handlerName)
+        assertEquals(hash, registry.snapshot().roots.single().sourceHash)
+    }
+
+    @Test fun dependency_property_reset_preserves_local_precedence_on_failure_and_replays() {
+        // XAMLC supplies typed DP delegates. ClearValue, not assigning a default,
+        // restores SDK styling; the rollback captures ReadLocalValue beforehand.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        WinUIAuthoredTypeMetadata.clearForTests()
+        var local = true
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Element::class,
+            "probe.Element", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("Text", "String", String::class, { (it as Element).text },
+                    { target, value -> (target as Element).text = value as String; local = true },
+                    isDependencyProperty = true, localValue = { target ->
+                        val element = target as Element; val previous = element.text; val wasLocal = local
+                        WinUIXamlLocalValue({ element.text = "styled"; local = false },
+                            { element.text = previous; local = wasLocal })
+                    }),
+                WinUIXamlMemberDefinition("Size", "Int32", Int::class, { (it as Element).size },
+                    { target, value -> require(value != 13); (target as Element).size = value as Int }))))
+        val owner = Any(); val element = Element()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Greeting", element)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        val reset = WinUIXamlHotReloadChange("Greeting", "Text", "", reset = true)
+        val encoded = WinUIXamlHotReloadCodec.writeRequest("token", patch(reset))
+        assertEquals(patch(reset), WinUIXamlHotReloadCodec.readRequest(encoded).second)
+        var reply: WinUIXamlHotReloadReply? = null
+        registry.submit(patch(reset, WinUIXamlHotReloadChange("Greeting", "Size", "13"))) { reply = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, reply?.status)
+        assertEquals("original", element.text); assertTrue(local)
+        registry.submit(patch(reset)) { reply = it }; queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, reply?.status)
+        assertEquals("styled", element.text); assertFalse(local)
+        val laterOwner = Any(); val later = Element()
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, "Greeting", later)
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, null, null)
+        assertEquals("styled", later.text)
+    }
+
+    @Test fun attached_accessors_keep_target_identity_rollback_and_replay() {
+        // CSharpTypeInfoPass2 attached member delegates invoke the declaring Get/Set pair.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Any::class,
+            "probe.Layout", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("Row", "Int32", Int::class, { (it as Element).size },
+                    { target, value -> require(value != 13); (target as Element).size = value as Int },
+                    isAttachable = true, targetType = Element::class, targetTypeName = "probe.Element"))))
+        val owner = Any(); val element = Element()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Greeting", element)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        var result: WinUIXamlHotReloadReply? = null
+        registry.submit(patch(WinUIXamlHotReloadChange("Greeting", "Text", "rollback"),
+            WinUIXamlHotReloadChange("Greeting", "probe.Layout.Row", "13"))) { result = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, result?.status)
+        assertEquals("original", element.text); assertEquals(1, element.size)
+        registry.submit(patch(WinUIXamlHotReloadChange("Greeting", "probe.Layout.Row", "2"))) { result = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, result?.status)
+        assertEquals(2, element.size)
+        assertEquals("probe.Layout.Row", result?.values?.single()?.property)
+        val laterOwner = Any(); val later = Element()
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, "Greeting", later)
+        registry.observe(laterOwner, "probe.Page", "Page.xaml", hash, null, null)
+        assertEquals(2, later.size)
+        assertNull(WinUIAuthoredTypeMetadata.customProperty(element, "probe.Unknown.Row"))
+    }
 
     @Test fun updates_wait_for_the_ui_dispatcher_and_keep_identity_and_version() {
         val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
@@ -72,6 +195,45 @@ class WinUIXamlHotReloadTest {
         }
     }
 
+    private class SharedBaselineNode(val children: MutableList<SharedBaselineNode> = mutableListOf()) {
+        var reads = 0
+    }
+    @Test fun overlapping_named_anchors_capture_each_collection_once_and_still_reject_reordering() {
+        // CsWinRT Runtime2 ObjectReference identity is shared by graph aliases;
+        // generated custom-property accessors still own collection discovery.
+        ComWrappersSupport.clearRegistriesForTests()
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+            SharedBaselineNode::class, "probe.SharedBaselineNode", "System.Object", isWinRTComponent = false,
+            contentProperty = "Children", members = listOf(WinUIXamlMemberDefinition(
+                "Children", "List", MutableList::class, { (it as SharedBaselineNode).also { node -> node.reads++ }.children }))))
+        val first = SharedBaselineNode(); val second = SharedBaselineNode()
+        val branch = SharedBaselineNode(mutableListOf(first, second))
+        val root = SharedBaselineNode(mutableListOf(branch, branch))
+        // The same objects are reachable through content and multiple x:Name anchors.
+        val baseline = WinUIXamlCollectionBaseline.capture(listOf(root, branch, first, second, root))
+        assertEquals(listOf(1, 1, 1, 1), listOf(root, branch, first, second).map { it.reads })
+        baseline.validate(branch.children)
+        branch.children.reverse()
+        assertFailsWith<IllegalArgumentException> { baseline.validate(branch.children) }
+    }
+
+
+    @Test fun deep_named_anchor_keeps_its_own_full_traversal_budget() {
+        ComWrappersSupport.clearRegistriesForTests()
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(
+            SharedBaselineNode::class, "probe.SharedBaselineNode", "System.Object", isWinRTComponent = false,
+            contentProperty = "Children", members = listOf(WinUIXamlMemberDefinition(
+                "Children", "List", MutableList::class, { (it as SharedBaselineNode).children }))))
+        val nodes = List(42) { SharedBaselineNode() }
+        nodes.zipWithNext().forEach { (parent, child) -> parent.children += child }
+        // Each collection consumes another graph level. The root alone reaches
+        // node 30 near the depth limit; its explicit name starts a new path.
+        val baseline = WinUIXamlCollectionBaseline.capture(listOf(nodes[0], nodes[30]))
+        baseline.validate(nodes[40].children)
+        nodes[40].children[0] = SharedBaselineNode()
+        assertFailsWith<IllegalArgumentException> { baseline.validate(nodes[40].children) }
+    }
+
     @Test fun projected_paths_keep_shared_resource_identity_and_guard_live_collection_shape() {
         val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
         val brush = Element(); val owner = Page(mutableMapOf("Accent" to brush), mutableListOf(brush))
@@ -90,6 +252,136 @@ class WinUIXamlHotReloadTest {
         queue.removeAt(0).invoke()
         assertEquals(WinUIXamlHotReloadProtocol.REJECTED, result?.status)
         assertEquals("blue", brush.text); assertEquals(current, registry.snapshot().roots.single())
+    }
+
+    @Test fun same_size_application_reorder_and_replacement_cannot_retarget_indexed_edits() {
+        // CsWinRT IWeakReference + IUnknown identity preserves the compiled target,
+        // even when the projected vector still has the expected Count.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        val first = Element("first"); val second = Element("second")
+        val owner = Page(mutableMapOf(), mutableListOf(first, second))
+        val lifetime = WinUIXamlConnectionState()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null, lifetime)
+        assertNotNull(lifetime.hotReloadBaseline)
+        val collection = WinUIXamlHotReloadTarget(path = listOf(WinUIXamlHotReloadStep.Property("Children")))
+        val edit = patch(WinUIXamlHotReloadChange("", "Text", "changed",
+            collection.path + WinUIXamlHotReloadStep.Index(0, 2)))
+        fun send(update: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var reply: WinUIXamlHotReloadReply? = null
+            registry.submit(update) { reply = it }; queue.removeAt(0).invoke()
+            return requireNotNull(reply)
+        }
+        owner.children.reverse()
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(edit).status)
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(patch().copy(children = listOf(
+            WinUIXamlHotReloadChildren(collection, 2, listOf(WinUIXamlHotReloadItem.Existing(0)))))).status)
+        assertEquals("first", first.text); assertEquals("second", second.text)
+        owner.children.reverse()
+        val replacement = Element("first")
+        owner.children[0] = replacement
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(edit).status)
+        assertEquals("first", replacement.text)
+        assertEquals(hash, registry.snapshot().roots.single().sourceHash)
+        owner.children[0] = first
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(edit).status)
+        assertEquals("changed", first.text); assertEquals("second", second.text)
+        registry.close()
+        assertNull(lifetime.hotReloadBaseline)
+    }
+
+    @Test fun transactional_readbacks_share_the_generated_sdk_formatter() {
+        // SDK structs (GridLength, Thickness, etc.) use the inspector adapter's
+        // invariant formatter rather than the Kotlin wrapper's object identity.
+        val queue = mutableListOf<() -> Unit>(); registry(queue)
+        val inspector = WinUIXamlVisualInspector({ it }, { emptyList() },
+            { _, _ -> error("not inspecting") }, { emptyList() }, { _, _, _ -> }, { _, _ -> },
+            formatValue = { "sdk:$it" })
+        val registry = WinUIXamlHotReloadRegistry({ { task -> queue += task; true } }, { _, text -> text }, inspector = inspector)
+        val owner = Any(); val element = Element()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Greeting", element)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        var result: WinUIXamlHotReloadReply? = null
+        registry.submit(patch(WinUIXamlHotReloadChange("Greeting", "Text", "new")).copy(
+            reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("Greeting"), "Text")))) { result = it }
+        queue.removeAt(0).invoke()
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, result?.status)
+        assertEquals(listOf("sdk:new", "sdk:new"), result?.values?.map { it.value })
+    }
+
+    @Test fun non_content_vectors_reload_and_reject_application_replacements() {
+        // Runtime2 collection projection + generated custom-property accessors:
+        // Grid.RowDefinitions is a vector property, not Grid's content property.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        class Layout(val rows: MutableList<Element>)
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Layout::class,
+            "probe.Layout", "System.Object", isWinRTComponent = false, members = listOf(
+                WinUIXamlMemberDefinition("RowDefinitions", "probe.Rows", MutableList::class,
+                    { (it as Layout).rows }, isCollection = true),
+                WinUIXamlMemberDefinition("Unavailable", "probe.Rows", MutableList::class,
+                    { error("template not realized") }, isCollection = true),
+                WinUIXamlMemberDefinition("Unrelated", "Object", Any::class,
+                    { error("unrelated getter must not run") }))))
+        val row = Element("row"); val owner = Layout(mutableListOf(row))
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        val path = listOf(WinUIXamlHotReloadStep.Property("RowDefinitions"), WinUIXamlHotReloadStep.Index(0, 1))
+        fun send(update: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var result: WinUIXamlHotReloadReply? = null
+            registry.submit(update) { result = it }; queue.removeAt(0).invoke()
+            return requireNotNull(result)
+        }
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED,
+            send(patch(WinUIXamlHotReloadChange("", "Size", "2", path))).status)
+        assertEquals(2, row.size)
+        owner.rows[0] = Element("replacement")
+        val edit = patch(WinUIXamlHotReloadChange("", "Size", "3", path))
+            .copy(expectedHash = next, sourceHash = "c".repeat(64), version = 2)
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(edit).status)
+        assertEquals(1, owner.rows[0].size)
+        owner.rows[0] = row
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(edit).status)
+        assertEquals(3, row.size)
+        val insert = patch().copy(expectedHash = "c".repeat(64), sourceHash = "d".repeat(64), version = 3,
+            children = listOf(WinUIXamlHotReloadChildren(WinUIXamlHotReloadTarget(path = path.take(1)), 1,
+                listOf(WinUIXamlHotReloadItem.Existing(0), WinUIXamlHotReloadItem.Markup("new row")))))
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(insert).status)
+        assertSame(row, owner.rows[0]); assertEquals("new row", owner.rows[1].text)
+        val resize = patch(WinUIXamlHotReloadChange("", "Size", "5",
+            path.take(1) + WinUIXamlHotReloadStep.Index(1, 2)))
+            .copy(expectedHash = "d".repeat(64), sourceHash = "e".repeat(64), version = 4)
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(resize).status)
+        assertEquals(5, owner.rows[1].size)
+    }
+
+    @Test fun property_side_effects_refresh_only_the_changed_owner_collection_baseline() {
+        // TextBlock.Text can replace Inlines through the SDK setter. Refresh that
+        // owner without accepting an unrelated application-owned child reorder.
+        val queue = mutableListOf<() -> Unit>(); val registry = registry(queue)
+        WinUIAuthoredTypeMetadata.registerPropertyAccessors(WinUIXamlTypeDefinition(Caption::class,
+            "probe.Caption", "System.Object", isWinRTComponent = false, contentProperty = "Inlines", members = listOf(
+                WinUIXamlMemberDefinition("Text", "String", String::class, { (it as Caption).inlines.single().text },
+                    { target, value -> (target as Caption).inlines.apply { clear(); add(Element(value as String)) } }),
+                WinUIXamlMemberDefinition("Inlines", "List", MutableList::class, { (it as Caption).inlines }))))
+        val first = Element("first"); val second = Element("second")
+        val owner = Page(mutableMapOf(), mutableListOf(first, second)); val caption = Caption()
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, "Caption", caption)
+        registry.observe(owner, "probe.Page", "Page.xaml", hash, null, null)
+        owner.children.reverse()
+        fun send(update: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var reply: WinUIXamlHotReloadReply? = null
+            registry.submit(update) { reply = it }; queue.removeAt(0).invoke()
+            return requireNotNull(reply)
+        }
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED,
+            send(patch(WinUIXamlHotReloadChange("Caption", "Text", "new text"))).status)
+        val nextPatch = patch(WinUIXamlHotReloadChange("Caption", "Text", "inline changed",
+            listOf(WinUIXamlHotReloadStep.Property("Inlines"), WinUIXamlHotReloadStep.Index(0, 1))))
+            .copy(expectedHash = next, sourceHash = "c".repeat(64), version = 2)
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(nextPatch.copy(changes = listOf(
+            WinUIXamlHotReloadChange("", "Text", "wrong target", listOf(
+                WinUIXamlHotReloadStep.Property("Children"), WinUIXamlHotReloadStep.Index(0, 2)))))).status)
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(nextPatch).status)
+        assertEquals("inline changed", caption.inlines.single().text)
+        assertEquals("first", first.text); assertEquals("second", second.text)
     }
 
     /** Style.IsSealed requires constructing a replacement; the native parser is
@@ -135,6 +427,49 @@ class WinUIXamlHotReloadTest {
         assertEquals("latest resource", laterFirst.style?.text)
         assertSame(laterOwner.resources["TitleStyle"], laterFirst.style); assertSame(laterFirst.style, laterSecond.style)
         assertNotSame(first.style, laterFirst.style)
+    }
+
+    @Test fun dictionary_key_changes_rollback_and_replay_in_order_for_new_pages() {
+        // CsWinRT InteropServices/Collections/IDictionaryMethods owns Insert/Remove;
+        // the development registry owns transactional updates and instance replay.
+        val queue = mutableListOf<() -> Unit>()
+        val registry = registry(queue) { markup ->
+            if (markup == "first") mapOf("Keep" to Element("reloaded style"), "New" to Element("new"))
+            else mapOf("Final" to Element("final"))
+        }
+        val original = Element("original")
+        val owner = Page(mutableMapOf("Keep" to original, "Removed" to Element()))
+        val consumer = Element(style = original, rejectStyle = true)
+        fun connect(page: Page, element: Element) {
+            registry.observe(page, "probe.Page", "Page.xaml", hash, "Consumer", element)
+            registry.observe(page, "probe.Page", "Page.xaml", hash, null, null)
+        }
+        connect(owner, consumer)
+        val target = WinUIXamlHotReloadTarget(path = listOf(WinUIXamlHotReloadStep.Property("Resources")))
+        val update = WinUIXamlHotReloadResources(target, "first", listOf("Keep", "Removed"), listOf(
+            WinUIXamlHotReloadResourceReference(WinUIXamlHotReloadTarget("Consumer"), "Style", "Keep")))
+        fun send(value: WinUIXamlHotReloadPatch): WinUIXamlHotReloadReply {
+            var result: WinUIXamlHotReloadReply? = null
+            registry.submit(value) { result = it }; queue.removeAt(0).invoke()
+            return requireNotNull(result)
+        }
+        assertEquals(WinUIXamlHotReloadProtocol.REJECTED, send(patch().copy(resources = listOf(update))).status)
+        assertEquals(setOf<Any?>("Keep", "Removed"), owner.resources.keys)
+        assertSame(original, owner.resources["Keep"])
+        consumer.rejectStyle = false
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(patch().copy(resources = listOf(update))).status)
+        assertEquals(setOf<Any?>("Keep", "New"), owner.resources.keys)
+        val second = update.copy(xaml = "second", expectedKeys = listOf("Keep", "New"),
+            references = update.references.map { it.copy(key = "Final") })
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, send(patch().copy(expectedHash = next,
+            sourceHash = "c".repeat(64), version = 2, resources = listOf(second))).status)
+        val later = Page(mutableMapOf("Keep" to Element(), "Removed" to Element()))
+        val laterConsumer = Element()
+        connect(later, laterConsumer)
+        assertEquals(WinUIXamlHotReloadProtocol.APPLIED, registry.snapshot().status)
+        assertEquals(setOf<Any?>("Final"), later.resources.keys)
+        assertEquals("final", laterConsumer.style?.text)
+        assertSame(later.resources["Final"], laterConsumer.style)
     }
 
     /** IList.net5.cs owns IndexOf/Insert/RemoveAt. The loader is supplied by the

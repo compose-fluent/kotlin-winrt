@@ -56,10 +56,10 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                     }
                 }
             }
-            val functions = (listOf(xamlInitializeName, xamlConstructionName, xamlLoadName, xamlConnectName, xamlBindingName) +
+            val functions = (listOf(xamlInitializeName, xamlConstructionName, xamlLoadName, xamlDesignConnectionsName, xamlDesignConnectName, xamlConnectName, xamlBindingName) +
                 page.properties.flatMap { it.eventFunctions() } +
                 if (page.hasCompiledBindings()) listOf(xamlUpdateBindingsName, xamlBindingsChangedName, xamlBindingsLoadingName,
-                    xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlPageBindingConnectName) + page.bindBackNames() +
+                    xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlDesignBindingsName, xamlStopDesignBindingsName, xamlPageBindingConnectName) + page.bindBackNames() +
                     (if (page.hasTemplateScopes()) xamlScopeNames else emptySet()) else emptyList()).map(::function)
             if (semanticOnly) {
                 val error = pluginContext.referenceFunctions(CallableId(FqName("kotlin"), Name.identifier("error"))).single()
@@ -77,6 +77,41 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                 "XAML requires generated projection $name"
             }.owner
             val requireElement = runtime("requireXamlNamedElement")
+            val designConnections = function(xamlDesignConnectionsName)
+            designConnections.body = DeclarationIrBuilder(pluginContext, designConnections.symbol).irBlockBody {
+                val contract = io.github.composefluent.winrt.metadata.WinUIXamlDesignConnections.connections(page).joinToString("\n") { item ->
+                    listOf(item.id, io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.designConnectionSignature(item), item.scopeId,
+                        if (item.isTemplateChild) 1 else 0, if (item.isScopeRoot) 1 else 0, if (item.isControlTemplateScope()) 1 else 0).joinToString("|")
+                }
+                +irReturn(irString(contract))
+            }
+            val designConnect = function(xamlDesignConnectName)
+            designConnect.body = DeclarationIrBuilder(pluginContext, designConnect.symbol).irBlockBody {
+                val arguments = designConnect.parameters.filter { it.kind == IrParameterKind.Regular }
+                if (page.hasCompiledBindings()) {
+                    val stateGetter = requireNotNull(properties.getValue(xamlBindingStateName.asString()).getter)
+                    val stateClass = requireNotNull(pluginContext.referenceClass(xamlBindingStateId)).owner
+                    +irCall(stateClass.functions.single { it.name.asString() == "registerDesignTarget" }).apply {
+                        dispatchReceiver = irCall(stateGetter.symbol).apply { dispatchReceiver = irGet(requireNotNull(designConnect.dispatchReceiverParameter)) }
+                        this.arguments[1] = irGet(arguments[0]); this.arguments[2] = irGet(arguments[1])
+                    }
+                }
+                for (name in listOf(xamlConnectName) + if (page.hasCompiledBindings()) listOf(xamlPageBindingConnectName) else emptyList()) {
+                    +irCall(function(name).symbol).apply {
+                        dispatchReceiver = irGet(requireNotNull(designConnect.dispatchReceiverParameter))
+                        this.arguments[1] = irGet(arguments[0]); this.arguments[2] = irGet(arguments[1])
+                    }
+                }
+            }
+            val connectionState = requireNotNull(properties.getValue(xamlConnectionStateName.asString()).backingField)
+            val connectionStateClass = requireNotNull(pluginContext.referenceClass(xamlConnectionStateId)).owner
+            connectionState.initializer = DeclarationIrBuilder(pluginContext, connectionState.symbol).run {
+                irExprBody(irCallConstructor(connectionStateClass.constructors.single().symbol, emptyList()))
+            }
+            val connectionStateGetter = requireNotNull(properties.getValue(xamlConnectionStateName.asString()).getter)
+            connectionStateGetter.body = DeclarationIrBuilder(pluginContext, connectionStateGetter.symbol).irBlockBody {
+                +irReturn(irGetField(irGet(requireNotNull(connectionStateGetter.dispatchReceiverParameter)), connectionState))
+            }
             val propertyBodies = XamlPropertyBodies(pluginContext, classes, index.framework)
             propertyBodies.generate(klass, page, properties)
             for (connection in page.connections.filter { it.storageName() != null }) {
@@ -170,6 +205,7 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                     arguments[1] = irString(page.className)
                     arguments[2] = irString(page.resourcePath)
                     arguments[3] = irString(page.sourceHash)
+                    arguments[4] = irGetField(irGet(requireNotNull(load.dispatchReceiverParameter)), connectionState)
                 }
             }
             val initialize = function(xamlInitializeName)
@@ -238,6 +274,12 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                                 val target = irTemporary(irCall(cast).apply {
                                     type = targetType; typeArguments[0] = targetType; arguments[0] = irGet(parameters[1])
                                 })
+                                if (!bindingOnly && !connection.isTemplateChild && connection.events.isNotEmpty()) {
+                                    +irCall(connectionStateClass.functions.single { it.name.asString() == "disconnect" }).apply {
+                                        dispatchReceiver = irGetField(irGet(requireNotNull(connect.dispatchReceiverParameter)), connectionState)
+                                        arguments[1] = irInt(connection.id)
+                                    }
+                                }
                                 connection.storageName()?.let { fieldName ->
                                     +irSetField(irGet(requireNotNull(connect.dispatchReceiverParameter)),
                                         requireNotNull(properties.getValue(fieldName).backingField), irGet(target))
@@ -251,6 +293,7 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                                             arguments[3] = irString(page.sourceHash)
                                             arguments[4] = irString(name)
                                             arguments[5] = irGet(target)
+                                            arguments[6] = irString(connection.bindings.map { it.name }.distinct().joinToString("\n"))
                                         }
                                     }
                                 }
@@ -264,15 +307,46 @@ internal class XamlPageBodies(private val index: WinUIXamlDeclarationIndex, priv
                                         "${page.resourcePath}:${event.location.line}:${event.location.column}: " +
                                             "handler ${event.handlerName} no longer matches ${event.delegateTypeName}; rebuild XAML semantic symbols"
                                     }
-                                    +irCall(add.symbol).apply {
+                                    val addCall = irCall(add.symbol).apply {
                                         dispatchReceiver = irGet(target)
-                                        arguments[1] = irSamConversion(boundReference(pluginContext, handler,
+                                        arguments[1] = if (!connection.isTemplateChild && connection.elementName != null)
+                                            xamlReloadableEvent(pluginContext, this@irBlock, klass, requireNotNull(connect.dispatchReceiverParameter),
+                                                target, delegateType, handler, page.className, page.resourcePath, page.sourceHash,
+                                                requireNotNull(connection.elementName), event.name)
+                                        else irSamConversion(boundReference(pluginContext, handler,
                                             irGet(requireNotNull(connect.dispatchReceiverParameter))), delegateType)
                                     }
+                                    if (connection.isTemplateChild) {
+                                        +addCall
+                                    } else {
+                                        val remove = (classes[event.declaringTypeName] ?: projection(event.declaringTypeName)).functions.single {
+                                            it.name.asString() == "remove${event.name}" && it.parameters.count { p -> p.kind == IrParameterKind.Regular } == 1
+                                        }
+                                        val registrationType = remove.parameters.single { it.kind == IrParameterKind.Regular }.type
+                                        val callback = irTemporary(requireNotNull(addCall.arguments[1]))
+                                        addCall.arguments[1] = irGet(callback)
+                                        val registration = irGet(irTemporary(xamlEventRegistration(this, addCall, irGet(callback), registrationType)))
+                                        +irCall(connectionStateClass.functions.single { it.name.asString() == "trackEvent" }).apply {
+                                            dispatchReceiver = irGetField(irGet(requireNotNull(connect.dispatchReceiverParameter)), connectionState)
+                                            typeArguments[0] = requireNotNull(remove.dispatchReceiverParameter).type
+                                            typeArguments[1] = registrationType
+                                            arguments[1] = irInt(connection.id)
+                                            arguments[2] = irGet(target)
+                                            arguments[3] = registration
+                                            arguments[4] = xamlFunctionReference(pluginContext, remove)
+                                        }
+                                    }
+                                }
+                                if (bindingOnly && connection.bindings.any { it.isEvent }) {
+                                    +XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework).disconnectEventBindings(this,
+                                        irGetField(irGet(requireNotNull(connect.dispatchReceiverParameter)),
+                                            requireNotNull(properties.getValue(xamlBindingStateName.asString()).backingField)), connection.id)
                                 }
                                 for (event in connection.bindings.filter { bindingOnly && it.isEvent }) {
                                     +XamlCompiledBindingBodies(pluginContext, classes, pages, index.framework).eventSubscription(this, klass, event,
-                                        irGet(requireNotNull(connect.dispatchReceiverParameter)), irGet(target))
+                                        irGet(requireNotNull(connect.dispatchReceiverParameter)), irGet(target), connectionId = connection.id,
+                                        bindingState = irGetField(irGet(requireNotNull(connect.dispatchReceiverParameter)),
+                                            requireNotNull(properties.getValue(xamlBindingStateName.asString()).backingField)))
                                 }
                                 if (bindingOnly && connection.canBeInstantiatedLater) {
                                     val receiver = requireNotNull(connect.dispatchReceiverParameter)
@@ -342,5 +416,18 @@ internal fun xamlFunctionReference(context: IrPluginContext, function: IrSimpleF
     return IrFunctionReferenceImpl(function.startOffset, function.endOffset,
         context.irBuiltIns.functionN(signature.size - 1).symbol.typeWith(signature), function.symbol, function.typeParameters.size).apply {
         dispatchReceiver = receiver
+    }
+}
+
+/** CsWinRT owns ABI tokens; mapped INPC/INCC events remove the original handler. */
+@OptIn(UnsafeDuringIrConstructionAPI::class)
+internal fun xamlEventRegistration(builder: IrBuilderWithScope, addCall: IrExpression,
+    handler: IrExpression, removeType: IrType): IrExpression = with(builder) {
+    if (removeType == handler.type) irBlock(resultType = removeType) {
+        +addCall
+        +handler
+    } else {
+        require(removeType == addCall.type) { "XAML event has incompatible add/remove signatures" }
+        addCall
     }
 }

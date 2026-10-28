@@ -25,10 +25,23 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
             is KotlinSingleTargetExtension<*> -> listOf(kotlin.target)
             else -> emptyList()
         }
+        val generatedRoots = if (windows == null) emptyList() else buildList {
+            project.tasks.withType(GenerateWinRTProjectionsTask::class.java).forEach {
+                add(it.outputDirectory); add(it.authoringTypeDetailsOutputDirectory)
+            }
+            project.tasks.withType(MergeWinRTCompilerSupportTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateWinRTCompilerAuthoredTypeDetailsTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateWinAppMingwEntryTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateAppxResourcesTask::class.java).forEach { add(it.outputDirectory) }
+            project.tasks.withType(GenerateWinUIXamlApplicationHeaderTask::class.java).forEach { add(it.sourceOutputDirectory) }
+            project.tasks.withType(GenerateWinUIXamlLibraryRegistrarTask::class.java).forEach { add(it.outputDirectory) }
+        }.mapNotNull { it.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() }.distinct()
         val sourceSets = if (windows == null) emptyList() else kotlin?.sourceSets.orEmpty().map { sourceSet ->
             IdeSourceSet(
                 sourceSet.name,
                 sourceSet.kotlin.srcDirs.map { it.absoluteFile.normalize().path }.sorted(),
+                sourceSet.kotlin.srcDirs.map { it.toPath().toAbsolutePath().normalize() }
+                    .filter { source -> generatedRoots.any { source.startsWith(it) } }.map { it.toString() }.sorted(),
                 sourceSet.dependsOn.map { it.name }.sorted(),
                 appxResourceRoots(project, listOf(sourceSet.name)).map { it.toAbsolutePath().normalize().toString() },
             )
@@ -72,7 +85,7 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                     )
                 }.sortedBy { it.taskName },
             packageLayouts = if (windows == null) emptyList() else
-                project.tasks.withType(StageWinAppPackageTask::class.java).map { task ->
+                project.tasks.withType(StageWinAppPackageTask::class.java).filter { it.name != "stageWinRTXamlSdkPreviewPackage" }.map { task ->
                     IdePackageLayout(task.name, task.applicationVariant.get(), task.outputDirectory.get().asFile.absolutePath,
                         task.resourceResolutionReport.get().asFile.absolutePath, task.minWindowsVersion.get(), task.maxVersionTested.get())
                 }.sortedBy { it.taskName },
@@ -82,22 +95,34 @@ internal class WinRTIdeModelBuilder : ToolingModelBuilder {
                 project.tasks.withType(RestoreWinAppDependenciesTask::class.java).map { it.winmdLockFile.get().asFile.absolutePath }.distinct().sorted(),
             hotReloadLaunches = if (windows == null) emptyList() else (
                 hostRuns.filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
-                    IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.workingDirectory.get().asFile.absolutePath)
-                } + packageRuns.filter { it.supportsXamlHotReload.get() }.map {
+                    IdeHotReloadLaunch(it.name, it.deployedExecutable.get().asFile.absolutePath,
+                        (it.deploymentDirectory.orNull ?: it.workingDirectory.get()).asFile.absolutePath,
+                        if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty(),
+                        it.deploymentDirectory.isPresent && it.nativeCompilerHome.orNull?.isNotBlank() == true,
+                        it.developmentBuildTask.orNull.orEmpty())
+                } + packageRuns.filter { it.supportsXamlHotReload.get() && !it.sdkPreview.get() }.map {
                     IdeHotReloadLaunch(it.name, it.hostExecutable.get().asFile.absolutePath, it.deploymentDirectory.get().asFile.absolutePath,
-                        it.previewHostExecutable.get().asFile.absolutePath)
+                        if (it.supportsXamlPreview.get()) it.previewHostExecutable.get().asFile.absolutePath else "", it.nativeCompilerHome.orNull.orEmpty(),
+                        it.applicationModel.get() == WindowsApplicationModel.Desktop && it.nativeCompilerHome.orNull?.isNotBlank() == true, it.developmentBuildTask.orNull.orEmpty())
                 }).sortedBy { it.taskName },
-            staticPreview = if (windows?.packageReferences?.nugetPackages?.any {
+            staticPreview = if (windows?.xaml?.framework?.get() == io.github.composefluent.winrt.runtime.XamlFramework.UWP)
+                packageRuns.firstOrNull { it.sdkPreview.get() }?.let { task ->
+                    IdeStaticPreview(task.name, task.hostExecutable.get().asFile.absolutePath,
+                        task.deploymentDirectory.get().asFile.absolutePath,
+                        project.tasks.named("buildWinRTXamlSdkPreviewNative", BuildWinUIXamlNativeSdkPreviewTask::class.java)
+                            .get().metadataReferencesFile.get().asFile.absolutePath)
+                }
+            else if (windows?.packageReferences?.nugetPackages?.any {
                     it.packageId.startsWith("Microsoft.WindowsAppSDK", true) } != true) null else
                 hostRuns.firstOrNull { it.sdkPreview.get() }?.let { task ->
-                    IdeStaticPreview(task.name, task.hostExecutable.get().asFile.absolutePath,
-                        task.workingDirectory.get().asFile.absolutePath,
+                    IdeStaticPreview(task.name, task.deployedExecutable.get().asFile.absolutePath,
+                        task.deploymentDirectory.get().asFile.absolutePath,
                         project.tasks.named("buildWinRTXamlSdkPreview", BuildWinUIXamlSdkPreviewTask::class.java)
                             .get().metadataReferencesFile.get().asFile.absolutePath)
                 },
             runTasks = if (windows == null) emptyList() else (
                 hostRuns.filter { !it.sdkPreview.get() && it.supportsXamlHotReload.get() }.map { it.name } +
-                packageRuns.filter { it.supportsDevelopmentRun.get() }.map { it.name } +
+                packageRuns.filter { it.supportsDevelopmentRun.get() && !it.sdkPreview.get() }.map { it.name } +
                 if (windows.application.packageType.get() == WindowsPackageType.None) project.tasks.names.filter {
                     it.startsWith("runDebugExecutable") || it.startsWith("runReleaseExecutable")
                 } else emptyList()
@@ -138,6 +163,9 @@ private data class IdeHotReloadLaunch(
     override val executable: String,
     override val workingDirectory: String,
     override val previewExecutable: String = executable,
+    override val nativeCompilerHome: String = "",
+    override val isDirectPreview: Boolean = false,
+    override val developmentBuildTask: String = "",
 ) : WinRTIdeModel.HotReloadLaunch
 
 private data class IdePackageLayout(
@@ -161,6 +189,7 @@ private data class IdeXamlCompilation(
 private data class IdeSourceSet(
     override val name: String,
     override val kotlinRoots: List<String>,
+    override val generatedKotlinRoots: List<String>,
     override val dependsOn: List<String>,
     override val appxResourceRoots: List<String>,
 ) : WinRTIdeModel.SourceSet

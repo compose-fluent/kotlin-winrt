@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.runtime.WinAppHostConfiguration
@@ -234,7 +236,8 @@ abstract class BuildWinAppHostTask : DefaultTask() {
             outputRoot,
             executableBaseName.get(),
             windowsManifestProcessorArchitecture(runtimeIdentifier.get()),
-            redirectDlls = packageType.get() != WindowsPackageType.Packaged.name,
+            redirectDlls = packageType.get() != WindowsPackageType.Packaged.name &&
+                windowsAppSdkDeployment.get() == WindowsAppSdkDeployment.SelfContained,
         )
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             logger.warn("WinApp host native EXE build is Windows-only; generated source without compiling EXE.")
@@ -379,6 +382,7 @@ internal fun stageWinAppJvmRuntimeClasspath(jars: Iterable<java.io.File>, output
         .forEach { (jar, name) ->
             val target = libRoot.resolve(name)
             if (!Files.exists(target)) Files.copy(jar.toPath(), target)
+            stampWinUIXamlDevelopmentRuntimeJar(target, false)
         }
 }
 
@@ -866,6 +870,8 @@ internal fun applicationHostSource(
     static int kotlin_winrt_development_arguments(int *argc, wchar_t **wargv) {
         const wchar_t *prefix = L"$WINAPP_HOT_RELOAD_ARGUMENT";
         const size_t prefix_length = wcslen(prefix);
+        const wchar_t *theme_prefix = L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_THEME_ARGUMENT}";
+        const size_t theme_prefix_length = wcslen(theme_prefix);
         int next = 1;
         int enabled = 0;
         for (int i = 1; i < *argc; ++i) {
@@ -878,6 +884,10 @@ internal fun applicationHostSource(
                 enabled = 1;
             } else if (wcscmp(wargv[i], L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT}") == 0) {
                 kotlin_winrt_preview_requested = 1;
+            } else if (wcsncmp(wargv[i], theme_prefix, theme_prefix_length) == 0) {
+                const wchar_t *theme = wargv[i] + theme_prefix_length;
+                if ((wcscmp(theme, L"Default") && wcscmp(theme, L"Light") && wcscmp(theme, L"Dark")) ||
+                    !SetEnvironmentVariableW(L"${io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT}", theme)) return 1;
             } else {
                 wargv[next++] = wargv[i];
             }
@@ -909,6 +919,16 @@ internal fun applicationHostSource(
         if (kotlin_winrt_handle_pending_exception(env)) {
             kotlin_winrt_close_application_host(env, application_host);
             return 1;
+        }
+        if (kotlin_winrt_preview_requested) {
+            jclass policy = (*env)->FindClass(env, "io/github/composefluent/winrt/runtime/WinUIXamlDevelopmentBuildPolicy");
+            jmethodID allowed = policy == NULL ? NULL : (*env)->GetStaticMethodID(env, policy, "isWinUIXamlDevelopmentBuild", "()Z");
+            if (allowed == NULL || kotlin_winrt_handle_pending_exception(env)) {
+                exit_code = 1;
+                goto cleanup;
+            }
+            kotlin_winrt_preview_requested = (*env)->CallStaticBooleanMethod(env, policy, allowed);
+            (*env)->DeleteLocalRef(env, policy);
         }
         main_class = (*env)->FindClass(env, kotlin_winrt_preview_requested ?
             "io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost" : "$mainClassPath");

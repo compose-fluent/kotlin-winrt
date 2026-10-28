@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.runtime.WinAppPackageIdentity
@@ -208,9 +210,14 @@ private fun configureWinRTRuntimeDependency(
                 }
             }
             kotlin.targets.withType(KotlinJvmTarget::class.java).configureEach { target ->
-                val sourceSet = target.compilations.getByName("main").defaultSourceSet
-                if (includeAuthoring) {
-                    addAuthoringDependency(sourceSet.implementationConfigurationName)
+                target.compilations.configureEach { compilation ->
+                    // Named applications may select standalone auxiliary compilations
+                    // which do not inherit the main source set's runtime dependencies.
+                    val sourceSet = compilation.defaultSourceSet
+                    addRuntimeDependency(sourceSet.implementationConfigurationName)
+                    if (includeAuthoring) {
+                        addAuthoringDependency(sourceSet.implementationConfigurationName)
+                    }
                 }
             }
         }
@@ -806,6 +813,14 @@ private fun Project.registerWinAppHostRunTask(
             task.description = "Runs the native Kotlin/WinRT JVM application host."
             task.hostExecutable.set(applicationHostExecutable)
             task.workingDirectory.set(applicationHostTask.flatMap { it.outputDirectory })
+            task.developmentBuildTask.set(applicationHostTask.name)
+            task.deploymentDirectory.set(layout.buildDirectory.dir(applicationHostTask.flatMap { it.applicationVariant }
+                .zip(task.designPreview) { variant, preview ->
+                    "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.toSafeDirectoryName()}/Unpackaged"
+                }))
+            task.previewHostExecutable.set(layout.buildDirectory.dir(applicationHostTask.flatMap { it.applicationVariant }
+                .map { "kotlin-winrt/application-preview/${it.toSafeDirectoryName()}/Unpackaged" })
+                .zip(applicationHostExecutable) { directory, executable -> directory.file(executable.asFile.name) })
             task.supportsXamlHotReload.set(applicationHostTask.flatMap { it.packageType }.map { it == WindowsPackageType.None.name })
             task.dependsOn(applicationHostTask)
             task.onlyIf {
@@ -1123,6 +1138,15 @@ private fun configureWinAppTasks(
             task.winAppRestoreLockFiles.from(restoreWinAppDependenciesTask.flatMap { restore -> restore.winmdLockFile })
             task.includeFrameworkRuntimeAssets.set(project.provider {
                 if (format != null) return@provider format.deployment == WindowsAppSdkDeployment.SelfContained
+                if (options.applicationModel.get() == WindowsApplicationModel.Desktop) {
+                    // The SDK BootstrapCommon/UndockedRegFreeWinRTCommon targets choose
+                    // the package graph OR app-local framework DLLs. Mixing both loads
+                    // CoreMessaging twice, or shadows framework activation with local
+                    // DLL registrations in a JVM host's executable manifest.
+                    val requested = options.windowsAppSdkDeployment.get()
+                    val deployment = if (requested == WindowsAppSdkDeployment.Auto) resolvedWindowsAppSdkDeployment.get() else requested
+                    return@provider deployment == WindowsAppSdkDeployment.SelfContained
+                }
                 val outputFile = options.packageOutputFile.orNull?.asFile
                 resolvedWindowsAppSdkDeployment.get() == WindowsAppSdkDeployment.SelfContained ||
                     options.packageType.get() != WindowsPackageType.Packaged ||
@@ -1268,6 +1292,10 @@ private fun configureWinAppTasks(
             )
             task.entryPointFunctionName.set("main$taskSuffix")
             task.mainClass.set(options.mainClass)
+            task.xamlPreviewHost.set(project.provider {
+                val header = project.tasks.named("generateWinRTXamlApplicationHeader", GenerateWinUIXamlApplicationHeaderTask::class.java).get()
+                header.previewHost.get() && header.emitSources.get()
+            })
         },
     )
     addGeneratedSourcesToSelectedKotlinMultiplatformMingwCompilation(
@@ -1472,8 +1500,10 @@ private fun configureWinAppTasks(
             task.launcherOnly.set(true)
             task.applicationModel.set(options.applicationModel)
             task.xamlFramework.set(extension.xaml.framework)
-            task.packageType.set(options.packageType.map { it.name })
-            task.windowsAppSdkDeployment.set(resolvedWindowsAppSdkDeployment)
+            // The compiled JNI launcher reads deployment from staged metadata.
+            // Packaging modes must not invalidate this shared executable.
+            task.packageType.set(WindowsPackageType.Packaged.name)
+            task.windowsAppSdkDeployment.set(WindowsAppSdkDeployment.None)
             task.launcherIconResource.set(options.launcherIcon.flatMap {
                 launcherIconTask.flatMap { icon -> icon.outputFile }
             })
@@ -1662,6 +1692,48 @@ private fun configureWinAppTasks(
     }
     // Launch tasks are concrete-only: variants can share a package identity and cannot be
     // registered concurrently by an aggregate run task.
+    val nativeProjectPreview = mingwApplicationEntryTask.flatMap { it.xamlPreviewHost }
+        .zip(options.mainClass.orElse("")) { generated, main -> generated && main.isNotBlank() }
+    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+    val nativeCompilerHome = selectedVariant.flatMap { variant ->
+        if (variant.kind != WinAppVariantKind.MingwX64) project.provider { "" } else {
+            val target = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+                .targets.getByName(variant.targetName) as KotlinNativeTarget
+            target.compilations.getByName(variant.compilationName).compileTaskProvider.get().konanHome
+        }
+    }
+    project.tasks.register(taskName("runWinAppNative"), RunWinAppHostTask::class.java) { task ->
+        task.group = "windows-package"
+        task.description = "Runs the staged Kotlin/Native application with XAML development session support."
+        task.supportsXamlPreview.set(nativeProjectPreview.zip(selectedVariant) { enabled, variant -> enabled && variant.supportsXamlDevelopment })
+        task.nativeCompilerHome.set(nativeCompilerHome)
+        task.onlyIf { selectedVariant.get().kind == WinAppVariantKind.MingwX64 }
+        task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
+            packageType == WindowsPackageType.None && variant.kind == WinAppVariantKind.MingwX64 && variant.supportsXamlDevelopment
+        }.zip(options.applicationModel) { enabled, model -> enabled && model == WindowsApplicationModel.Desktop })
+        task.hostExecutable.set(stageApplicationPackageTask.flatMap { stage ->
+            stage.outputDirectory.file(executableBaseName.map { "$it.exe" })
+        })
+        task.workingDirectory.set(stageApplicationPackageTask.flatMap { it.outputDirectory })
+        task.developmentBuildTask.set(stageApplicationPackageTask.name)
+        task.previewBuildInputs.from(selectedVariant.map { variant ->
+            if (variant.kind != WinAppVariantKind.MingwX64) emptyList<java.io.File>() else {
+                val target = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+                    .targets.getByName(variant.targetName) as KotlinNativeTarget
+                project.files(target.compilations.getByName(variant.compilationName).compileDependencyFiles,
+                    kotlinWinRTCompilerPluginClasspath(project), kotlinWinRTGeneratorWorkerClasspath(project))
+            }
+        })
+        task.deploymentDirectory.set(project.layout.buildDirectory.dir(selectedVariant.zip(task.designPreview) { variant, preview ->
+            "kotlin-winrt/application-${if (preview) "preview" else "run"}/${variant.id.toSafeDirectoryName()}/Unpackaged"
+        }))
+        task.previewHostExecutable.set(project.layout.buildDirectory.dir(selectedVariant.map {
+            "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/Unpackaged"
+        }).flatMap { directory -> executableBaseName.map { directory.file("$it.exe") } })
+        task.environmentVariables.put("KOTLIN_WINRT_RUNTIME_ASSETS_ROOT",
+            stageApplicationPackageTask.flatMap { it.outputDirectory }.map { it.asFile.absolutePath })
+        task.dependsOn(stageApplicationPackageTask)
+    }
     val runApplicationPackageTask = project.tasks.register(
         taskName("runWinAppPackage"),
         RunWinAppPackageTask::class.java,
@@ -1674,6 +1746,7 @@ private fun configureWinAppTasks(
             task.dependencyLockFiles.from(restoreWinAppDependenciesTask.flatMap { it.winmdLockFile })
             task.dependencyPackageSpecs.set(project.provider { allNuGetPackageSpecs(extension.packageReferences) })
             task.runtimeIdentifier.set(selectedVariant.map { variant -> variant.runtimeIdentifier })
+            task.developmentBuildTask.set(developmentPackageTask.name)
             task.packageDirectory.set(developmentPackageTask.flatMap { it.outputDirectory })
             task.deploymentDirectory.set(
                 project.layout.buildDirectory.dir(
@@ -1685,15 +1758,29 @@ private fun configureWinAppTasks(
                 it == WindowsAppSdkDeployment.SelfContained
             })
             task.applicationVariant.set(selectedVariant.map { it.id })
+            task.nativeCompilerHome.set(nativeCompilerHome)
+            task.previewBuildInputs.from(selectedVariant.map { variant ->
+                if (variant.kind != WinAppVariantKind.MingwX64) emptyList<java.io.File>() else {
+                    val target = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+                        .targets.getByName(variant.targetName) as KotlinNativeTarget
+                    project.files(target.compilations.getByName(variant.compilationName).compileDependencyFiles,
+                        kotlinWinRTCompilerPluginClasspath(project), kotlinWinRTGeneratorWorkerClasspath(project))
+                }
+            })
             task.supportsDevelopmentRun.set(options.packageType.zip(options.windowsAppSdkDeployment) { packageType, deployment ->
                 packageType == WindowsPackageType.Packaged && deployment != WindowsAppSdkDeployment.SelfContained
             })
             task.supportsXamlHotReload.set(options.packageType.zip(selectedVariant) { packageType, variant ->
-                packageType == WindowsPackageType.Packaged && variant.kind == WinAppVariantKind.Jvm
-            }.zip(options.windowsAppSdkDeployment) { jvmPackage, deployment ->
-                jvmPackage && deployment != WindowsAppSdkDeployment.SelfContained
-            }.zip(options.applicationModel) { enabled, model -> enabled && model == WindowsApplicationModel.Desktop })
+                packageType == WindowsPackageType.Packaged && variant.supportsXamlDevelopment
+            }.zip(options.windowsAppSdkDeployment) { developmentPackage, deployment ->
+                developmentPackage && deployment != WindowsAppSdkDeployment.SelfContained
+            }.zip(options.applicationModel.zip(selectedVariant) { model, variant ->
+                model == WindowsApplicationModel.Desktop || variant.kind == WinAppVariantKind.MingwX64
+            }) { enabled, supportedModel -> enabled && supportedModel })
             task.hostExecutable.set(task.deploymentDirectory.file(applicationHostTask.flatMap { it.executableBaseName }.map { "$it.exe" }))
+            task.supportsXamlPreview.set(selectedVariant.zip(nativeProjectPreview) { variant, nativePreview ->
+                variant.supportsXamlDevelopment && (variant.kind == WinAppVariantKind.Jvm || nativePreview)
+            })
             task.previewHostExecutable.set(project.layout.buildDirectory.dir(
                 selectedVariant.map { "kotlin-winrt/application-preview/${it.id.toSafeDirectoryName()}/AppX" }
             ).flatMap { directory -> applicationHostTask.flatMap { it.executableBaseName }.map { directory.file("$it.exe") } })
@@ -1970,8 +2057,12 @@ private fun configureWinAppTasks(
     }
     project.plugins.withId("application") {
         project.extensions.configure(JavaApplication::class.java, Action<JavaApplication> { application ->
-            applicationHostTask.configure { task ->
-                task.mainClass.set(options.mainClass.orElse(application.mainClass))
+            // Both compilation and staging consume the same late-bound entrypoint.
+            // The standard application plugin may be the only mainClass owner.
+            listOf(launcherCompileTask, applicationHostTask).forEach { hostTask ->
+                hostTask.configure { task ->
+                    task.mainClass.set(options.mainClass.orElse(application.mainClass))
+                }
             }
         })
         if (integrateDefaultJvmLifecycle && unpackagedMode.get()) {
@@ -2142,6 +2233,16 @@ private fun configureMingwApplicationEntry(
         // Keep its own entry (including main(args)) when no user main was supplied for a wrapper.
         if (!entryTask.flatMap { it.mainClass }.orNull.isNullOrBlank()) {
             executable.entryPoint = entryTask.flatMap { it.entryPoint }.get()
+        }
+        if (executable.buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.DEBUG &&
+            executable.freeCompilerArgs.none { it == "-Xbackend-threads" || it.startsWith("-Xbackend-threads=") }) {
+            // K/N's supported per-file codegen threads retain debug information and
+            // avoid the unsupported mingw compiler-cache path. Respect explicit flags.
+            val threads = project.providers.gradleProperty("kotlinWinRT.native.backendThreads").map { value ->
+                value.toIntOrNull()?.takeIf { it in 1..64 }
+                    ?: throw org.gradle.api.GradleException("kotlinWinRT.native.backendThreads must be between 1 and 64.")
+            }.orElse(project.gradle.startParameter.maxWorkerCount.coerceIn(1, 4)).get()
+            executable.freeCompilerArgs += "-Xbackend-threads=$threads"
         }
         executable.linkerOpts(if (console.get()) "-Wl,/SUBSYSTEM:CONSOLE" else "-Wl,/SUBSYSTEM:WINDOWS")
         if (applicationModel.get() == WindowsApplicationModel.UWP) executable.linkerOpts("-Wl,/APPCONTAINER")
@@ -2602,6 +2703,13 @@ private fun configureWinRTGeneration(
         task.nugetPackages.set(generateTask.flatMap { it.nugetPackages })
     }
     val previewSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml-sdk-preview/projections")
+    val previewPackages = project.provider {
+        allNuGetPackageSpecs(extension.packageReferences).filter {
+            val id = it.substringBefore('@')
+            if (extension.xaml.framework.get() == io.github.composefluent.winrt.runtime.XamlFramework.UWP) id.equals("Microsoft.UI.Xaml", true)
+            else id.startsWith("Microsoft.WindowsAppSDK", true)
+        }
+    }
     val previewProjection = project.tasks.register("generateWinRTXamlSdkPreviewProjections", GenerateWinRTProjectionsTask::class.java) { task ->
         configureProjectionTask(task, previewSources,
             project.layout.buildDirectory.dir("generated/kotlin-winrt/xaml-sdk-preview/authoring"), prepareMetadataOnly = false)
@@ -2610,20 +2718,30 @@ private fun configureWinRTGeneration(
             WinRTMetadataSource.parse(it) is WinRTMetadataSource.WindowsSdk
         } })
         task.metadataInputFiles.setFrom(emptyList<Any>())
-        task.includeNamespaces.set(listOf("Microsoft.UI.Xaml"))
-        task.includeTypes.set(listOf("Microsoft.UI.Dispatching.DispatcherQueue", "Microsoft.UI.Dispatching.DispatcherQueueHandler"))
-        task.excludeNamespaces.set(emptyList())
+        task.includeNamespaces.set(extension.xaml.framework.map { framework ->
+            if (framework == io.github.composefluent.winrt.runtime.XamlFramework.UWP) listOf("Windows.UI.Xaml", "Microsoft.UI.Xaml") else listOf("Microsoft.UI.Xaml")
+        })
+        task.includeTypes.set(extension.xaml.framework.map { framework ->
+            // The isolated inspector emits the same capture/hosting calls as project previews.
+            io.github.composefluent.winrt.compiler.xaml.xamlCompilerSupportTypeNames(framework, previewHost = true)
+        })
+        // Maps is outside the presentation namespace and the inspector's typed
+        // member table. The native XamlReader can still instantiate map controls;
+        // the host does not need their Kotlin projection to traverse UIElement.
+        task.excludeNamespaces.set(extension.xaml.framework.map { framework ->
+            if (framework == io.github.composefluent.winrt.runtime.XamlFramework.UWP) listOf("Windows.UI.Xaml.Controls.Maps") else emptyList()
+        })
         task.excludeTypes.set(emptyList())
         task.additionExcludeNamespaces.set(emptyList())
         task.generateWindowsSdkProjection.set(true)
         task.projectModel.set("application")
         task.authoringAssemblyName.set("KotlinWinUIXamlSdkPreview")
-        task.authoringTargetArtifactName.set("KotlinWinUIXamlSdkPreview.jar")
-        task.generateSdkPreviewSources.set(true)
-        task.nugetPackages.set(project.provider {
-            allNuGetPackageSpecs(extension.packageReferences).filter { it.substringBefore('@').startsWith("Microsoft.WindowsAppSDK", true) }
+        task.authoringTargetArtifactName.set(extension.xaml.framework.map {
+            if (it == io.github.composefluent.winrt.runtime.XamlFramework.UWP) "KotlinWinUIXamlPreview.exe" else "KotlinWinUIXamlSdkPreview.jar"
         })
-        task.dependsOn(restoreWinAppDependenciesTask)
+        task.emitJvmAuthoringHostExports.set(extension.xaml.framework.map { it != io.github.composefluent.winrt.runtime.XamlFramework.UWP })
+        task.generateSdkPreviewSources.set(true)
+        task.nugetPackages.set(previewPackages)
     }
     val previewRuntime = project.configurations.create("kotlinWinRTXamlSdkPreviewRuntimeClasspath") { configuration ->
         configuration.isCanBeConsumed = false
@@ -2650,9 +2768,26 @@ private fun configureWinRTGeneration(
         configuration.dependencies.add(project.dependencies.create("org.jetbrains:annotations:13.0"))
     }
     previewProjection.configure { task -> task.generatorWorkerClasspath.from(previewCompiler) }
+    val nativePreviewLibraries = project.configurations.create("kotlinWinRTXamlSdkPreviewNativeLibraries") { configuration ->
+        configuration.isCanBeConsumed = false
+        configuration.isCanBeResolved = true
+        configuration.attributes.attribute(org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.attribute,
+            org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType.native)
+        configuration.attributes.attribute(Usage.USAGE_ATTRIBUTE, project.objects.named(Usage::class.java, "kotlin-api"))
+        configuration.attributes.attribute(org.gradle.api.attributes.Attribute.of("org.jetbrains.kotlin.native.target", String::class.java), "mingw_x64")
+        configuration.dependencies.add(project.dependencies.create(kotlinWinRTNativeLibraryDependency(project, ":winrt-runtime", "winrt-runtime")))
+        configuration.dependencies.add(project.dependencies.create(kotlinWinRTNativeLibraryDependency(project, ":winrt-authoring", "winrt-authoring")))
+    }
+    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+    val previewNativeHome = project.provider {
+        project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.targets?.withType(KotlinNativeTarget::class.java)
+            ?.firstOrNull { it.isMingwX64Target() }?.compilations?.getByName("main")?.compileTaskProvider?.get()?.konanHome?.get()
+            ?: project.providers.gradleProperty("kotlin.native.home").orNull.orEmpty()
+    }
     configureWinUIXamlSdkPreview(project, extension, previewProjection,
         previewCompiler, compilerPluginClasspath, previewRuntime,
-        previewProjection.flatMap { it.nugetPackages }, windowsSdkRegistryRoots,
+        nativePreviewLibraries, previewNativeHome,
+        previewPackages, windowsSdkRegistryRoots,
         configuredJvmToolchainHome(project, extension.application), currentWindowsRuntimeIdentifier())
     // A build script may narrow the legacy generateWinRTProjections.sourceRoots
     // collection after plugin application. Resolve that collection lazily from the
@@ -2977,6 +3112,7 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
 
     fun configureBusinessTask(businessTask: KotlinJvmCompile) {
         if (businessTask.name.contains("Test", ignoreCase = true) ||
+            isXamlSemanticTask(businessTask.name) ||
             taskNameOwnsStaticProjectionSupport(businessTask.name)
         ) {
             return
@@ -3144,7 +3280,13 @@ private fun configureStandaloneWinRTJvmProjectionCompilation(
         val jarTaskNames = if (!isMultiplatformProject && businessTask.name == "compileKotlin") {
             listOf("jar")
         } else {
-            kotlinWinRTJvmTargetJarTaskNames(project, businessTask.name)
+            // KGP publishes the target's main compilation. An auxiliary application
+            // compilation must not replace that API artifact or register its tasks
+            // again through the single-JVM-target fallback used for host lookup.
+            project.extensions.findByType(KotlinMultiplatformExtension::class.java)
+                ?.targets?.withType(KotlinJvmTarget::class.java)
+                ?.filter { target -> target.compilations.findByName("main")?.compileKotlinTaskName == businessTask.name }
+                ?.map { target -> "${target.name}Jar" }.orEmpty()
         }
         val businessReference = configureJvmIncrementalReferenceArtifact(project, businessTask)
         businessTask.pluginOptions.add(businessReference.map { directory ->
@@ -3366,11 +3508,11 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
     kotlin.targets.withType(KotlinNativeTarget::class.java).all { target ->
         if (!target.isMingwX64Target()) return@all
         val sharedProjectionSources = kotlin.sourceSets.maybeCreate("winRTProjectionMain").apply {
-            this.kotlin.setSrcDirs(listOf(
-                projectionIdeSourceDirectory(project, generatedSources, referenceSources),
-                projectionIdeSourceDirectory(project, supportSources,
-                    project.layout.buildDirectory.dir("generated/kotlin-winrt/reference/compiler-support")),
-            ))
+            // During IDE import winuiMain owns the reference declarations. Assigning
+            // the same roots to isolated compilations lets the IDE move SDK symbols
+            // into a module the shared business source set cannot depend on.
+            this.kotlin.setSrcDirs(if (projectionIdeImport(project).get()) emptyList<Any>()
+                else listOf(generatedSources, supportSources))
             this.kotlin.include { element -> element.isDirectory || isGeneratedWinRTProjectionSource(element.file) }
         }
         // Register while KGP's model is open. No association with main: that would import
@@ -3378,7 +3520,7 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
         val projection = target.compilations.create("winRTProjection")
         val projectionReference = target.compilations.create("winRTProjectionReference")
         val sharedReferenceSources = kotlin.sourceSets.maybeCreate("winRTProjectionReferenceMain").apply {
-            this.kotlin.setSrcDirs(listOf(
+            this.kotlin.setSrcDirs(if (projectionIdeImport(project).get()) emptyList<Any>() else listOf(
                 referenceSources, project.layout.buildDirectory.dir("generated/kotlin-winrt/reference/compiler-support"),
             ))
             this.kotlin.include { element -> element.isDirectory || isGeneratedWinRTProjectionSource(element.file) }
@@ -3440,12 +3582,17 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
             // Every compiler consumes dependency contracts, including projection producers.
             // Otherwise a layered SDK reference pulls the lower SDK's implementation build.
             // Only nativeDemandConfiguration selects recipes for implementation generation.
-            target.compilations.forEach { compilation ->
+            if (!projectionIdeImport(project).get()) target.compilations.forEach { compilation ->
                 project.configurations.getByName(compilation.compileDependencyConfigurationName)
                     .attributes.attribute(WINRT_NATIVE_PROJECTION_ARTIFACT, "reference")
             }
+            // KGP maps project dependencies through its standard target variants.
+            // Selecting our build-only header variant during sync loses that mapping
+            // and drops the dependency project's source modules from IDE resolution.
             val hasProjection = kotlinWinRTLocalGenerationRequired(project).get() && generateTask.get().emitProjectionSources.get()
-            if (!project.plugins.hasPlugin("winrt.prebuilt-projection")) {
+            // IDE fragments retain reference declarations. Build-only input replacement
+            // must not hide those declarations from KGP's imported compilation model.
+            if (!project.plugins.hasPlugin("winrt.prebuilt-projection") && !projectionIdeImport(project).get()) {
                 val replacedRoots = listOf(generatedSources, supportSources, referenceSources,
                     referenceSupportSources, authoringSources, referenceAuthoringSources)
                     .map { it.get().asFile.toPath().toAbsolutePath().normalize() }
@@ -3526,7 +3673,11 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
                 val localReference = projectionReference.compileTaskProvider.flatMap { it.outputFile }
                 val demand = project.tasks.register("${binary.name}WinRTDemandImplementation", BuildWinRTNativeDemandTask::class.java) { task ->
                     val reuse = project.gradle.sharedServices.registerIfAbsent(
-                        "kotlinWinRTNativeProjectionCompilation", NativeProjectionCompilationService::class.java) { spec ->
+                        // Sibling projects can load the toolkit in distinct plugin classloaders (for
+                        // example, an app with KSP and its background-task library). A build-wide
+                        // service instance cannot cross that type boundary. Share within the project;
+                        // the locked persistent cache below still allows cross-project reuse.
+                        "kotlinWinRTNativeProjectionCompilation:${project.path}", NativeProjectionCompilationService::class.java) { spec ->
                         spec.parameters.projectIdentity.set(project.rootProject.projectDir.canonicalPath)
                         spec.parameters.cacheDirectory.set(sharedWinRTCacheDirectory(project, "native-projection-compilations-v1").toFile())
                     }
@@ -3606,6 +3757,10 @@ private fun configureStandaloneWinRTNativeProjectionCompilation(
                 }
             }
             target.compilations.filter { it != projection && it != projectionReference }.forEach { business ->
+                // KGP interprets associated compilations as test/friend modules in IDE
+                // models. Import uses declarations in winuiMain, so keep build-only
+                // friendship and reference artifacts out of that model.
+                if (projectionIdeImport(project).get()) return@forEach
                 // Business overlays retain access to internal helpers from their own projection
                 // module. Friendship is one-way; the projection never sees business declarations.
                 business.associateWith(projectionReference)
@@ -4142,11 +4297,15 @@ private fun kotlinWinRTCompilerPluginDependency(project: Project): Any {
 }
 
 private fun kotlinWinRTRuntimeDependency(project: Project): Any {
-    return kotlinWinRTLocalOrPluginUnderTestDependency(
+    val dependency = kotlinWinRTLocalOrPluginUnderTestDependency(
         project = project,
         projectPath = ":winrt-runtime",
         moduleName = "winrt-runtime",
     ) ?: "io.github.compose-fluent:winrt-runtime:${kotlinWinRTPluginVersion()}"
+    // Local/TestKit JARs have no POM to supply the split runtime contract transitively.
+    return if (dependency is org.gradle.api.file.FileCollection) {
+        project.files(dependency, kotlinWinRTPluginMetadataArtifact(project, "winrt-runtime-contracts"))
+    } else dependency
 }
 
 private fun kotlinWinRTRuntimeClasspathDependency(project: Project): Any {

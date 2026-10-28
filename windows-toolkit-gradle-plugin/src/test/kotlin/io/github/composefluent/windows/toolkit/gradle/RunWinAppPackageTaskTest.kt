@@ -41,7 +41,10 @@ class RunWinAppPackageTaskTest {
                 "stageWinAppDevelopmentPackage$suffix", StageWinAppPackageTask::class.java,
             ).get()
             assertEquals(
-                setOf("restoreWinAppDependencies", developmentStage.name),
+                // The resolved Native dependency receipt also consumes the toolchain's
+                // standard libraries, so its producer must precede the run task.
+                setOf("restoreWinAppDependencies", developmentStage.name) +
+                    if (suffix == "DesktopMain") emptySet() else setOf("downloadKotlinNativeDistribution"),
                 run.taskDependencies.getDependencies(run).map { it.name }.toSet(),
             )
             val pack = project.tasks.named("packageWinApp$suffix", PackageWinAppTask::class.java).get()
@@ -84,8 +87,13 @@ class RunWinAppPackageTaskTest {
         write(launcher, "launcher")
         val first = root.resolve("first/library.jar")
         val second = root.resolve("second/library.jar")
-        write(first, "first library")
-        write(second, "second library")
+        for ((jar, content) in listOf(first to "first library", second to "second library")) {
+            Files.createDirectories(jar.parent)
+            java.util.jar.JarOutputStream(Files.newOutputStream(jar)).use { output ->
+                output.putNextEntry(java.util.jar.JarEntry("payload.txt"))
+                output.write(content.toByteArray()); output.closeEntry()
+            }
+        }
         val project = ProjectBuilder.builder().withProjectDir(root.toFile()).build()
         val task = project.tasks.register("directDevelopment", StageWinAppPackageTask::class.java).get()
         task.runtimeAssetsDirectory.set(input.toFile())
@@ -103,7 +111,9 @@ class RunWinAppPackageTaskTest {
         assertEquals("component", Files.readString(root.resolve("development/Component.dll")))
         assertTrue(Files.readString(root.resolve("development/AppxManifest.xml")).contains("KotlinWinRT.RunTest.dev"))
         Files.list(root.resolve("development/lib")).use { jars ->
-            assertEquals(setOf("first library", "second library"), jars.map(Files::readString).toList().toSet())
+            assertEquals(setOf("first library", "second library"), jars.map { path -> java.util.jar.JarFile(path.toFile()).use { jar ->
+                jar.getInputStream(jar.getEntry("payload.txt")).bufferedReader().use { it.readText() }
+            } }.toList().toSet())
         }
         write(input.resolve("lib/unexpected.jar"), "reserved")
         assertTrue(runCatching { task.stage() }.isFailure)
@@ -236,11 +246,12 @@ class RunWinAppPackageTaskTest {
         write(root.resolve("build output/App.exe"), "test executable")
         write(root.resolve("build output/Assets/Logo.png"), "test logo")
 
-        fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null, preview: Boolean = false) =
+        fun runner(options: List<String> = listOf("--detach", "--args=hello world"), session: String? = null, preview: Boolean = false, registerOnly: Boolean = false) =
             GradleRunner.create().withProjectDir(root.toFile()).withPluginClasspath()
-                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW") } +
+                .withEnvironment(System.getenv().filterKeys { it !in setOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY", "KOTLIN_WINRT_XAML_PREVIEW", "KOTLIN_WINRT_XAML_PREVIEW_THEME", "KOTLIN_WINRT_REGISTER_ONLY") } +
                     (session?.let { mapOf("KOTLIN_WINRT_HOT_RELOAD_DIRECTORY" to it) } ?: emptyMap()) +
-                    if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1") else emptyMap())
+                    (if (preview) mapOf("KOTLIN_WINRT_XAML_PREVIEW" to "1", "KOTLIN_WINRT_XAML_PREVIEW_THEME" to "Dark") else emptyMap()) +
+                    if (registerOnly) mapOf("KOTLIN_WINRT_REGISTER_ONLY" to "1") else emptyMap())
                 .withArguments(listOf("runFixture", "--configuration-cache", "--offline", "--stacktrace") + options)
         val first = runner().build()
         assertEquals(TaskOutcome.SUCCESS, first.task(":runFixture")?.outcome)
@@ -265,11 +276,12 @@ class RunWinAppPackageTaskTest {
         val debugInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
         assertTrue(debugInvocation, debugInvocation.contains("--debug-output"))
         assertTrue(debugInvocation, debugInvocation.contains("--args=--detach"))
-        runner(listOf("--no-launch")).build()
+        runner(listOf("--no-launch", "--detach", "--debug-output")).build()
         val registerInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
         assertTrue(registerInvocation, registerInvocation.contains("--no-launch"))
         assertFalse(registerInvocation, registerInvocation.contains("--args"))
         assertFalse(registerInvocation, registerInvocation.contains("--detach"))
+        assertFalse(registerInvocation, registerInvocation.contains("--debug-output"))
         val firstSession = root.resolve("sessions with spaces/first").toString()
         runner(session = firstSession).build()
         val developmentInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
@@ -283,8 +295,19 @@ class RunWinAppPackageTaskTest {
         runner(session = nextSession, preview = true).build()
         val previewInvocation = Files.readAllLines(root.resolve("invocations.log")).last()
         assertTrue(previewInvocation, previewInvocation.contains("--kotlin-winrt-xaml-preview"))
+        assertTrue(previewInvocation, previewInvocation.contains("--kotlin-winrt-xaml-preview-theme=Dark"))
         assertTrue(previewInvocation, previewInvocation.contains(nextSession))
         assertFalse(previewInvocation, previewInvocation.contains("hello world"))
+        runner(listOf("--no-launch"), session = nextSession, preview = true).build()
+        val previewRegistration = Files.readAllLines(root.resolve("invocations.log")).last()
+        assertTrue(previewRegistration, previewRegistration.contains("--no-launch"))
+        assertFalse(previewRegistration, previewRegistration.contains("--args"))
+        runner(emptyList(), session = nextSession, preview = true, registerOnly = true).build()
+        val ideRegistration = Files.readAllLines(root.resolve("invocations.log")).last()
+        assertTrue(ideRegistration, ideRegistration.contains("--no-launch"))
+        assertFalse(ideRegistration, ideRegistration.contains("--args"))
+        runner(emptyList(), session = nextSession, preview = true, registerOnly = false).build()
+        assertFalse(Files.readAllLines(root.resolve("invocations.log")).last().contains("--no-launch"))
         runner(listOf("--no-launch"), session = nextSession).build()
         assertFalse(Files.readAllLines(root.resolve("invocations.log")).last().contains(WINAPP_HOT_RELOAD_ARGUMENT))
         runner(listOf("--no-launch", "-PsdkApi=10.0.28000.0", "-Pminimum=10.0.22000.0")).build()

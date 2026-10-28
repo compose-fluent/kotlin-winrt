@@ -1898,7 +1898,13 @@ class ComWrappersSupportTest {
         )
 
         val projected = ProjectedInspectableObject(
-            pointer = WinRTInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
+            pointer = WinRTInspectableComObject(
+                interfaceDefinitions = listOf(sourceInterfaceType, targetInterfaceType).map {
+                    WinRTInspectableInterfaceDefinition(interfaceId = it.interfaceId, methods = emptyList())
+                },
+                defaultInterfaceId = sourceInterfaceType.interfaceId,
+                runtimeClassName = "test.RuntimeClass",
+            )
                 .detachReference(IID.IInspectable)
         )
 
@@ -1910,6 +1916,29 @@ class ComWrappersSupportTest {
         target.nativeObject.close()
         source.nativeObject.close()
         projected.nativeObject.close()
+    }
+
+    @Test
+    fun cast_extension_rejects_unsupported_iid_before_invoking_a_registered_factory() {
+        // Runtime2 WindowsRuntimeObjectReference.As must perform QI even when a
+        // runtime-class factory could manufacture a Kotlin wrapper for any pointer.
+        ComWrappersSupport.clearRegistriesForTests()
+        val type = WinRTTypeHandle("test.ITarget", Guid("55555555-5555-5555-5555-555555555552"))
+        WinRTTypeRegistry.register<TargetProjectedInterface>(
+            projectedTypeName = type.projectedTypeName, iid = type.interfaceId, isWindowsRuntimeType = true,
+        )
+        var factories = 0
+        ComWrappersSupport.registerTypedRcwFactory(type) { factories++; TestTargetWrapper(type, it) }
+        val projected = ProjectedInspectableObject(
+            pointer = WinRTInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
+                .detachReference(IID.IInspectable),
+        )
+        try {
+            assertTrue(runCatching { projected.asWinRT<TargetProjectedInterface>() }.isFailure)
+            assertTrue(runCatching { projected.winrtAs(type) }.isFailure)
+            assertEquals(0, factories)
+            assertTrue(projected.nativeObject.queryInterface(IID.IInspectable).getOrThrow().use { true })
+        } finally { projected.nativeObject.close() }
     }
 
     @Test

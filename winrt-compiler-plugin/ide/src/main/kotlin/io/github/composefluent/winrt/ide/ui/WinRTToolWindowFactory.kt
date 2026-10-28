@@ -22,6 +22,9 @@ class WinRTToolWindowFactory : ToolWindowFactory {
         toolWindow.addComposeTab("Hot Reload", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.hotreload.WinUIXamlHotReloadPanel(project)
         }
+        toolWindow.addComposeTab("Preview", focusOnClickInside = true) {
+            io.github.composefluent.winrt.ide.preview.WinUIXamlPreviewPanel(project)
+        }
         toolWindow.addComposeTab("Visual Tree", focusOnClickInside = true) {
             io.github.composefluent.winrt.ide.preview.WinUIXamlPreviewPanel(project, treeOnly = true)
         }

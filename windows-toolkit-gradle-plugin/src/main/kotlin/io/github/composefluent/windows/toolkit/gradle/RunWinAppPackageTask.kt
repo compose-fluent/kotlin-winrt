@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.windows.toolkit.gradle
 
 import io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol
@@ -47,6 +49,11 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyLockFiles: ConfigurableFileCollection
 
+    /** Resolved Native libraries and compiler/toolkit artifacts, including external files. */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.ABSOLUTE)
+    abstract val previewBuildInputs: ConfigurableFileCollection
+
     @get:Input abstract val dependencyPackageSpecs: ListProperty<String>
     @get:Input abstract val runtimeIdentifier: Property<String>
     @get:InputDirectory
@@ -65,6 +72,16 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Input
     abstract val applicationVariant: Property<String>
 
+    /** Builds staging inputs without replacing the running deployment. */
+    @get:Internal
+    abstract val developmentBuildTask: Property<String>
+
+    @get:Internal
+    abstract val nativeCompilerHome: Property<String>
+
+    @get:Internal
+    val nativeDebugDirectory = project.providers.environmentVariable(NATIVE_DEBUG_DIRECTORY)
+
     @get:Input
     @get:Option(option = "args", description = "Windows command line to pass to the packaged application.")
     abstract val args: Property<String>
@@ -74,7 +91,7 @@ abstract class RunWinAppPackageTask @Inject constructor(
     abstract val detach: Property<Boolean>
 
     @get:Input
-    @get:Option(option = "debug-output", description = "Capture native debug output and exceptions through WinApp CLI.")
+    @get:Option(option = "debug-output", description = "Capture native debug output and exceptions through the package launcher.")
     abstract val debugOutput: Property<Boolean>
 
     @get:Input
@@ -106,12 +123,19 @@ abstract class RunWinAppPackageTask @Inject constructor(
     @get:Internal
     abstract val supportsXamlHotReload: Property<Boolean>
 
+    @get:Internal
+    abstract val supportsXamlPreview: org.gradle.api.provider.Property<Boolean>
+
+    @get:Internal abstract val sdkPreview: Property<Boolean>
+
     /** Configuration-only IDE hint; Auto deployment is resolved when the run executes. */
     @get:Internal
     abstract val supportsDevelopmentRun: Property<Boolean>
 
     @get:Internal
     abstract val designPreview: Property<Boolean>
+
+    @get:Internal abstract val designPreviewTheme: Property<String>
 
     /** Actual deployed executable, rather than the pre-registration input layout. */
     @get:Internal
@@ -127,19 +151,27 @@ abstract class RunWinAppPackageTask @Inject constructor(
         selfContained.convention(false)
         applicationVariant.convention("default")
         args.convention("")
-        detach.convention(false)
+        detach.convention(project.providers.environmentVariable("KOTLIN_WINRT_RELEASE_BUILD_LOCK")
+            .map { it == "1" }.orElse(false))
         debugOutput.convention(false)
-        noLaunch.convention(false)
+        // Android Studio replaces BuildLauncher.forTasks after Gradle's task-option
+        // setup. Carry registration intent through the session environment too.
+        noLaunch.convention(project.providers.environmentVariable("KOTLIN_WINRT_REGISTER_ONLY")
+            .map { it == "1" }.orElse(false))
         winAppCliExecutable.convention("winapp")
         winAppCliVersion.convention(WinAppCliDefaults.VERSION)
         winAppCliPackageSha512.convention(WinAppCliDefaults.PACKAGE_SHA512)
         offline.convention(false)
         developmentSessionDirectory.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY))
         supportsXamlHotReload.convention(false)
+        supportsXamlPreview.convention(supportsXamlHotReload)
+        sdkPreview.convention(false)
         supportsDevelopmentRun.convention(packageType.zip(selfContained) { type, bundled ->
             type == WindowsPackageType.Packaged.name && !bundled
         })
         designPreview.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_ENVIRONMENT).map { it == "1" }.orElse(false))
+        designPreviewTheme.convention(project.providers.environmentVariable(WinUIXamlHotReloadProtocol.PREVIEW_THEME_ENVIRONMENT)
+            .map { theme -> require(theme in setOf("Default", "Light", "Dark")); theme }.orElse("Default"))
         previewHostExecutable.convention(hostExecutable)
         outputs.upToDateWhen { false }
     }
@@ -192,10 +224,21 @@ abstract class RunWinAppPackageTask @Inject constructor(
                     "or install and activate the self-contained MSIX.",
             )
         }
-        val input = packageDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        var input = packageDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         val output = deploymentDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         if (output.startsWith(input) || input.startsWith(output)) {
             throw GradleException("Packaged run deployment directory must be separate from its build input: $output and $input.")
+        }
+        if (applicationModel.get() == WindowsApplicationModel.Desktop && nativeCompilerHome.orNull.isNullOrBlank() && supportsXamlHotReload.get()) {
+            val developmentInput = temporaryDir.toPath().resolve("development-input")
+            GradleFileOperations.cleanDirectory(developmentInput)
+            Files.walk(input).use { files -> files.forEach { source ->
+                val target = developmentInput.resolve(input.relativize(source))
+                if (Files.isDirectory(source)) Files.createDirectories(target)
+                else Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
+            } }
+            stampWinUIXamlDevelopmentRuntime(developmentInput, true)
+            input = developmentInput.toAbsolutePath().normalize()
         }
         val manifest = input.resolve("AppxManifest.xml")
         val errors = ProjectPriManifestSupport.validatePackageManifest(manifest) +
@@ -204,8 +247,12 @@ abstract class RunWinAppPackageTask @Inject constructor(
             throw GradleException("Cannot run packaged application from $input:\n${errors.joinToString("\n")}")
         }
         if (applicationModel.get() == WindowsApplicationModel.UWP) {
-            require(!designPreview.get()) { "The WinUI designer is not a UWP AppContainer launch mode." }
-            require(!debugOutput.get()) { "UWP launch does not capture WinApp CLI debug output; attach a native debugger to the reported PID." }
+            require(!designPreview.get() || supportsXamlPreview.get() && supportsXamlHotReload.get()) {
+                "UWP XAML preview requires a generated preview host with Hot Reload support."
+            }
+            require(!debugOutput.get() || nativeDebugDirectory.orNull.isNullOrBlank()) {
+                "Choose either Native IDE debugging or --debug-output; Windows permits one debugger per process."
+            }
             val restoredRoots = dependencyLockFiles.files.filter(java.io.File::isFile).let { lockFiles ->
                 if (lockFiles.isEmpty()) emptyList() else readWinAppRestoredPackageRoots(
                     lockFiles = lockFiles, rootPackageSpecs = dependencyPackageSpecs.get(),
@@ -237,10 +284,18 @@ abstract class RunWinAppPackageTask @Inject constructor(
                 if (Files.isDirectory(source)) Files.createDirectories(target)
                 else Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
             } }
+            if (designPreview.get() || supportsXamlHotReload.get() && !developmentSessionDirectory.orNull.isNullOrBlank()) AppxManifestPackageSupport.enableDesignerCapture(output.resolve("AppxManifest.xml"))
             // PowerShell -File reparses quoted and switch-shaped arguments. Pass application data
             // through UTF-8 JSON so ActivateApplication receives the original command-line string.
             Files.writeString(configuration, buildJsonObject {
                 put("applicationArguments", args.get())
+                put("designPreview", designPreview.get())
+                put("designPreviewTheme", designPreviewTheme.get())
+                put("nativeDebugDirectory", nativeDebugDirectory.orNull.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true }.orEmpty())
+                put("debugOutput", debugOutput.get())
+                put("debugOutputFile", if (debugOutput.get()) temporaryDir.resolve("native-debug-output.log").absolutePath else "")
+                put("developmentSessionDirectory", developmentSessionDirectory.orNull
+                    .takeIf { supportsXamlHotReload.get() && !noLaunch.get() }.orEmpty())
                 put("dependencyPackages", JsonArray(dependencyPaths.map { path ->
                     val identity = AppxManifestPackageSupport.validateFrameworkPackageArchive(path, runtimeIdentifier.get())
                     buildJsonObject {
@@ -272,10 +327,14 @@ abstract class RunWinAppPackageTask @Inject constructor(
             logger = logger,
         ).resolve()
         val applicationArguments = winAppDevelopmentArguments(if (designPreview.get()) {
-            check(supportsXamlHotReload.get()) { "The XAML preview host requires a JVM WinUI development launch." }
-            WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT
+            check(supportsXamlPreview.get()) { "The XAML preview host requires a supported WinUI development launch." }
+            WinUIXamlHotReloadProtocol.PREVIEW_ARGUMENT + " " + WinUIXamlHotReloadProtocol.PREVIEW_THEME_ARGUMENT + designPreviewTheme.get()
         } else args.get(),
             developmentSessionDirectory.orNull.takeIf { supportsXamlHotReload.get() && !noLaunch.get() })
+        val nativeDebug = nativeDebugDirectory.orNull?.takeIf { nativeCompilerHome.orNull?.isNotBlank() == true && !noLaunch.get() }
+        require(nativeDebug == null || !debugOutput.get()) {
+            "Choose either Native IDE debugging or --debug-output; Windows permits one debugger per process."
+        }
         val arguments = buildList {
             add("run")
             add(input.toString())
@@ -283,10 +342,14 @@ abstract class RunWinAppPackageTask @Inject constructor(
             add(manifest.toString())
             add("--output-appx-directory")
             add(output.toString())
-            if (detach.get()) add("--detach")
-            if (debugOutput.get()) add("--debug-output")
-            if (noLaunch.get()) add("--no-launch")
-            if (applicationArguments.isNotEmpty()) {
+            // Native debugging registers with WinApp, then owns the suspended
+            // launch below. WinApp rejects launch options with --no-launch.
+            if (!noLaunch.get() && nativeDebug == null) {
+                if (detach.get()) add("--detach")
+                if (debugOutput.get()) add("--debug-output")
+            }
+            if (noLaunch.get() || nativeDebug != null) add("--no-launch")
+            if (!noLaunch.get() && nativeDebug == null && applicationArguments.isNotEmpty()) {
                 add(winAppRunArgumentsOption(applicationArguments))
             }
         }
@@ -296,6 +359,27 @@ abstract class RunWinAppPackageTask @Inject constructor(
             spec.commandLine(winAppCliCommandLine(cli.command, arguments))
             spec.workingDir = winAppWorkspace.get().asFile
             spec.environment.remove(WinUIXamlHotReloadProtocol.SESSION_DIRECTORY)
+        }
+        if (nativeCompilerHome.orNull?.isNotBlank() == true && previewBuildInputs.files.isNotEmpty()) {
+            io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.write(
+                output.parent.resolve(io.github.composefluent.winrt.ide.model.WinRTPreviewBuildInputs.FILE_NAME),
+                previewBuildInputs.files.map { it.toPath() })
+        }
+        if (nativeDebug != null) {
+            val script = temporaryDir.toPath().resolve("native-debug.ps1")
+            val configuration = temporaryDir.toPath().resolve("native-debug.json")
+            Files.writeString(script, nativeDebugLauncherScript)
+            Files.writeString(configuration, buildJsonObject {
+                put("executable", hostExecutable.get().asFile.absolutePath)
+                put("directory", output.toString())
+                put("debugDirectory", nativeDebug)
+                put("argumentString", applicationArguments)
+                put("detach", detach.get())
+            }.toString())
+            execOperations.exec { spec ->
+                spec.commandLine(powerShellExecutable.get(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.toString(), "-Configuration", configuration.toString())
+                spec.workingDir = output.toFile()
+            }
         }
     }
 }

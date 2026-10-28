@@ -35,6 +35,25 @@ class WeakReferenceInteropTest {
     }
 
     @Test
+    fun identity_comparison_resolves_native_unknown_without_reprojecting_a_wrapper() {
+        // CsWinRT EventSourceCache probes the native weak reference directly.
+        FakeWeakReferenceHost.create().use { host ->
+            val original = host.createProjectedTarget()
+            val weak = WeakReference(original)
+            original.nativeObject.close()
+            val current = host.createProjectedTarget()
+            try {
+                assertTrue(weak.matchesTarget(current))
+                host.targetAlive = false
+                assertFalse(weak.matchesTarget(current))
+            } finally {
+                weak.setTarget(null)
+                current.nativeObject.close()
+            }
+        }
+    }
+
+    @Test
     fun set_target_preserves_shared_native_weak_reference_ownership() {
         // CsWinRT WeakReference.SetTarget replaces its shared IWeakReference RCW field.
         // It must not dispose the RCW while another managed owner still holds it.

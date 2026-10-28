@@ -7,6 +7,9 @@ import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.FirClassLikeDeclaration
 import org.jetbrains.kotlin.fir.extensions.*
+import org.jetbrains.kotlin.fir.expressions.builder.buildAnnotation
+import org.jetbrains.kotlin.fir.expressions.impl.FirEmptyAnnotationArgumentMapping
+import org.jetbrains.kotlin.fir.toFirResolvedTypeRef
 import org.jetbrains.kotlin.fir.plugin.*
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.impl.*
@@ -18,9 +21,13 @@ internal fun xamlConnectorId(framework: XamlFramework) = xamlProjectionClassId(f
 internal val xamlStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlLoadState"))
 internal val xamlComponentId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlComponent"))
 internal val xamlStateName = Name.identifier("_kotlinXamlState")
+internal val xamlConnectionStateId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlConnectionState"))
+internal val xamlConnectionStateName = Name.identifier("_kotlinXamlConnections")
 internal val xamlConstructionStateName = Name.identifier("_kotlinXamlConstructionState")
 internal val xamlConstructionName = Name.identifier("_kotlinXamlCompleteConstruction")
 internal val xamlLoadName = Name.identifier("_kotlinXamlLoad")
+internal val xamlDesignConnectionsName = Name.identifier("_kotlinXamlDesignConnections")
+internal val xamlDesignConnectName = Name.identifier("_kotlinXamlConnectDesign")
 internal val xamlInitializeName = Name.identifier("_kotlinXamlInitialize")
 internal val xamlConnectName = Name.identifier("connect")
 internal val xamlBindingName = Name.identifier("getBindingConnector")
@@ -32,6 +39,8 @@ internal val xamlUpdateBindingsName = Name.identifier("_kotlinXamlUpdateBindings
 internal val xamlBindingsChangedName = Name.identifier("_kotlinXamlBindingsChanged")
 internal val xamlBindingsLoadingName = Name.identifier("_kotlinXamlBindingsLoading")
 internal val xamlBindingsUnloadedName = Name.identifier("_kotlinXamlBindingsUnloaded")
+internal val xamlDesignBindingsName = Name.identifier("updateDesignBindings")
+internal val xamlStopDesignBindingsName = Name.identifier("stopDesignBindings")
 internal val xamlRefreshBindingsName = Name.identifier("updateBindings")
 internal val xamlBindingScopeId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlBindingScope"))
 internal val xamlBindingScopeOwnerId = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinUIXamlBindingScopeOwner"))
@@ -80,9 +89,9 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
             page.properties.map { Name.identifier(it.name) } +
             page.properties.filterNot { it.isReadOnly }.map { it.eventStorageName() } +
             page.properties.flatMap { it.eventFunctions() } +
-            setOf(xamlStateName, xamlConstructionStateName, xamlConstructionName, xamlLoadName, xamlInitializeName, xamlConnectName, xamlBindingName) +
+            setOf(xamlStateName, xamlConnectionStateName, xamlConstructionStateName, xamlConstructionName, xamlLoadName, xamlInitializeName, xamlDesignConnectionsName, xamlDesignConnectName, xamlConnectName, xamlBindingName) +
             if (page.hasCompiledBindings()) setOf(xamlBindingStateName, xamlUpdateBindingsName, xamlBindingsChangedName,
-                xamlBindingsLoadingName, xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlPageBindingConnectName) + page.bindBackNames() +
+                xamlBindingsLoadingName, xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlDesignBindingsName, xamlStopDesignBindingsName, xamlPageBindingConnectName) + page.bindBackNames() +
                 (if (page.hasTemplateScopes()) xamlScopeNames else emptySet()) else emptySet()
     }
 
@@ -106,6 +115,7 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
         val element = page.connections.singleOrNull { it.storageName() == name.asString() }
         val state = name == xamlStateName || name == xamlConstructionStateName
         val type = if (state) xamlStateId else if (name == xamlBindingStateName) xamlBindingStateId
+            else if (name == xamlConnectionStateName) xamlConnectionStateId
             else element?.typeName?.let(::xamlProjectionClassId) ?: return emptyList()
         return listOf(createMemberProperty(owner, XamlDeclarationKey, name, type.createConeType(session)) {
             if (state || name == xamlBindingStateName || element?.fieldName == null) visibility = Visibilities.Private
@@ -138,22 +148,40 @@ private class XamlDeclarations(session: FirSession, private val pages: Map<Class
             }.symbol)
         }
         val bindingMethod = page.hasCompiledBindings() && name in setOf(xamlUpdateBindingsName, xamlBindingsChangedName,
-            xamlBindingsLoadingName, xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlPageBindingConnectName) + page.bindBackNames()
-        if (!bindingMethod && name !in setOf(xamlLoadName, xamlInitializeName, xamlConstructionName, xamlConnectName, xamlBindingName)) return emptyList()
-        val result = if (name == xamlBindingName) xamlConnectorId(framework).createConeType(session, nullable = true)
+            xamlBindingsLoadingName, xamlBindingsUnloadedName, xamlRefreshBindingsName, xamlDesignBindingsName, xamlStopDesignBindingsName, xamlPageBindingConnectName) + page.bindBackNames()
+        if (!bindingMethod && name !in setOf(xamlLoadName, xamlInitializeName, xamlConstructionName, xamlDesignConnectionsName, xamlDesignConnectName, xamlConnectName, xamlBindingName)) return emptyList()
+        val result = if (name == xamlDesignConnectionsName) session.builtinTypes.stringType.coneType
+            else if (name == xamlBindingName) xamlConnectorId(framework).createConeType(session, nullable = true)
             else session.builtinTypes.unitType.coneType
         return listOf(createMemberFunction(owner, XamlDeclarationKey, name, result) {
-            if (name == xamlLoadName || (bindingMethod && name !in setOf(xamlRefreshBindingsName, xamlPageBindingConnectName))) visibility = Visibilities.Private
+            if (name == xamlLoadName || (bindingMethod && name !in setOf(xamlRefreshBindingsName, xamlDesignBindingsName, xamlStopDesignBindingsName, xamlPageBindingConnectName))) visibility = Visibilities.Private
+            if (name == xamlDesignBindingsName) valueParameter(Name.identifier("suppressed"), session.builtinTypes.stringType.coneType)
+            if (name in setOf(xamlDesignBindingsName, xamlStopDesignBindingsName)) status { isOverride = true }
             if (name == xamlUpdateBindingsName) valueParameter(Name.identifier("initial"), session.builtinTypes.booleanType.coneType)
             if (name in setOf(xamlBindingsChangedName, xamlBindingsLoadingName, xamlBindingsUnloadedName) + page.bindBackNames()) {
                 valueParameter(Name.identifier("sender"), session.builtinTypes.nullableAnyType.coneType)
                 valueParameter(Name.identifier("args"), session.builtinTypes.nullableAnyType.coneType)
+            }
+            if (name in setOf(xamlDesignConnectionsName, xamlDesignConnectName)) status { isOverride = true }
+            if (name == xamlDesignConnectName) {
+                valueParameter(Name.identifier("connectionId"), session.builtinTypes.intType.coneType)
+                valueParameter(Name.identifier("target"), session.builtinTypes.nullableAnyType.coneType)
             }
             if (name == xamlInitializeName || name == xamlConstructionName) status { isOverride = true }
             if (name == xamlConnectName || name == xamlBindingName || name == xamlPageBindingConnectName) {
                 status { isOverride = true }
                 valueParameter(Name.identifier("connectionId"), session.builtinTypes.intType.coneType)
                 valueParameter(Name.identifier("target"), session.builtinTypes.nullableAnyType.coneType)
+            }
+        }.apply {
+            // Overrides are new declarations: preserve the runtime's internal API
+            // diagnostic in FIR/IDE analysis and in emitted JVM/Native metadata.
+            if (name in setOf(xamlDesignConnectionsName, xamlDesignConnectName, xamlDesignBindingsName, xamlStopDesignBindingsName)) {
+                replaceAnnotations(annotations + buildAnnotation {
+                    annotationTypeRef = ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.InternalWinRTApi"))
+                        .createConeType(session).toFirResolvedTypeRef()
+                    argumentMapping = FirEmptyAnnotationArgumentMapping
+                })
             }
         }.symbol)
     }

@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.preview
 
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
@@ -20,6 +22,10 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
             resource: ((String, String) -> WinUIXamlDesignResource?)? = null,
             sdkType: ((String, String) -> Boolean)? = null,
             visualType: ((String, String) -> Boolean)? = null,
+            designData: ((String, String) -> WinUIXamlDesignResource?)? = resource,
+            compiledResourceFallback: Boolean = false,
+            projectBindings: Boolean = false,
+            bindingPage: io.github.composefluent.winrt.metadata.WinUIXamlPageDeclaration? = null,
             event: (String, String, String) -> Boolean = { _, _, _ -> false }): WinUIXamlDesignDocument {
             val factory = DocumentBuilderFactory.newInstance().apply {
                 isNamespaceAware = true
@@ -27,17 +33,51 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                 setFeature("http://xml.org/sax/features/external-general-entities", false)
                 setFeature("http://xml.org/sax/features/external-parameter-entities", false)
             }
-            fun parse(value: String) = factory.newDocumentBuilder().parse(InputSource(StringReader(value)))
+            fun parse(value: String) = factory.newDocumentBuilder().parse(InputSource(StringReader(value))).also { WinUIXamlDesignIdentity.mark(it, value, visualType) }
             val document = parse(text)
             var root = document.documentElement
+            val componentClass = root.getAttributeNS(WinUIXamlCatalog.XAML, "Class")
+            if (projectBindings && bindingPage?.className == componentClass) WinUIXamlDesignIdentity.markConnections(document, text, bindingPage)
             require(root.localName !in listOf("Application", "ResourceDictionary")) { "Select a visual Window, Page or UserControl to preview." }
             val notes = linkedSetOf<String>()
+            WinUIXamlDesignData.apply(root, packagePath, designData, { parse(it).documentElement }, notes)
             val omittedResources = linkedSetOf<String>()
             fun children(tag: Element) = (0 until tag.childNodes.length).mapNotNull { tag.childNodes.item(it) as? Element }
             fun namespaces(from: Element, to: Element) { (0 until from.attributes.length).map { from.attributes.item(it) }
                 .filter { it.namespaceURI == XMLConstants.XMLNS_ATTRIBUTE_NS_URI }.forEach { to.setAttributeNS(it.namespaceURI, it.nodeName, it.nodeValue) } }
             var expandedSize = text.length + application.orEmpty().length
             fun sanitize(tag: Element, sourcePath: String, stack: Set<String> = setOf(sourcePath)) {
+                // Visual Studio's design-time properties override their runtime
+                // counterparts before the ordinary XAML processing pipeline.
+                // This also gives d:Source the resource's original package base.
+                (0 until tag.attributes.length).map { tag.attributes.item(it) }
+                    .filter { it.namespaceURI == DESIGN }.forEach { attribute ->
+                        val name = attribute.localName
+                        val value = attribute.nodeValue
+                        tag.removeAttributeNode(attribute as org.w3c.dom.Attr)
+                        val extension = Regex("^\\{\\s*([^\\s,{}]+)").find(value)?.groupValues?.get(1)
+                        val designExtension = extension?.contains(':') == true &&
+                            tag.lookupNamespaceURI(extension.substringBefore(':')) == DESIGN
+                        when {
+                            name == "IsHidden" -> if (value.equals("true", true)) tag.setAttribute("Visibility", "Collapsed")
+                            name in setOf("DesignWidth", "DesignHeight") -> {
+                                val property = name.removePrefix("Design")
+                                if (!tag.hasAttribute(property)) tag.setAttribute(property, value)
+                            }
+                            designExtension -> notes += "Design extension '$extension' needs explicit design values or inline design data."
+                            else -> tag.setAttribute(name, value)
+                        }
+                    }
+                children(tag).filter { it.namespaceURI == DESIGN && '.' in it.localName }.forEach { design ->
+                    val member = design.localName.substringAfter('.')
+                    // A design property replaces, rather than appends to, the
+                    // runtime property. Items must not coexist with ItemsSource.
+                    tag.removeAttribute(member)
+                    if (member == "Items") tag.removeAttribute("ItemsSource")
+                    children(tag).filter { it !== design && it.namespaceURI != DESIGN &&
+                        (it.localName == design.localName || member == "Items" && it.localName.endsWith(".ItemsSource"))
+                    }.forEach(tag::removeChild)
+                }
                 if (tag.namespaceURI == WinUIXamlCatalog.XAML && tag.localName == "Properties") {
                     tag.parentNode.removeChild(tag)
                     notes += "Authored property declarations are excluded from static preview."
@@ -60,19 +100,34 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                 if (externalDictionary || projectDictionary != null) {
                     val uri = tag.getAttribute("Source")
                     val loaded = projectDictionary ?: resource!!(uri, sourcePath)
-                        ?: error("Resource dictionary '$uri' could not be found from '$sourcePath'.")
-                    require(loaded.packagePath !in stack) { "Resource dictionary cycle at '${loaded.packagePath}'." }
-                    expandedSize += loaded.text.length
-                    require(expandedSize <= 128 * 1024) { "The expanded design resources exceed the static preview limit." }
-                    val dictionary = parse(loaded.text).documentElement
-                    require(dictionary.localName == "ResourceDictionary") { "'$uri' must contain a ResourceDictionary." }
-                    val replacement = tag.ownerDocument.importNode(dictionary, true) as Element
-                    namespaces(tag, replacement)
-                    if (tag.hasAttributeNS(WinUIXamlCatalog.XAML, "Key"))
-                        replacement.setAttributeNS(WinUIXamlCatalog.XAML, "x:Key", tag.getAttributeNS(WinUIXamlCatalog.XAML, "Key"))
-                    sanitize(replacement, loaded.packagePath, stack + loaded.packagePath)
-                    tag.parentNode.replaceChild(replacement, tag)
-                    return
+                    if (loaded == null && !compiledResourceFallback)
+                        error("Resource dictionary '$uri' could not be found from '$sourcePath'.")
+                    if (loaded == null) notes += "Resource dictionary '$uri' uses the compiled package because its source is unavailable."
+                    else {
+                        require(loaded.packagePath !in stack) { "Resource dictionary cycle at '${loaded.packagePath}'." }
+                        expandedSize += loaded.text.length
+                        require(expandedSize <= 128 * 1024) { "The expanded design resources exceed the static preview limit." }
+                        val dictionary = parse(loaded.text).documentElement
+                        require(dictionary.localName == "ResourceDictionary") { "'$uri' must contain a ResourceDictionary." }
+                        val descendants = listOf(dictionary) + (0 until dictionary.getElementsByTagName("*").length).map { dictionary.getElementsByTagName("*").item(it) as Element }
+                        val compiledBindings = descendants.any { item -> (0 until item.attributes.length).any { index ->
+                            io.github.composefluent.winrt.ide.xaml.isCompiledXamlBinding(item.attributes.item(index).nodeValue) { item.lookupNamespaceURI(it) }
+                        } }
+                        if (projectBindings && dictionary.hasAttributeNS(WinUIXamlCatalog.XAML, "Class") && compiledBindings) {
+                            // Its compiled template connector belongs to the dictionary,
+                            // not the visual page. Keep that exact generated owner.
+                            if (externalDictionary) tag.setAttribute("Source", java.net.URI("ms-appx", "", "/" + loaded.packagePath.replace('\\', '/').trimStart('/'), null).toASCIIString())
+                            notes += "Compiled resource dictionaries retain their generated bindings; edits rebuild automatically."
+                            return
+                        }
+                        val replacement = tag.ownerDocument.importNode(dictionary, true) as Element
+                        namespaces(tag, replacement)
+                        if (tag.hasAttributeNS(WinUIXamlCatalog.XAML, "Key"))
+                            replacement.setAttributeNS(WinUIXamlCatalog.XAML, "x:Key", tag.getAttributeNS(WinUIXamlCatalog.XAML, "Key"))
+                        sanitize(replacement, loaded.packagePath, stack + loaded.packagePath)
+                        tag.parentNode.replaceChild(replacement, tag)
+                        return
+                    }
                 }
                 if (sdkType != null && tag.namespaceURI.orEmpty().startsWith("using:") &&
                     !sdkType(tag.namespaceURI, tag.localName.substringBefore('.'))) {
@@ -130,13 +185,9 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                     return
                 }
                 val attributes = (0 until tag.attributes.length).map { tag.attributes.item(it) }
-                val designValues = attributes.filter { it.namespaceURI == DESIGN && it.localName in setOf("Text", "Content", "Width", "Height", "Visibility") }
-                    .associate { it.localName to it.nodeValue }
                 attributes.forEach { attr ->
                     val uri = attr.namespaceURI.orEmpty(); val local = attr.localName ?: attr.nodeName
-                    val extension = Regex("^\\{\\s*([^\\s,{}]+)").find(attr.nodeValue)?.groupValues?.get(1).orEmpty()
-                    val compiledBinding = extension.substringAfter(':') == "Bind" && ':' in extension &&
-                        tag.lookupNamespaceURI(extension.substringBefore(':')) == WinUIXamlCatalog.XAML
+                    val compiledBinding = io.github.composefluent.winrt.ide.xaml.isCompiledXamlBinding(attr.nodeValue) { tag.lookupNamespaceURI(it) }
                     when {
                         sdkType != null && uri.startsWith("using:") && !sdkType(uri, local.substringBefore('.')) -> {
                             tag.removeAttributeNode(attr as org.w3c.dom.Attr)
@@ -144,7 +195,8 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                         }
                         uri == DESIGN || uri == "http://schemas.openxmlformats.org/markup-compatibility/2006" -> tag.removeAttributeNode(attr as org.w3c.dom.Attr)
                         uri == WinUIXamlCatalog.XAML && local in setOf("Class", "DataType", "DefaultBindMode", "Phase", "Load", "DeferLoadStrategy", "FieldModifier") -> tag.removeAttributeNode(attr as org.w3c.dom.Attr)
-                        compiledBinding -> { tag.removeAttributeNode(attr as org.w3c.dom.Attr); notes += "Compiled x:Bind expressions use design values or control defaults in static preview." }
+                        compiledBinding -> { tag.removeAttributeNode(attr as org.w3c.dom.Attr); notes += if (projectBindings && bindingPage != null) "Compiled bindings use the project's generated binding connectors."
+                            else "Compiled x:Bind expressions use design values or control defaults in static preview." }
                         uri.isEmpty() && event(tag.namespaceURI.orEmpty(), tag.localName, local) -> {
                             tag.removeAttributeNode(attr as org.w3c.dom.Attr); notes += "Event handlers are excluded from static preview."
                         }
@@ -155,7 +207,6 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                         }
                     }
                 }
-                designValues.forEach { (name, value) -> tag.setAttribute(name, value) }
                 children(tag).forEach { child ->
                     if (child.namespaceURI == DESIGN) {
                         if (child.localName in setOf("DesignInstance", "DesignData", "DataContext")) {
@@ -167,6 +218,14 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                         sanitize(replacement, sourcePath, stack)
                     } else sanitize(child, sourcePath, stack)
                 }
+                // Popup.IsOpen requires an attached XamlRoot. Loose XAML is
+                // parsed off-tree; the generated SDK adapter opens it after attach.
+                if (tag.localName == "Popup" && tag.getAttribute("IsOpen").equals("True", true) &&
+                    (tag.namespaceURI == WinUIXamlCatalog.PRESENTATION || tag.namespaceURI in setOf("using:Microsoft.UI.Xaml.Controls.Primitives", "using:Windows.UI.Xaml.Controls.Primitives"))) {
+                    tag.setAttribute("IsOpen", "False")
+                    WinUIXamlDesignIdentity.resource(tag, io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_POPUP_OPEN_KEY, "True")
+                }
+                WinUIXamlDesignIdentity.materialize(tag)
                 // Loose XAML loads merged dictionaries immediately, unlike
                 // compiled resource dictionaries' deferred materialization.
                 // Establish this dictionary's theme keys before merged styles
@@ -200,6 +259,10 @@ internal data class WinUIXamlDesignDocument(val markup: String, val notes: List<
                 }
             }
             viewport.appendChild(root.cloneNode(true))
+            if (projectBindings && componentClass.isNotBlank())
+                WinUIXamlDesignIdentity.resource(viewport, io.github.composefluent.winrt.runtime.WinUIXamlHotReloadProtocol.PREVIEW_COMPONENT_KEY,
+                    componentClass + if (bindingPage == null) "" else "|" + io.github.composefluent.winrt.metadata.WinUIXamlDesignConnections.connections(bindingPage).sortedBy { it.id }
+                        .joinToString(",") { "${it.id}:${io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.designConnectionSignature(it)}" })
             // A disabled custom converter/style must not prevent rendering the
             // rest of a page. Keep genuinely missing SDK/resource keys as errors.
             val retainedKeys = (0 until viewport.getElementsByTagName("*").length).map {

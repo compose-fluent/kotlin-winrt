@@ -81,7 +81,7 @@ abstract class GenerateWinUIXamlApplicationHeaderTask @Inject constructor(
     @TaskAction fun generate() {
         val output = outputFile.get().asFile.toPath().toAbsolutePath().normalize()
         Files.createDirectories(output.parent)
-        Files.deleteIfExists(output)
+        io.github.composefluent.winrt.metadata.WinRTMetadataFiles.deleteGenerated(output)
         val sourceOutput = sourceOutputDirectory.get().asFile
         fileSystem.delete { it.delete(sourceOutput) }
         sourceOutput.mkdirs()

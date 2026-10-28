@@ -59,7 +59,17 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
                 targetPlatform = CommonPlatforms.defaultCommonPlatform
                 sourceSetNames = listOf("winuiMain")
                 isHmppEnabled = true
-                compilerArguments = K2MetadataCompilerArguments().apply { optIn = arrayOf("kotlin.ExperimentalStdlibApi") }
+                compilerArguments = K2MetadataCompilerArguments().apply {
+                    optIn = arrayOf("kotlin.ExperimentalStdlibApi")
+                    // Real Native imports carry build options into the shared-source facet.
+                    // The frontend must accept them without invoking output-producing passes.
+                    pluginOptions = arrayOf(
+                        "plugin:io.github.composefluent.winrt.compiler:xamlFramework=winui",
+                        "plugin:io.github.composefluent.winrt.compiler:xamlCompile=true",
+                        "plugin:io.github.composefluent.winrt.compiler:xamlLibraryCompile=true",
+                        "plugin:io.github.composefluent.winrt.compiler:compilerSupportReferenceOutputDirectory=${root.resolve("unused-output")}",
+                    )
+                }
             }
             manager.createModifiableModel().apply { addFacet(facet); commit() }
         }
@@ -93,6 +103,7 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
                 .filter { it.severity == org.jetbrains.kotlin.analysis.api.diagnostics.KaSeverity.ERROR }.map { it.defaultMessage }
         } }
         assertEmpty(errors)
+        assertFalse(Files.exists(root.resolve("unused-output")))
         ApplicationManager.getApplication().runWriteAction { WinRTFirModuleConfiguration.configure(project, models) }
         assertEquals(1, fixtureFacet!!.configuration.settings.compilerArguments!!.pluginClasspaths!!.size)
     }
@@ -197,10 +208,12 @@ class WinRTFirAnalysisTest : BasePlatformTestCase() {
             .map { it.defaultMessage }.filter { it.contains("XAML x:Name") } }
     }
 
+    // This fixture publishes compiler snapshots explicitly. A missing source hash would
+    // start background harvesting and race those deliberate declaration transitions.
     private fun declaration(name: String) = """{
       "SchemaVersion":3,"Resources":[],"Pages":[{
         "ClassName":"sample.Shell","ResourcePath":"Shell.xaml","BaseTypeName":"Microsoft.UI.Xaml.Controls.Page",
-        "IsApplication":false,"Features":["named-elements"],"Connections":[{
+        "SourceHash":"${io.github.composefluent.winrt.metadata.WinUIXamlDeclarations.sourceFingerprint(name)}","IsApplication":false,"Features":["named-elements"],"Connections":[{
           "Id":1,"TypeName":"Microsoft.UI.Xaml.Controls.Button","FieldName":"$name",
           "Location":{"Line":2,"Column":3},"Events":[]
         }]

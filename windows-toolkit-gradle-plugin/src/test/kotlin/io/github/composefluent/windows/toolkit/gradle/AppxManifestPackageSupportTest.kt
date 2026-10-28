@@ -10,6 +10,24 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppxManifestPackageSupportTest {
+    @Test fun designer_capture_capability_is_idempotent_and_precedes_device_capabilities() {
+        // Windows package schema requires uap6:Capability before device capabilities.
+        for (existing in listOf("", "<Capabilities><DeviceCapability Name=\"webcam\"/></Capabilities>")) {
+            val manifest = Files.createTempFile("designer-capture-", ".xml")
+            Files.writeString(manifest, """<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">$existing</Package>""")
+            repeat(2) { AppxManifestPackageSupport.enableDesignerCapture(manifest) }
+            val document = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+                .newDocumentBuilder().parse(manifest.toFile())
+            val declarations = document.getElementsByTagNameNS("http://schemas.microsoft.com/appx/manifest/uap/windows10/6", "Capability")
+            assertEquals(1, declarations.length)
+            assertEquals("graphicsCapture", (declarations.item(0) as org.w3c.dom.Element).getAttribute("Name"))
+            val capabilities = document.getElementsByTagNameNS("*", "Capabilities").item(0)
+            val children = (0 until capabilities.childNodes.length).map { capabilities.childNodes.item(it) }.filterIsInstance<org.w3c.dom.Element>()
+            assertEquals("Capability", children.first().localName)
+            if (existing.isNotEmpty()) assertEquals("DeviceCapability", children.last().localName)
+        }
+    }
+
     @Test
     fun launcher_name_updates_matching_extensions_and_preserves_other_executables() {
         val manifest = Files.createTempFile("launcher-name-", ".xml")

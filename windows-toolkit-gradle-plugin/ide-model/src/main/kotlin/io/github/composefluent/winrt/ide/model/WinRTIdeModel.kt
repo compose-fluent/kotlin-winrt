@@ -33,12 +33,18 @@ interface WinRTIdeModel : Serializable {
         val metadataReferencesFile: String
     }
 
-    /** Development JVM launch tasks and isolated preview host paths. */
+    /** Development launch tasks and isolated preview host paths. */
     interface HotReloadLaunch : Serializable {
         val taskName: String
         val executable: String
         val workingDirectory: String
         val previewExecutable: String
+        /** Empty for JVM launches; Native uses the exact compiler's debugger formatters. */
+        val nativeCompilerHome: String
+        /** Desktop Native preview can be started by the IDE after package registration. */
+        val isDirectPreview: Boolean
+        /** Empty when a launch cannot build safely while its process is running. */
+        val developmentBuildTask: String
     }
 
     /** Actual staging/restore outputs, which need not exist during synchronization. */
@@ -64,6 +70,8 @@ interface WinRTIdeModel : Serializable {
     interface SourceSet : Serializable {
         val name: String
         val kotlinRoots: List<String>
+        /** Source outputs owned by toolkit generation tasks; never inferred from directory names. */
+        val generatedKotlinRoots: List<String>
         val dependsOn: List<String>
         /** Least to most specific, exactly as used by AppX resource staging. */
         val appxResourceRoots: List<String>
@@ -82,6 +90,6 @@ interface WinRTIdeModel : Serializable {
     }
 
     companion object {
-        const val SCHEMA_VERSION: Int = 7
+        const val SCHEMA_VERSION: Int = 11
     }
 }

@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.awt.ComposePanel
 import com.intellij.openapi.fileEditor.*
+import com.intellij.openapi.components.service
+import kotlinx.coroutines.Job
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
@@ -15,13 +17,22 @@ import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 
 /** Keep the platform's XML editor, actions, navigation and persisted caret state. */
-class WinUIXamlPreviewEditorProvider : TextEditorWithPreviewProvider(WinUIXamlPreviewPaneProvider()), DumbAware {
+internal class WinUIXamlPreviewEditorProvider : TextEditorWithPreviewProvider(WinUIXamlPreviewPaneProvider()), DumbAware {
     override fun createSplitEditor(firstEditor: TextEditor, secondEditor: FileEditor): FileEditor =
         WinUIXamlEditorWithPreview(firstEditor, secondEditor as WinUIXamlPreviewEditor)
 }
 
 private class WinUIXamlPreviewPaneProvider : FileEditorProvider {
-    override fun accept(project: Project, file: VirtualFile) = !file.isDirectory && file.extension.equals("xaml", true)
+    override fun accept(project: Project, file: VirtualFile): Boolean {
+        if (file.isDirectory || !file.extension.equals("xaml", true)) return false
+        return com.intellij.openapi.application.ReadAction.compute<Boolean, RuntimeException> {
+            val root = (com.intellij.psi.PsiManager.getInstance(project).findFile(file) as? com.intellij.psi.xml.XmlFile)?.rootTag
+            // Resource containers have no independent visual root. Keep their normal
+            // XML editor; consumers update through the shared resource document listener.
+            root == null || root.namespace != io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog.PRESENTATION ||
+                root.localName !in setOf("Application", "ResourceDictionary")
+        }
+    }
     override fun createEditor(project: Project, file: VirtualFile): FileEditor = WinUIXamlPreviewEditor(project, file)
     override fun getEditorTypeId() = "kotlin-winrt-xaml-preview"
     override fun getPolicy() = FileEditorPolicy.PLACE_AFTER_DEFAULT_EDITOR
@@ -43,11 +54,12 @@ private class WinUIXamlEditorWithPreview(editor: TextEditor, private val preview
     private fun updatePreviewMode() = preview.setPreviewVisible(getLayout()?.let { it != Layout.SHOW_EDITOR } == true)
 }
 
-private class WinUIXamlPreviewEditor(project: Project, private val file: VirtualFile) : UserDataHolderBase(), FileEditor {
+private class WinUIXamlPreviewEditor(private val project: Project, private val file: VirtualFile) : UserDataHolderBase(), FileEditor {
     private var disposed = false
     private var selected = false
     private var previewVisible = false
     private var active by mutableStateOf(false)
+    private var startup: Job? = null
     private val component = compose(focusOnClickInside = true) {
         if (active) WinUIXamlPreviewPanel(project, staticFile = file.path)
     }
@@ -57,7 +69,12 @@ private class WinUIXamlPreviewEditor(project: Project, private val file: Virtual
     override fun getFile() = file
     override fun setState(state: FileEditorState) = Unit
     fun setPreviewVisible(visible: Boolean) { previewVisible = visible; updateActive() }
-    private fun updateActive() { active = selected && previewVisible && !disposed }
+    private fun updateActive() {
+        val next = selected && previewVisible && !disposed
+        if (next && !active) startup = project.service<WinUIXamlPreviewStartup>().prepare(file.path)
+        if (!next) { startup?.cancel(); startup = null }
+        active = next
+    }
     override fun selectNotify() { selected = true; updateActive() }
     override fun deselectNotify() { selected = false; updateActive() }
     override fun isModified() = false

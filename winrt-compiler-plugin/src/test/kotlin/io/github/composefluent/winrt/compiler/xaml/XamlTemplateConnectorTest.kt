@@ -92,10 +92,12 @@ class XamlTemplateConnectorTest {
                     check(fileBinding !== component)
                     component.connect(6, TemplateProbeData.fileButton)
                     fileBinding.connect(6, TemplateProbeData.fileButton)
+                    fileBinding.connect(6, TemplateProbeData.fileButton)
                     component.connect(5, TemplateProbeData.templateButton)
                     val binding = checkNotNull(fileBinding.getBindingConnector(2, TemplateProbeData.parent))
                     TemplateProbeData.connector = binding
                     binding.connect(3, TemplateProbeData.grid)
+                    binding.connect(5, TemplateProbeData.templateButton)
                     binding.connect(5, TemplateProbeData.templateButton)
                     check(TemplateProbeData.lookups == 0)
                     binding.connect(2, Any())
@@ -138,6 +140,9 @@ class XamlTemplateConnectorTest {
             class Button : microsoft.ui.xaml.FrameworkElement() {
                 private val clicks = mutableListOf<microsoft.ui.xaml.EventHandler<Int>>()
                 fun addClick(handler: microsoft.ui.xaml.EventHandler<Int>?) { if (handler != null) clicks += handler }
+                fun removeClick(handler: microsoft.ui.xaml.EventHandler<Int>?) { check(clicks.remove(handler)) }
+                var boundClicks = 0
+                fun BoundClick(sender: Any?, args: Int) { check(args == 7); boundClicks++ }
                 fun raiseClick() { clicks.toList().forEach { it.invoke(this, 7) } }
                 var isEnabled = true
                     set(value) { field = value; changed(isEnabledProperty) }
@@ -214,6 +219,7 @@ class XamlTemplateConnectorTest {
                 data.fileButton.raiseClick()
                 data.templateButton.raiseClick()
                 check(page.ordinaryClicks == 1 && page.boundClicks == 1 && page.templateClicks == 1)
+                check(data.parent.boundClicks == 1)
                 check(data.lookups == 1 && data.unloads == 0)
                 data.parent.isEnabled = false
                 check(data.unloads == 1)
@@ -257,7 +263,11 @@ class XamlTemplateConnectorTest {
                             location, isLoad = true))),
                 WinUIXamlConnectionDeclaration(5, "Microsoft.UI.Xaml.Controls.Button", null, location,
                     listOf(WinUIXamlEventDeclaration("Click", "onTemplateClick", "Microsoft.UI.Xaml.Controls.Button",
-                        "Microsoft.UI.Xaml.EventHandler`1<Int32>", location)), scopeId = 2, isTemplateChild = true),
+                        "Microsoft.UI.Xaml.EventHandler`1<Int32>", location)), scopeId = 2, isTemplateChild = true,
+                    bindings = listOf(WinUIXamlBindingDeclaration("Click", "Microsoft.UI.Xaml.Controls.Button",
+                        "Microsoft.UI.Xaml.EventHandler`1<Int32>", "OneTime",
+                        WinUIXamlBindingExpression("member", "BoundClick", receiver = WinUIXamlBindingExpression("root")),
+                        location, isEvent = true))),
                 WinUIXamlConnectionDeclaration(6, "Microsoft.UI.Xaml.Controls.Button", "fileButton", location,
                     listOf(WinUIXamlEventDeclaration("Click", "onClick", "Microsoft.UI.Xaml.Controls.Button",
                         "Microsoft.UI.Xaml.EventHandler`1<Int32>", location)), scopeId = 1, bindings = listOf(

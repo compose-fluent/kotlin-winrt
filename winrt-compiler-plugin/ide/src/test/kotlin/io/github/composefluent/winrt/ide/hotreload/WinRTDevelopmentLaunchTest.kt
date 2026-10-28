@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.hotreload
 
 import com.intellij.openapi.application.ApplicationManager
@@ -27,6 +29,27 @@ class WinRTDevelopmentLaunchTest : BasePlatformTestCase() {
     fun testProjectCodePreviewSavesDocumentsFromNakedEdtBeforePreparation() = launch(sdk = false, preview = true)
 
     fun testHotReloadLaunchSavesDocumentsFromNakedEdtBeforePreparation() = launch(sdk = false, preview = false)
+
+    fun testBuildCancellationUsesBackgroundProgressFromNakedEdt() {
+        val cancelled = java.util.concurrent.CompletableFuture<Pair<Boolean, Boolean>>()
+        val handler = object : com.intellij.execution.process.ProcessHandler() {
+            override fun destroyProcessImpl() {
+                cancelled.complete(ApplicationManager.getApplication().isDispatchThread to
+                    (com.intellij.openapi.progress.ProgressManager.getInstance().progressIndicator != null))
+                notifyProcessTerminated(0)
+            }
+            override fun detachProcessImpl() = notifyProcessDetached()
+            override fun detachIsDefault() = false
+            override fun getProcessInput(): java.io.OutputStream? = null
+        }
+        handler.startNotify()
+        EdtTestUtil.runInEdtAndWait<Exception>({
+            io.github.composefluent.winrt.ide.project.WinRTGradleTasks.cancel(project, handler)
+        }, false)
+        val context = cancelled.get(10, java.util.concurrent.TimeUnit.SECONDS)
+        assertFalse("Gradle cancellation must not run on EDT", context.first)
+        assertTrue("Gradle JVM lookup requires a progress context", context.second)
+    }
 
     private fun launch(sdk: Boolean, preview: Boolean) {
         val original = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Text="Saved"/></Page>"""
@@ -58,7 +81,11 @@ class WinRTDevelopmentLaunchTest : BasePlatformTestCase() {
                     val application = ApplicationManager.getApplication()
                     assertTrue(application.isDispatchThread)
                     assertFalse("The callback must reproduce Compose's missing write intent", application.isWriteIntentLockAcquired)
-                    if (sdk && attempt == 0) session.ensurePreview(module, selected)
+                    if (sdk && attempt > 0) {
+                        session.ensurePreview(module, selected)
+                        assertFalse("Automatic recomposition must not retry a failed launch", session.state.value.busy)
+                    }
+                    if (sdk) session.ensurePreview(module, selected, retry = attempt > 0)
                     else session.start(module, selected, preview = preview)
                     assertTrue(session.state.value.busy)
                 }, false)

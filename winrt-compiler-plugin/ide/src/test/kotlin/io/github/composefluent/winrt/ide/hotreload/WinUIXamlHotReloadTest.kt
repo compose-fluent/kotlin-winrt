@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.hotreload
 
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
@@ -21,6 +23,47 @@ import java.util.concurrent.TimeUnit
 class WinUIXamlHotReloadTest {
     private val source = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><StackPanel><TextBlock x:Name="Greeting" Text="Hello" Width="100"/></StackPanel></Window>"""
     private fun root(text: String = source) = WinUIXamlHotReloadRoot("probe.Window", "Window.xaml", WinUIXamlHotReloadMarkup.parse(text).hash, 0, listOf("Greeting"))
+
+    @Test fun named_event_changes_are_separate_from_property_updates_and_can_disable_and_restore() {
+        val before = source.replace("Text=\"Hello\"", "Text=\"Hello\" Tapped=\"First\"")
+        fun patch(old: String, next: String) = WinUIXamlHotReloadMarkup.parse(next).patch(
+            WinUIXamlHotReloadMarkup.parse(old), root(old), isEvent = { _, _, member -> member == "Tapped" })
+        val changed = patch(before, before.replace("First", "Second"))
+        assertTrue(changed.changes.isEmpty())
+        assertEquals(listOf(WinUIXamlHotReloadEvent("Greeting", "Tapped", "First", "Second")), changed.events)
+        val removed = before.replace(" Tapped=\"First\"", "")
+        assertEquals("", patch(before, removed).events.single().handler)
+        assertEquals("", patch(removed, before).events.single().expectedHandler)
+        assertThrows(IllegalArgumentException::class.java) { patch(before, before.replace("First", "{x:Bind First}")) }
+        assertThrows(IllegalArgumentException::class.java) { patch(before.replace("First", "{x:Bind First}"), removed) }
+    }
+
+    @Test fun removed_literal_properties_emit_resets_but_expressions_remain_guarded() {
+        val after = source.replace(" Width=\"100\"", "")
+        val patch = WinUIXamlHotReloadMarkup.parse(after).patch(WinUIXamlHotReloadMarkup.parse(source), root())
+        assertEquals(WinUIXamlHotReloadChange("Greeting", "Width", "", reset = true), patch.changes.single())
+        val bound = source.replace("100", "{Binding Width}")
+        assertThrows(IllegalArgumentException::class.java) {
+            WinUIXamlHotReloadMarkup.parse(after).patch(WinUIXamlHotReloadMarkup.parse(bound), root(bound))
+        }
+    }
+
+    @Test fun attached_literals_use_resolved_owner_and_preserve_expression_guards() {
+        val before = source.replace("Width=\"100\"", "Grid.Row=\"0\"")
+        val after = before.replace("Grid.Row=\"0\"", "Grid.Row=\"2\"")
+        val patch = WinUIXamlHotReloadMarkup.parse(after).patch(WinUIXamlHotReloadMarkup.parse(before), root(before),
+            attachedProperty = { uri, owner, property ->
+                assertEquals(WinUIXamlCatalog.PRESENTATION, uri)
+                assertEquals("Grid", owner); assertEquals("Row", property)
+                "Microsoft.UI.Xaml.Controls.Grid.Row"
+            })
+        assertEquals("Microsoft.UI.Xaml.Controls.Grid.Row", patch.changes.single().property)
+        assertEquals("2", patch.changes.single().literal)
+        assertThrows(IllegalArgumentException::class.java) {
+            WinUIXamlHotReloadMarkup.parse(after.replace("Grid.Row=\"2\"", "Grid.Row=\"{Binding Row}\""))
+                .patch(WinUIXamlHotReloadMarkup.parse(before), root(before), attachedProperty = { _, _, _ -> "Grid.Row" })
+        }
+    }
 
     @Test fun visual_tree_window_roots_follow_the_metadata_hierarchy_for_custom_window_types() {
         val folder = Files.createTempDirectory("winrt-window-hierarchy-")
@@ -47,6 +90,37 @@ class WinUIXamlHotReloadTest {
         }
     }
 
+    @Test fun designer_content_checks_vector_element_type_and_scalar_writability() {
+        val folder = Files.createTempDirectory("winrt-content-types-")
+        val metadata = folder.resolve("Controls.winmd")
+        try {
+            // CsWinRT code_writers.h collection writers retain their generic element type;
+            // the designer must retain that same constraint when inserting source children.
+            val ns = "Microsoft.UI.Xaml"
+            fun type(name: String, base: String? = null) = WinUIXamlApplicationTypeDescriptor("$ns.$name", base?.let { "$ns.$it" })
+            fun member(name: String, type: String, readOnly: Boolean = false) = io.github.composefluent.winrt.metadata.WinUIXamlApplicationTypeMembers(
+                properties = listOf(io.github.composefluent.winrt.metadata.WinUIXamlApplicationProperty(name,
+                    io.github.composefluent.winrt.metadata.WinRTTypeRef.fromDisplayName(type), isReadOnly = readOnly)), contentProperty = name)
+            WinRTPortableExecutableMetadataWriter.writeXamlSchemaWinmd("Controls", listOf(
+                type("UIElement"), type("Button", "UIElement"), type("Panel", "UIElement"), type("StackPanel", "Panel"),
+                type("Inline"), type("TextBlock", "UIElement"), type("Border", "UIElement"), type("ReadOnlyHost", "UIElement")
+            ), mapOf(
+                "$ns.Panel" to member("Children", "Windows.Foundation.Collections.IVector<$ns.UIElement>", true),
+                "$ns.TextBlock" to member("Inlines", "Windows.Foundation.Collections.IVector<$ns.Inline>", true),
+                "$ns.Border" to member("Child", "$ns.UIElement"),
+                "$ns.ReadOnlyHost" to member("Child", "$ns.UIElement", true)
+            ), metadata, mapOf("Microsoft.UI.Xaml.Markup.ContentPropertyAttribute" to "Microsoft.UI.Xaml",
+                "Windows.Foundation.Collections.IVector`1" to "Windows.Foundation.FoundationContract",
+                "Windows.Foundation.Collections.IVector" to "Windows.Foundation.FoundationContract"))
+            val catalog = WinUIXamlCatalog(WinRTMetadataLoader.load(listOf(metadata)))
+            val button = catalog.types.getValue("$ns.Button")
+            assertTrue(catalog.acceptsContent(catalog.types.getValue("$ns.StackPanel"), button))
+            assertTrue(catalog.acceptsContent(catalog.types.getValue("$ns.Border"), button))
+            assertFalse(catalog.acceptsContent(catalog.types.getValue("$ns.TextBlock"), button))
+            assertFalse(catalog.acceptsContent(catalog.types.getValue("$ns.ReadOnlyHost"), button))
+        } finally { Files.deleteIfExists(metadata); Files.delete(folder) }
+    }
+
     @Test fun literal_changes_decode_xml_and_keep_compiler_fingerprint_and_version() {
         val before = WinUIXamlHotReloadMarkup.parse(source)
         val after = WinUIXamlHotReloadMarkup.parse(source.replace("Hello", "A &amp; B").replace("100", "140"))
@@ -65,7 +139,7 @@ class WinUIXamlHotReloadTest {
         val before = WinUIXamlHotReloadMarkup.parse(source)
         val unsupported = listOf(
             source.replace("TextBlock", "TextBox"), source.replace("Greeting", "Renamed"),
-            source.replace("Hello", "{Binding Title}"), source.replace(" Width=\"100\"", ""),
+            source.replace("Hello", "{Binding Title}"),
             source.replace("x:Class=\"probe.Window\"", "x:Class=\"probe.Other\""),
             source.replace("<StackPanel>", "<StackPanel><TextBlock/>"), source.replace("Text=\"Hello\"", "Grid.Row=\"2\" Text=\"Hello\""),
         )
@@ -120,6 +194,33 @@ class WinUIXamlHotReloadTest {
             .patch(WinUIXamlHotReloadMarkup.parse(implicit), resourceRoot(implicit)).resources.size)
     }
 
+    @Test fun nested_theme_and_merged_brushes_update_in_place_without_replacing_resource_expressions() {
+        val text = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Page">
+          <Page.Resources><ResourceDictionary><ResourceDictionary.ThemeDictionaries>
+          <ResourceDictionary x:Key="Dark"><SolidColorBrush x:Key="Accent" Color="Red"/></ResourceDictionary>
+          </ResourceDictionary.ThemeDictionaries><ResourceDictionary.MergedDictionaries>
+          <ResourceDictionary><SolidColorBrush x:Key="Merged" Color="Blue"/></ResourceDictionary>
+          </ResourceDictionary.MergedDictionaries></ResourceDictionary></Page.Resources>
+          <TextBlock Foreground="{ThemeResource Accent}"/></Page>"""
+        val before = WinUIXamlHotReloadMarkup.parse(text)
+        val loaded = WinUIXamlHotReloadRoot("sample.Page", "Page.xaml", before.hash, 0, emptyList())
+        val patch = WinUIXamlHotReloadMarkup.parse(text.replace("Color=\"Red\"", "Color=\"Green\"").replace("Color=\"Blue\"", "Color=\"Yellow\""))
+            .patch(before, loaded)
+        assertTrue(patch.resources.isEmpty())
+        assertEquals(listOf("Green", "Yellow"), patch.changes.map { it.literal })
+        assertEquals(listOf(WinUIXamlHotReloadStep.Property("Resources"), WinUIXamlHotReloadStep.Property("ThemeDictionaries"),
+            WinUIXamlHotReloadStep.Key("Dark"), WinUIXamlHotReloadStep.Key("Accent")), patch.changes[0].path)
+        assertEquals(listOf(WinUIXamlHotReloadStep.Property("Resources"), WinUIXamlHotReloadStep.Property("MergedDictionaries"),
+            WinUIXamlHotReloadStep.Index(0, 1), WinUIXamlHotReloadStep.Key("Merged")), patch.changes[1].path)
+        assertTrue(runCatching { WinUIXamlHotReloadMarkup.parse(text.replace("x:Key=\"Dark\"", "x:Key=\"Light\""))
+            .patch(before, loaded) }.isFailure)
+        val standalone = """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="sample.Colors"><SolidColorBrush x:Key="Accent" Color="Red"/></ResourceDictionary>"""
+        val original = WinUIXamlHotReloadMarkup.parse(standalone)
+        val direct = WinUIXamlHotReloadMarkup.parse(standalone.replace("Red", "Blue")).patch(original,
+            WinUIXamlHotReloadRoot("sample.Colors", "Colors.xaml", original.hash, 0, emptyList()))
+        assertEquals(listOf(WinUIXamlHotReloadStep.Key("Accent")), direct.changes.single().path)
+    }
+
     @Test fun style_replacement_rejects_theme_implicit_keys_and_unresolved_connection_lifetimes() {
         val unsupported = listOf(
             resourceSource.replace("{StaticResource GreetingStyle}", "{ThemeResource GreetingStyle}"),
@@ -133,16 +234,35 @@ class WinUIXamlHotReloadTest {
                 .patch(WinUIXamlHotReloadMarkup.parse(text), resourceRoot(text)) }.isFailure)
         }
         val added = resourceSource.replace("</ResourceDictionary>", "<SolidColorBrush x:Key=\"Extra\"/></ResourceDictionary>")
-        assertTrue(runCatching { WinUIXamlHotReloadMarkup.parse(added).patch(WinUIXamlHotReloadMarkup.parse(resourceSource), resourceRoot()) }.isFailure)
+        val patch = WinUIXamlHotReloadMarkup.parse(added).patch(WinUIXamlHotReloadMarkup.parse(resourceSource), resourceRoot())
+        assertEquals(listOf("Accent", "GreetingStyle"), patch.resources.single().expectedKeys)
+        assertTrue(patch.resources.single().xaml.contains("Extra"))
+        val removed = resourceSource.replace(Regex("<SolidColorBrush[^>]+/>"), "")
+        assertTrue("A still-referenced key cannot be removed", runCatching {
+            WinUIXamlHotReloadMarkup.parse(removed).patch(WinUIXamlHotReloadMarkup.parse(resourceSource), resourceRoot())
+        }.isFailure)
     }
 
     private fun content(uri: String, type: String, property: String?): WinUIXamlContentMember? =
         if (uri != WinUIXamlCatalog.PRESENTATION) null else when (property ?: type) {
             "Window" -> WinUIXamlContentMember("Content", false)
             "StackPanel", "Children" -> WinUIXamlContentMember("Children", true)
-            "Text", "FontSize", "Width" -> WinUIXamlContentMember(property!!, false)
+            "Text", "FontSize", "Width", "Background", "Color" -> WinUIXamlContentMember(property!!, false)
             else -> null
         }
+
+    @Test fun sealed_styles_refresh_unnamed_consumers_through_compiled_content_paths() {
+        for (explicit in listOf(false, true)) {
+            var text = resourceSource.replace(" x:Name=\"Second\"", "")
+            if (explicit) text = text.replace("<TextBlock x:Name=\"Greeting\"", "<StackPanel.Children><TextBlock x:Name=\"Greeting\"")
+                .replace("</StackPanel>", "</StackPanel.Children></StackPanel>")
+            val patch = WinUIXamlHotReloadMarkup.parse(text.replace("Value=\"28\"", "Value=\"36\""))
+                .patch(WinUIXamlHotReloadMarkup.parse(text), resourceRoot(text), contentMember = ::content)
+            val consumer = patch.resources.single().references.single { it.property == "Style" && it.target.element != "Greeting" }
+            assertEquals(WinUIXamlHotReloadTarget("Layout", listOf(WinUIXamlHotReloadStep.Property("Children"),
+                WinUIXamlHotReloadStep.Index(1, 2))), consumer.target)
+        }
+    }
 
     @Test fun child_collections_reuse_connected_objects_and_load_only_unconnected_subtrees() {
         val first = "<TextBlock x:Name=\"Greeting\" Text=\"Hello\" Style=\"{StaticResource GreetingStyle}\" Foreground=\"{StaticResource Accent}\"/>"
@@ -166,6 +286,28 @@ class WinUIXamlHotReloadTest {
             .patch(WinUIXamlHotReloadMarkup.parse(unnamed), root(unnamed), contentMember = ::content)
         assertEquals(listOf(WinUIXamlHotReloadStep.Property("Content"), WinUIXamlHotReloadStep.Property("Children"),
             WinUIXamlHotReloadStep.Index(0, 1)), edited.changes.single().path)
+    }
+
+    /** CsWinRT ObjectLifetimeTests/CustomGroupedItemPages.cs uses the SDK loader
+     * for property elements; no new runtime parser or connection contract is needed. */
+    @Test fun new_sdk_subtrees_accept_resolved_property_elements_without_connections() {
+        val added = "<Border><Border.Background><SolidColorBrush Color=\"Red\"/></Border.Background></Border>"
+        val next = source.replace("<StackPanel>", "<StackPanel>$added")
+        val patch = WinUIXamlHotReloadMarkup.parse(next).patch(WinUIXamlHotReloadMarkup.parse(source), root(), contentMember = ::content)
+        assertTrue((patch.children.single().items.first() as WinUIXamlHotReloadItem.Markup).xaml.contains("Border.Background"))
+        val removal = WinUIXamlHotReloadMarkup.parse(source).patch(WinUIXamlHotReloadMarkup.parse(next), root(next), contentMember = ::content)
+        assertEquals(listOf(WinUIXamlHotReloadItem.Existing(1)), removal.children.single().items)
+        listOf(
+            added.replace("Border.Background", "Border.Unknown"),
+            added.replace("Border.Background", "Border.Loaded"),
+            added.replace("Border.Background", "Button.Background"),
+            added.replace("Color=\"Red\"", "Color=\"{Binding Color}\""),
+            added.replace("<SolidColorBrush", "<SolidColorBrush x:Name=\"Brush\""),
+            added.replace("<Border.Background>", "<Border.Background x:Uid=\"Brush\">"),
+        ).forEach { invalid -> assertTrue(invalid, runCatching {
+            WinUIXamlHotReloadMarkup.parse(source.replace("<StackPanel>", "<StackPanel>$invalid"))
+                .patch(WinUIXamlHotReloadMarkup.parse(source), root(), contentMember = ::content)
+        }.isFailure) }
     }
 
     @Test fun child_changes_reject_compiled_connections_and_authored_component_lifetimes() {
@@ -233,6 +375,217 @@ class WinUIXamlHotReloadTest {
             response.get(5, TimeUnit.SECONDS)
             assertTrue(runCatching { WinUIXamlHotReloadClient.read(file, "C:/not-this-process.exe") }.isFailure)
         } finally { server.close(); executor.shutdownNow(); Files.deleteIfExists(file); Files.deleteIfExists(folder) }
+    }
+
+    @Test fun real_uwp_native_appcontainer_updates_named_properties_and_rolls_back_invalid_changes() {
+        val directory = System.getProperty("winrt.ide.uwpHotReloadSession")
+        assumeTrue("Supply a real Native UWP application session", directory != null)
+        val clients = WinUIXamlHotReloadClient.discover(Path.of(directory))
+        assertEquals(1, clients.size)
+        clients.single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainPage") && "resultText" in it.elements }
+            val patch = WinUIXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash, "b".repeat(64), root.version + 1,
+                listOf(WinUIXamlHotReloadChange("resultText", "Text", "Reloaded inside AppContainer"),
+                    WinUIXamlHotReloadChange("incrementButton", "Content", "Increment after reload")))
+            val applied = client.request(patch)
+            assertEquals(applied.message, WinUIXamlHotReloadProtocol.APPLIED, applied.status)
+            assertEquals("Reloaded inside AppContainer", applied.values.single { it.property == "Text" }.value)
+            assertEquals("Increment after reload", applied.values.single { it.property == "Content" }.value)
+            val current = applied.roots.single { it.className == root.className }
+            val invalid = patch.copy(expectedHash = current.sourceHash, sourceHash = "c".repeat(64), version = current.version + 1,
+                changes = listOf(WinUIXamlHotReloadChange("resultText", "Text", "must roll back"),
+                    WinUIXamlHotReloadChange("resultText", "Width", "-1")))
+            val rejected = client.request(invalid)
+            assertEquals(rejected.message, WinUIXamlHotReloadProtocol.REJECTED, rejected.status)
+            val inspected = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, capture = false))
+            val node = inspected.inspection!!.nodes.single { it.name == "resultText" }
+            val selected = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, selectedPath = node.path, capture = false))
+            assertEquals("Reloaded inside AppContainer", selected.inspection!!.properties.single { it.name == "Text" }.value)
+            assertEquals(current.sourceHash, selected.roots.single { it.className == root.className }.sourceHash)
+        }
+    }
+
+    @Test fun grid_definition_insertions_use_the_property_vector() {
+        val text = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><Grid x:Name="Greeting"><Grid.RowDefinitions><RowDefinition Height="*"/></Grid.RowDefinitions></Grid></Window>"""
+        val changed = text.replace("</Grid.RowDefinitions>", "<RowDefinition Height=\"Auto\"/></Grid.RowDefinitions>")
+        val update = WinUIXamlHotReloadMarkup.parse(changed).patch(WinUIXamlHotReloadMarkup.parse(text), root(text),
+            contentMember = { _, type, property -> when {
+                type == "Window" -> WinUIXamlContentMember("Content", false)
+                type == "Grid" && property == "RowDefinitions" -> WinUIXamlContentMember(property, true)
+                type == "RowDefinition" && property == "Height" -> WinUIXamlContentMember(property, false)
+                else -> null
+            } })
+        val vector = update.children.single()
+        assertEquals(WinUIXamlHotReloadTarget("Greeting", listOf(WinUIXamlHotReloadStep.Property("RowDefinitions"))), vector.target)
+        assertEquals(WinUIXamlHotReloadItem.Existing(0), vector.items[0])
+        assertTrue((vector.items[1] as WinUIXamlHotReloadItem.Markup).xaml.contains("RowDefinition"))
+    }
+
+    @Test fun keyed_presentation_templates_replace_through_resource_transactions() {
+        val text = """<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="probe.Window"><Grid><Grid.Resources><DataTemplate x:Key="Card"><TextBlock Text="Before"/></DataTemplate></Grid.Resources><ContentControl x:Name="Greeting" ContentTemplate="{StaticResource Card}"/></Grid></Window>"""
+        fun patch(old: String, next: String) = WinUIXamlHotReloadMarkup.parse(next).patch(
+            WinUIXamlHotReloadMarkup.parse(old), root(old), contentMember = { _, type, property ->
+                when { type == "Window" -> WinUIXamlContentMember("Content", false)
+                    type == "Grid" && property == null -> WinUIXamlContentMember("Children", true)
+                    else -> null }
+            }, propertyProblem = { _, _, member -> if (member == "Tapped") "An event needs a compiled connection" else null })
+        val update = patch(text, text.replace("Before", "After"))
+        assertTrue(update.changes.isEmpty())
+        val replacement = update.resources.single()
+        assertTrue(replacement.xaml.contains("After"))
+        assertEquals(listOf("Card"), replacement.expectedKeys)
+        assertEquals(listOf(WinUIXamlHotReloadResourceReference(WinUIXamlHotReloadTarget("Greeting"), "ContentTemplate", "Card")), replacement.references)
+        for (unsafe in listOf("Text=\"{x:Bind Title}\"", "Text=\"{Binding Title}\"", "x:Name=\"Connected\"", "Tapped=\"Handler\"")) {
+            assertTrue(unsafe, runCatching { patch(text, text.replace("Text=\"Before\"", unsafe)) }.isFailure)
+        }
+        val themed = text.replace("StaticResource", "ThemeResource")
+        assertTrue(runCatching { patch(themed, themed.replace("Before", "After")) }.isFailure)
+    }
+
+    @Test fun real_native_host_restores_control_state_without_overwriting_compiled_binding() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue("Supply the Native restart-state fixture session", directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "ReloadInput" in it.elements }
+            val request = WinUIXamlStateRequest(root.className, root.resourcePath)
+            fun capture(): List<WinUIXamlSavedElement> {
+                val reply = client.transferState(request)
+                assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+                return requireNotNull(reply.savedState)
+            }
+            val original = capture()
+            assertTrue(original.single { it.name == "BoundInput" }.values.none { it.name == "Text" })
+            fun text(name: String): String {
+                val view = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, capture = false)).inspection!!
+                val node = view.nodes.single { it.name == name }
+                return client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
+                    selectedPath = node.path, capture = false)).inspection!!.properties.single { it.name == "Text" }.value
+            }
+            val bound = text("BoundInput")
+            val replacements = mapOf("ReloadInput" to ("Text" to "Recovered input"),
+                "ReloadToggle" to ("IsOn" to "true"), "ReloadSlider" to ("Value" to "75.0"),
+                "ReloadChoice" to ("SelectedIndex" to "1"), "BoundInput" to ("Text" to "Must not overwrite binding"))
+            try {
+                val changed = original.map { entry -> replacements[entry.name]?.let { (property, value) ->
+                    entry.copy(values = entry.values.filterNot { it.name == property } + WinUIXamlVisualProperty(property, value))
+                } ?: entry }
+                val restored = client.transferState(request.copy(restore = changed))
+                assertEquals(restored.message, WinUIXamlHotReloadProtocol.APPLIED, restored.status)
+                val actual = capture().associateBy { it.name }
+                replacements.filterKeys { it != "BoundInput" }.forEach { (name, property) ->
+                    assertEquals(name, property.second, actual.getValue(name).values.single { it.name == property.first }.value)
+                }
+                assertEquals(bound, text("BoundInput"))
+                assertEquals(root.sourceHash, client.request().roots.single { it.className == root.className }.sourceHash)
+            } finally {
+                val restored = client.transferState(request.copy(restore = original))
+                assertEquals(restored.message, WinUIXamlHotReloadProtocol.APPLIED, restored.status)
+            }
+        }
+    }
+
+    @Test fun real_native_host_replaces_and_validates_keyed_presentation_templates() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue("Supply the Native layout application session", directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "First" in it.elements }
+            val address = WinUIXamlHotReloadTarget("First", listOf(WinUIXamlHotReloadStep.Property("Resources")))
+            fun dictionary(text: String) = """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><DataTemplate x:Key="ReloadCard"><TextBlock Text="$text"/></DataTemplate></ResourceDictionary>"""
+            var current = root
+            fun apply(markup: String, keys: List<String>, reset: Boolean = false): WinUIXamlHotReloadReply {
+                val nextHash = if (reset) root.sourceHash else (if (current.sourceHash == "6".repeat(64)) "7" else "6").repeat(64)
+                val update = WinUIXamlHotReloadPatch(root.className, root.resourcePath, current.sourceHash, nextHash,
+                    current.version + 1, if (reset) listOf(WinUIXamlHotReloadChange("First", "ContentTemplate", "", reset = true)) else emptyList(),
+                    resources = listOf(WinUIXamlHotReloadResources(address, markup, keys, if (reset) emptyList() else listOf(
+                        WinUIXamlHotReloadResourceReference(WinUIXamlHotReloadTarget("First"), "ContentTemplate", "ReloadCard")))))
+                return client.request(update).also { reply ->
+                    if (reply.status == WinUIXamlHotReloadProtocol.APPLIED) current = reply.roots.single { it.className == root.className }
+                }
+            }
+            fun renderedText(): String {
+                val view = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath)).inspection!!
+                val button = view.nodes.single { it.name == "First" }
+                return view.nodes.filter { it.path.take(button.path.size) == button.path && it.typeName.endsWith(".TextBlock") }
+                    .map { node -> client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath,
+                        selectedPath = node.path, capture = false)).inspection!!.properties.firstOrNull { it.name == "Text" }?.value.orEmpty() }
+                    .joinToString()
+            }
+            val first = apply(dictionary("Template before"), emptyList())
+            assertEquals(first.message, WinUIXamlHotReloadProtocol.APPLIED, first.status)
+            try {
+                assertTrue(renderedText().contains("Template before"))
+                val second = apply(dictionary("Template after"), listOf("ReloadCard"))
+                assertEquals(second.message, WinUIXamlHotReloadProtocol.APPLIED, second.status)
+                assertTrue(renderedText().contains("Template after"))
+                val invalid = apply(dictionary("invalid").replace("TextBlock", "MissingControl"), listOf("ReloadCard"))
+                assertEquals(invalid.message, WinUIXamlHotReloadProtocol.REJECTED, invalid.status)
+                assertTrue(renderedText().contains("Template after"))
+            } finally {
+                val restored = apply("""<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"/>""", listOf("ReloadCard"), true)
+                assertEquals(restored.message, WinUIXamlHotReloadProtocol.APPLIED, restored.status)
+            }
+        }
+    }
+
+    @Test fun real_native_host_updates_non_content_grid_definitions() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue("Supply the Native layout application session", directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "LayoutRoot" in it.elements }
+            val path = listOf(WinUIXamlHotReloadStep.Property("RowDefinitions"), WinUIXamlHotReloadStep.Index(0, 2))
+            val edit = WinUIXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash,
+                "9".repeat(64), root.version + 1, listOf(WinUIXamlHotReloadChange("LayoutRoot", "Height", "300", path)))
+            val applied = client.request(edit)
+            assertEquals(applied.message, WinUIXamlHotReloadProtocol.APPLIED, applied.status)
+            try {
+                assertTrue(applied.values.toString(), applied.values.single().value.contains("300"))
+                val rejected = client.request(edit.copy(expectedHash = edit.sourceHash, sourceHash = "8".repeat(64),
+                    version = edit.version + 1, changes = listOf(WinUIXamlHotReloadChange("LayoutRoot", "Height", "-1", path))))
+                assertEquals(rejected.message, WinUIXamlHotReloadProtocol.REJECTED, rejected.status)
+            } finally {
+                val restored = client.request(edit.copy(expectedHash = edit.sourceHash, sourceHash = root.sourceHash,
+                    version = edit.version + 1, changes = listOf(WinUIXamlHotReloadChange("LayoutRoot", "Height", "*", path))))
+                assertEquals(restored.message, WinUIXamlHotReloadProtocol.APPLIED, restored.status)
+            }
+        }
+    }
+
+    @Test fun real_native_host_reports_dependency_control_type_identity() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue(directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "First" in it.elements }
+            val reply = client.inspect(WinUIXamlInspectionRequest(root.className, root.resourcePath, capture = false))
+            assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+            assertTrue(reply.inspection!!.nodes.joinToString { it.typeName },
+                reply.inspection!!.nodes.any { it.typeName == "sample.controls.GreetingControl" })
+        }
+    }
+
+    @Test fun real_native_host_updates_attached_layout_without_replacing_the_control() {
+        val directory = System.getProperty("winrt.ide.hotReloadAttachedSession")
+        assumeTrue(directory != null)
+        WinUIXamlHotReloadClient.discover(Path.of(directory)).single().use { client ->
+            val root = client.request().roots.single { it.className.endsWith(".MainWindow") && "First" in it.elements }
+            val property = "Microsoft.UI.Xaml.Controls.Canvas.Left"
+            val patch = WinUIXamlHotReloadPatch(root.className, root.resourcePath, root.sourceHash,
+                "d".repeat(64), root.version + 1, listOf(WinUIXamlHotReloadChange("First", property, "220")),
+                reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("First"), "Content")))
+            val reply = client.request(patch)
+            assertEquals(reply.message, WinUIXamlHotReloadProtocol.APPLIED, reply.status)
+            assertEquals(220.0, reply.values.single { it.property == property }.value.toDouble(), 0.0)
+            assertEquals("First", reply.values.single { it.property == "Content" }.value)
+            val rejected = client.request(patch.copy(expectedHash = patch.sourceHash, sourceHash = "e".repeat(64),
+                version = patch.version + 1, changes = listOf(
+                    WinUIXamlHotReloadChange("First", property, "300"),
+                    WinUIXamlHotReloadChange("First", "Width", "-1"))))
+            assertEquals(rejected.message, WinUIXamlHotReloadProtocol.REJECTED, rejected.status)
+            val readback = client.request(patch.copy(expectedHash = patch.sourceHash, sourceHash = "f".repeat(64),
+                version = patch.version + 1, changes = emptyList(),
+                reads = listOf(WinUIXamlHotReloadRead(WinUIXamlHotReloadTarget("First"), property))))
+            assertEquals(readback.message, WinUIXamlHotReloadProtocol.APPLIED, readback.status)
+            assertEquals(220.0, readback.values.single().value.toDouble(), 0.0)
+        }
     }
 
     /** A real compiler-generated WinUI host supplies the session; no test-only XAML runtime glue. */

@@ -59,9 +59,12 @@ data class WinRTTemplateOptions(
 
 /** Templates consume the Gradle/runtime/compiler owners; no generated projection is maintained here. */
 object WinRTTemplates {
-    private const val projectGradleProperties = "org.gradle.jvmargs=-Xmx4g\n" +
-        "org.gradle.caching=true\norg.gradle.configuration-cache=true\n" +
-        "kotlin.compiler.execution.strategy=in-process"
+    // Full WinUI JVM implementation compilation exceeds a 4 GiB in-process
+    // compiler heap. Native-only and smaller WinRT projects retain that budget.
+    private fun projectGradleProperties(options: WinRTTemplateOptions) =
+        "org.gradle.jvmargs=-Xmx${if (options.jvm && options.includeWinUI) 8 else 4}g\n" +
+            "org.gradle.caching=true\norg.gradle.configuration-cache=true\n" +
+            "kotlin.compiler.execution.strategy=in-process"
     /** Normal projects resolve the packaged Maven toolchain without a source checkout. */
     fun project(options: WinRTTemplateOptions): Map<String, ByteArray> {
         options.validate()
@@ -99,7 +102,7 @@ object WinRTTemplates {
                     }
                 }
             """.trimIndent())
-            text("gradle.properties", projectGradleProperties)
+            text("gradle.properties", projectGradleProperties(options))
             text(".gitignore", ".gradle/\n.kotlin/\n.idea/\n**/build/\n*.iml")
             module(options.copy(name = module, projectionModule = ":winrt-projections")).forEach { (path, bytes) -> put("$module/$path", bytes) }
             if (module != "winrt-projections") module(options.copy(name = "winrt-projections", kind = WinRTTemplateKind.ProjectionLibrary,
@@ -142,7 +145,7 @@ object WinRTTemplates {
                 }
             """.trimIndent())
             text("build.gradle.kts", "allprojects { repositories { mavenCentral() } }")
-            text("gradle.properties", projectGradleProperties)
+            text("gradle.properties", projectGradleProperties(options))
             text(".gitignore", ".gradle/\n.kotlin/\n.idea/\n**/build/\n*.iml")
             listOf("gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar", "gradle/wrapper/gradle-wrapper.properties")
                 .forEach { put(it, Files.readAllBytes(checkout.resolve(it))) }
@@ -194,7 +197,7 @@ object WinRTTemplates {
                         class App : Application() {
                             private var window: MainWindow? = null
 
-                            override fun onLaunched(args: LaunchActivatedEventArgs) {
+                            override fun onLaunched(args: LaunchActivatedEventArgs?) {
                                 window = MainWindow().also { it.activate() }
                             }
                         }

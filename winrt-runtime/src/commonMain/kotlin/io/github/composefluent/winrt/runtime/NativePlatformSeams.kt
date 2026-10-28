@@ -247,6 +247,9 @@ expect object PlatformAbi {
 
     fun readPointerAt(array: RawAddress, index: Int): RawAddress
 
+    /** Copy a caller-validated contiguous byte range while its native owner is alive. */
+    fun readBytes(address: RawAddress, size: Int): ByteArray
+
     fun readInt8(slot: RawAddress): Byte
 
     fun readInt16(slot: RawAddress): Short

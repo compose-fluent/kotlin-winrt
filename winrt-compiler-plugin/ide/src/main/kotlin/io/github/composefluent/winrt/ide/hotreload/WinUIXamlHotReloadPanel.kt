@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.hotreload
 
 import androidx.compose.foundation.layout.*
@@ -13,7 +15,7 @@ import org.jetbrains.jewel.ui.component.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WinUIXamlHotReloadPanel(project: Project) {
+internal fun WinUIXamlHotReloadPanel(project: Project) {
     val service = project.service<WinUIXamlHotReloadService>()
     val state by service.state.collectAsState()
     val automatic by service.automatic.collectAsState()
@@ -26,24 +28,29 @@ fun WinUIXamlHotReloadPanel(project: Project) {
         item {
             when {
                 module == null -> Text("Sync Gradle to load your WinUI application.")
-                launches.isEmpty() -> Text("This module has no supported JVM WinUI development launch. Select an application module and prepare XAML.")
+                launches.isEmpty() -> Text("This module has no supported WinUI development launch. Select an application module and prepare XAML.")
                 else -> WinRTChoice("Launch", launches.map { it.taskName to
-                    if (it.taskName.startsWith("runWinAppPackage")) "JVM · Packaged" else "JVM · Unpackaged" }, launch?.taskName) { task = it }
+                    it.taskName }, launch?.taskName) { task = it }
             }
             Text(state.message)
+            if (state.projectCodeChanged && state.pid != null) Text("The application is running the previous compiled code. Source changes are not loaded yet.")
         }
         item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!state.connected) DefaultButton(enabled = launch != null && !state.busy && state.pid == null,
                     onClick = { service.start(module!!, launch!!) }) { Text("Start application") }
                 else DefaultButton(enabled = !state.busy, onClick = service::apply) { Text("Apply changes") }
-                DefaultButton(enabled = launch != null && !state.busy,
-                    onClick = { service.start(module!!, launch!!, restart = true) }) { Text("Rebuild and restart") }
+                DefaultButton(enabled = launch != null && !state.busy && !state.rebuildingCode,
+                    onClick = { service.rebuild(module!!, launch!!) }) { Text("Rebuild and restart") }
                 if (state.pid != null) DefaultButton(onClick = service::stop) { Text("Stop") }
             }
-            CheckboxRow("Apply XAML edits automatically", automatic, { service.automatic.value = it })
+            CheckboxRow("Apply changes automatically (rebuild when needed)", automatic, service::setAutomatic)
         }
         if (state.connected) item { Text("Connected · ${state.roots.size} loaded XAML roots") }
+        state.restartOutcome?.let { outcome -> item {
+            Text(outcome)
+            Link("Dismiss restart result", onClick = service::dismissRestartOutcome)
+        } }
         item {
             WinRTDetails("connection details") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -69,8 +76,10 @@ fun WinUIXamlHotReloadPanel(project: Project) {
         item {
             WinRTDetails("supported edits") {
                 Text("Properties, local resources, explicit styles and supported child collections update while the application runs.")
-                Text("Names, events, bindings, templates and parent changes require rebuilding. Moving controls preserves their objects; focus and Loaded/Unloaded state may change.")
+                Text("Existing named-element events can switch to already compiled compatible handlers, or be disabled and restored without restarting.")
+                Text("New event handlers or slots, names, bindings, templates and parent changes require rebuilding. Moving controls preserves their objects; focus and Loaded/Unloaded state may change.")
                 Text("Theme expressions, implicit styles and external dictionaries require rebuilding.")
+                Text("Packaged applications and unpackaged toolkit hosts build code changes before restarting. A failed build keeps the current app; compatible named-control state is restored after a successful restart.")
             }
         }
     }

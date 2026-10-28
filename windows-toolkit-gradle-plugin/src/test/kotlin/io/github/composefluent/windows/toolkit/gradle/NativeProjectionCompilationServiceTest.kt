@@ -244,6 +244,30 @@ class NativeProjectionCompilationServiceTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun sibling_projects_isolate_services_but_binaries_share_the_project_service() {
+        // UWP Gallery uses KSP while its background-task library does not. Their plugin
+        // classloaders differ; build-wide service instances cannot cross that boundary.
+        val root = org.gradle.testfixtures.ProjectBuilder.builder().build()
+        fun demandServices(name: String): List<NativeProjectionCompilationService> {
+            val project = org.gradle.testfixtures.ProjectBuilder.builder().withParent(root).withName(name).build()
+            project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+            project.extensions.getByType(org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java)
+                .mingwX64().binaries.executable()
+            project.pluginManager.apply(KotlinWindowsToolkitPlugin::class.java)
+            (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+            return listOf("debug", "release").map {
+                (project.tasks.getByName("${it}ExecutableWinRTDemandImplementation") as BuildWinRTNativeDemandTask)
+                    .compilationReuse.get()
+            }
+        }
+        val app = demandServices("app")
+        val background = demandServices("background")
+        assertTrue(app[0] === app[1])
+        assertTrue(background[0] === background[1])
+        assertFalse(app[0] === background[0])
+        assertEquals(app[0].parameters.projectIdentity.get(), background[0].parameters.projectIdentity.get())
+        assertEquals(app[0].parameters.cacheDirectory.get(), background[0].parameters.cacheDirectory.get())
+    }
     @Test fun persistent_reuse_obeys_gradle_cache_and_rerun_flags() {
         listOf(false to false, true to false, true to true).forEach { (enabled, rerun) ->
             val project = org.gradle.testfixtures.ProjectBuilder.builder().build()

@@ -1,0 +1,189 @@
+package io.github.composefluent.winrt.compiler.xaml
+
+import io.github.composefluent.winrt.runtime.XamlFramework
+import io.github.composefluent.winrt.metadata.xamlKotlinNamespace
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.io.path.writeText
+
+/** SDK UI-state adaptation, separate from projection classification. Binding-owned
+ * values and password contents are not overwritten by development state recovery. */
+internal fun writeXamlStateAdapterSource(root: Path, name: String, framework: XamlFramework) {
+    val sdk = framework.xamlKotlinNamespace
+    val file = root.resolve("io/github/composefluent/winrt/generated/xaml/${name}State.kt")
+    Files.createDirectories(file.parent)
+    file.writeText("""
+        @file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+        package io.github.composefluent.winrt.generated.xaml
+        import io.github.composefluent.winrt.runtime.*
+        import $sdk.*
+        import $sdk.controls.*
+        import $sdk.controls.primitives.*
+
+        internal fun ${name}State(): WinUIXamlStateAdapter {
+          fun unbound(target: FrameworkElement, property: DependencyProperty?, name: String, protectedProperties: Set<String>): Boolean =
+            name !in protectedProperties && property != null && target.getBindingExpression(property) == null
+          return WinUIXamlStateAdapter(capture = capture@ { value, protectedProperties ->
+            val control = runCatching { value.asWinRT<Control>() }.getOrNull() ?: return@capture null
+            val frame = runCatching { value.asWinRT<Frame>() }.getOrNull()
+            val textBox = runCatching { value.asWinRT<TextBox>() }.getOrNull()
+            val toggleSwitch = runCatching { value.asWinRT<ToggleSwitch>() }.getOrNull()
+            val toggleButton = runCatching { value.asWinRT<ToggleButton>() }.getOrNull()
+            val selector = runCatching { value.asWinRT<Selector>() }.getOrNull()
+            val range = runCatching { value.asWinRT<RangeBase>() }.getOrNull()
+            val scroll = runCatching { value.asWinRT<ScrollViewer>() }.getOrNull()
+            var type = "Control"
+            val values = buildList {
+              fun put(name: String, data: Any?) { add(WinUIXamlVisualProperty(name, data?.toString() ?: "null")) }
+              when {
+                frame != null -> {
+                  type = "Frame"
+                  put("NavigationState", frame.getNavigationState())
+                }
+                textBox != null -> {
+                  type = "TextBox"
+                  if (unbound(textBox, TextBox.textProperty, "Text", protectedProperties)) put("Text", textBox.text)
+                  put("SelectionStart", textBox.selectionStart); put("SelectionLength", textBox.selectionLength)
+                }
+                toggleSwitch != null -> {
+                  type = "ToggleSwitch"
+                  if (unbound(toggleSwitch, ToggleSwitch.isOnProperty, "IsOn", protectedProperties)) put("IsOn", toggleSwitch.isOn)
+                }
+                toggleButton != null -> {
+                  type = "ToggleButton"
+                  if (unbound(toggleButton, ToggleButton.isCheckedProperty, "IsChecked", protectedProperties)) put("IsChecked", toggleButton.isChecked)
+                }
+                selector != null -> {
+                  type = "Selector"
+                  if (unbound(selector, Selector.selectedIndexProperty, "SelectedIndex", protectedProperties) && unbound(selector, Selector.selectedItemProperty, "SelectedItem", protectedProperties)) {
+                  put("SelectedIndex", selector.selectedIndex); put("ItemCount", selector.items?.size ?: 0)
+                }
+                }
+                range != null -> {
+                  type = "RangeBase"
+                  if (unbound(range, RangeBase.valueProperty, "Value", protectedProperties)) put("Value", range.value)
+                }
+                scroll != null -> {
+                  type = "ScrollViewer"
+                  put("HorizontalOffset", scroll.horizontalOffset); put("VerticalOffset", scroll.verticalOffset)
+                  put("ZoomFactor", scroll.zoomFactor)
+                }
+              }
+              if (control.focusState != FocusState.Unfocused) put("Focus", when (control.focusState) {
+                FocusState.Keyboard -> "Keyboard"
+                FocusState.Pointer -> "Pointer"
+                else -> "Programmatic"
+              })
+            }
+            // Keep the type even for unfocused controls so focus can be restored
+            // into a newly created instance. The registry omits empty snapshots.
+            WinUIXamlSavedElement("", type, values)
+          }, restore = { value, state, protectedProperties ->
+            val values = state.values.associate { it.name to it.value }
+            fun finite(name: String): Double? = values[name]?.toDouble()?.also { require(it.isFinite()) }
+            when (state.kind) {
+              "Frame" -> values["NavigationState"]?.let { value.asWinRT<Frame>().setNavigationState(it) }
+              "TextBox" -> {
+                val target = value.asWinRT<TextBox>()
+                if (unbound(target, TextBox.textProperty, "Text", protectedProperties)) values["Text"]?.let { target.text = it }
+                val start = (values["SelectionStart"]?.toInt() ?: 0).coerceIn(0, target.text.length)
+                val length = (values["SelectionLength"]?.toInt() ?: 0).coerceIn(0, target.text.length - start)
+                target.select(start, length)
+              }
+              "ToggleSwitch" -> {
+                val target = value.asWinRT<ToggleSwitch>()
+                if (unbound(target, ToggleSwitch.isOnProperty, "IsOn", protectedProperties))
+                values["IsOn"]?.let { target.isOn = it.toBooleanStrict() }
+              }
+              "ToggleButton" -> {
+                val target = value.asWinRT<ToggleButton>()
+                if (unbound(target, ToggleButton.isCheckedProperty, "IsChecked", protectedProperties))
+                values["IsChecked"]?.let { target.isChecked = if (it == "null") null else it.toBooleanStrict() }
+              }
+              "Selector" -> {
+                val target = value.asWinRT<Selector>()
+                if (unbound(target, Selector.selectedIndexProperty, "SelectedIndex", protectedProperties) && unbound(target, Selector.selectedItemProperty, "SelectedItem", protectedProperties) &&
+                values["ItemCount"]?.toInt() == (target.items?.size ?: 0)) {
+                values["SelectedIndex"]?.toInt()?.let { index ->
+                  if (index >= -1 && index < (target.items?.size ?: 0)) target.selectedIndex = index
+                }
+              }
+              }
+              "RangeBase" -> {
+                val target = value.asWinRT<RangeBase>()
+                if (unbound(target, RangeBase.valueProperty, "Value", protectedProperties))
+                finite("Value")?.let { target.value = it.coerceIn(target.minimum, target.maximum) }
+              }
+              "ScrollViewer" -> {
+                val target = value.asWinRT<ScrollViewer>()
+                target.updateLayout()
+                val zoom = finite("ZoomFactor")?.toFloat()?.coerceIn(target.minZoomFactor, target.maxZoomFactor)
+                target.changeView(finite("HorizontalOffset"), finite("VerticalOffset"), zoom, true)
+              }
+            }
+            values["Focus"]?.let { focus -> value.asWinRT<Control>().focus(when (focus) {
+              "Keyboard" -> FocusState.Keyboard
+              "Pointer" -> FocusState.Pointer
+              "Programmatic" -> FocusState.Programmatic
+              else -> error("Invalid saved focus state.")
+            }) }
+          }, discover = { owner ->
+            // Automation IDs are an explicit stable identity for dynamic content.
+            // Repeated/ambiguous IDs are omitted; visual indices never become keys.
+            val root = runCatching { owner.asWinRT<Window>().content }.getOrNull()
+              ?: runCatching { owner.asWinRT<DependencyObject>() }.getOrNull()
+            val candidates = mutableListOf<Pair<String, Any>>()
+            val pending = mutableListOf<Pair<DependencyObject, Int>>()
+            root?.let { pending += it.asWinRT<DependencyObject>() to 0 }
+            var visited = 0
+            while (pending.isNotEmpty()) {
+              val (item, depth) = pending.removeAt(pending.lastIndex)
+              require(++visited <= 65536 && depth <= 128) { "The state tree exceeds its traversal budget." }
+              val element = runCatching { item.asWinRT<FrameworkElement>() }.getOrNull()
+              val id = runCatching { $sdk.automation.AutomationProperties.getAutomationId(item) }.getOrNull().orEmpty()
+              if (id.isNotBlank() && id.length <= 256) candidates += ("\${'$'}id/" + id) to item
+              if (element != null) {
+                val context = runCatching { element.dataContext }.getOrNull()
+                val identity = when {
+                  visited == 1 -> "root"
+                  id.isNotBlank() -> "id/" + id
+                  element.name.isNotBlank() -> "name/" + element.name
+                  else -> ""
+                }
+                if (identity.isNotEmpty() && context is WinUIXamlRestartParticipant)
+                  candidates += ("\${'$'}context/" + identity) to context
+              }
+              val count = $sdk.media.VisualTreeHelper.getChildrenCount(item)
+              require(count in 0..65536) { "The state child collection exceeds its traversal budget." }
+              for (index in count - 1 downTo 0) $sdk.media.VisualTreeHelper.getChild(item, index)?.let {
+                pending += it to depth + 1
+              }
+            }
+            candidates.groupBy { it.first }.filterValues { it.size == 1 }.mapValues { it.value.single().second }
+          }, observeLifetime = { owner, attached ->
+            // CsWinRT-generated event delegates supply the SDK lifecycle boundary.
+            // Frame.SetNavigationState can retain an unloaded page until GC. Its
+            // replacement alone participates in state identity and inspection.
+            val window = runCatching { owner.asWinRT<Window>() }.getOrNull()
+            val element = if (window == null) runCatching { owner.asWinRT<FrameworkElement>() }.getOrNull() else null
+            if (window != null) {
+              // Window.Content is replaceable; unloading its old page does not
+              // close the window or invalidate the isolated designer's owner.
+              window.closed.add { _, _ -> attached(false) }
+            } else if (element != null) {
+              attached(element.isLoaded)
+              // Reparenting can queue both notifications in one dispatcher turn.
+              // Event order is not the current tree state: read the SDK property
+              // from the event sender without retaining the component owner.
+              fun changed(sender: Any?, args: RoutedEventArgs?) {
+                sender?.asWinRT<FrameworkElement>()?.let { attached(it.isLoaded) }
+              }
+              // The handlers retain only the registry callback, never the owner.
+              // The SDK element owns and releases its delegates with its lifetime.
+              element.loaded.add(::changed)
+              element.unloaded.add(::changed)
+            }
+          })
+        }
+    """.trimIndent())
+}

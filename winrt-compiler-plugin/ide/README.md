@@ -1,10 +1,10 @@
 # Kotlin WinRT IntelliJ integration
 
-The application templates, designer and Hot Reload workflows described here target
-WinUI 3. UWP designer/preview, Hot Reload and packaged `--debug-output` capture are
-not implemented. Use the Gradle configuration and package activation steps in the
-[UWP guide](../../docs/UWP.md); selecting UWP in the build does not enable those IDE
-workflows.
+The application templates target WinUI 3. The SDK-only designer supports WinUI 3
+and UWP. Project-code previews and Hot Reload also support Kotlin/Native UWP applications through an
+isolated development package. Native Debug supports desktop and UWP startup
+breakpoints; UWP packaged `--debug-output` captures native output and exceptions.
+See the [UWP guide](../../docs/UWP.md) for package configuration and activation.
 
 This is a standalone IDE build beneath the compiler tooling owner. It does not
 add IntelliJ dependencies to the WinRT runtime, metadata, generator or main
@@ -34,8 +34,8 @@ both lines. The JVM 17 ide-model transport stays independent of both adapters.
 The analysis compiler is read from the Kotlin plugin's analysis libraries, rather
 than its separate JPS compiler. Changes to the build compiler do not implicitly
 upgrade the IDE adapter; embedded Kotlin is selected by the IDE distribution.
-The current baseline is JVM first. Native development transport and Native
-application/template validation remain separate parity work.
+The projection baseline is JVM first; Native development transport, project-code
+preview and LLDB debugging have their own Windows integration coverage.
 
 Forms use the IDE theme bridge, scroll long wizard/module/source lists, and expose
 text-field accessible names. Project services use IDE-injected scopes, UI requests
@@ -46,6 +46,35 @@ scaling, Tab/Shift-Tab and keyboard activation, dialog focus/return focus, a Win
 screen reader, cancellation during real work and closing/reopening a full IDE must
 still be checked in the installed desktop distribution. Platform tests validate
 editor semantics and native import/cache recovery; they do not claim those UI checks.
+
+Interactive checks in the isolated IDEA baseline have covered dark/light theme
+switching, 100/150% layout, Tab/Shift-Tab between preview dimensions, focus return
+from Settings and cancelling project import during IDE exit. The 200% check
+exposed inaccessible preview options; the controls now scroll within a bounded
+area while leaving space for the artboard and inspector. A Compose scene test
+checks that the last option remains reachable at double density and that both
+dimension fields expose accessible names. Desktop IDEA verification also confirms
+scrolling to the final option at 200%, Tab focus and Space activation of the
+checkboxes, cancellation of a Native preview build and restoration of the split
+editor after restarting. The SDK designer has also rendered inside that desktop
+editor, with preview-only mode, arrow-key tree expansion/selection and effective
+property inspection. Android Studio stable has also passed dark/light switching,
+100/150/200% layout, scrolling to the last option with a rendered artboard,
+Tab/Shift-Tab between dimensions, focus return from Settings, Space activation,
+SDK rendering, stopping preview and normal IDE exit. A full stable IDE restart
+restores the XAML split editor and light theme, imports the module and renders
+again using the existing SDK host build. Canary has also passed dark/light
+switching, 100/150/200% layout, scrolling to the final visual-tree and source
+navigation controls, Tab between dimensions, focus return from Settings and
+Space activation of the visual-tree checkbox. Its SDK designer renders eight
+visual nodes; normal exit terminates the preview, and a full restart restores
+the light theme and XAML split editor and renders again using the cached SDK
+host build. Canary High Contrast checks also cover visible selected toolbar/alignment
+buttons, Tab focus on property reset actions, Space activation and Native layout
+updates, followed by restoring Islands Light. Selected buttons use a theme-colored
+outline; keyboard focus uses a thicker outline so the two states remain distinct.
+Actual Windows screen-reader output remains unverified; accessible
+names and keyboard checks do not substitute for spoken-output acceptance.
 
 The tool window displays targets, source sets, SDK/Kotlin versions and declared
 NuGet references, with navigation to the module build script and explicit
@@ -450,13 +479,12 @@ misspelled keys still produce the normal unresolved-resource diagnostic.
 
 ## Preview and Visual Tree
 
-Preview is temporarily disabled: its tool-window tab, XAML editor modes and
-preview actions are not registered. **Visual Tree** remains available and connects
+The **Preview** tool-window tab and XAML **Code / Split / Preview** editor modes are enabled.
+**Visual Tree** connects
 to applications launched through IDE Run/Debug. Window roots are identified from
 their XAML and metadata inheritance, excluding the Application and nested controls.
 A single Window is selected automatically; multiple Windows expose a picker.
 
-The following describes the retained, disabled preview implementation.
 Live Preview captures a connected development application's actual WinUI content;
 clicking its image selects the deepest visual at that position. Both tabs share
 component, instance and visual selection. The expandable Jewel tree supports
@@ -471,18 +499,163 @@ completion, caret state and refactoring. The selected mode survives reopening.
 New documents default to **Split**, opening the designer automatically for the
 document's imported module. Saved mode choices still survive reopening. The
 preview pane is active only while visible in the selected editor. The static
-image fits the available preview area; **Visual Tree and properties** adds the
-inspector when needed.
+image initially fits the available area. The fixed bottom-left toolbar provides
+zoom out/in, a zoom menu, Fit all, settings, inspector, refresh and session actions.
+Use Hand or Space+drag to pan. Fit all recenters it; the zoom menu reports the actual
+DIP scale and distinguishes Fit and Selection modes. Choose Fit all, Fit selection,
+a preset from 12.5% to 800%, or Custom zoom. Custom values are validated before
+applying; zoom buttons move to the adjacent preset and disable at the limits.
+These navigation choices follow the
+[Visual Studio XAML Designer](https://learn.microsoft.com/en-us/visualstudio/xaml-tools/creating-a-ui-by-using-xaml-designer-in-visual-studio?view=vs-2022)
+design-view commands.
 
-The default follows UWP's design-time workflow: it uses a fixed SDK-only WinUI
-host and reads current XAML, without compiling the application, running XAMLC,
+The settings gear opens a dismissible popup without resizing the artboard.
+The inspector opens a resizable right sidebar with separate tree and property areas.
+Toolbar actions use 16px SVG icons with light/dark variants, hover labels and
+accessible names. Fit and inspector controls retain selected-state feedback.
+Refresh disables while a request is in flight; busy work shows a progress indicator.
+Status and cancellation stay in a fixed bottom line, with errors available through Details.
+
+Opening another document reuses the project preview session. Pure XAML edits render
+in that host without a Gradle launch; initial document preparation has no typing
+debounce, and selecting an element reads its properties without recapturing pixels.
+SDK catalogs share identical WinMD inputs across targets and reuse the metadata
+module's content-keyed normalized model cache across IDE restarts.
+Native markup preparation can also use a smaller persistent event-name view derived
+from that same catalog and keyed by WinMD contents. It strips compiled handlers on
+new or edited documents before the full property/completion catalog is ready;
+unchanged documents retain their transformed-source cache. Corrupt or unmatched
+metadata views fall back to full catalog preparation, never to guessed event names.
+For a previously successful WinUI Native desktop packaged preview, the IDE can
+start the deployed preview executable directly. It validates project/dependency
+source contents, build configuration, the imported model, deployed files and the
+toolchain locations before reusing the build. Changed inputs or a failed direct launch
+fall back to Gradle. A successful first build records the resulting generated sources
+when user inputs remain unchanged; the Gradle model identifies the owning generation
+tasks. Later edits to those generated files still invalidate reuse. Older workspace
+models use conservative full-source validation until synchronization.
+The bundled toolchain reuse key hashes payloads and dependency descriptors, while
+ignoring ZIP headers, Maven publication timestamps and redundant checksums.
+Republishing identical artifacts does not force a Native rebuild; changing an
+artifact or dependency descriptor does. The exact archive checksum remains separate.
+`verifyToolchainContentIdentity` checks those invalidation boundaries.
+**Rebuild project code** always bypasses this cache. First builds,
+UWP activation and JVM launch configuration still use Gradle. Startup and render
+durations are recorded as `XAML preview connected`, `XAML preview rendered` and
+`XAML preview first frame` in
+the IDE log. This cache does not replace Gradle dependency resolution; explicitly
+rebuild after changing an external unpublished dependency without changing its
+version or project configuration. Inherited build environment changes, including custom project variables, invalidate reuse automatically; receipts contain only hashes, never environment names or values. Per-launch preview session/theme variables are excluded.
+
+Cold project builds remain cancellable and do not consume the connection timeout.
+The designer polls for the host while Gradle runs, then allows 30 seconds for session
+publication after the launch task ends. Packaged desktop Native previews prepare and
+register with `--no-launch`; after Gradle succeeds, the IDE owns the separate preview
+process, so a long-lived host does not keep the build task running. Published hosts have a separate bounded
+handshake/root-initialization wait; failed builds end the pending connection.
+After connection, project previews also reload newly generated metadata catalogs
+and resources so the first build renders without a manual refresh.
+
+The canvas has separate selection and hand tools. Select an exactly mapped source
+element, then drag to edit its layout or use its eight handles to resize it. Space+drag and middle-button drag temporarily
+pan; the wheel pans and Ctrl+wheel zooms around the pointer. With canvas focus,
+arrow keys nudge editable elements (Shift uses 10 DIP), or pan in hand mode; +/− zoom, 0 selects 100%, F/Home fits all, Escape cancels a drag or selects the parent,
+and Enter opens the selected element's source. Fit keeps keyboard focus.
+Custom zoom focuses its input and accepts Enter. The inspector offers a parent
+selection action, searchable writable XAML properties with Apply/Reset, and effective read-only values; property
+results are associated with the selected visual path. Rendering preserves selection
+when its path still exists. Failed renders retain the last frame with an Out of date
+status and a direct Retry action; disconnected previews expose Retry preview.
+
+Designer edits are source commands with Ctrl+Z/Ctrl+Shift+Z undo/redo. Writable properties
+come from WinMD setter metadata, grouped into searchable categories. Enum/Boolean
+choices, numeric validation, resource selection, color and basic Binding editors are supported. Canvas moves use attached offsets; other panels use margins
+and alignment. Resizing writes Width/Height and preserves the leading edge. Layout
+gestures do not replace bindings/resources or property elements. Named parts of an inline ControlTemplate are scoped to their owning control. Unnamed parts are editable when the complete direct visual child sequence matches the source; direct StaticResource ControlTemplate references and explicit inline/resource Style Template setters (including BasedOn) also map the clicked instance to their shared source, including merged dictionaries. Editing a shared part updates that source for all instances; selecting several instances of the same source writes an identical property change once, with one undo. Conflicting values are rejected before any source is changed. Source-caret navigation does not guess between shared instances. Implicit templates use the same local/application and selected-theme lookup as style editing. Repeated DataTemplate instances resolve through SDK realization ownership and design-copy source provenance. Generated wrappers without an authored source tag and ambiguous
+nodes remain inspection-only, and stale source edits are rejected instead of overwriting
+concurrent changes. Structure commands edit Grid definitions, reorder siblings and move
+source elements into compatible containers. Marquee selection and XAML copy/cut/paste
+use the same source mapping and undo history. The inspector's **Edit applied style…** edits literal dependency-property setters in
+an inline Style, a uniquely resolved explicit style resource, or a source-scoped implicit style, including Style.Setters. Implicit style editing follows local resource and reverse merged-dictionary precedence; Light/Dark theme dictionaries follow the selected preview host theme with Default fallback. The selected static-preview application supplies global styles after local scopes, including when the document belongs to a dependency module. Its unsaved XAML and dictionaries participate in document cache invalidation. Ambiguous high-contrast, mixed RequestedTheme, template and live-application ownership remain unavailable rather than selecting an uncertain source.
+Edits preserve consumer-local values, support Reset and undo, and use the style's
+resource scope. Complex/duplicate setters and stale documents are protected.
+**Create style…** creates a keyed style in the nearest source ancestor with Resources
+and applies it in one undoable command. Optional extraction moves local literal
+DP values into setters while preserving names, bindings and resource expressions.
+Existing styles and dictionary Source declarations are not overwritten.
+Shared ControlTemplate authoring and storyboard timeline authoring
+remain separate from this setter editing surface.
+
+Double-click a rendered element to open its XAML source. Moving the source caret
+into a uniquely identifiable element selects its visual bounds. Matching prefers
+`x:Name`, then a unique control type within a named parent; repeated unnamed
+controls and template internals are not guessed. When an internal visual child
+has no source tag, navigation falls back to its nearest identifiable source owner.
+Settings includes viewport presets (360×640, 800×600, 1280×720 and 1920×1080),
+width/height swapping, theme and automatic updates. Visual state groups declared in
+this design document also expose state choices. A choice overrides only the group's
+design-time triggers; the real SDK applies its setters and storyboards. Automatic
+restores the source triggers, including adaptive viewport states. Selection never
+writes source or modifies the base document cache. States supplied only by an
+external compiled control/template are not listed by this source-based selector.
+With **Record properties in selected state** enabled, choose one named state and
+an `x:Name` element in the same source namescope. The property panel and layout
+gestures write dependency-property `Setter` overrides; Reset removes the override,
+and undo restores the whole edit. Base attributes remain intact. Duplicate/complex
+setters, ambiguous names and stale source snapshots are rejected. **Create visual states…**
+adds a named state to a source group, or creates a group with its first state on the
+selected source element. Names are checked in their XAML namescope and edits support
+undo. Group/state rename uses the platform usage preview and updates resolved XAML/Kotlin references, including transition From/To references in that group. Dynamically constructed state names in code still need manual review. State/group deletion checks resolved external references, removes transitions referring to a deleted state, and supports a single undo. Empty groups remain editable. The storyboard timeline supports seeking and source-backed keyframe editing: create tracks for named elements, add/delete keyframes, edit their values and millisecond positions, and undo each source edit. Same-key storyboards in root and explicitly named resource owners are edited in their selected scope. Ordinary value/time edits preserve existing spline/easing settings. Numeric keyframes have a draggable timing-curve editor, curve presets and keyboard-editable control-point coordinates; applying a curve writes an SDK Spline keyframe as one undoable source operation. Object-valued frames expose their nested object properties as well as the XAML value editor. The source storyboard scope selector disambiguates same-key templates and unnamed VisualState storyboards for undoable keyframe editing. Switching scopes immediately discards stale edit handles. The playback selector lists each realized template resource owner separately, including its containing control and visual path. Seeking, playing and stopping use that exact instance and the SDK clock. Source provenance, tree generation and native object identity are checked before dispatch, so a recycled or rebuilt instance cannot receive an old command. The keyframe editor follows the selected instance's source storyboard. Choosing a different source scope remains an editing operation and does not guess among multiple live instances. The session menu (**…**) owns
+launch selection, project-code mode, refresh, rebuild, stop and reconnect. During preparation,
+Cancel stops the native IDE Gradle execution associated with that preview session,
+using a background progress context so Gradle JVM resolution does not block EDT.
+Refresh status replaces one line in place, keeping the toolbar and canvas stationary.
+
+Desktop acceptance in the isolated IDEA host covers cancellation followed by retry,
+source Button selection and canvas double-click navigation, viewport presets and
+width/height swapping with a real Native dependency control rendered in the canvas.
+A dependency control exposed by the visual snapshot only as the platform
+`UserControl` has no authored-type identity for cross-file navigation; its unnamed
+internals currently fall back to the nearest identifiable containing source element.
+This does not claim exact navigation into that dependency's XAML.
+
+Application and ResourceDictionary documents open in the XML editor without starting
+a design host. Their edits update the visual pages that consume them.
+
+When a project-code launch is available, the preview defaults to rendering real
+project controls. The per-module choice is saved across editor and IDE restarts.
+Source-backed merged dictionaries use the current editor documents in project-code previews,
+so dictionary edits do not require rebuilding the package. Dictionaries available only
+in compiled dependencies retain their package URI and report that fallback in preview notes.
+Disable **Render project controls (requires compilation)** to use the independent
+SDK designer when application code cannot build. Without a project-code launch,
+the SDK designer is selected automatically.
+
+The SDK mode uses a fixed host for the imported XAML framework and reads
+current XAML, without compiling the application, running XAMLC,
 constructing the user's Application or invoking user main. Application Kotlin
 errors do not block this designer. The first launch prepares a host for the
 selected Windows App SDK and Windows SDK; its SDK compilation is cached across
 projects with matching SDKs and compiler/runtime inputs. Subsequent document
 edits reuse that process. The selected SDK must be installed/restorable, and the
 configured JDK and Windows native toolchain must be available for first preparation.
-**Retry preview** reruns preparation after a failure.
+**Retry preview** reruns preparation after a failure. Detached Native preparation compares source inputs after every build. If an edit overtakes compilation, it automatically builds the latest inputs before starting the host; a stable compilation failure retains its diagnostic. Cancellation also cancels the retry loop. ASC acceptance changed XAML during initial preparation and verified the automatic second build and current editable frame without Retry or Reconnect.
+
+UWP uses `runWinRTXamlSdkPreviewUwp`, an independent AppContainer package with a
+Kotlin/Native host and generated Application. Its identity and assets are owned by the
+designer, separate from the application and project-code preview packages.
+It uses the project's `mingwX64` compiler, or `kotlin.native.home` when configured
+explicitly. A Windows Kotlin/Native distribution matching the project's Kotlin
+version is required for its first SDK build.
+The Native executable is shared across projects using a checksum-validated cache
+keyed by SDK sources, registration metadata, compiler, standard library and runtime
+inputs. SDK restore, package identity, manifest and assets are independent of the
+application. The package declares `codeGeneration` for the runtime's Win64 ABI
+call stubs (`VirtualProtectFromApp`); this is required for Native as well as JVM hosts.
+The native UWP XAML loader renders SDK controls; the property inspector registers
+the presentation namespace's typed members. Specialized Maps members are not in
+that inspector table (their Kotlin projection currently has a `Style` name collision
+with `FrameworkElement.Style`). Base visual inspection remains available.
 
 `WinRTDevelopmentLaunchTest` invokes the production session from EDT without
 write intent, as Compose effects and clicks do. It checks automatic SDK preview
@@ -500,45 +673,140 @@ renders its ToggleButton page and main window. The SDK-only designer preserves
 built-in visual children and local resources inside unavailable custom containers;
 their appearance uses a placeholder rather than executing the custom control.
 Loose design dictionaries establish theme resources before loading merged styles.
-A rejected design document clears the previous image and reports its XAML/resource
-error; refreshing after a correction renders the new document.
+A rejected design document reports its XAML/resource error. The editor retains the
+last successful image for that document and mode, labels it out of date, and replaces
+it after a successful update. It also keeps the image visible while preparing edits.
+The updated workspace has desktop Canary coverage with a packaged Native host and
+a Kotlin control from a dependent project: default project-code launch, settings
+expansion/collapse, 125% zoom, drag panning and Fit recentering. An invalid unsaved
+XAML edit retains the image with an out-of-date warning; undoing the edit restores
+the current render without rebuilding Kotlin. The editor regression suite and
+plugin ownership check pass for all three packaged distributions.
 The artboard uses the preview theme's page background so transparent pages remain
 legible in both light and dark IDE themes.
 
-**Enable project code (requires compilation)** switches to the existing isolated
+**Render project controls (requires compilation)** switches to the existing isolated
 application-derived host to render custom Kotlin controls. Packaged project-code
 hosts use a separate `.preview` identity and deployment folder and can run beside
-the application's `.dev` package. The default SDK designer is independent of the
+the application's `.dev` package. The SDK designer is independent of the
 application's packaging mode. Static and live sessions have independent
 connections and process ownership; closing the project stops its design host.
-Synchronize Gradle after updating the toolkit to import version 6 of the IDE model.
+Synchronize Gradle after updating the toolkit to import version 11 of the IDE model.
 
 Static rendering preserves StaticResource, ThemeResource, local dictionaries,
 application resources and their original package-relative Source paths. In the
-default designer, relative and `ms-appx:///` dictionaries are read recursively
+SDK designer, relative and `ms-appx:///` dictionaries are read recursively
 from source, including unsaved edits. Named project ResourceDictionary classes
 can contribute their XAML without executing their constructors. Missing files
 and dictionary cycles are reported. Passive image/font assets are copied to the
 module's owned designer folder. Preview options select viewport dimensions and
-theme. Supported `d:` values and inline design children replace
-compiled `x:Bind` expressions; otherwise control defaults apply. Event handlers
-and compiler-only directives are removed from the design copy with a visible
-notice. Regular Binding still needs an available design DataContext. With project
-code disabled, custom controls retain layout as visible placeholders and custom
-resource objects are excluded. Enabling project code permits their normal
-constructors. There is no simulation of Kotlin code or binding execution, and
-this feature does not provide UWP's drag-and-drop designer.
+theme. Ordinary `d:` properties override their runtime values, including relative
+image sources, and design collection properties replace runtime items and bindings.
+`d:DesignData` files and inline `d:DataContext` provide inherited scalar sample values
+for plain `Binding` paths without constructing project types. Nested contexts shadow
+their parents, and template item contexts remain separate. With project code enabled,
+the designer constructs the real Kotlin component and reconnects its generated
+`Connect`/`Update`/`StopTracking` bodies to the design tree. Ordinary `Binding`
+inherits the component's actual DataContext; page and template `x:Bind` execute
+the generated Kotlin code. Explicit `d:` values suppress the corresponding
+generated assignments and tracking. A changed connection contract automatically
+rebuilds the project host before reconnecting. Event handlers and compiler-only
+directives are removed from the loose XAML copy; generated connectors retain
+their typed responsibilities. With project code disabled, compiled bindings use
+explicit design values or control defaults, custom controls retain layout as visible
+placeholders, and custom resource objects are excluded. The shared
+canvas provides the source layout and property edits described above for both frameworks.
 
-WinUI owns layout/rendering. Captures are premultiplied BGRA8, scaled to at most
-768 pixels per side, and bounded to 2048 visual nodes. RenderTargetBitmap's own
-limitations apply, including content outside the captured visual such as popups.
-The protocol is version 4: rebuild applications using an older development host
+The first capture returns real pixels and root bounds before traversing the complete
+visual tree. Selection and layout editing become available after the separate tree
+response; the footer reports that preparation while the picture is already visible.
+Effective-property reads follow only the selected visual path and retain the complete
+tree and image when the reported type, name and source identity match. A changed
+realized template requests a complete tree before editing becomes available again. Startup diagnostics distinguish first frame from visual-tree readiness.
+
+WinUI owns layout/rendering. Premultiplied BGRA8 captures follow zoom and display
+density. Each texture remains bounded to 4096 pixels per side. Logical artboards
+support up to 16384 DIP; zoom/pan requests recapture the visible region at the
+current density without changing the source layout. The complete realized tree
+supports 65536 nodes and 128 levels, delivered in immutable 2048-node pages.
+WinUI captures temporarily raise the root UIElement.RasterizationScale to rasterize its subtree at the requested
+density, then restore the original value without changing DIP layout. Windows.UI.Xaml
+has no matching public setter, so UWP uses RenderAsync output scaling only.
+Up to 64 open Popup and Flyout layers are enumerated from their XamlRoot; their
+visual-tree entries retain SDK stacking order for picking. Realized MediaPlayerElement
+and SwapChainPanel controls trigger Windows.Graphics.Capture in both isolated and live
+application inspection. Capture checks the current SDK visual tree after its rendering
+boundary, including popups realized after the previous inspection.
+WinUI captures the natural application window and its owned SDK popup HWNDs in native
+bottom-to-top order, then scales/crops the composed image. Inline popups are already
+in the main frame and are not painted twice. Live capture does not resize the application,
+change its render transform, or move its controls. The isolated designer alone synchronizes
+its physical window size after the attached XamlRoot establishes its DPI.
+UWP uses owned CompositionVisualSurface/SpriteVisual surfaces for both the main subtree
+and popup layers. Development deployments with a Hot Reload session receive the
+`graphicsCapture` capability in their copied deployment manifest; production inputs
+remain unchanged. SoftwareBitmap reads the composed video/DirectX surfaces.
+The designer refreshes composed content while visible and pauses polling during edits
+and rebuilds. Ordinary XAML uses RenderTargetBitmap. Protected media remains subject
+to Windows capture restrictions.
+
+`WinRTNativeCompositionIntegrationTest` exercises the generated Native adapter's
+pixels at full size, 2x scale, cropped viewports and after camera restoration. With
+`winrt.ide.nativeRestartProject` pointing to a built preview fixture, place its
+video beside that project at `../xaml-reload-validation/composition-green.mp4`.
+The deterministic H.264 test input can be generated with FFmpeg:
+
+```powershell
+ffmpeg -y -f lavfi -i "color=c=lime:s=160x120:r=10:d=120" -vf "drawbox=x=0:y=0:w=iw:h=ih:color=blue:t=fill:enable='gte(mod(t,10),5)'" -c:v libx264 -pix_fmt yuv420p composition-green.mp4
+```
+
+The test requires both decoded green pixels and a later blue frame, in addition
+to exact camera geometry; a transparent SwapChainPanel alone is insufficient.
+The protocol is version 18: rebuild applications using an older development host
 before connecting the updated IDE plugin. Runtime inspection contracts and typed
-adapters are shared Kotlin; the development transport currently supports JVM.
+adapters are shared Kotlin; development transports support desktop JVM/Native
+WinUI and Native UWP. Native UWP project-code previews and application launches
+use isolated packages and authenticated AppContainer pipes; see [UWP support](../../docs/UWP.md).
+
+## Native debugging
+
+Select a Native Debug executable in the Kotlin WinRT application configuration
+and use **Debug**. Gradle builds and stages the application; its JVM is not the
+debug target. The launcher suspends the new executable before application code,
+the IDE installs Kotlin WinRT Native line breakpoints, and LLDB attaches before
+the launcher resumes it. UWP uses the same handoff through its package debugger
+activation helper. Cancelling the launch terminates only that launch's process.
+
+Configure a Windows LLDB executable under **Settings → Tools → Kotlin WinRT**.
+An Android NDK LLDB can also be discovered through `ANDROID_HOME` or
+`ANDROID_SDK_ROOT`. The imported Gradle model supplies the actual Kotlin/Native
+compiler home, so variable formatting follows the project's compiler version.
+Debug builds retain Kotlin's public debug field API; release executables are not
+accepted for source debugging. No project `.lldbinit` is executed.
+
+The Debug tool window supports source breakpoints, pause/resume, step over/into/out,
+run to cursor, thread stacks and paged Kotlin object/array values. Relative DWARF
+paths resolve against imported modules when unambiguous. This does not provide a
+Kotlin expression evaluator. **Run → Attach Kotlin WinRT Native Debugger** attaches
+to the authenticated development process; closing an attach session resumes and
+detaches from that app. Stopping a Debug launch terminates its owned application.
+XAML updates and preview inspection continue while the Native debugger is running.
+At a breakpoint they queue until Resume; background code compilation can continue.
+After a successful build the IDE saves compatible state, detaches from the old
+process, restarts the application, restores state and reattaches the same debug
+session with freshly resolved source breakpoints. Failed builds keep the current
+application and debugger. The pause boundary prevents UI-thread transactions from
+blocking on a suspended process.
+
+Windows integration tests exercise Kotlin object fields, arrays larger than 100
+items, all three step operations and continuation after detach. Actual UWP and
+desktop Native startup checks also reach source breakpoints before application
+entry continues. Interactive Debug tool-window acceptance remains distinct from
+these backend and platform tests.
 
 ## XAML Hot Reload
 
-IDE **Run** and **Debug** automatically connect imported JVM WinUI application
+IDE **Run** and **Debug** automatically connect imported JVM and Native application
 profiles to XAML Hot Reload. This is enabled by default and can be disabled under
 **Settings → Tools → Kotlin WinRT**. Each execution adds a fresh session directory
 to its native Gradle state without changing the saved configuration's environment.
@@ -546,7 +814,7 @@ The native runner retains build output, debugger settings and cancellation.
 The **Hot Reload** tab provides session status and explicit lifecycle actions;
 opening the tab or pressing Launch is not required for IDE application runs.
 
-The tab can also start an imported JVM application's
+The tab can also start an imported application's
 actual Gradle launch task with a fresh development session. Gradle owns the build,
 Run output and build cancellation. The panel applies unsaved XAML document changes
 automatically or on request, reports property results and source versions, and
@@ -562,8 +830,8 @@ directory. The native JVM host consumes it before VM creation and does not pass 
 to application `main`. No token or development configuration is staged in the
 package. The imported launch points to the registered AppX layout's executable,
 which remains subject to the same process and lifetime checks. WinApp 0.6's
-self-contained folder-run limitation and Native's missing development transport
-remain explicit; neither is a general packaged XAML Hot Reload limitation.
+self-contained folder-run limitation remains explicit. Desktop JVM and mingwX64
+launches share the development protocol.
 
 The IDE workspace saves the confirmed launch's module, task, session directory,
 process ID and start time, without its authentication token. After reopening a
@@ -589,7 +857,10 @@ and successful overrides apply to subsequently created instances.
 The transport uses an authenticated, bounded loopback protocol and an owner-restricted
 session file. It starts only when the development environment variable is present.
 There is no Kotlin reflection. Root and connected named elements support ordinary
-writable literal properties. Mutable keyed resources update through the existing
+writable literal properties. Attached literal properties resolve their declaring owner
+through WinMD and use compiler-generated static getters/setters, including layout
+properties such as Grid.Row and Canvas.Left. They retain the same rollback and
+future-instance replay guarantees; older binaries require rebuilding once. Mutable keyed resources update through the existing
 projected dictionaries, preserving shared brush identity and resource expressions.
 For a sealed Style, the SDK loads a self-contained replacement dictionary; the
 transaction keeps the live dictionary and controls and refreshes this page's explicit
@@ -601,19 +872,63 @@ WinMD content properties and mutable-vector interfaces drive child-collection
 updates. Existing children can reorder within the same collection. The SDK loads
 new unnamed presentation subtrees with literal properties; unnamed disconnected
 subtrees can be removed. The transaction preserves retained native objects, checks
-the live collection size and rolls back changes on failure. New/reordered unnamed
-children use checked property/index paths. Future component instances replay graph
+the live collection size and object identities and rolls back changes on failure.
+New/reordered unnamed children use checked property/index paths. Future component instances replay graph
 and subsequent property/resource updates in order (64 entries / 8 MiB). Moving
 controls can trigger Loaded/Unloaded and affect focus; transient lifecycle state is
-not guaranteed. Application changes to collection order are outside this contract.
+not guaranteed. Application changes to collection order or replacement of an item
+are rejected before indexed edits, even when the count is unchanged. Baselines
+follow generated content-property and resource paths and belong to the generated
+component connection state, not the session registry; an indexed path without a
+captured baseline requires rebuilding. Successful graph
+updates refresh the baseline; failed transactions retain the previous baseline.
 
-Style replacement currently requires the same explicit string keys and named/root
-owners and consumers. ThemeResource consumers, implicit keys, external/merged/theme
+Style replacement requires explicit string keys and owners/consumers resolved through connected names or compiled property/content paths. Unnamed collection consumers use the same runtime size and object-identity checks as other indexed updates. ASC Native acceptance has exercised replacing a local button style while refreshing an unnamed Border resource consumer, then mutating the replacement shared brush; both controls changed without restarting the process.
+Ordinary events on existing named, non-template elements can switch to an already
+compiled compatible handler, including private Kotlin methods. Removing the event
+attribute disables dispatch; restoring it reuses the same native subscription.
+Source/version and expected-handler checks, rollback and future-instance replay
+use the normal transaction. Protocol v14 requires rebuilding older development hosts.
+
+Local dictionaries can add/remove keys when no surviving consumer references a
+removed key; dictionary keys and values roll back together after a failed update.
+ThemeResource consumers, implicit keys, sealed styles in external/merged/theme
 dictionaries, captures in other dictionaries/templates, connected-element removal,
 type/name/parent changes, new names or authored controls,
-compiled events/bindings, attached properties and Kotlin changes require rebuilding
-and restarting. There is no page-recreation path. See
-`winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and Native parity gaps.
+new event slots, template events, compiled bindings, property expressions and Kotlin changes require rebuilding
+and restarting. With Automatic enabled, packaged development launches and unpackaged Native/JVM host launches build changed
+Kotlin and XAML changes that cannot form an in-process patch into a separate staging
+layout. The current process remains alive during compilation and after build failure.
+A successful build captures compatible named-control state, replaces the process,
+and restores that state after the new component is ready. Component instance ordinals
+are process-local: state instead follows compiler-connected names beneath an
+unambiguous component root, so named repeated UserControls can recover independently
+of their creation order. Components without a unique named path are skipped during
+state capture and reported after replacement; uniquely matched components still recover.
+Restoration also rejects a component whose source identity disappears in the replacement.
+Automatic rebuilding continues even when some component state cannot be saved.
+Further edits during a build are coalesced into another build before replacement.
+The original IDE Run session remains active after its Gradle launch finishes and
+continues owning replacement processes, so Stop still terminates the current app.
+ASC desktop acceptance has verified Kotlin value changes, retained text input and
+Stop after an automatic unpackaged Native replacement, with preview still running.
+ASC acceptance with two named instances of the same dependency UserControl also
+verified that a Kotlin change automatically rebuilds and replaces the application,
+loads the new compiled binding value, and restores three distinct text inputs in
+the window and both dependency instances. No manual Run or Reconnect was needed.
+State without a unique compiled namescope path is still skipped instead of being
+transferred by creation order. The persistent recovery result waits for the new
+parent connector before reporting keyed components as restored. A paused Native debugger defers the replacement until Resume; a running Native debugger detaches at replacement and reattaches with its breakpoints after state restoration. External edits to loaded XAML files use the same
+live patch path as editor changes. Dictionaries, deleted XAML files and components
+without a loaded root request a build so their compiled resources are refreshed;
+manual mode retains the pending-change indication without starting a build.
+Project-code preview uses the same preparation boundary for Kotlin changes, keeping
+the old artboard available during compilation and rendering source again after its
+isolated host restarts. Unpackaged Native/JVM host runs use separate run and preview deployment
+copies, so the linker and staging tasks never write into the running payload.
+Direct JavaExec launches do not own an isolated deployment; automatic replacement requires the toolkit host Run task.
+Direct unpackaged Native replacements prepare a fresh deployment directory and resolve task arguments/environment while the old application remains interactive. Only after preparation succeeds does the IDE capture the latest state and start the prepared payload. State capture retries transient Loaded/Unloaded races and verifies a stable component set before stopping the old process. No second Gradle launch or deployment copy is needed during the switch. Failed preparation leaves the existing process and its files intact. If the replacement fails to start, the IDE relaunches the retained previous deployment with its resolved launch contract and restores saveable state. The failed code remains marked as pending. Unclaimed replacement directories are cleaned only after their build writer finishes, including cancellation and project disposal. Generated output roots imported as Kotlin sources do not trigger another user-code rebuild. Other packaging modes continue to use their platform activation path. There is no in-process page-recreation path. See
+`winrt-runtime/HOT_RELOAD.md` for the owning runtime contract and supported update boundaries.
 
 The optional graph-host test uses `-Pwinrt.ide.hotReloadGraphSession=<fresh session>`,
 `-Pwinrt.ide.hotReloadGraphSource=<MainWindow.xaml>` and `-Pwinrt.ide.xamlInput=<input.json>`.
@@ -638,11 +953,231 @@ to `WinRTGradleImportTest` to save through the real project component store, clo
 and reopen its imported project, recover the session and apply an unsaved Text edit
 to an existing WinUI application. This uses the native project lifecycle inside
 the platform host; full desktop IDE restart remains separate interactive acceptance.
-The common runtime engine compiles for `mingwX64`, but its development transport and
-end-to-end IDE support currently target JVM. The compatibility matrix records
+`WinRTApplicationRestartIntegrationTest` opts into a prepared unpackaged JVM host
+fixture with `-Pwinrt.ide.restartProject=<project under .gradle>`. It drives the real
+IDE Gradle runner, changes Kotlin source, checks process replacement, and verifies
+independent recovery of the window and two named dependency components.
+
+The runtime engine and development wire codec are shared by JVM and `mingwX64`.
+Native desktop launches expose the same authenticated session, property updates and
+visual inspection channel. The independent SDK preview uses JVM for desktop WinUI
+and Native AppContainer for UWP.
+“Render project controls” also supports desktop mingwX64 applications with a configured
+`mainClass` and generated XAML host. The native entry wrapper selects the isolated
+designer before calling user main, using the same compiled project/dependency XAML
+registrars as the JVM designer. Both unpackaged native runs and framework-dependent
+packaged development runs expose this capability. Kotlin class changes automatically
+prepare a replacement while the current designer stays visible; markup-only edits reuse the running host. The compatibility matrix records
 backend validation for installed SDKs; desktop interaction still requires
 acceptance in each distribution.
 
-The implementation queue remains in the local, uncommitted
-`IDE_SUPPORT_LOCAL_PLAN.md`; this README records module boundaries and supported
-behavior rather than revising root `PLAN.md`.
+A selected XAML split/preview editor starts the existing Native session before initializing its Compose canvas when the imported module model is available. During restoration it waits for the source file's own module instead of temporarily borrowing the tool-window selection. Hiding or closing the editor cancels that wait. Cache validation and host initialization can then overlap the editor UI setup. Background tabs and code-only views do not request this work; restoring a code-only Canary editor was verified without a preview process, followed by first-host startup when switching to Split.
+
+An unchanged isolated Native deployment can initialize while its source and dependency
+contents are checked. The IDE connects and submits XAML only after the full receipt
+matches; invalidated or cancelled candidates are terminated before rebuilding.
+Project previews prefer a validated cached Native deployment. When no reusable project deployment exists, the independent SDK artboard can render while project controls compile. Changing Light/Dark restarts the preview host with Application.RequestedTheme set before initialization, so implicit theme styles match the rendered application. A connected deployment can be reused for this theme-only restart after XAML edits; changes to its binaries, dependencies or toolchain still require build validation.
+
+The Toolbox supports search, drag-to-insert and select-then-place. Insertion uses the metadata content contract and never replaces existing content or bindings. Ctrl/Shift+click selects multiple source elements; dragging, nudging and shared properties apply in one undoable command. Align/match-size commands use the last selected sibling in Grid or Canvas. Edge/center snap guides can be toggled; hold Alt to bypass them. Template-generated visuals remain navigation-only when no exact source mapping exists.
+
+Reopening a static designer can display its previous successful image while the current host starts. This image is explicitly labelled **Previous render** and cannot provide editable objects or hot-reload state. The disposable module-build cache stores only bounded pixel buffers and artboard dimensions, isolates source files/themes/sizes, and retains at most eight images. Corrupt entries are ignored. It does not bypass launch validation or count as a new Native first frame; current rendering replaces it automatically.
+
+Native development builds use up to four compiler backend threads, bounded by the
+Gradle worker limit. `kotlinWinRT.native.backendThreads` can select 1–64 threads;
+an explicit binary `-Xbackend-threads` argument takes precedence. This retains debug
+information and does not enable unsupported mingw compiler caches. Release binaries
+keep their existing compiler settings.
+
+WinUI JVM project templates allow an 8 GiB in-process compiler heap for the full
+SDK implementation; Native-only and smaller WinRT projects retain a 4 GiB budget.
+Framework-dependent unpackaged JVM hosts obtain SDK components from the initialized
+package graph. App-local SDK payloads and base-directory redirection belong to
+self-contained deployment.
+
+Zoom-only captures reuse the current designer tree, preserving realized controls
+and template state; explicit refresh reloads source. WinUI establishes glyph density
+before the initial layout to avoid discarding its first text realizations.
+ASC desktop acceptance covers 100%, 150% and 200% zoom and Light/Dark styles
+from a dependency control's theme dictionaries. Reopening the IDE with a validated
+Native deployment reuses the host build and replaces the labelled previous image
+with a current native capture.
+The fully bundled ASC plugin also passes a toolchain-invalidated Native rebuild:
+the designer retains the labelled previous image throughout compilation, connects
+automatically after Gradle completes, and renders subsequent external XAML edits
+without Refresh or Reconnect. The acceptance fixture is restored after checking.
+
+ASC acceptance also verifies editing a realized ContentPresenter template's FontSize,
+reading its effective Native value and undoing it. Selecting two realizations of the same template
+and applying a shared FontSize writes the template once, updates both instances, and restores
+both with one Undo. Acceptance also covers dragging a Canvas child,
+saving the new coordinates and restoring the exact original XAML with Ctrl+Z.
+
+
+### Application checkpoints across development rebuilds
+
+The shared JVM/Native runtime captures `Frame` navigation through the SDK's
+`GetNavigationState` / `SetNavigationState` methods before restoring child inputs.
+SDK `Loaded`/`Unloaded` delegates keep detached cached pages out of restart
+identity and inspection while preserving their XAML patch registrations. Recovery
+rechecks component identity after each navigation or checkpoint restoration.
+Give dynamically created controls a unique `AutomationProperties.AutomationId` to
+include them in recovery; ambiguous IDs are excluded rather than matched by index.
+The SDK navigation serializer supports basic navigation parameters. Applications
+with richer navigation models should save their durable route IDs in a checkpoint.
+
+A component or its DataContext can implement `WinUIXamlRestartParticipant` to save
+business state and task checkpoints on its owning UI thread:
+
+```kotlin
+@OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+class SearchViewModel : WinUIXamlRestartParticipant {
+    override val restartStateSchema: String = "Search/v1"
+    var query = ""
+    var nextPage = 0
+    override fun saveRestartState(): Map<String, String> = mapOf("query" to query, "nextPage" to nextPage.toString())
+    override fun restoreRestartState(values: Map<String, String>) {
+        query = values.getValue("query")
+        nextPage = values.getValue("nextPage").toInt()
+        // Resume application-owned work from nextPage using the new process lifetime.
+    }
+}
+```
+
+Checkpoint schemas must match across the replacement. Normal control state and
+business checkpoints have separate identities, and a failed restoration rolls back
+the values already applied. Snapshots are bounded to 4,096 entries, 128 values per
+entry, 128 KiB per value and 8 MiB of value data per component. Checkpoints contain
+data: native stacks, sockets and coroutine continuations are recreated by the app.
+
+Object-valued properties expand in the property inspector. Nested objects expose
+their WinMD members through the same writable property controls; the type chooser
+filters assignable constructors. A XAML value editor handles collections and nested
+object graphs, with namespace-aware validation and one undoable replacement.
+Style and VisualState object setters keep their own source ownership. Object
+keyframes support value/time edits and deletion while retaining easing metadata.
+Every known visual in the design copy carries source provenance, so unnamed
+parts in repeated templates resolve to the clicked realization and shared source.
+
+UWP composition acceptance uses the actual Native AppContainer designer. Its deployment
+adds the SDK `graphicsCapture` capability to the isolated preview/development deployment. A
+CompositionVisualSurface and an owned SpriteVisual capture the XAML subtree without
+changing its SDK-owned visual size. Acceptance verifies repeated full-frame, 2x zoom,
+viewport crop and camera restoration, then decoded H.264 playback advancing from
+green to blue. Run `WinRTNativeCompositionIntegrationTest` with
+`-Pwinrt.ide.uwpCompositionSession=<active preview session directory>`; stage the
+`composition-green.mp4` fixture in that package and next to the session directory.
+Window lifetime follows `Window.Closed`; replacing its Content no longer detaches
+the inspector. FrameworkElement instances still follow Loaded/Unloaded.
+
+Live composition acceptance can attach to a running Native fixture with
+`-Pwinrt.ide.liveCompositionSession=<active development session directory>`.
+The fixture provides cyan DirectX pixels in a main SwapChainPanel and yellow pixels
+in an open Popup SwapChainPanel. The test verifies both actual swapchains at 1x/2x,
+then checks that the root and named application controls retain their layout.
+The isolated composition test also opens a video Popup through the same post-attach
+marker as ASC and verifies its pixels at full size, 2x scale and a cropped viewport.
+
+ASC Canary acceptance also starts the fixture through **Live Preview > Start application**,
+opens its real video Flyout, and observes the main video, Flyout video and both DirectX
+surfaces in the preview. Switching the designer to 200% and back to Fit preserves the
+running application's layout. The Native acceptance run covers both live and isolated
+capture; UWP AppContainer acceptance covers popup video, zoom, crop and restoration.
+Protected/DRM video remains governed by Windows capture protection, not bypassed by
+this capture path.
+
+### Development endpoint security boundary
+
+Preview and Hot Reload are privileged local development tools, not a sandbox for
+untrusted projects. Preview executes project control constructors and binding code.
+An authenticated client can inspect UI/property/state data and submit XAML/property
+changes, which can invoke application code with the target process's privileges.
+
+Desktop TCP binds only loopback. Each process creates a cryptographically random
+256-bit bearer token, compared without an early-exit byte comparison. Native UWP
+uses a named pipe that rejects remote clients and grants access to the owning user
+and that AppContainer, rather than all application packages. Session files restrict
+access to their owner (and the owning AppContainer on Native). Protocol size limits,
+timeouts and bounded work reject malformed requests; shutdown removes the session.
+These controls do not isolate mutually untrusted processes under the same Windows
+account: a process that can read the session token can act as a development client.
+Administrators/debuggers are also outside this boundary.
+
+Development permission is owned by the artifact, not by environment variables,
+JVM system properties or activation arguments:
+
+- Kotlin/Native Release binaries deny Preview and Hot Reload before parsing
+  development activation arguments or creating a session. Only compiler-debug
+  binaries permit these facilities; the IDE does not advertise Release launches
+  as XAML development targets.
+- JVM IDE Run/Debug and Gradle `runWinAppHost...` / `runWinAppPackage...` enable
+  development capability automatically in an isolated runtime copy. The original
+  dependency JAR, directly built host and packaged/distribution output remain
+  disabled. Preview still requires selecting a preview launch; ordinary Run keeps
+  the application's normal main/UI.
+- The JVM runtime reads permission only from its own JAR manifest. Missing permission
+  fails closed, including loose classes. Development run tasks stamp their private
+  copy; production classpath staging removes the stamp even if given a development
+  copy. Setting launch environment, `-D` properties or preview arguments cannot
+  grant production permission. Direct JVM host launch therefore does not replace
+  the supported IDE/Gradle development run task.
+
+An allowed development artifact still requires a session directory to start its
+authenticated endpoint. Do not distribute the isolated development run directory.
+Replacing application/runtime files or injecting code into the process is outside
+this boundary; the protection does not defend against an attacker already able to
+rewrite the installed program. The copied UWP development capture capability does
+not modify the production manifest.
+
+### Cached Native cold-start acceptance
+
+Ordinary XAML capture waits for the first rendering boundary, then relies on the
+SDK RenderTargetBitmap asynchronous draw completion. Media/SwapChain content,
+including newly realized popup roots, still waits for the next composition commit
+before Windows.Graphics.Capture. This follows the SDK RenderAsyncImpl/RequestRender
+and RenderTargetBitmapWaitExecutor completion contract; it does not relax build
+fingerprints, binding readiness or substitute a saved bitmap for a live frame.
+
+On ASC Canary 262, the same Native dependency-project fixture and viewport produced
+cached process-cold first frames of 4.019/4.243 seconds before this change and
+3.464/3.236 seconds after it. Both IDE and preview host were restarted between
+samples; paired launches inherited the same parent environment. The timer runs
+from preview launch to receipt of the first new image, excluding IDE startup and
+Previous render. These are local acceptance samples, not a one-second guarantee;
+the first baseline sample overlapped plugin compilation, while the second baseline
+and both final samples did not overlap validation builds.
+
+Desktop Native and UWP AppContainer pixel acceptance passed ordinary XAML's first
+image and 1x/2x restoration, composition scale/crop, advancing decoded video, and
+popup video scale/crop. ASC displayed the fixture's bindings and 166 visual nodes
+after both final cache hits. Generator tests, runtime JVM tests and plugin class
+ownership checks also passed.
+
+### Control theme resources in preview and Run
+
+The isolated designer follows the application's declared XAML resources. It does
+not inject `Microsoft.UI.Xaml.Controls.XamlControlsResources`: applications without
+that dictionary retain the SDK's fallback styles in both Preview and Run. Declare
+it in `Application.Resources` (directly or through a merged dictionary) to preview
+the corresponding WinUI control styles, as in CsWinRT's
+`Samples/AuthoringDemo/WinUI3CppApp/App.xaml`. Removing the declaration must also
+remove its styles from the next preview; the host does not keep a global theme.
+
+The isolated designer does not execute the application's `main`/Application startup.
+Resources installed only by arbitrary startup code cannot be inferred by static
+preview. Use declarative application resources for static preview, or Live Preview
+to inspect the actual running application's resources and styling. Fallback control
+styles alone do not mean an application using `Microsoft.UI.Xaml` uses WinUI 2.
+
+### Internal development APIs
+
+Preview and Hot Reload are IDE/Gradle features, not supported application APIs.
+Runtime implementation types are `internal`. The bridges that generated code and
+IDE tooling must access across modules carry `@InternalWinRTApi`, an error-level
+Kotlin opt-in marker on JVM and Native. Their signatures may change without
+compatibility guarantees. This includes the development-only restart participant
+extension above; opting in does not make it a supported persistence API.
+
+Generated development glue opts in locally; ordinary application code needs no
+opt-in and no project-wide compiler flag. The annotation is an API boundary, not
+a security mechanism: the existing Release/production build gates still prevent
+Preview and Hot Reload from being enabled by environment variables or arguments.

@@ -349,10 +349,37 @@ class KotlinWinRTIrGenerationExtension(
         val compilerSupportEntries = readCompilerSupportManifest()
         val projectionRegistrarEntries = readProjectionRegistrarEntries(compilerSupportEntries)
         val nativeTarget = pluginContext.platform?.componentPlatforms?.any { it.platformName == "Native" } == true
-        if (nativeTarget) io.github.composefluent.winrt.compiler.xaml.lowerNativeXamlDevelopmentAccessors(moduleFragment, pluginContext)
         val nativeUses = if (!typeIndexOutputPath.isNullOrBlank() && nativeTarget)
             NativeProjectionUseCollector(projectionRegistrarEntries) else null
         val nativeNameBasedTypes = nativeUses?.collectNameBasedTypes(moduleFragment).orEmpty()
+        // CsWinRT Authoring/WinRT.SourceGenerator/Generator.Generate checks diagnostics
+        // before emitting support. Validate before rewriting constructors/intrinsics. Invalid
+        // authored types have no generated registrar; lowering them first hides the
+        // actionable authoring diagnostic behind a missing-support exception.
+        val winRTTypes = metadataIndexPath?.takeIf(String::isNotBlank)
+            ?.let { readAuthoringMetadataIndex(Path.of(it)) }.orEmpty()
+        val generatedSourceRoot = generatedSourceRootFromMetadataIndex(metadataIndexPath)
+        val classContexts = moduleFragment.files
+            .asSequence()
+            .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
+            .filterNot { file -> file.isKotlinWinRTGeneratedFile() }
+            .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
+            .toList()
+        val sourceSubtypedNames = sourceSubtypedNames(classContexts)
+        var invalidAuthoring = false
+        val reportError: (String) -> Unit = { message ->
+            invalidAuthoring = true
+            pluginContext.reportCompilerPluginMessage(CompilerMessageSeverity.ERROR, message)
+        }
+        classContexts.forEach { context ->
+            val klass = context.klass
+            if (!isEffectivelyAuthorable(context)) {
+                return@forEach
+            }
+            val authoredType = authoredTypeFor(klass, winRTTypes, isEffectivelyPublic(context), sourceSubtypedNames) ?: return@forEach
+            validateAuthoredType(klass, authoredType, pluginContext.afterK2, winRTTypes, reportError)
+        }
+        if (invalidAuthoring) return
         lowerWinRTProjectionCallSites(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
@@ -453,24 +480,12 @@ class KotlinWinRTIrGenerationExtension(
             writeAuthoredSupportArtifacts(emptyList())
             return
         }
-        val winRTTypes = readAuthoringMetadataIndex(Path.of(metadataIndexPath))
         if (winRTTypes.isEmpty()) {
             writeProjectionTypeIndex(emptyList(), winRTTypes)
             writeAuthoredCandidates(emptyList(), winRTTypes)
             writeAuthoredSupportArtifacts(emptyList())
             return
         }
-        val reportError: (String) -> Unit = { message ->
-            pluginContext.reportCompilerPluginMessage(CompilerMessageSeverity.ERROR, message)
-        }
-        val generatedSourceRoot = generatedSourceRootFromMetadataIndex(metadataIndexPath)
-        val classContexts = moduleFragment.files
-            .asSequence()
-            .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
-            .filterNot { file -> file.isKotlinWinRTGeneratedFile() }
-            .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
-            .toList()
-        val sourceSubtypedNames = sourceSubtypedNames(classContexts)
         val authoredTypeNames = classContexts
             .filter(::isEffectivelyAuthorable)
             .mapNotNull { context ->
@@ -488,14 +503,7 @@ class KotlinWinRTIrGenerationExtension(
         writeAuthoredCandidates(authoredCandidates)
         writeAuthoredSupportArtifacts(authoredCandidates)
         reportRuntimeClassCastDiagnostics(moduleFragment, pluginContext, winRTTypes, authoredCandidates, generatedSourceRoot)
-        classContexts.forEach { context ->
-            val klass = context.klass
-            if (!isEffectivelyAuthorable(context)) {
-                return@forEach
-            }
-            val authoredType = authoredTypeFor(klass, winRTTypes, isEffectivelyPublic(context), sourceSubtypedNames) ?: return@forEach
-            validateAuthoredType(klass, authoredType, pluginContext.afterK2, winRTTypes, reportError)
-        }
+
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)

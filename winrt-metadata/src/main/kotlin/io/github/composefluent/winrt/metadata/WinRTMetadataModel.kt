@@ -892,8 +892,14 @@ data class WinRTMetadataModel(
             }
             .maxOrNull()
 
+    // Like cswinrt's metadata cache, queries share one normalized input graph.
+    // Only the result we own is marked; caller-created models and data-class copies
+    // still normalize their inputs. This marker is neither serialized nor copied.
+    @kotlinx.serialization.Transient
+    private var normalizedSnapshot: Boolean = false
+
     fun normalized(): WinRTMetadataModel =
-        copy(
+        if (normalizedSnapshot) this else copy(
             namespaces = namespaces
                 .map(WinRTNamespace::normalized)
                 .groupBy { it.name }
@@ -914,7 +920,7 @@ data class WinRTMetadataModel(
                 .map(WinRTWindowsSdkSelection::normalized)
                 .distinct()
                 .sortedWith { left, right -> compareWindowsSdkVersions(left.version, right.version) },
-        ).withResolvedAbiLayouts()
+        ).withResolvedAbiLayouts().also { it.normalizedSnapshot = true }
 }
 
 private const val WINDOWS_FOUNDATION_UNIVERSAL_API_CONTRACT = "Windows.Foundation.UniversalApiContract"

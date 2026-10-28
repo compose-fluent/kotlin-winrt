@@ -1,5 +1,6 @@
 package io.github.composefluent.windows.toolkit.gradle
 
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
@@ -39,12 +40,16 @@ abstract class GenerateWinAppMingwEntryTask : DefaultTask() {
     @get:Input
     abstract val entryPointFunctionName: Property<String>
 
+    @get:Input
+    abstract val xamlPreviewHost: Property<Boolean>
+
     @get:Internal
     val entryPoint: Provider<String>
         get() = entryPointFunctionName.map { "io.github.composefluent.winrt.application.$it" }
 
     init {
         entryPointFunctionName.convention("main")
+        xamlPreviewHost.convention(false)
         packageType.convention(WindowsPackageType.Packaged.name)
         windowsAppSdkDeployment.convention(WindowsAppSdkDeployment.FrameworkDependent)
     }
@@ -65,6 +70,7 @@ abstract class GenerateWinAppMingwEntryTask : DefaultTask() {
         mingwApplicationEntrySource(
             mainFunctionName = mainFunction,
             entryFunctionName = entryPointFunctionName.get(),
+            xamlPreviewHost = xamlPreviewHost.get(),
         ).writeTo(outputRoot)
     }
 }
@@ -86,6 +92,7 @@ private fun nativeMainFunctionName(mainClass: String): String {
 private fun mingwApplicationEntrySource(
     mainFunctionName: String,
     entryFunctionName: String,
+    xamlPreviewHost: Boolean,
 ): FileSpec {
     val userMainPackage = mainFunctionName.substringBeforeLast('.', missingDelimiterValue = "")
     val userMainName = mainFunctionName.substringAfterLast('.')
@@ -102,12 +109,27 @@ private fun mingwApplicationEntrySource(
         .addAliasedImport(userMain, "userMain")
         .addFunction(
             FunSpec.builder(entryFunctionName)
+                .apply {
+                    if (xamlPreviewHost) addAnnotation(
+                        AnnotationSpec.builder(ClassName("kotlin", "OptIn"))
+                            .addMember("%T::class", ClassName("io.github.composefluent.winrt.runtime", "InternalWinRTApi"))
+                            .build(),
+                    )
+                }
                 .beginControlFlow(
                     "%T.initialize(%T.fromStagedRuntimeAssets()).use",
                     bootstrap,
                     hostConfiguration,
                 )
-                .addStatement("%M()", userMain)
+                .apply {
+                    if (xamlPreviewHost) {
+                        beginControlFlow("if (%M())", MemberName("io.github.composefluent.winrt.runtime", "isNativeWinUIXamlPreviewRequested"))
+                        addStatement("%T.main(emptyArray())", ClassName("io.github.composefluent.winrt.generated.xaml", "KotlinWinUIXamlPreviewHost"))
+                        nextControlFlow("else")
+                        addStatement("%M()", userMain)
+                        endControlFlow()
+                    } else addStatement("%M()", userMain)
+                }
                 .endControlFlow()
                 .build(),
         )

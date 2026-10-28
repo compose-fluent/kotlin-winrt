@@ -1,8 +1,11 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.preview
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
@@ -24,6 +27,19 @@ import org.jetbrains.jewel.bridge.theme.SwingBridgeTheme
 /** Editor integration follows the platform's TextEditorWithPreview contract;
  * the actual WinUI renderer is exercised separately by WinRTPreviewRuntimeTest. */
 class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
+    fun testNonvisualResourceContainersUseTheXmlEditor() {
+        val provider = WinUIXamlPreviewEditorProvider()
+        listOf("Application", "ResourceDictionary").forEach { root ->
+            val file = myFixture.addFileToProject("$root.xaml", "<$root xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>").virtualFile
+            assertFalse("$root must not start an independent preview host", provider.accept(project, file))
+            assertFalse(FileEditorProviderManager.getInstance().getProviders(project, file).any { it is WinUIXamlPreviewEditorProvider })
+        }
+        val page = myFixture.addFileToProject("Visual.xaml", "<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"/>").virtualFile
+        assertTrue(provider.accept(project, page))
+        val authored = myFixture.addFileToProject("Custom.xaml", "<local:Application xmlns:local=\"using:sample\"/>").virtualFile
+        assertTrue("Names alone cannot classify project controls", provider.accept(project, authored))
+    }
+
     private var previousLayout: String? = null
     override fun setUp() {
         super.setUp()
@@ -36,9 +52,9 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
     }
     private val markup = """<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><TextBlock Text="Preview"/></Page>"""
 
-    fun testPreviewIsNotRegisteredWhileTemporarilyDisabled() {
-        val file = myFixture.addFileToProject("Disabled.xaml", markup).virtualFile
-        assertTrue(FileEditorProviderManager.getInstance().getProviders(project, file).none { it is WinUIXamlPreviewEditorProvider })
+    fun testPreviewIsRegisteredForXaml() {
+        val file = myFixture.addFileToProject("Preview.xaml", markup).virtualFile
+        assertTrue(FileEditorProviderManager.getInstance().getProviders(project, file).any { it is WinUIXamlPreviewEditorProvider })
     }
 
     fun testNativeEditorHasPersistentTopRightModeActionsAndKeepsItsXmlDocument() {
@@ -107,6 +123,30 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
         } finally { provider.disposeEditor(reopened) }
     }
 
+    fun testFitZoomUsesViewportAndDisplayDensity() {
+        assertEquals(.5f, previewScale(800, 600, 800.0, 600.0, 2f, null))
+        assertEquals(.25f, previewScale(400, 600, 800.0, 600.0, 2f, null))
+        assertEquals(1f, previewScale(400, 600, 800.0, 600.0, 2f, 1f))
+    }
+
+    fun testDesignerZoomNavigationAndSelectionCentering() {
+        // Microsoft XAML Designer: 12.5%–800%, Fit all and Fit selection.
+        assertEquals(1f, previewZoomStep(.79f, true))
+        assertEquals(.75f, previewZoomStep(.79f, false))
+        assertEquals(8f, previewZoomStep(8f, true))
+        assertEquals(.125f, previewZoomStep(.125f, false))
+        assertEquals("12.5%", previewZoomLabel(.125f))
+        assertEquals(.375f, parsePreviewZoom(" 37.5% "))
+        assertNull(parsePreviewZoom("NaN"))
+        assertNull(parsePreviewZoom("801"))
+        assertNull(parsePreviewZoom("0"))
+        val target = io.github.composefluent.winrt.runtime.WinUIXamlVisualBounds(100.0, 50.0, 200.0, 100.0)
+        val factor = previewScale(800, 600, target.width, target.height, 2f, null) * 2f
+        val origin = previewOrigin(800f, 600f, target, factor)
+        assertEquals(0f, origin.x + target.x.toFloat() * factor)
+        assertEquals(100f, origin.y + target.y.toFloat() * factor)
+    }
+
     fun testBothNativePreviewServicesInitializeAndRemainIndependent() {
         // Regression for the packaged UI's NoSuchFieldError during composition.
         val live = project.service<WinUIXamlHotReloadService>()
@@ -115,6 +155,50 @@ class WinUIXamlPreviewEditorTest : BasePlatformTestCase() {
         assertFalse(design.state.value.connected)
         assertNotSame(live.state, design.state)
         assertFalse(design.automatic.value)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun testPreviewOptionsRemainReachableAtDoubleScale() {
+        val file = myFixture.addFileToProject("Scaled.xaml", markup).virtualFile
+        val scene = ImageComposeScene(600, 500, Density(2f))
+        try {
+            scene.setContent { SwingBridgeTheme { WinUIXamlPreviewPanel(project, staticFile = file.path) } }
+            var frameTime = System.nanoTime()
+            fun settleFrames() = repeat(30) {
+                frameTime += 20_000_000L
+                scene.render(frameTime).close()
+                PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            }
+            fun nodes(): List<SemanticsNode> {
+                fun visit(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::visit)
+                return scene.semanticsOwners.flatMap { visit(it.unmergedRootSemanticsNode) }
+            }
+            fun labels(node: SemanticsNode): List<String> = node.config.getOrNull(SemanticsProperties.Text)
+                .orEmpty().map { it.text } + node.children.flatMap(::labels)
+            scene.render().close()
+            assertFalse("Dimensions stay out of the default canvas workspace", nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
+            val workspaceBefore = nodes().first { "Preview workspace" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }.boundsInWindow
+            val expand = nodes().first { "Preview settings" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() && it.config.getOrNull(SemanticsActions.OnClick) != null }
+            assertTrue("Settings must stay visible without scrolling the canvas tools: ${expand.boundsInWindow}",
+                expand.boundsInWindow.width > 0f && expand.boundsInWindow.left >= 0f && expand.boundsInWindow.right <= 600f)
+            scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, expand.boundsInWindow.center, button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+            scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, expand.boundsInWindow.center, button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+            settleFrames()
+            assertEquals("Opening settings must not resize or move the artboard", workspaceBefore,
+                nodes().first { "Preview workspace" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() }.boundsInWindow)
+            val scroll = nodes().filter { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
+                .maxBy { it.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() }
+            assertTrue("Expanded options must scroll in a small high-DPI viewport", scroll.config[SemanticsProperties.VerticalScrollAxisRange].maxValue() > 0f)
+            assertTrue(scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f, scroll.config[SemanticsProperties.VerticalScrollAxisRange].maxValue()))
+            // Accessibility scrolling and focus bring-into-view use frame-clock
+            // animations. Advance the offscreen clock as well as the UI queue.
+            settleFrames()
+            val lastOption = nodes().first { it.config.getOrNull(SemanticsProperties.Text).orEmpty().any { text -> text.text.startsWith("With canvas focus:") } }
+            val axis = scroll.config[SemanticsProperties.VerticalScrollAxisRange]
+            assertTrue("The final option must be visible after scrolling: bounds=${lastOption.boundsInWindow}, scroll=${axis.value()}/${axis.maxValue()}", lastOption.boundsInWindow.height > 0f && lastOption.boundsInWindow.bottom <= 500f)
+            assertTrue(nodes().any { "Preview width in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
+            assertTrue(nodes().any { "Preview height in DIP" in it.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() })
+        } finally { scene.close() }
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

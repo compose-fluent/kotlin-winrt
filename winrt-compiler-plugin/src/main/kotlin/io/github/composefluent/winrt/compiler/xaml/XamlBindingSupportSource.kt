@@ -17,10 +17,20 @@ fun xamlCompilerSupportTypeNames(framework: XamlFramework, previewHost: Boolean 
     framework.xamlComponentInterfaceNames + listOf(
         "Application", "Window", "DataTemplate", "Markup.IDataTemplateComponent", "Markup.IDataTemplateExtension",
         "Markup.XamlBindingHelper", "Markup.XamlMarkupHelper", "Markup.XamlReader",
-        "Media.VisualTreeHelper", "Media.Imaging.RenderTargetBitmap",
-    ).map(framework::xamlTypeName) + when (framework) {
-        XamlFramework.UWP -> listOf("Windows.System.DispatcherQueue", "Windows.UI.ViewManagement.ApplicationView")
-        XamlFramework.WinUI -> listOf("Microsoft.UI.Dispatching.DispatcherQueue") +
+        "Media.CompositionTarget", "Media.VisualTreeHelper", "Media.Imaging.RenderTargetBitmap", "Media.Animation.Storyboard",
+        "Controls.ContentControl", "Controls.ItemsControl", "Controls.Canvas",
+        "Media.ScaleTransform", "Automation.AutomationProperties",
+        "Controls.TextBox", "Controls.ToggleSwitch", "Controls.ScrollViewer",
+        "Controls.Primitives.ToggleButton", "Controls.Primitives.Selector", "Controls.Primitives.RangeBase",
+    ).map(framework::xamlTypeName) + listOf(
+        "Windows.Graphics.Capture.GraphicsCaptureSession", "Windows.Graphics.Capture.GraphicsCaptureItem",
+        "Windows.Graphics.Capture.Direct3D11CaptureFramePool", "Windows.Graphics.Imaging.SoftwareBitmap",
+        "Windows.Graphics.DirectX.Direct3D11.IDirect3DDevice", "Windows.Storage.Streams.Buffer",
+    ) + when (framework) {
+        XamlFramework.UWP -> listOf("Windows.System.DispatcherQueue", "Windows.UI.ViewManagement.ApplicationView", "Windows.UI.Xaml.Hosting.ElementCompositionPreview",
+            "Windows.UI.Composition.CompositionVisualSurface", "Windows.UI.Composition.CompositionSurfaceBrush", "Windows.UI.Composition.SpriteVisual") +
+            if (previewHost) listOf(framework.xamlTypeName("Controls.Grid")) else emptyList()
+        XamlFramework.WinUI -> listOf("Microsoft.UI.Dispatching.DispatcherQueue", "Microsoft.UI.Windowing.OverlappedPresenter") +
             if (previewHost) listOf("Controls.Grid", "Controls.XamlControlsResources").map(framework::xamlTypeName) else emptyList()
     }
 

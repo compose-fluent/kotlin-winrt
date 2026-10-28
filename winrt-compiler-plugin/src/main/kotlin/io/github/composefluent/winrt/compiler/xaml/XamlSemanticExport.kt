@@ -64,7 +64,7 @@ internal object XamlSemanticOptions {
         val output = Path.of(requireNotNull(value("xamlSemanticOutput")))
         // Invalidate before frontend analysis too: syntax/type errors never reach IR export.
         Files.deleteIfExists(output)
-        Files.deleteIfExists(output.resolveSibling("KotlinXaml.winmd"))
+        WinRTMetadataFiles.deleteGenerated(output.resolveSibling("KotlinXaml.winmd"))
         require(value("xamlReferences") == null || value("xamlReferencesFile") == null) {
             "Specify either xamlReferences or xamlReferencesFile"
         }
@@ -91,7 +91,7 @@ private class XamlSemanticExport(
 ) : IrGenerationExtension {
     override fun generate(moduleFragment: IrModuleFragment, pluginContext: IrPluginContext) {
         Files.deleteIfExists(output)
-        Files.deleteIfExists(output.resolveSibling("KotlinXaml.winmd"))
+        WinRTMetadataFiles.deleteGenerated(output.resolveSibling("KotlinXaml.winmd"))
         val declarations = WinUIXamlDeclarations.parse(Files.readString(declarationPath)).let { index ->
             // Runtime/IDE source hashes belong to executable page bodies, not XAMLC's
             // semantic contract. Both isolated and combined export use the same schema.

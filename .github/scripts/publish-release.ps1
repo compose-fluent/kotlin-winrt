@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $modules = @(
-    ':winrt-runtime', ':winrt-metadata', ':winrt-generator', ':winrt-authoring',
+    ':winrt-runtime:contracts', ':winrt-runtime', ':winrt-metadata', ':winrt-generator', ':winrt-authoring',
     ':winrt-compiler-plugin', ':winrt-compiler-plugin:compiler-kotlin-2-4-20',
     ':winrt-compiler-plugin:callsite-contract', ':winrt-compiler-plugin:callsite-lowering',
     ':winrt-compiler-plugin:callsite-lowering:lowering-kotlin-2-4-20'

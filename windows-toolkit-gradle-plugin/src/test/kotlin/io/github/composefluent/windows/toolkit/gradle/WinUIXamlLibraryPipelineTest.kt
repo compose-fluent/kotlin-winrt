@@ -90,6 +90,27 @@ class WinUIXamlLibraryPipelineTest {
     }
 
     @Test
+    fun sdk_preview_uwp_package_does_not_compile_or_stage_the_application() {
+        val root = writeLibrary("kotlin-winrt-uwp-sdk-preview-cache-", """
+            windows { application { applicationModel = io.github.composefluent.winrt.runtime.WinAppApplicationModel.UWP } }
+            // This graph-only fixture does not publish Native runtime KLIBs.
+            tasks.named('buildWinRTXamlSdkPreviewNative') { runtimeLibraries.setFrom([]) }
+            tasks.configureEach { enabled = false }
+        """.trimIndent(), plainJvm = true)
+        val first = run(root, "runWinRTXamlSdkPreviewUwp", "--configuration-cache")
+        assertEquals(TaskOutcome.SKIPPED, first.task(":runWinRTXamlSdkPreviewUwp")?.outcome)
+        assertTrue(first.task(":buildWinRTXamlSdkPreviewNative") != null)
+        assertTrue(first.task(":buildWinRTXamlSdkPreview") == null)
+        assertTrue(first.task(":stageWinRTXamlSdkPreviewPackage") != null)
+        assertTrue(first.task(":generateWinRTXamlSdkPreviewProjections") != null)
+        assertTrue(first.task(":compileKotlin") == null)
+        assertTrue(first.task(":generateWinRTProjections") == null)
+        assertTrue(first.tasks.none { it.path.contains("stageWinAppPackage") || it.path.contains("compileWinRTXaml") })
+        val reused = run(root, "runWinRTXamlSdkPreviewUwp", "--configuration-cache")
+        assertTrue(reused.output, reused.output.contains("Reusing configuration cache"))
+    }
+
+    @Test
     fun plain_jvm_xaml_main_compilation_has_distinct_tasks_and_reuses_configuration_cache() {
         val root = writeLibrary("kotlin-winrt-xaml-jvm-main-", "windows { application { } }", plainJvm = true)
         write(root.resolve("src/main/kotlin/sample/Model.xaml"), """

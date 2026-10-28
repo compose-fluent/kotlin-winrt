@@ -1,3 +1,5 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.ide.hotreload
 
 import io.github.composefluent.winrt.ide.xaml.WinUIXamlCatalog
@@ -25,6 +27,13 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
     val isApplication: Boolean = root.type == Name(WinUIXamlCatalog.PRESENTATION, "Application")
     val isResourceDictionary: Boolean = root.type == Name(WinUIXamlCatalog.PRESENTATION, "ResourceDictionary")
     val hash: String = WinUIXamlDeclarations.sourceFingerprint(text)
+    fun containsCompiledBindings(): Boolean {
+        val all = listOf(root.node) + (0 until root.node.getElementsByTagName("*").length).map { root.node.getElementsByTagName("*").item(it) as Element }
+        return all.any { tag -> (0 until tag.attributes.length).any { index ->
+            io.github.composefluent.winrt.ide.xaml.isCompiledXamlBinding(tag.attributes.item(index).nodeValue) { tag.lookupNamespaceURI(it) }
+        } }
+    }
+
 
     fun isWindow(catalog: WinUIXamlCatalog?, baseTypeName: String? = null): Boolean {
         if (root.type == Name(WinUIXamlCatalog.PRESENTATION, "Window")) return true
@@ -49,13 +58,16 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
 
     fun patch(previous: WinUIXamlHotReloadMarkup, loaded: WinUIXamlHotReloadRoot,
         propertyProblem: (uri: String, type: String, property: String) -> String? = { _, _, _ -> null },
-        contentMember: (uri: String, type: String, property: String?) -> WinUIXamlContentMember? = { _, _, _ -> null }): WinUIXamlHotReloadPatch {
+        contentMember: (uri: String, type: String, property: String?) -> WinUIXamlContentMember? = { _, _, _ -> null },
+        attachedProperty: (uri: String, owner: String, property: String) -> String? = { _, _, _ -> null },
+        isEvent: (uri: String, type: String, member: String) -> Boolean = { _, _, _ -> false }): WinUIXamlHotReloadPatch {
         require(className == loaded.className && previous.className == className) { "Changing x:Class requires rebuilding and restarting." }
         require(previous.hash == loaded.sourceHash) { "The loaded component does not match the previous source. Reconnect or rebuild." }
         val changes = mutableListOf<WinUIXamlHotReloadChange>()
         val resources = mutableListOf<WinUIXamlHotReloadResources>()
         val reads = mutableListOf<WinUIXamlHotReloadRead>()
         val children = mutableListOf<WinUIXamlHotReloadChildren>()
+        val events = mutableListOf<WinUIXamlHotReloadEvent>()
         fun XamlElement.address(parent: WinUIXamlHotReloadTarget?, owner: Boolean = false) = when {
             owner -> WinUIXamlHotReloadTarget()
             elementName in loaded.elements -> WinUIXamlHotReloadTarget(elementName)
@@ -64,6 +76,16 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
         fun literal(value: String): String {
             require(!value.startsWith('{') || value.startsWith("{}")) { "Binding and resource expressions require rebuilding and restarting." }
             return if (value.startsWith("{}")) value.drop(2) else value
+        }
+        fun resolvedProperty(element: XamlElement, name: Name): String {
+            if ('.' in name.local) {
+                val uri = name.uri.ifEmpty { element.node.lookupNamespaceURI(null) ?: element.type.uri }
+                return attachedProperty(uri, name.local.substringBeforeLast('.'), name.local.substringAfterLast('.'))
+                    ?: error("No compiled writable attached accessor for '${name.local}'; rebuild.")
+            }
+            require(name.uri.isEmpty()) { "Compiled directives require rebuilding and restarting." }
+            propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
+            return name.local
         }
         fun resourceEntries(container: XamlElement): List<XamlElement> {
             require(container.content.all { it is XamlElement }) { "Resource text changes require rebuilding." }
@@ -85,9 +107,68 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
             return entries
         }
         fun key(entry: XamlElement) = entry.attributes.getValue(Name(WinUIXamlCatalog.XAML, "Key"))
-        fun styleChanged(old: XamlElement, next: XamlElement): Boolean = !old.matches(next) &&
-            (old.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") || next.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") ||
-                old.content.filterIsInstance<XamlElement>().zip(next.content.filterIsInstance<XamlElement>()).any { (a, b) -> styleChanged(a, b) })
+        fun dictionary(container: XamlElement): XamlElement = container.content.filterIsInstance<XamlElement>()
+            .singleOrNull()?.takeIf { it.type == Name(WinUIXamlCatalog.PRESENTATION, "ResourceDictionary") } ?: container
+        val dictionaryGroups = setOf("ResourceDictionary.MergedDictionaries", "ResourceDictionary.ThemeDictionaries")
+        fun hasDictionaryGroups(container: XamlElement) = dictionary(container).content.filterIsInstance<XamlElement>()
+            .any { it.type.uri == WinUIXamlCatalog.PRESENTATION && it.type.local in dictionaryGroups }
+        fun compareNestedDictionary(old: XamlElement, next: XamlElement, target: WinUIXamlHotReloadTarget,
+            compareValue: (XamlElement, XamlElement, WinUIXamlHotReloadTarget) -> Unit) {
+            if (old.matches(next)) return
+            require(old.type == next.type && old.attributes == next.attributes && !next.attributes.containsKey(Name("", "Source"))) {
+                "Changing dictionary sources or directives requires rebuilding."
+            }
+            require(old.content.all { it is XamlElement } && next.content.all { it is XamlElement }) { "Resource text changes require rebuilding." }
+            val before = old.content.filterIsInstance<XamlElement>()
+            val after = next.content.filterIsInstance<XamlElement>()
+            val oldGroups = before.filter { it.type.uri == WinUIXamlCatalog.PRESENTATION && it.type.local in dictionaryGroups }
+            val newGroups = after.filter { it.type.uri == WinUIXamlCatalog.PRESENTATION && it.type.local in dictionaryGroups }
+            require(oldGroups.map { it.type }.distinct().size == oldGroups.size &&
+                newGroups.map { it.type }.distinct().size == newGroups.size) { "Duplicate dictionary groups require fixing XAML before updating." }
+            require(oldGroups.map { it.type } == newGroups.map { it.type }) { "Changing dictionary group structure requires rebuilding." }
+            oldGroups.zip(newGroups).forEach { (a, b) ->
+                require(a.attributes == b.attributes && a.content.all { it is XamlElement } && b.content.all { it is XamlElement }) {
+                    "Dictionary groups must retain their directives and element structure."
+                }
+                val oldChildren = a.content.filterIsInstance<XamlElement>()
+                val newChildren = b.content.filterIsInstance<XamlElement>()
+                val address = target.copy(path = target.path + WinUIXamlHotReloadStep.Property(b.type.local.substringAfter('.')))
+                if (b.type.local.endsWith(".ThemeDictionaries")) {
+                    val first = oldChildren.associateBy(::key); val second = newChildren.associateBy(::key)
+                    require(first.size == oldChildren.size && second.size == newChildren.size && first.keys == second.keys) {
+                        "Changing theme dictionary keys requires rebuilding."
+                    }
+                    second.forEach { (name, child) -> compareNestedDictionary(first.getValue(name), child,
+                        address.copy(path = address.path + WinUIXamlHotReloadStep.Key(name)), compareValue) }
+                } else {
+                    require(oldChildren.size == newChildren.size) { "Changing merged dictionary order or count requires rebuilding." }
+                    oldChildren.zip(newChildren).forEachIndexed { index, (first, second) ->
+                        compareNestedDictionary(first, second, address.copy(path = address.path +
+                            WinUIXamlHotReloadStep.Index(index, newChildren.size)), compareValue)
+                    }
+                }
+            }
+            val oldEntries = before - oldGroups.toSet(); val newEntries = after - newGroups.toSet()
+            require(oldEntries.size == newEntries.size) { "Changing nested resource keys requires rebuilding." }
+            for (entries in listOf(oldEntries, newEntries)) {
+                val keys = entries.mapNotNull { it.attributes[Name(WinUIXamlCatalog.XAML, "Key")] }
+                require(keys.distinct().size == keys.size) { "Duplicate resource keys require fixing XAML before updating." }
+            }
+            val oldByKey = oldEntries.filter { it.attributes.containsKey(Name(WinUIXamlCatalog.XAML, "Key")) }.associateBy(::key)
+            newEntries.forEachIndexed { index, entry ->
+                val name = entry.attributes[Name(WinUIXamlCatalog.XAML, "Key")]
+                val previous = name?.let(oldByKey::get) ?: oldEntries[index]
+                if (!previous.matches(entry)) {
+                    require(name != null && name in oldByKey && entry.type.local !in setOf("Style", "ControlTemplate", "DataTemplate")) {
+                        "Replacing sealed styles, templates or implicit keys in nested dictionaries requires rebuilding."
+                    }
+                    compareValue(previous, entry, target.copy(path = target.path + WinUIXamlHotReloadStep.Key(name)))
+                }
+            }
+        }
+        fun sealedResourceChanged(old: XamlElement, next: XamlElement): Boolean = !old.matches(next) &&
+            (old.template || next.template || old.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") || next.type == Name(WinUIXamlCatalog.PRESENTATION, "Style") ||
+                old.content.filterIsInstance<XamlElement>().zip(next.content.filterIsInstance<XamlElement>()).any { (a, b) -> sealedResourceChanged(a, b) })
         fun validateFragment(element: XamlElement, keys: Set<String>) {
             require(element.elementName.isEmpty()) { "Named resources require rebuilding to reconnect generated fields." }
             element.attributes.forEach { (name, value) ->
@@ -106,7 +187,7 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
         }
         fun references(owner: XamlElement, dictionary: XamlElement, target: WinUIXamlHotReloadTarget, keys: Set<String>): List<WinUIXamlHotReloadResourceReference> {
             val result = mutableListOf<WinUIXamlHotReloadResourceReference>()
-            fun visit(element: XamlElement, ownerElement: Boolean, available: Set<String>, inDictionary: Boolean = false, inTemplate: Boolean = false) {
+            fun visit(element: XamlElement, address: WinUIXamlHotReloadTarget?, available: Set<String>, inDictionary: Boolean = false, inTemplate: Boolean = false) {
                 if (element === dictionary) return
                 val localKeys = element.content.filterIsInstance<XamlElement>().filter { it.type.local.endsWith(".Resources") && it !== dictionary }
                     .flatMap { block -> runCatching { resourceEntries(block).map(::key) }.getOrElse {
@@ -118,22 +199,47 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                     if (reference.key !in visible) return@forEach
                     require(!reference.theme) { "Replacing a resource used by ThemeResource requires rebuilding to preserve its theme expression." }
                     require(!inDictionary && !inTemplate && !element.template) { "A resource captured by another dictionary or template requires rebuilding." }
-                    require(name.uri.isEmpty() && '.' !in name.local) { "Attached resource consumers require rebuilding." }
-                    propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
-                    val address = if (ownerElement) target else element.address(null)
-                    require(address != null) { "Add x:Name and rebuild before refreshing this resource consumer." }
-                    result += WinUIXamlHotReloadResourceReference(address, name.local, reference.key)
+                    val property = resolvedProperty(element, name)
+                    require(address != null) { "The resource consumer has no compiled object path; rebuild before refreshing it." }
+                    result += WinUIXamlHotReloadResourceReference(address, property, reference.key)
                 }
-                element.content.filterIsInstance<XamlElement>().forEach { child ->
-                    visit(child, false, visible, inDictionary || child.type.local.endsWith(".Resources"), inTemplate || element.template)
+                val elements = element.content.filterIsInstance<XamlElement>()
+                val direct = elements.filter { '.' !in it.type.local }
+                val shape = contentMember(element.type.uri, element.type.local, null)
+                fun childAddress(child: XamlElement, member: WinUIXamlContentMember?, index: Int, count: Int): WinUIXamlHotReloadTarget? {
+                    child.address(null)?.let { return it }
+                    if (address == null || member == null || !member.collection && count != 1) return null
+                    val path = address.path + WinUIXamlHotReloadStep.Property(member.name)
+                    return address.copy(path = if (member.collection) path + WinUIXamlHotReloadStep.Index(index, count) else path)
+                }
+                elements.forEach { child ->
+                    val property = child.type.local.substringBefore('.') == element.type.local &&
+                        child.type.uri == element.type.uri && '.' in child.type.local && !child.type.local.endsWith(".Resources")
+                    if (property && !inDictionary && !inTemplate && !element.template) {
+                        val member = contentMember(element.type.uri, element.type.local, child.type.local.substringAfter('.'))
+                        val values = child.content.filterIsInstance<XamlElement>()
+                        values.forEachIndexed { index, value -> visit(value, childAddress(value, member, index, values.size), visible) }
+                    } else visit(child, childAddress(child, shape, direct.indexOf(child), direct.size).takeIf { child in direct },
+                        visible, inDictionary || child.type.local.endsWith(".Resources"), inTemplate || element.template)
                 }
             }
-            visit(owner, true, keys)
+            visit(owner, target, keys)
             return result.distinct()
         }
-        fun validateVisual(element: XamlElement) {
-            require(element.type.uri == WinUIXamlCatalog.PRESENTATION && element.elementName.isEmpty() && !element.template && '.' !in element.type.local) {
-                "A new or removed subtree must use SDK elements without names, templates or property elements; rebuild to update its connections."
+        fun validateVisual(element: XamlElement, owner: XamlElement? = null) {
+            require(element.type.uri == WinUIXamlCatalog.PRESENTATION && element.elementName.isEmpty() && !element.template) {
+                "A new or removed subtree must use SDK elements without names or templates; rebuild to update its connections."
+            }
+            if ('.' in element.type.local) {
+                val property = element.type.local.substringAfterLast('.')
+                require(owner != null && owner.type.uri == element.type.uri &&
+                    element.type.local.substringBeforeLast('.') == owner.type.local &&
+                    contentMember(owner.type.uri, owner.type.local, property) != null) {
+                    "Resolve the SDK property element before changing this subtree."
+                }
+                require(element.attributes.keys.all { it.uri == XMLConstants.XMLNS_ATTRIBUTE_NS_URI }) {
+                    "Directives on a property element require rebuilding."
+                }
             }
             element.attributes.forEach { (name, value) ->
                 require(name.uri.isEmpty() || name.uri == XMLConstants.XMLNS_ATTRIBUTE_NS_URI) {
@@ -142,14 +248,14 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 if (name.uri.isEmpty()) {
                     // A missing catalog must not let an ordinary event attribute
                     // pass as a literal when removing a connected subtree.
-                    require(contentMember(element.type.uri, element.type.local, name.local) != null) {
+                    require('.' in name.local || contentMember(element.type.uri, element.type.local, name.local) != null) {
                         "Resolve SDK property '${name.local}' before changing this subtree; event connections require rebuilding."
                     }
-                    propertyProblem(element.type.uri, element.type.local, name.local)?.let { error(it) }
+                    resolvedProperty(element, name)
                 }
                 literal(value)
             }
-            element.content.filterIsInstance<XamlElement>().forEach(::validateVisual)
+            element.content.filterIsInstance<XamlElement>().forEach { validateVisual(it, element) }
         }
         fun sequence(old: List<Any>, next: List<Any>, target: WinUIXamlHotReloadTarget?,
             visit: (XamlElement, XamlElement, WinUIXamlHotReloadTarget?) -> Unit) {
@@ -193,18 +299,36 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
         fun compare(old: XamlElement, next: XamlElement, target: WinUIXamlHotReloadTarget?, inTemplate: Boolean, resourceObject: Boolean = false) {
             if (old.matches(next)) return
             require(old.type == next.type && old.elementName == next.elementName) { "Changing element types or names requires rebuilding and restarting." }
-            require(next.attributes.keys.containsAll(old.attributes.keys)) { "Removing a property requires rebuilding to restore its default value." }
             val template = inTemplate || next.template
+            (old.attributes.keys - next.attributes.keys).forEach { name ->
+                require(!template) { "Template changes require rebuilding and restarting." }
+                require(name.local != "Name") { "Changing element names requires rebuilding and restarting." }
+                if (name.uri.isEmpty() && isEvent(old.type.uri, old.type.local, name.local)) {
+                    require(target != null && target.path.isEmpty() && target.element.isNotEmpty()) { "Event updates need a compiled named element." }
+                    require(!old.attributes.getValue(name).startsWith('{')) { "Compiled event binding changes require rebuilding." }
+                    events += WinUIXamlHotReloadEvent(target.element, name.local, old.attributes.getValue(name), "")
+                    return@forEach
+                }
+                val property = resolvedProperty(old, name)
+                require(target != null) { "Add x:Name and rebuild before updating this element's properties." }
+                literal(old.attributes.getValue(name)) // Never discard a binding/resource expression.
+                changes += WinUIXamlHotReloadChange(target.element, property, "", target.path, reset = true)
+            }
             next.attributes.forEach { (name, value) ->
                 val before = old.attributes[name]
                 if (before == value) return@forEach
                 require(!template) { "Template changes require rebuilding and restarting." }
-                require(name.uri.isEmpty() && '.' !in name.local) { "Directives, namespaces and attached properties require rebuilding and restarting." }
+                if (name.uri.isEmpty() && isEvent(next.type.uri, next.type.local, name.local)) {
+                    require(target != null && target.path.isEmpty() && target.element.isNotEmpty()) { "Event updates need a compiled named element." }
+                    require(value.isNotBlank() && !value.startsWith('{') && before?.startsWith('{') != true) { "Compiled event binding changes require rebuilding." }
+                    events += WinUIXamlHotReloadEvent(target.element, name.local, before.orEmpty(), value)
+                    return@forEach
+                }
+                val property = resolvedProperty(next, name)
                 require(name.local != "Name") { "Changing element names requires rebuilding and restarting." }
                 require(target != null) { "Add x:Name and rebuild before updating this element's properties." }
-                propertyProblem(next.type.uri, next.type.local, name.local)?.let { error(it) }
                 before?.let(::literal)
-                changes += WinUIXamlHotReloadChange(target.element, name.local, literal(value), target.path)
+                changes += WinUIXamlHotReloadChange(target.element, property, literal(value), target.path)
             }
             if (template) require(old.matches(next)) { "Template changes require rebuilding and restarting." }
             val oldProperties = old.content.filterIsInstance<XamlElement>().filter { '.' in it.type.local }
@@ -218,16 +342,22 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                         require(!template && target != null && a.type == b.type && a.attributes == b.attributes) {
                             "The resource owner must be root or named; rebuild to establish its identity."
                         }
+                        val resourceTarget = target.copy(path = target.path + WinUIXamlHotReloadStep.Property("Resources"))
+                        if (hasDictionaryGroups(a) || hasDictionaryGroups(b)) {
+                            compareNestedDictionary(dictionary(a), dictionary(b), resourceTarget) { first, second, address ->
+                                compare(first, second, address, false, true)
+                            }
+                            return@forEach
+                        }
                         val oldEntries = resourceEntries(a)
                         val nextEntries = resourceEntries(b)
                         val oldByKey = oldEntries.associateBy(::key)
                         val nextByKey = nextEntries.associateBy(::key)
-                        require(oldByKey.keys == nextByKey.keys) { "Adding or removing resource keys requires rebuilding." }
-                        val resourceTarget = target.copy(path = target.path + WinUIXamlHotReloadStep.Property("Resources"))
-                        if (nextEntries.any { styleChanged(oldByKey.getValue(key(it)), it) }) {
+                        if (oldByKey.keys != nextByKey.keys || nextEntries.any { sealedResourceChanged(oldByKey.getValue(key(it)), it) }) {
                             nextEntries.forEach { validateFragment(it, nextByKey.keys) }
-                            val consumers = references(next, b, target, nextByKey.keys)
-                            resources += WinUIXamlHotReloadResources(resourceTarget, dictionaryMarkup(b), nextEntries.map(::key), consumers)
+                            val consumers = references(next, b, target, oldByKey.keys + nextByKey.keys)
+                            require(consumers.all { it.key in nextByKey }) { "A removed resource still has live consumers; update those references before removing its key." }
+                            resources += WinUIXamlHotReloadResources(resourceTarget, dictionaryMarkup(b), oldEntries.map(::key), consumers)
                             consumers.filter { it.property == "Style" }.forEach { consumer ->
                                 fun setterProperties(element: XamlElement): List<String> =
                                     element.content.filterIsInstance<XamlElement>().flatMap { child ->
@@ -276,11 +406,13 @@ internal class WinUIXamlHotReloadMarkup private constructor(val text: String, pr
                 }
             }
         }
-        compare(previous.root, root, WinUIXamlHotReloadTarget(), false)
+        if (isResourceDictionary) compareNestedDictionary(previous.root, root, WinUIXamlHotReloadTarget()) { first, second, address ->
+            compare(first, second, address, false, true)
+        } else compare(previous.root, root, WinUIXamlHotReloadTarget(), false)
         val readbacks = reads.distinct()
-        require(changes.size + resources.sumOf { 1 + it.references.size } + readbacks.size + children.sumOf { 1 + it.items.size } <= 512 &&
+        require(events.size + changes.size + resources.sumOf { 1 + it.references.size } + readbacks.size + children.sumOf { 1 + it.items.size } <= 512 &&
             resources.size <= 64 && children.size <= 64) { "Too many changes; rebuild the application." }
-        return WinUIXamlHotReloadPatch(className, loaded.resourcePath, previous.hash, hash, loaded.version + 1, changes, resources, readbacks, children)
+        return WinUIXamlHotReloadPatch(className, loaded.resourcePath, previous.hash, hash, loaded.version + 1, changes, resources, readbacks, children, events)
     }
 
     private fun dictionaryMarkup(container: XamlElement): String {

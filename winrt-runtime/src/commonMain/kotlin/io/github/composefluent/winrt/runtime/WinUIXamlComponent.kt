@@ -1,12 +1,23 @@
+@file:OptIn(io.github.composefluent.winrt.runtime.InternalWinRTApi::class)
+
 package io.github.composefluent.winrt.runtime
 
 /** CSharpPagePass2 keeps the file binding connector separate from ordinary event connections. */
 interface WinUIXamlPageBindingOwner {
     fun _kotlinXamlConnectBindings(connectionId: Int, target: Any?)
+    @InternalWinRTApi
+    fun updateDesignBindings(suppressed: String) {}
+    @InternalWinRTApi
+    fun stopDesignBindings() {}
 }
 
 /** Managed lifecycle only; this interface is not a WinRT interface and has no CCW entry. */
 interface WinUIXamlComponent {
+    /** Pass-2 generated connection contract for isolated design binding. */
+    @InternalWinRTApi
+    fun _kotlinXamlDesignConnections(): String = ""
+    @InternalWinRTApi
+    fun _kotlinXamlConnectDesign(connectionId: Int, target: Any?) {}
     /** Override and call super first before accessing connected XAML elements. */
     fun initializeComponent() { _kotlinXamlInitialize() }
 

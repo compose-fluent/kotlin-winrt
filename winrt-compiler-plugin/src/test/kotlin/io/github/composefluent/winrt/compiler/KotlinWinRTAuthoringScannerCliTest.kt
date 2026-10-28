@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.metadata.WinRTPortableExecutableMetadataWri
 import io.github.composefluent.winrt.runtime.XamlFramework
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -84,6 +85,56 @@ class KotlinWinRTAuthoringScannerCliTest {
     }
 
     @Test
+    fun only_isolated_design_hosts_prioritize_inspection_dispatch() {
+        // Microsoft.UI/Windows.System DispatcherQueue overloads share the SDK's
+        // High/Normal priority contract; user applications retain normal dispatch.
+        for ((framework, namespace) in listOf(XamlFramework.WinUI to "microsoft.ui.dispatching", XamlFramework.UWP to "windows.system")) {
+            val source = io.github.composefluent.winrt.compiler.xaml.xamlDevelopmentConfigurationSource("inspector", framework)
+            assertTrue(source.contains("isWinUIXamlPreviewHost()"))
+            assertTrue(source.contains("stateAdapter = inspectorState()"))
+            assertTrue(source.contains("XamlReader.loadWithInitialTemplateValidation(markup)"))
+            assertFalse(source.substringAfter("loadElement =").substringBefore("inspector =").contains("asWinRT"))
+            assertTrue(source.contains("$namespace.DispatcherQueuePriority.High else $namespace.DispatcherQueuePriority.Normal"))
+            assertTrue(source.contains("queue.tryEnqueue(priority, $namespace.DispatcherQueueHandler"))
+        }
+    }
+
+    @Test
+    fun restart_state_uses_projection_casts_and_respects_binding_ownership() {
+        // CsWinRT wrapper adaptation uses WinRT identity/QI, not CLR/Kotlin class identity.
+        for (framework in XamlFramework.entries) {
+            val root = Files.createTempDirectory("xaml-state-")
+            io.github.composefluent.winrt.compiler.xaml.writeXamlStateAdapterSource(root, "Probe", framework)
+            val source = root.resolve("io/github/composefluent/winrt/generated/xaml/ProbeState.kt").readText()
+            assertTrue(source.contains("runCatching { value.asWinRT<TextBox>() }.getOrNull()"))
+            assertTrue(source.contains("value.asWinRT<TextBox>()"))
+            assertFalse(source.contains("is TextBox"))
+            assertTrue(source.contains("target.getBindingExpression(property) == null"))
+            assertTrue(source.contains("frame.getNavigationState()"))
+            assertTrue(source.contains("value.asWinRT<Frame>().setNavigationState(it)"))
+            assertTrue(source.contains("AutomationProperties.getAutomationId(item)"))
+            // Both SDKs separate Window.Closed from FrameworkElement.Unloaded:
+            // replacing Window.Content must not detach the registered Window.
+            val lifetime = source.substringAfter("observeLifetime =")
+            assertTrue(lifetime.contains("window.closed.add { _, _ -> attached(false) }"))
+            assertFalse(lifetime.contains(".content"))
+            assertTrue(lifetime.contains("element.unloaded.add(::changed)"))
+            assertTrue(source.contains("context is WinUIXamlRestartParticipant"))
+            assertTrue(source.contains("filterValues { it.size == 1 }"))
+            assertFalse(source.contains("Password"))
+        }
+    }
+
+    @Test
+    fun isolated_project_preview_does_not_override_application_control_resources() {
+        // CsWinRT's WinUI3CppApp/App.xaml owns the opt-in, not the hosting runtime.
+        val root = Files.createTempDirectory("kotlin-winrt-preview-theme-")
+        io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.WinUI)
+        val host = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinWinUIXamlPreviewHost.kt").readText()
+        assertFalse(host.contains("XamlControlsResources"))
+    }
+
+    @Test
     fun uwp_development_sources_use_core_window_and_the_system_dispatcher() {
         val root = Files.createTempDirectory("kotlin-winrt-uwp-inspector-")
         io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList(), XamlFramework.UWP)
@@ -93,7 +144,16 @@ class KotlinWinRTAuthoringScannerCliTest {
         assertTrue(host.contains("XamlRuntime.initialize(XamlFramework.UWP)"))
         assertTrue(host.contains("windows.applicationmodel.activation.LaunchActivatedEventArgs"))
         assertTrue(inspector.contains("windows.system.DispatcherQueue.getForCurrentThread()"))
+        assertTrue(inspector.contains("val layoutSize = item.renderSize"))
+        assertTrue(inspector.contains("layoutSize.width, layoutSize.height"))
         assertTrue(inspector.contains("windows.ui.viewmanagement.ApplicationView.getForCurrentView()"))
+        assertTrue(!inspector.contains("element.rasterizationScale"))
+        assertTrue(inspector.contains("bitmap.renderAsync(captureElement, width, height)"))
+        // UWP owns a CompositionVisualSurface instead of an SDK-owned visual.
+        assertTrue(inspector.contains("compositor.createVisualSurface()"))
+        assertTrue(!inspector.contains("winUIXamlCapturePopupWindows(main)"))
+        assertTrue(!inspector.substringAfter("suspend fun captureComposition(").substringBefore("fun captureFrame(").contains("resizeClient"))
+
         assertTrue((host + inspector).let { !it.contains("microsoft.ui.") && !it.contains("XamlControlsResources") && !it.contains("window.appWindow") })
     }
 
@@ -103,6 +163,18 @@ class KotlinWinRTAuthoringScannerCliTest {
         // an authored IApplicationOverrides so native OnLaunched reaches Kotlin.
         val root = Files.createTempDirectory("kotlin-winrt-preview-authoring-")
         io.github.composefluent.winrt.compiler.xaml.writeXamlVisualInspectorSource(root, "preview", true, emptyList())
+        // WinUI UIElement.RasterizationScale affects subtree rasterization, not
+        // layout. Preserve the authored value across successful and failed capture.
+        val inspector = root.resolve("io/github/composefluent/winrt/generated/xaml/KotlinXamlVisualInspector_preview.kt").readText()
+        // WinUI captures main/Popup HWNDs without resizing live content.
+        assertTrue(inspector.contains("winUIXamlCapturePopupWindows(main)"))
+        assertTrue(inspector.contains("winUIXamlCaptureWindowFromId"))
+        assertFalse(inspector.substringAfter("suspend fun captureComposition(").substringBefore("fun captureFrame(").contains("resizeClient"))
+        val capture = inspector.substringAfter("fun captureFrame(").substringBefore("return WinUIXamlVisualInspector(")
+        assertTrue(capture.contains("val previousRasterizationScale = captureElement.rasterizationScale"))
+        assertTrue(capture.contains("maxOf(previousRasterizationScale, width / region.width, height / region.height)"))
+        assertTrue(capture.contains("finally { captureElement.rasterizationScale = previousRasterizationScale }"))
+        assertTrue(!capture.contains("element.width =") && !capture.contains("element.height =") && !capture.contains("renderTransform"))
         val index = root.resolve("index.tsv")
         index.writeText("Microsoft.UI.Xaml.Application\tRuntimeClass\tMicrosoft.UI.Xaml.IApplicationOverrides\n" +
             "Microsoft.UI.Xaml.IApplicationOverrides\tInterface\t\n")
