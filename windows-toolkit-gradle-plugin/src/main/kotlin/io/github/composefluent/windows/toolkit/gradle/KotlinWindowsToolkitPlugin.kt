@@ -2057,8 +2057,12 @@ private fun configureWinAppTasks(
     }
     project.plugins.withId("application") {
         project.extensions.configure(JavaApplication::class.java, Action<JavaApplication> { application ->
-            applicationHostTask.configure { task ->
-                task.mainClass.set(options.mainClass.orElse(application.mainClass))
+            // Both compilation and staging consume the same late-bound entrypoint.
+            // The standard application plugin may be the only mainClass owner.
+            listOf(launcherCompileTask, applicationHostTask).forEach { hostTask ->
+                hostTask.configure { task ->
+                    task.mainClass.set(options.mainClass.orElse(application.mainClass))
+                }
             }
         })
         if (integrateDefaultJvmLifecycle && unpackagedMode.get()) {
